@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk;
 
+use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -24,6 +25,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/tolk.php', 'tolk');
 
         $this->app->scoped(Settings::class);
+        $this->app->singleton(FieldtypeRegistry::class);
     }
 
     public function bootAddon(): void
@@ -33,6 +35,7 @@ class ServiceProvider extends AddonServiceProvider
         ], 'tolk-config');
 
         $this->registerPermissions();
+        $this->registerFieldtypes();
     }
 
     private function registerPermissions(): void
@@ -46,5 +49,14 @@ class ServiceProvider extends AddonServiceProvider
                 ->label(__('Run bulk translations'))
                 ->description(__('Start and manage bulk translation runs from listings, the overview and the runs page.')));
         }));
+    }
+
+    private function registerFieldtypes(): void
+    {
+        $registry = $this->app->make(FieldtypeRegistry::class);
+
+        foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
+            $registry->register($handle, $handlerClass);
+        }
     }
 }
