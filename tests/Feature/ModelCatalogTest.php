@@ -1,0 +1,205 @@
+<?php
+
+use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Ai\ModelRef;
+use Reach\StatamicTolk\Enums\Tier;
+use Reach\StatamicTolk\Exceptions\InvalidModelRef;
+use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
+use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Support\Settings;
+use Statamic\Facades\Addon;
+
+function modelCatalog(): ModelCatalog
+{
+    return app(ModelCatalog::class);
+}
+
+function catalogSettings(array $values = []): Settings
+{
+    Addon::get(Settings::PACKAGE)->settings()->set($values)->save();
+
+    return app(Settings::class)->fresh();
+}
+
+function modelRef(string $reference): ModelRef
+{
+    return ModelRef::fromString($reference);
+}
+
+it('reads the catalog from the config, per provider in order', function () {
+    expect(modelCatalog()->all())->toBe([
+        'anthropic' => config('tolk.models.anthropic'),
+        'openai' => config('tolk.models.openai'),
+        'gemini' => config('tolk.models.gemini'),
+    ])
+        ->and(modelCatalog()->forProvider('openai'))->toBe(config('tolk.models.openai'))
+        ->and(modelCatalog()->forProvider('mistral'))->toBe([]);
+});
+
+it('ignores providers the addon does not support', function () {
+    config(['tolk.models.mistral' => [['id' => 'mistral-large', 'tier' => 'quality']]]);
+
+    expect(array_keys(modelCatalog()->all()))->toBe(['anthropic', 'openai', 'gemini'])
+        ->and(modelCatalog()->forProvider('mistral'))->toBe([]);
+});
+
+it('describes a catalog model', function () {
+    $sol = modelRef('openai:gpt-6.1-sol');
+
+    expect(modelCatalog()->has($sol))->toBeTrue()
+        ->and(modelCatalog()->find($sol))->toBe(config('tolk.models.openai.0'))
+        ->and(modelCatalog()->options($sol))->toBe(['reasoning' => ['effort' => 'low']])
+        ->and(modelCatalog()->maxOutputTokens($sol))->toBe(128000)
+        ->and(modelCatalog()->reasoningHeadroom($sol))->toBe(4000)
+        ->and(modelCatalog()->price($sol))->toBe(['input' => 2.0, 'output' => 10.0])
+        ->and(modelCatalog()->label($sol))->toBe('GPT-6.1 Sol');
+});
+
+it('allows a model that is not in the catalog', function (string $reference) {
+    $model = modelRef($reference);
+
+    expect(modelCatalog()->has($model))->toBeFalse()
+        ->and(modelCatalog()->find($model))->toBeNull()
+        ->and(modelCatalog()->options($model))->toBe([])
+        ->and(modelCatalog()->maxOutputTokens($model))->toBeNull()
+        ->and(modelCatalog()->reasoningHeadroom($model))->toBe(0)
+        ->and(modelCatalog()->price($model))->toBeNull()
+        ->and(modelCatalog()->label($model))->toBe($model->model);
+})->with([
+    'unknown id' => ['anthropic:claude-opus-5-5'],
+    'fine-tuned id' => ['openai:ft:gpt-6-luna:reach::abc123'],
+    'id of another provider' => ['gemini:gpt-6.1-sol'],
+]);
+
+it('reads partial catalog entries leniently', function () {
+    config(['tolk.models.anthropic' => [
+        ['id' => 'claude-custom', 'tier' => 'quality', 'options' => 'none', 'price' => ['input' => 1.0]],
+    ]]);
+
+    $model = modelRef('anthropic:claude-custom');
+
+    expect(modelCatalog()->has($model))->toBeTrue()
+        ->and(modelCatalog()->options($model))->toBe([])
+        ->and(modelCatalog()->maxOutputTokens($model))->toBeNull()
+        ->and(modelCatalog()->reasoningHeadroom($model))->toBe(0)
+        ->and(modelCatalog()->price($model))->toBeNull()
+        ->and(modelCatalog()->label($model))->toBe('claude-custom');
+});
+
+it('returns the first model of a tier as the default', function (string $provider, Tier $tier, string $expected) {
+    expect(modelCatalog()->default($provider, $tier))->toEqual(modelRef($expected));
+})->with([
+    ['anthropic', Tier::Quality, 'anthropic:claude-sonnet-5-5'],
+    ['anthropic', Tier::Fast, 'anthropic:claude-haiku-4-5'],
+    ['openai', Tier::Quality, 'openai:gpt-6.1-sol'],
+    ['openai', Tier::Fast, 'openai:gpt-6-luna'],
+    ['gemini', Tier::Quality, 'gemini:gemini-3.8-flash'],
+    ['gemini', Tier::Fast, 'gemini:gemini-3.5-flash-lite'],
+]);
+
+it('uses catalog order when a tier has several models', function () {
+    config(['tolk.models.anthropic' => [
+        ['id' => 'claude-haiku-4-5', 'tier' => 'fast'],
+        ['id' => 'claude-opus-5-5', 'tier' => 'quality'],
+        ['id' => 'claude-sonnet-5-5', 'tier' => 'quality'],
+    ]]);
+
+    expect(modelCatalog()->default('anthropic', Tier::Quality))->toEqual(modelRef('anthropic:claude-opus-5-5'));
+});
+
+it('throws when the catalog has no model of a tier', function () {
+    config(['tolk.models.gemini' => [['id' => 'gemini-3.8-flash', 'tier' => 'quality']]]);
+
+    expect(fn () => modelCatalog()->default('gemini', Tier::Fast))
+        ->toThrow(MissingDefaultModel::class, 'The model catalog (tolk.models) has no fast model for [gemini].');
+});
+
+it('resolves the translator from the override, then the setting, then the first configured provider', function () {
+    $settings = catalogSettings(['translator_model' => 'gemini:gemini-3.5-flash-lite']);
+
+    expect(modelCatalog()->resolveTranslator($settings, modelRef('openai:gpt-6-luna')))->toEqual(modelRef('openai:gpt-6-luna'))
+        ->and(modelCatalog()->resolveTranslator($settings))->toEqual(modelRef('gemini:gemini-3.5-flash-lite'))
+        ->and(modelCatalog()->resolveTranslator(catalogSettings()))->toEqual(modelRef('anthropic:claude-sonnet-5-5'));
+
+    $this->withProviderKeys(['tolk.providers.openai.key' => 'tolk-key']);
+
+    expect(modelCatalog()->resolveTranslator(catalogSettings()))->toEqual(modelRef('openai:gpt-6.1-sol'));
+});
+
+it('throws when no provider is configured and nothing names a translator', function () {
+    $this->withProviderKeys([]);
+
+    expect(fn () => modelCatalog()->resolveTranslator(catalogSettings()))
+        ->toThrow(NoProviderConfigured::class, 'No AI provider is configured.');
+});
+
+it('lets an unparseable model setting propagate', function (string $key, Closure $resolve) {
+    $settings = catalogSettings([$key => 'mistral:mistral-large']);
+
+    expect(fn () => $resolve(modelCatalog(), $settings))->toThrow(InvalidModelRef::class, 'mistral:mistral-large');
+})->with([
+    'translator' => ['translator_model', fn (ModelCatalog $catalog, Settings $settings) => $catalog->resolveTranslator($settings)],
+    'reviewer' => ['reviewer_model', fn (ModelCatalog $catalog, Settings $settings) => $catalog->resolveReviewer($settings, modelRef('anthropic:claude-sonnet-5-5'))],
+    'fallback' => ['fallback_model', fn (ModelCatalog $catalog, Settings $settings) => $catalog->resolveFallback($settings, modelRef('anthropic:claude-sonnet-5-5'))],
+]);
+
+it('resolves the reviewer from the override, then the setting', function () {
+    $settings = catalogSettings(['reviewer_model' => 'gemini:gemini-3.8-flash']);
+    $translator = modelRef('anthropic:claude-sonnet-5-5');
+
+    expect(modelCatalog()->resolveReviewer($settings, $translator, modelRef('anthropic:claude-haiku-4-5')))->toEqual(modelRef('anthropic:claude-haiku-4-5'))
+        ->and(modelCatalog()->resolveReviewer($settings, $translator))->toEqual(modelRef('gemini:gemini-3.8-flash'));
+});
+
+it('picks the quality model of another configured provider as the reviewer', function (string $translator, string $expected) {
+    expect(modelCatalog()->resolveReviewer(catalogSettings(), modelRef($translator)))->toEqual(modelRef($expected));
+})->with([
+    ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol'],
+    ['openai:gpt-6-luna', 'anthropic:claude-sonnet-5-5'],
+    ['gemini:gemini-3.8-flash', 'anthropic:claude-sonnet-5-5'],
+]);
+
+it('skips unconfigured providers when it picks the reviewer', function () {
+    $this->withProviderKeys(['ai.providers.anthropic.key' => 'sdk-key', 'tolk.providers.gemini.key' => 'tolk-key']);
+
+    expect(modelCatalog()->resolveReviewer(catalogSettings(), modelRef('anthropic:claude-sonnet-5-5')))
+        ->toEqual(modelRef('gemini:gemini-3.8-flash'));
+});
+
+it('falls back to the translator as the reviewer when only one provider is configured', function () {
+    $this->withProviderKeys(['ai.providers.openai.key' => 'sdk-key']);
+
+    $settings = catalogSettings();
+    $translator = modelCatalog()->resolveTranslator($settings);
+
+    expect($translator)->toEqual(modelRef('openai:gpt-6.1-sol'))
+        ->and(modelCatalog()->resolveReviewer($settings, $translator))->toBe($translator);
+});
+
+it('resolves the fallback model from the setting', function () {
+    $translator = modelRef('anthropic:claude-sonnet-5-5');
+
+    expect(modelCatalog()->resolveFallback(catalogSettings(), $translator))->toBeNull()
+        ->and(modelCatalog()->resolveFallback(catalogSettings(['fallback_model' => 'openai:gpt-6.1-sol']), $translator))
+        ->toEqual(modelRef('openai:gpt-6.1-sol'))
+        ->and(modelCatalog()->resolveFallback(catalogSettings(['fallback_model' => 'anthropic:claude-haiku-4-5']), $translator))
+        ->toEqual(modelRef('anthropic:claude-haiku-4-5'));
+});
+
+it('resolves no fallback when it is the translator', function () {
+    $settings = catalogSettings(['fallback_model' => 'anthropic:claude-sonnet-5-5']);
+
+    expect(modelCatalog()->resolveFallback($settings, modelRef('anthropic:claude-sonnet-5-5')))->toBeNull();
+});
+
+it('resolves no fallback on an unconfigured provider', function () {
+    $this->withProviderKeys(['ai.providers.anthropic.key' => 'sdk-key']);
+
+    $settings = catalogSettings(['fallback_model' => 'gemini:gemini-3.8-flash']);
+
+    expect(modelCatalog()->resolveFallback($settings, modelRef('anthropic:claude-sonnet-5-5')))->toBeNull();
+
+    config(['tolk.providers.gemini.key' => 'tolk-key']);
+
+    expect(modelCatalog()->resolveFallback($settings, modelRef('anthropic:claude-sonnet-5-5')))->toEqual(modelRef('gemini:gemini-3.8-flash'));
+});
