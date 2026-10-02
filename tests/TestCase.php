@@ -6,7 +6,6 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Laravel\Ai\AiServiceProvider;
-use Mockery;
 use Reach\StatamicTolk\ServiceProvider;
 use Reach\StatamicTolk\Tests\Support\CreatesContent;
 use Statamic\Contracts\Auth\User as UserContract;
@@ -42,7 +41,7 @@ abstract class TestCase extends AddonTestCase
         ]);
         Site::setCurrent('en');
 
-        $this->instance(Outpost::class, Mockery::mock(Outpost::class)->shouldIgnoreMissing());
+        $this->spy(Outpost::class);
     }
 
     protected function tearDown(): void
@@ -68,29 +67,26 @@ abstract class TestCase extends AddonTestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('app.key', 'base64:5K509AaEsr0XODM8D3YFrY6a5WJv9z0oC+z6In8Jbps=');
-
-        $app['config']->set('statamic.editions.pro', true);
-        $app['config']->set('statamic.system.multisite', true);
-
-        $app['config']->set('statamic.search.indexes', [
-            'default' => ['driver' => 'null'],
-            'cp' => ['driver' => 'null'],
+        $app['config']->set([
+            'app.key' => 'base64:5K509AaEsr0XODM8D3YFrY6a5WJv9z0oC+z6In8Jbps=',
+            'statamic.editions.pro' => true,
+            'statamic.system.multisite' => true,
+            'statamic.search.indexes' => [
+                'default' => ['driver' => 'null'],
+                'cp' => ['driver' => 'null'],
+            ],
+            'ai.providers.anthropic.key' => 'test-key',
+            'ai.providers.openai.key' => 'test-key',
+            'ai.providers.gemini.key' => 'test-key',
+            'statamic.system.blueprints_path' => $this->temporaryPath('blueprints'),
+            'statamic.system.fieldsets_path' => $this->temporaryPath('fieldsets'),
+            'statamic.forms.forms' => $this->temporaryPath('forms'),
+            'statamic.users.repositories.file.paths.roles' => $this->temporaryPath('users/roles.yaml'),
+            'statamic.users.repositories.file.paths.groups' => $this->temporaryPath('users/groups.yaml'),
+            'tolk.state.path' => $this->temporaryPath('state'),
+            'tolk.runs.path' => $this->temporaryPath('runs'),
+            'tolk.usage.path' => $this->temporaryPath('usage'),
         ]);
-
-        foreach (['anthropic', 'openai', 'gemini'] as $provider) {
-            $app['config']->set("ai.providers.{$provider}.key", 'test-key');
-        }
-
-        $app['config']->set('statamic.system.blueprints_path', $this->temporaryPath('blueprints'));
-        $app['config']->set('statamic.system.fieldsets_path', $this->temporaryPath('fieldsets'));
-        $app['config']->set('statamic.forms.forms', $this->temporaryPath('forms'));
-        $app['config']->set('statamic.users.repositories.file.paths.roles', $this->temporaryPath('users/roles.yaml'));
-        $app['config']->set('statamic.users.repositories.file.paths.groups', $this->temporaryPath('users/groups.yaml'));
-
-        $app['config']->set('tolk.state.path', $this->temporaryPath('state'));
-        $app['config']->set('tolk.runs.path', $this->temporaryPath('runs'));
-        $app['config']->set('tolk.usage.path', $this->temporaryPath('usage'));
     }
 
     protected function temporaryPath(string $path = ''): string
@@ -106,7 +102,6 @@ abstract class TestCase extends AddonTestCase
             'cache.stores.tolk-test-file' => [
                 'driver' => 'file',
                 'path' => $this->temporaryPath('cache'),
-                'lock_path' => $this->temporaryPath('cache'),
             ],
             'cache.default' => 'tolk-test-file',
         ]);
@@ -116,29 +111,23 @@ abstract class TestCase extends AddonTestCase
 
     protected function signInAdmin(): UserContract
     {
-        $user = User::make()->email('admin@example.com')->makeSuper();
-        $user->save();
-
-        $this->actingAs($user);
-
-        return $user;
+        return $this->signIn(User::make()->email('admin@example.com')->makeSuper());
     }
 
     protected function signInWithPermissions(array $permissions): UserContract
     {
         $this->setTestRoles(['tolk_test' => $permissions]);
 
-        $user = User::make()->email('editor@example.com')->assignRole('tolk_test');
-        $user->save();
-
-        $this->actingAs($user);
-
-        return $user;
+        return $this->signIn(User::make()->email('editor@example.com')->assignRole('tolk_test'));
     }
 
     protected function signInUserWithoutPermissions(): UserContract
     {
-        $user = User::make()->email('user@example.com');
+        return $this->signIn(User::make()->email('user@example.com'));
+    }
+
+    private function signIn(UserContract $user): UserContract
+    {
         $user->save();
 
         $this->actingAs($user);

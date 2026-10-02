@@ -13,8 +13,6 @@ abstract class LiveTestCase extends TestCase
         'gemini' => 'GEMINI_API_KEY',
     ];
 
-    private static ?array $liveEnv = null;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -26,8 +24,13 @@ abstract class LiveTestCase extends TestCase
     {
         parent::defineEnvironment($app);
 
+        $path = dirname(__DIR__).'/.env.live';
+        $file = is_file($path) ? Dotenv::parse((string) file_get_contents($path)) : [];
+
         foreach (self::KEYS as $provider => $variable) {
-            $app['config']->set("ai.providers.{$provider}.key", $this->liveKey($variable));
+            $key = getenv($variable) ?: ($file[$variable] ?? null);
+
+            $app['config']->set("ai.providers.{$provider}.key", $key ?: null);
         }
     }
 
@@ -39,30 +42,8 @@ abstract class LiveTestCase extends TestCase
             $this->fail("Unknown provider [{$provider}].");
         }
 
-        if ($this->liveKey($variable) === null) {
+        if (config("ai.providers.{$provider}.key") === null) {
             $this->markTestSkipped("Set {$variable} in the environment or in .env.live to run the live {$provider} tests.");
         }
-    }
-
-    private function liveKey(string $variable): ?string
-    {
-        $value = getenv($variable);
-
-        if (! is_string($value) || $value === '') {
-            $value = self::liveEnv()[$variable] ?? null;
-        }
-
-        return is_string($value) && $value !== '' ? $value : null;
-    }
-
-    private static function liveEnv(): array
-    {
-        if (self::$liveEnv !== null) {
-            return self::$liveEnv;
-        }
-
-        $path = dirname(__DIR__).'/.env.live';
-
-        return self::$liveEnv = is_file($path) ? Dotenv::parse((string) file_get_contents($path)) : [];
     }
 }

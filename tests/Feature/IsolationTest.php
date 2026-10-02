@@ -33,22 +33,15 @@ it('writes a blueprint, a role, addon settings, an entry and a state record', fu
         'state' => $state,
     ];
 
-    foreach ($written as $path) {
-        expect(File::exists($path))->toBeTrue();
-    }
+    expect($written)->each->toBeFile();
 });
 
 it('starts the next test without any of them', function () use (&$written) {
-    expect($written)->toHaveCount(5);
-
-    foreach ($written as $path) {
-        expect(File::exists($path))->toBeFalse();
-    }
+    expect($written)->toHaveCount(5)->each->not->toBeFile();
 
     expect(Blueprint::find('collections.isolation.isolation'))->toBeNull()
         ->and(Role::find('isolation_role'))->toBeNull()
         ->and(Addon::get('reachweb/statamic-tolk')->settings()->all())->toBe([])
         ->and(Collection::findByHandle('isolation_pages'))->toBeNull()
-        ->and(Entry::query()->count())->toBe(0)
-        ->and(File::exists(config('tolk.state.path').'/isolation.yaml'))->toBeFalse();
+        ->and(Entry::query()->count())->toBe(0);
 });
