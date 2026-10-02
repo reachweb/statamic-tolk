@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk;
 
+use Reach\StatamicTolk\Support\Settings;
 use Statamic\Providers\AddonServiceProvider;
 
 class ServiceProvider extends AddonServiceProvider
@@ -20,6 +21,8 @@ class ServiceProvider extends AddonServiceProvider
         parent::register();
 
         $this->mergeConfigFrom(__DIR__.'/../config/tolk.php', 'tolk');
+
+        $this->app->scoped(Settings::class);
     }
 
     public function bootAddon(): void

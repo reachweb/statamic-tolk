@@ -393,3 +393,12 @@ T2.2 and T2.3 found that the editor flow and the content model work on 6.30.0, a
 - T13.1: `statuses.md` explains the defaults rule and the one-time "outdated".
 - Risks table: the CP-save row is settled.
 - After the owner's answer: D13 and its status, "Project at a glance", the `statamic/cms` version pin, §A11 "Create" (the blueprint key described for 6.35.0 and later), T5.9 (slug steps for 6.35.0 only), T8.11 (tree-view actions are always there), and the #15509/#15551 risks row now say `^6.35`. Outside `TASKS.md`: `composer.json` (`statamic/cms ^6.35`, lock hash refreshed), the README requirements, the `CLAUDE.md` stack line, and the sandbox's lock (`composer update reachweb/statamic-tolk`, committed there).
+
+## Addon settings
+
+Checked in T3.4 against Statamic 6.35.0 (`tests/Feature/SettingsTest.php`, and the sandbox's settings page).
+
+- R4 §12.1 left open what `Settings::all()` makes of booleans: `false` becomes `''` and `true` becomes `'1'`. `raw()` keeps them as booleans, and so does the YAML file.
+- Once an addon has a settings blueprint, `all()` holds every field's default even when nothing is saved, so "nothing saved" is checked with `raw()`.
+- The settings page saves every field of the blueprint, empty ones included (`PublishForm::submit()` returns all values): a text field stores whatever the form sends, an emptied `collections` or `taxonomies` field is stored as `null` (the relationship fieldtype turns `[]` into `null`), and the display-only `info` field as `null`. `Support\Settings` treats a stored `null` as "not set" and uses its default.
+- A `sites` field with `max_items: 1` stores a string. Inside a grid an empty one is left out of the row, because the grid removes null values. Every grid row gains an `id`.

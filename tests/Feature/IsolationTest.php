@@ -41,7 +41,7 @@ it('starts the next test without any of them', function () use (&$written) {
 
     expect(Blueprint::find('collections.isolation.isolation'))->toBeNull()
         ->and(Role::find('isolation_role'))->toBeNull()
-        ->and(Addon::get('reachweb/statamic-tolk')->settings()->all())->toBe([])
+        ->and(Addon::get('reachweb/statamic-tolk')->settings()->raw())->toBe([])
         ->and(Collection::findByHandle('isolation_pages'))->toBeNull()
         ->and(Entry::query()->count())->toBe(0);
 });
