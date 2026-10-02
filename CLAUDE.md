@@ -27,6 +27,7 @@ From the addon repo, `/Volumes/1TB/Sites/autotranslator`:
 - `npm test`: Vitest for `resources/js/**/*.test.js`.
 - `npm run cp:build`: build the CP assets into `resources/dist/build`, which is committed.
 - `npm run cp:dev`: Vite dev server with hot reload; it writes `resources/dist/hot` while it runs.
+- CI (`.github/workflows/tests.yml`) runs Pint and Pest on PHP 8.3–8.5 × Laravel 12 and 13 with `composer update`, and fails when a fresh `npm run cp:build` differs from the committed `resources/dist/build`. It runs no live or browser tests.
 
 There is no booted host app in this repo: under `vendor/bin/testbench` a root package is not in Statamic's addon manifest, so the addon's commands, routes and CP pages do not exist there. Run the addon's own `tolk:*` commands, and anything else that needs a booted addon, from the sandbox folder, `/Volumes/1TB/Sites/tolk-sandbox`, for example `php please tolk:doctor` *(T9.6)*.
 
