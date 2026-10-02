@@ -95,3 +95,105 @@ Results go to `build/live-probe/{provider}-{tier}.json` (git-ignored), merged pe
 - T4.12: OpenAI refusal, unvalidated decoded items, timeout detection, `AiException`, empty `retry-after`, 529 only from Anthropic, Anthropic's credit messages, requested model for usage; the self-check gains the refusal, `AiException` and timeout cases.
 - T13.4: where the probe writes its reports and what to update from them.
 - Risks table: the effort overwrite and the fakes are settled; option acceptance and placeholder fidelity wait for T13.4.
+
+## Publish form
+
+T2.2, 2026-10-02. Run in the sandbox on Statamic **6.35.0** (Laravel 13.34.0, PHP 8.4.25), and checks 1–6, 9 and 11 again on **6.30.0**, D13's floor, by pinning the sandbox temporarily (`composer require statamic/cms:6.30.0 -W --no-blocking`; restored afterwards with `git checkout` and `composer install`, lock file identical). The CP was driven by headless Google Chrome through Playwright 1.63.0 (`channel: 'chrome'`) from a temporary folder, as the admin, with one stored session. Everything below was run unless a line says it was read.
+
+### Setup
+
+- Spike code, on a throwaway branch that is deleted: a pushed component `tolk-spike`, pushed on `publish-container-created` for references starting with `entry::`, which calls `injectPublishContext()` and registers its context in a window object for the test script; and a temporary CP endpoint that takes the origin's raw values of every localizable top-level field except `slug` and `date`, upper-cases every text (all strings except identifiers: `type`, `id`, `enabled`, `url`, `style`, `anchor`, `images`, `marks`, `level`, `textAlign`, `href`, `src`) and returns `values` and `meta` from `$entry->blueprint()->setParent($entry)->fields()->addValues($raw)->preProcess()`, the produced raw value and its texts in order. "Fill" calls `setFieldMeta`, `setFieldValue` and `desyncField` per handle. The texts of a stored value are extracted with the same walker.
+- Content: the articles `hiking-the-samaria-gorge` (Replicator with a text set whose Bard holds a table, an FAQ set with a Grid, a specs set with a table; a list, a group and a keyed array) and `olive-oil-tasting` (Replicator rows without `id` or `enabled`, a CTA without `open_in_new_tab`), and the pages `about` (Bard with aligned headings and paragraphs, links, a list, a table and a gallery set) and `dining` (Bard with a quote set). German localizations were created in the CP: "Working In" → German → core's "Create Localization" origin picker (three sites, origin behaviour `select`) → Create.
+- `vendor/statamic/cms` no longer ships `resources/js`, only built assets. The front-end source behind R3's `[SRC]` paths was read on GitHub at the tags `v6.35.0` and `v6.30.0`.
+
+### Results
+
+| Check | 6.35.0 | 6.30.0 |
+| --- | --- | --- |
+| 1. Fill updates the form, sync icons flip, form dirty, nothing saved | yes | yes |
+| 2. After Save: exactly the filled keys stored; texts equal | yes; texts equal except defaults (check 4) | yes |
+| 3. Reopen and save again | texts equal; only `updated_at` changes | same |
+| 4. Normalisation matrix | texts survive everywhere, except that a set or row field added to the blueprint later with a text `default` adds that default text | same (seeded article, page with empty paragraphs) |
+| 5. Bard re-emits after `setFieldValue` | yes, normalised attributes only | same |
+| 6. Fill timing after `localization.created` | 0 and 300 ms lost or partial on save; 600 and 1,000 ms fine | same |
+| 7. Live Preview, stacks, read-only | pushed component re-mounts on every open and close; stack container `relate-fieldtype-inline-{n}`; read-only has the same keys | not run |
+| 8. Core axios from addon code | works at request time; `Statamic.$app` undefined in `booting()` | not run |
+| 9. Slug | auto-follows the title, `_auto_slug` decides; origin slug kept by setting the slug value before the title | auto-follows the title, posted slug stored; same remedy works |
+| 10. Progress task and site switch | prompt skipped, unsaved fill discarded | not run |
+| 11. Rejected `entry.saving` | form stays usable; core toast unless the rejection is a `PipelineStopped` | same |
+| 12. Successful save | values and meta replaced from the response, `localizedFields` kept; mid-save delivery reverted but stays localized | not run |
+
+### Details
+
+1. **Fill.** Every produced text appeared in the form: the title input, the Markdown editor, Replicator headings, Bard paragraphs and table cells, and on the Details tab the list, the group and the keyed array. Each filled field's label icon changed from "synced" to "desynced", `Statamic.$dirty.has('base')` was true, and the stored file still held only what the localize request wrote (`updated_by`, `updated_at`). Before any fill, a just-created localization is already dirty with `slug` in `localizedFields`: core's slug reset does that about a second after `localization.created` (check 9).
+2. **Save.** The stored data held exactly the filled handles, plus `updated_by` and `updated_at`, which core always writes. The texts of every field equalled the produced texts, in order. Other differences from the produced raw value, per fieldtype:
+   - `text`, `textarea`, `markdown`, `list`, `group`, keyed `array`, and a `table` inside a Replicator set: none.
+   - Replicator: rows without `id` get an 8-character `id`, rows without `enabled` get `enabled: true`, and set fields missing from a row get their default (`open_in_new_tab: false`).
+   - Grid: rows get an `id`; missing fields get their default.
+   - Bard, added by the Bard component in the browser (check 5): `attrs: {textAlign: null}` on paragraphs and headings that had none, `attrs: {start: 1, type: null}` on ordered lists, `rel`, `target` and `title` (all `null`) on link marks, and `attrs: {colspan: 1, rowspan: 1, colwidth: null, align: null}` on table cells and headers. On save, sets get `attrs.id`. No node was removed and no text changed.
+   - The CP's first Save of a new localization also posted `published: true`, because the form sets it when the origin is published (R3 §1.4), so the localization was published on its first save. D10 concerns server-side flows only.
+3. **Save again.** After reopening the saved localization and saving without an edit, every text was still equal, and the only stored difference was `updated_at`. The reopened form posts `_localized` = the stored keys and, on 6.35.0, `_auto_slug: false`.
+4. **Content matrix.** Texts were equal in every case below except the defaults case.
+   - Seeded content never saved in the CP (Samaria, olive oil): the differences of check 2.
+   - The same after one CP save of the origin (Samaria): that save itself added only Replicator and Grid `id`s and `enabled` to the origin. Bard does not re-emit a value it was mounted with, so the origin's Bard JSON stayed as seeded. The localization's differences then shrank to Bard's table-cell attributes.
+   - Replicator rows without ids (olive oil): `id`, `enabled` and the CTA's `open_in_new_tab: false` added.
+   - Fields added to sets after the content was written (a toggle and a text field with a `default` in the Replicator `text` set, a text field with a default in the FAQ Grid, and a toggle and a defaulted text field in the pages' Bard `quote` set): the toggles were stored as `false`, and **every existing row or set received the default text** (`kicker: 'Read this'`, `note: 'Updated'`, `cite: 'Source'`). So the stored field has more text leaves than the produced value, in the source language. The defaults are already in the endpoint's `preProcess()` output, so a server-side write that normalises the value adds them too. The origin gains them on its next CP save as well, which changes its source fingerprint.
+   - An empty Bard paragraph and an empty right-aligned paragraph (inserted into `about` with `saveQuietly()`): both kept, the first with `attrs.textAlign: null`, the second with its alignment.
+   - Aligned paragraphs and headings: alignment kept; unaligned ones gain `textAlign: null`.
+5. **Bard re-emit.** Yes. Within the fieldtype's update debounce after `setFieldValue`, the Bard component emits its own JSON with the attributes listed in check 2. The update goes through the field's update handler, which also desyncs the root field. List and array fields re-emit too (check 6). So the form value right after a fill is not deep-equal to the delivered value for a Bard field, although every text is.
+6. **Timing.** `localization.created` fires after the new localization's values, meta and reference are in the container. Fill data was fetched in advance, so only the delay differed:
+   - 0 ms: the values were shown, but `desyncField` did nothing, so no field was marked localized and the form was not dirty. Save posted `_localized: [slug]` and **stored nothing**.
+   - 300 ms: shown, not marked at the time. Later, the Replicator, list and array fields marked themselves through their own re-emit, so `body`, `features` and `facts` were stored and `title`, `excerpt` and `meta` were silently lost.
+   - 600 ms and 1,000 ms: every field was localized and dirty, and every field was stored.
+   - The same results on 6.30.0. The window is the 500 ms after `editLocalization()`, as read in R3 §1.3, and the guard in `desyncField` exists on 6.30.0.
+7. **Live Preview, stacks, read-only.**
+   - Live Preview: opening it and closing it each mount a new instance of the pushed component and unmount the old one, so local state is lost. The container is not re-created (no second `publish-container-created`), the pushed component object survives, `injectPublishContext()` works in the new instance, and a fill after closing works.
+   - Stacked inline editor (an `entries` field on the article, inline edit of a related page): the stack's container is named `relate-fieldtype-inline-{n}` with a counter (`relate-fieldtype-inline-1360`). It fires `publish-container-created` with an `entry::` reference, so a component pushed on every `entry::` container also appears inside the stack. Its context has `parentContainer` (the `base` container) and the same keys.
+   - Read-only form (the editor role without `edit articles entries` and `edit other authors articles entries`; the article's author is another user, so both are needed): the same 41 context keys, `readOnly.value === true`, no Save button, read-only inputs. The pushed component still renders, so it must hide itself.
+   - Context keys on 6.35.0, base container: those of R3 §4.2 plus `isWorkingCopy` and `revisionsEnabled` (the form's `provide`). The `publish-container-created` payload has the keys R3 §2.2 lists. The `localization.created` container exposes `clearDirtyState`, `desyncField`, `meta`, `name`, `pushComponent`, `revealerFields`, `saved`, `saving`, `setExtraValues`, `setFieldValue`, `setMeta`, `setValues`, `values`, `visibleValues`; 6.30.0 does not expose `meta` (read).
+8. **Axios.** `typeof Statamic.$app` is `'undefined'` inside `Statamic.booting()`. Read at request time, `Statamic.$app.config.globalProperties.$axios.post(cp_url('tolk/…'))` reached the addon's CP route with the CSRF header and returned 200.
+9. **Slug.** Article `hiking-the-samaria-gorge`, German, translated title "Wanderung durch die Samaria-Schlucht".
+   - At `localization.created` the slug field holds the origin's slug and `meta.slug` has no `auto` key. About a second later core's reset has slugified the inherited title (`hiking-the-samaria-gorge-a-practical-guide`), `meta.slug.auto` is `true` (6.34 and later), `slug` is in `localizedFields` and the form is dirty.
+   - Title filled, nothing else: the slug follows the title once the asynchronous slugify request returns (`wanderung-durch-die-samaria-schlucht`). On 6.35.0 the save posts `_auto_slug: true` and the server derives the slug from the posted title; on 6.30.0 the server stores the posted slug. Either way the stored slug is translated.
+   - Slug value set to the origin's slug **before** the title (after the reset): the Slugify component stops following (its `to` watcher sets `shouldSlugify = false`, and on 6.34 and later the slug fieldtype then writes `meta.slug.auto: false`); the slug stays, the save posts `_auto_slug: false` on 6.35.0, and the origin's slug is stored on both versions.
+   - Slug value set after the title, once the title's slugify has finished: the same result.
+   - Slug value and `meta.slug.auto: false` set right after the title, while the title's slugify request was still running: the late response overwrote the slug with the translated one, `_auto_slug: false` was posted with it, and the translated slug was stored. Setting `meta.slug.auto` by hand is neither needed nor sufficient.
+   - Slug and title set right at `localization.created`, inside the reset: the reset's slugify finished afterwards and switched automatic mode back on. 6.35.0 stored a slug derived from the translated title, 6.30.0 the slug of the inherited English title.
+10. **Progress task.** Control: with the form dirty, clicking English opens core's "Unsaved Changes" modal. With `Statamic.$progress.loading('tolk-spike', true)` active, Save & Publish is disabled, and clicking English switches at once without the modal, so the unsaved fill is gone. `Statamic.$dirty` still lists `base` afterwards.
+11. **Rejected save hook.** `entry.saving` rejected with a string: no request is sent, core shows the toast "Something went wrong" and logs the rejection reason as a console error, the Save button stays enabled, the form stays dirty, and the next Save succeeds. Rejected with `new PipelineStopped()` imported from `@statamic/cms/save-pipeline` (the hook runner forwards the rejection value, and the form's `catch` stays silent for that class): no core toast and no console error, only the toast the hook showed itself; Save works next time. The same on 6.30.0.
+12. **Successful save.**
+    - The save pipeline's request step replaces the container's values from the response (`setValues(resetValuesFromResponse(…))`) and, on 6.34 and later, its meta. `localizedFields` is kept, and the dirty flag is cleared.
+    - With the request held for 2.5 s, a title set after the click went back to the posted title. An `excerpt` set and desynced after the click went back to the inherited English excerpt but **stayed in `localizedFields`**, and the next save stored the English excerpt as the localization's own value. This is exactly the risk T5.8's save guard addresses.
+    - With the user's default `after_save` preference (`listing`), the Save button navigates to the collection listing about 300 ms after the response, after the `entry.saved` hooks have run. Quick save (⌘S) and the "continue editing" preference stay on the form.
+
+### Other observations
+
+- Core logs `TypeError: Cannot read properties of undefined (reading 'some')` (in `comboboxOptions`) twice on every in-place site switch or localization creation of an article, without the addon, on 6.30.0 and 6.35.0. The CP also requests a missing font, `intervariable-italic.woff2` (404).
+- More than about five CP logins a minute answer 429, so browser tests must reuse stored sessions.
+- On the "Unsaved Changes" modal, `getByText('Unsaved Changes')` matches two elements; Live Preview's close button is an icon-only button at the end of its header.
+- Security advisory GHSA-jppw-r5j3-xf7x (CVE-2026-71293, medium: two-factor recovery codes exposed through dynamic Antlers rendering) affects `statamic/cms` `>=6.0.0-alpha.1,<=6.30.0`. Composer 2.10 refuses to install 6.30.0 by default, so `^6.30` resolves to 6.31.0 or later unless a host turns blocking off.
+
+### Version floor
+
+Nothing in checks 1–6, 9 and 11 fails on 6.30.0, and the remedies above work on both versions. The floor therefore does not have to rise for the editor flow. Three facts still argue for raising it, which is the owner's decision (D13): 6.30.0 itself carries the advisory above, and 6.35.0 fixes statamic/cms#15509 (unsaved entries share one cached blueprint) and #15551 (a cold multi-site Stache rebuild drops entries), which T2.3 tests. Recommendation: `^6.35`. T2.4 asks the owner once T2.3 has shown whether the two bugs reach the addon.
+
+### What the later tasks take from this
+
+- The fill delay of 600 ms after `localization.created`, a site switch or a save holds on 6.30.0 and 6.35.0. Writes inside the window are shown but not saved (T5.7).
+- Undo and the delivered-value comparison must not expect the form's Bard value to equal the delivered JSON (check 5, T5.7).
+- The save guard can reject cleanly; reject with `PipelineStopped` (T5.8).
+- The `entry.saved` hook runs before the form leaves for the listing (T5.8).
+- `keepOriginSlug` sets the slug value to the origin's after core's reset and before the title is filled (T5.9).
+- Delivered values already contain defaults of set fields missing from the raw value, which are new text leaves (check 4, T5.3, T2.4).
+- Live Preview re-mounts the banner (T5.6); stacked editors fire `publish-container-created` with `entry::` references (T5.6); a read-only form still renders the banner (T5.6).
+
+### Changes made to TASKS.md (T2.2)
+
+- T5.1: after-save navigation, quick save, core console noise, login throttling, selectors.
+- T5.3: the pending `target_hash` comes from the value as it will be stored, defaults included.
+- T5.6: Live Preview re-mounts, stacked editors, read-only forms.
+- T5.7: the 600 ms delay is verified; `delivered` holds the form's value after the fieldtype's re-emit.
+- T5.8: reject with `PipelineStopped`; `entry.saved` awaits the confirm request; check 10 and 12 confirmed.
+- T5.9: how `keepOriginSlug` keeps the origin's slug, by version.
+- T2.4: the version floor question and the defaulted-text leaves (D27).
+- Risks table: the rows this spike settles.
