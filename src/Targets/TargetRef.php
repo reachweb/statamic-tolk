@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Targets;
 
+use Illuminate\Support\Str;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Stringable;
@@ -29,20 +30,11 @@ final readonly class TargetRef implements Stringable
             throw InvalidTargetRef::for($reference);
         }
 
-        if ($type === ContentType::Entry) {
-            $id = $parts[1];
-            $site = null;
-        } else {
-            $components = explode('::', $parts[1]);
-            $site = array_pop($components);
-            $id = implode('::', $components);
-        }
+        [$id, $site] = $type === ContentType::Entry || ! str_contains($parts[1], '::')
+            ? [$parts[1], null]
+            : [Str::beforeLast($parts[1], '::'), Str::afterLast($parts[1], '::')];
 
-        try {
-            return new self($type, $id, $site);
-        } catch (InvalidTargetRef) {
-            throw InvalidTargetRef::for($reference);
-        }
+        return new self($type, $id, $site);
     }
 
     public function storageKey(): string

@@ -9,13 +9,14 @@ use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Gateway\Anthropic\AnthropicSchemaSanitizer;
 use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Responses\StructuredAgentResponse;
+use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Tests\Support\Agents\ProbeAgent;
 use RuntimeException;
 use Throwable;
 
 final class ProviderFixtures
 {
-    public const array PROVIDERS = ['anthropic', 'openai', 'gemini'];
+    public const array PROVIDERS = ModelRef::PROVIDERS;
 
     public const array HOSTS = [
         'anthropic' => 'api.anthropic.com/*',

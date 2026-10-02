@@ -1,7 +1,6 @@
 <?php
 
 use Statamic\Contracts\Entries\Entry as EntryContract;
-use Statamic\Facades\Entry;
 use Statamic\Facades\Stache;
 
 beforeEach(function () {
@@ -36,7 +35,7 @@ beforeEach(function () {
     ]);
 
     $origin = $this->makeEntry('articles', 'en', ['title' => 'Hello']);
-    $this->entry = Entry::find($origin->id())->makeLocalization('el');
+    $this->entry = $origin->fresh()->makeLocalization('el');
 });
 
 function roundTrip(EntryContract $entry, string $handle, mixed $value): mixed
@@ -149,7 +148,7 @@ it('leaves a group as it is and turns an empty one into an empty array', functio
 });
 
 it('shares one blueprint object between the entries of a collection, so the parent must be set right before fields()', function () {
-    $other = Entry::find($this->makeEntry('articles', 'en', ['title' => 'Other'])->id())->makeLocalization('el')->id(Stache::generateId());
+    $other = $this->makeEntry('articles', 'en', ['title' => 'Other'])->fresh()->makeLocalization('el')->id(Stache::generateId());
 
     $blueprint = $this->entry->blueprint();
 

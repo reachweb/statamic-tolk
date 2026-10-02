@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Queue;
-use Statamic\Facades\Entry;
 use Statamic\Facades\Git;
 use Statamic\Git\CommitJob;
 use Statamic\Git\Git as GitManager;
@@ -27,7 +26,7 @@ function countCommits(): void
 
 function saveOrigin(): void
 {
-    Entry::find(test()->origin->id())->set('title', 'Changed')->save();
+    test()->origin->fresh()->set('title', 'Changed')->save();
 }
 
 it('switches the commit listener off and on with disable() and enable()', function () {

@@ -42,7 +42,7 @@ it('builds a tree for a new site from the tree of another', function () {
 
     expect($nav->in('el'))->toBeNull();
 
-    ($nav->in('el') ?? $nav->makeTree('el'))->tree($map($nav->in('en')->tree()))->save();
+    $nav->makeTree('el')->tree($map($nav->in('en')->tree()))->save();
 
     expect(Nav::findByHandle('main')->in('el')->tree())->toBe([
         ['id' => 'branch-about', 'entry' => $this->aboutEl->id()],

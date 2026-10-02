@@ -48,7 +48,7 @@ function treeOfSlugs(string $site): array
 
 function localizeFresh(EntryContract $origin, string $site): EntryContract
 {
-    return test()->localize(Entry::find($origin->id()), $site);
+    return test()->localize($origin->fresh(), $site);
 }
 
 describe('tree placement', function () {
@@ -82,8 +82,8 @@ describe('tree placement', function () {
 
         expect(treeOfSlugs('el'))->toBe(['rooms' => [], 'suites' => ['honeymoon' => []], 'home' => []])
             ->and($tree->root()['entry'])->toBe($pages['rooms']->in('el')->id())
-            ->and(Entry::find($home->id())->uri())->toBe('/home')
-            ->and(Entry::find($pages['rooms']->in('el')->id())->uri())->toBe('/');
+            ->and($home->fresh()->uri())->toBe('/home')
+            ->and($pages['rooms']->in('el')->fresh()->uri())->toBe('/');
     });
 
     it('keeps the origin tree when the root is localized first', function () {
@@ -111,7 +111,7 @@ describe('data', function () {
         $origin = $this->makeEntry('articles', 'en', ['title' => 'Hello', 'intro' => 'Intro', 'note' => 'Note']);
         $localization = $this->localize($origin, 'el', ['title' => 'Γεια', 'intro' => null]);
 
-        $fresh = Entry::find($localization->id());
+        $fresh = $localization->fresh();
 
         expect($fresh->data()->all())->toBe(['title' => 'Γεια', 'intro' => null])
             ->and($fresh->has('intro'))->toBeTrue()
@@ -141,10 +141,10 @@ describe('data', function () {
             $saved[] = [$event->entry->locale(), $event->isInitial()];
         });
 
-        Entry::find($origin->id())->set('intro', 'Changed')->save();
+        $origin->fresh()->set('intro', 'Changed')->save();
 
         expect($saved)->toBe([['el', false], ['en', true]])
-            ->and(Entry::find($el->id())->data()->all())->toBe(['title' => 'Γεια']);
+            ->and($el->fresh()->data()->all())->toBe(['title' => 'Γεια']);
     });
 });
 
@@ -164,12 +164,12 @@ describe('unsaved localizations', function () {
         $page = $this->makeEntry('pages', 'en', ['title' => 'Page']);
         $article = $this->makeEntry('articles', 'en', ['title' => 'Article']);
 
-        $localization = Entry::find($article->id())->makeLocalization('el');
+        $localization = $article->fresh()->makeLocalization('el');
 
         // Before 6.35.0 every unsaved entry uses `entry--blueprint`. From 6.35.0 the
         // key holds the object id, which PHP gives to a new object once the old one
         // is freed: this stands in for a freed unsaved page.
-        $pageBlueprint = Entry::find($page->id())->blueprint();
+        $pageBlueprint = $page->fresh()->blueprint();
         Blink::put('entry--blueprint', $pageBlueprint);
         Blink::put('entry-obj-'.spl_object_id($localization).'-blueprint', $pageBlueprint);
 
@@ -185,15 +185,15 @@ describe('unsaved localizations', function () {
         $page = $this->makeEntry('pages', 'en', ['title' => 'Page']);
         $article = $this->makeEntry('articles', 'en', ['title' => 'Article']);
 
-        $pageLocalization = Entry::find($page->id())->makeLocalization('el');
-        $articleLocalization = Entry::find($article->id())->makeLocalization('el');
+        $pageLocalization = $page->fresh()->makeLocalization('el');
+        $articleLocalization = $article->fresh()->makeLocalization('el');
 
         expect($pageLocalization->origin()->id())->toBe($page->id())
             ->and($articleLocalization->origin()->id())->toBe($page->id())
             ->and($articleLocalization->value('title'))->toBe('Page');
 
-        $pageLocalization = Entry::find($page->id())->makeLocalization('de')->id(Stache::generateId());
-        $articleLocalization = Entry::find($article->id())->makeLocalization('de')->id(Stache::generateId());
+        $pageLocalization = $page->fresh()->makeLocalization('de')->id(Stache::generateId());
+        $articleLocalization = $article->fresh()->makeLocalization('de')->id(Stache::generateId());
 
         expect($pageLocalization->origin()->id())->toBe($page->id())
             ->and($articleLocalization->origin()->id())->toBe($article->id())
@@ -215,11 +215,11 @@ describe('unsaved localizations', function () {
 
         foreach (['el', 'de'] as $site) {
             foreach ($origins as $origin) {
-                $discarded = Entry::find($origin->id())->makeLocalization($site)->id(Stache::generateId());
+                $discarded = $origin->fresh()->makeLocalization($site)->id(Stache::generateId());
                 $record('discarded', $discarded);
                 unset($discarded);
 
-                $localization = Entry::find($origin->id())->makeLocalization($site)->id(Stache::generateId());
+                $localization = $origin->fresh()->makeLocalization($site)->id(Stache::generateId());
                 $record('before save', $localization);
                 $localization->save();
                 unset($localization);
@@ -243,7 +243,7 @@ describe('unsaved localizations', function () {
             $created[] = $event->entry->id();
         });
 
-        $localization = Entry::find($pages['suites']->id())->makeLocalization('el');
+        $localization = $pages['suites']->fresh()->makeLocalization('el');
         $localization->id($id = Stache::generateId());
 
         expect($localization->save())->toBeTrue()

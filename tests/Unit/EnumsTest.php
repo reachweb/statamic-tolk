@@ -13,7 +13,7 @@ use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Enums\UnitKind;
 
 it('pins every case and its value', function (string $enum, array $cases) {
-    expect(collect($enum::cases())->mapWithKeys(fn ($case) => [$case->name => $case->value])->all())->toBe($cases);
+    expect(array_column($enum::cases(), 'value', 'name'))->toBe($cases);
 })->with([
     'ContentType' => [ContentType::class, ['Entry' => 'entry', 'Term' => 'term', 'GlobalSet' => 'globals', 'Nav' => 'nav']],
     'FieldStatus' => [FieldStatus::class, [

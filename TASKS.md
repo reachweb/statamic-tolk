@@ -1600,7 +1600,7 @@ Goal: "translate the whole website to a new language". Revisions, terms, global 
     - In the sandbox, with the fake engine: `php please tolk:lang de` writes `[de] …` strings with their parameters intact. Reset the sandbox afterwards.
 
 - [ ] **T9.11 `tolk:forms`: form texts**
-  - Read §A16 first. `ContentType` gains `Forms` (`forms`), and `TargetRef` parses and stores `forms::{lang}`. That reference has a single component, which `TargetRef`'s generic branch would read as a site with an empty id (T3.2), so it needs its own branch, as `entry` has.
+  - Read §A16 first. `ContentType` gains `Forms` (`forms`), and `TargetRef` parses and stores `forms::{lang}`. That reference has a single component, which `TargetRef`'s generic branch would read as an id without a site and reject (T3.2), so it needs its own branch, as `entry` has.
   - `src/Targets/FormsTarget.php`, as §A16. Verify each of these APIs in vendor:
     - texts come from `Form::all()`, `$form->title()`, `$form->blueprint()->fields()->all()` (top-level fields only) and the subjects in `$form->email()`;
     - `options` may be a list or a key → label map, and only the labels are texts;

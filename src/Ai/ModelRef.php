@@ -7,7 +7,7 @@ use Stringable;
 
 final readonly class ModelRef implements Stringable
 {
-    public const PROVIDERS = ['anthropic', 'openai', 'gemini'];
+    public const array PROVIDERS = ['anthropic', 'openai', 'gemini'];
 
     public function __construct(
         public string $provider,
