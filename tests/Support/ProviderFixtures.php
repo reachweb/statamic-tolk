@@ -30,21 +30,6 @@ final class ProviderFixtures
         'gemini' => 'https://generativelanguage.googleapis.com/v1beta/interactions',
     ];
 
-    public const array MODELS = [
-        'anthropic' => [
-            'quality' => ['id' => 'claude-sonnet-5-5', 'options' => ['thinking' => ['type' => 'between_tools']]],
-            'fast' => ['id' => 'claude-haiku-4-5', 'options' => []],
-        ],
-        'openai' => [
-            'quality' => ['id' => 'gpt-6.1-sol', 'options' => ['reasoning' => ['effort' => 'low']]],
-            'fast' => ['id' => 'gpt-6-luna', 'options' => ['reasoning' => ['effort' => 'none']]],
-        ],
-        'gemini' => [
-            'quality' => ['id' => 'gemini-3.8-flash', 'options' => ['thinking_level' => 'low']],
-            'fast' => ['id' => 'gemini-3.5-flash-lite', 'options' => []],
-        ],
-    ];
-
     private const array TEXT_PATHS = [
         'anthropic' => 'content.0.text',
         'openai' => 'output.1.content.0.text',
@@ -56,9 +41,23 @@ final class ProviderFixtures
         ['id' => 's2', 'text' => 'Η <1>θάλασσα</1> είναι ζεστή.<x1/>'],
     ];
 
+    /**
+     * The first catalog model of the tier, as configured in tolk.models.
+     */
+    public static function model(string $provider, string $tier = 'quality'): array
+    {
+        foreach (config("tolk.models.{$provider}", []) as $model) {
+            if ($model['tier'] === $tier) {
+                return $model;
+            }
+        }
+
+        throw new RuntimeException("The catalog has no {$tier} model for [{$provider}].");
+    }
+
     public static function agent(string $provider, string $tier = 'quality', array $overrides = []): ProbeAgent
     {
-        $model = self::MODELS[$provider][$tier];
+        $model = self::model($provider, $tier);
 
         return new ProbeAgent(...[
             'providerName' => $provider,

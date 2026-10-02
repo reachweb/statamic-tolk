@@ -23,7 +23,7 @@ it('calls a fake closure with the prompt, the attachments, the provider and the 
         '{"segments":[{"id":"s1","text":"Hello"}]}',
         [],
         "tolk_{$provider}",
-        ProviderFixtures::MODELS[$provider]['quality']['id'],
+        ProviderFixtures::model($provider)['id'],
     ]]);
 })->with(ProviderFixtures::PROVIDERS);
 

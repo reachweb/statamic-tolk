@@ -108,7 +108,7 @@ final class LiveProbe
         File::ensureDirectoryExists($directory);
 
         $report = File::exists($path) ? File::json($path) : [];
-        $model = ProviderFixtures::MODELS[$provider][$tier];
+        $model = ProviderFixtures::model($provider, $tier);
 
         $report['meta'] = [
             'provider' => $provider,
