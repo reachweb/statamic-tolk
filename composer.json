@@ -1,0 +1,63 @@
+{
+    "name": "reachweb/statamic-tolk",
+    "description": "Translate multi-site Statamic content into its localizations with large language models.",
+    "license": "proprietary",
+    "type": "statamic-addon",
+    "authors": [
+        {
+            "name": "Iosif Chatzimichail",
+            "email": "iosif@reach.gr",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "email": "info@reach.gr"
+    },
+    "require": {
+        "php": "^8.3",
+        "laravel/ai": "^1.0.1",
+        "laravel/framework": "^12.62 || ^13.15",
+        "statamic/cms": "^6.30"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.2",
+        "orchestra/testbench": "^10.8 || ^11.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Reach\\StatamicTolk\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Reach\\StatamicTolk\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "test:stop": "vendor/bin/pest --stop-on-failure",
+        "test:live": "vendor/bin/pest --group=live",
+        "lint": "vendor/bin/pint"
+    },
+    "extra": {
+        "statamic": {
+            "name": "Tolk",
+            "description": "Translate multi-site Statamic content into its localizations with large language models."
+        },
+        "laravel": {
+            "providers": [
+                "Reach\\StatamicTolk\\ServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "pixelfear/composer-dist-plugin": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
