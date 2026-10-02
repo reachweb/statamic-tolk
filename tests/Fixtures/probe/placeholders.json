@@ -1,0 +1,82 @@
+[
+    {
+        "id": "s1",
+        "text": "Book a <1>sea view suite</1> and wake up to the sound of the waves."
+    },
+    {
+        "id": "s2",
+        "text": "Breakfast is served on the <1>terrace</1> from 7:30 to 10:30 every morning."
+    },
+    {
+        "id": "s3",
+        "text": "Our <1>spa</1> offers <2>massages</2> and a heated indoor pool."
+    },
+    {
+        "id": "s4",
+        "text": "Read our <1>cancellation policy</1> before you <2>book online</2>."
+    },
+    {
+        "id": "s5",
+        "text": "<1>Free parking</1> is available for all guests<x1/>."
+    },
+    {
+        "id": "s6",
+        "text": "The old town of <1>Chania</1> is a <2>ten-minute walk</2> along the harbour."
+    },
+    {
+        "id": "s7",
+        "text": "Call us at <x1/> or write to <x2/> if you have any questions."
+    },
+    {
+        "id": "s8",
+        "text": "<1>Check-in</1> starts at 15:00 and <2>check-out</2> is until 11:00.<br/>Late check-out costs <3>€30</3>."
+    },
+    {
+        "id": "s9",
+        "text": "Children under <1>six</1> stay <2>free of charge</2> when they share their parents’ room."
+    },
+    {
+        "id": "s10",
+        "text": "Try the <1>dakos</1>, the <2>kalitsounia</2> and the <3>boureki</3> at our taverna."
+    },
+    {
+        "id": "s11",
+        "text": "Our rooftop bar <1>Thalassa</1> opens at sunset<x1/> and serves <2>local wines</2>."
+    },
+    {
+        "id": "s12",
+        "text": "Pets are welcome in the <1>garden rooms</1> only.<x1/>"
+    },
+    {
+        "id": "s13",
+        "text": "For airport transfers, <1>contact the reception</1> at least <2>48 hours</2> in advance."
+    },
+    {
+        "id": "s14",
+        "text": "The beach is <1>sandy</1>, <2>shallow</2> and perfect for <3>families with small children</3>.<x1/>"
+    },
+    {
+        "id": "s15",
+        "text": "Guests can borrow <1>bicycles</1> and <2>snorkelling gear</2> at no extra cost."
+    },
+    {
+        "id": "s16",
+        "text": "We use <1>solar energy</1> to heat the water in all rooms."
+    },
+    {
+        "id": "s17",
+        "text": "<1>Important:</1> the pool is closed for maintenance on <2>Mondays</2> between <3>9:00 and 12:00</3>."
+    },
+    {
+        "id": "s18",
+        "text": "Our chef cooks with olive oil from the family’s <1>own groves</1> near <2>Kissamos</2>.<br/><x1/>"
+    },
+    {
+        "id": "s19",
+        "text": "Join a <1>cooking class</1> on Thursday evenings and learn to make <2>Cretan pies</2>."
+    },
+    {
+        "id": "s20",
+        "text": "See the <1>photo gallery</1><x1/> or take a <2>virtual tour</2> of the hotel<x2/>."
+    }
+]

@@ -1,0 +1,24 @@
+{
+    "id": "msg_01TolkFixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "content": [
+        {
+            "type": "text",
+            "text": "{\"translations\":[{\"id\":\"s1\",\"text\":\"Καλώς ήρθατε στο Kyma Bay\"},{\"id\":\"s2\",\"text\":\"Η <1>θάλασσα</1> είναι ζεστή.<x1/>\"}]}"
+        }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+        "input_tokens": 120,
+        "cache_creation_input_tokens": 600,
+        "cache_read_input_tokens": 1800,
+        "output_tokens": 48,
+        "output_tokens_details": {
+            "thinking_tokens": 0
+        },
+        "service_tier": "standard"
+    }
+}

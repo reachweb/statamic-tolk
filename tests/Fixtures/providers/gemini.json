@@ -1,0 +1,24 @@
+{
+    "id": "int_tolk_fixture",
+    "model": "gemini-3.8-flash",
+    "status": "completed",
+    "steps": [
+        {
+            "type": "model_output",
+            "status": "done",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "{\"translations\":[{\"id\":\"s1\",\"text\":\"Καλώς ήρθατε στο Kyma Bay\"},{\"id\":\"s2\",\"text\":\"Η <1>θάλασσα</1> είναι ζεστή.<x1/>\"}]}"
+                }
+            ]
+        }
+    ],
+    "usage": {
+        "total_input_tokens": 2520,
+        "total_cached_tokens": 1800,
+        "total_output_tokens": 48,
+        "total_thought_tokens": 12,
+        "total_tokens": 2580
+    }
+}
