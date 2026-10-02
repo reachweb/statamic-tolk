@@ -84,3 +84,12 @@ it('knows which run item statuses are final', function (RunItemStatus $status, b
     'skipped' => [RunItemStatus::Skipped, true],
     'failed' => [RunItemStatus::Failed, true],
 ]);
+
+it('escapes literal <, > and & in plain and inline segments only', function (SegmentKind $kind, bool $escapes) {
+    expect($kind->escapes())->toBe($escapes);
+})->with([
+    'plain' => [SegmentKind::Plain, true],
+    'inline' => [SegmentKind::Inline, true],
+    'markdown' => [SegmentKind::Markdown, false],
+    'html' => [SegmentKind::Html, false],
+]);
