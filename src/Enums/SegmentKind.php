@@ -8,4 +8,9 @@ enum SegmentKind: string
     case Inline = 'inline';
     case Markdown = 'markdown';
     case Html = 'html';
+
+    public function escapes(): bool
+    {
+        return $this === self::Plain || $this === self::Inline;
+    }
 }
