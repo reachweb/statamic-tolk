@@ -3,6 +3,7 @@
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use Reach\StatamicTolk\Tests\Support\Agents\ProbeAgent;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 
 it('sends the translations schema as native structured output', function (string $provider, string $path) {
@@ -33,6 +34,33 @@ it('sends no sampling parameters', function (string $provider, string $tier) {
             ->and($body['generation_config'] ?? [])->not->toHaveKey($key);
     }
 })->with(ProviderFixtures::PROVIDERS)->with(['quality', 'fast']);
+
+it('sends every catalog model with its options and keeps the structured output format', function (string $provider, string $formatPath, ?string $optionsPath) {
+    $models = config("tolk.models.{$provider}");
+
+    ProviderFixtures::fake($provider, ProviderFixtures::response($provider));
+
+    foreach ($models as $model) {
+        (new ProbeAgent($provider, $model['id'], options: $model['options']))->prompt('{"segments":[]}');
+    }
+
+    $bodies = Http::recorded()->map(fn (array $pair) => $pair[0]->data())->values();
+
+    expect($bodies)->toHaveCount(count($models));
+
+    foreach ($models as $index => $model) {
+        $body = $bodies[$index];
+        $sent = $optionsPath === null ? $body : ($body[$optionsPath] ?? []);
+
+        expect($body['model'])->toBe($model['id'])
+            ->and(data_get($body, "{$formatPath}.required"))->toBe(['translations'])
+            ->and(Arr::only($sent, array_keys($model['options'])))->toBe($model['options']);
+    }
+})->with([
+    ['anthropic', 'output_config.format.schema', null],
+    ['openai', 'text.format.schema', null],
+    ['gemini', 'response_format.schema', 'generation_config'],
+]);
 
 it('passes the agent timeout to the HTTP client and not in the body', function (string $provider) {
     $options = [];
