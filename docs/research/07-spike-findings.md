@@ -197,3 +197,140 @@ Nothing in checks 1–6, 9 and 11 fails on 6.30.0, and the remedies above work o
 - T5.9: how `keepOriginSlug` keeps the origin's slug, by version.
 - T2.4: the version floor question and the defaulted-text leaves (D27).
 - Risks table: the rows this spike settles.
+
+## Content model
+
+T2.3, 2026-10-02. The Pest contract tests ran on Statamic **6.35.0** (PHP 8.4.25, Laravel 13.34.0, Testbench 11.3.0) and again on **6.30.0**, D13's floor, in a throwaway clone (`composer require statamic/cms:6.30.0 -W --no-blocking`): 45 of 45 green on both. The Stache experiment ran in the sandbox on 6.35.0 with real processes and the `file` cache. Everything below was run unless a line says it was read.
+
+### What exists now
+
+`tests/Feature/Contracts/`, 45 tests:
+
+- `EntryLocalizationTest` (11): tree placement, the root-page quirk, own data and nulls, the re-save cascade, and the Blink keys of unsaved localizations with the fix.
+- `RoundTripTest` (12): `preProcess()` → `process()` on a Replicator, a Grid, a Bard with a set and empty paragraphs, a group and empty values.
+- `TermLocalizationTest` (6), `GlobalsLocalizationTest` (4), `NavTreeTest` (3).
+- `GitListenersTest` (5): the commit listener switch and the commit call.
+- `StacheRefreshTest` (4): what the refresh `ContentWriter` needs resets, and what core's own reset misses. Its `refreshStache()` is the mechanism of "Stache and parallel writers" below.
+
+### Entries
+
+- **Tree placement.** `makeLocalization()` registers an after-save callback that appends the new entry to the target site's tree: under the localized parent's page when the parent is localized there and that page is not the tree's root, otherwise at the end of the top level. The parent is looked up when `makeLocalization()` is called, not at save time. A child localized before its parent lands at the top level and stays there when the parent follows (`['suites', 'rooms']`, not `rooms › suites`).
+- **Root quirk.** On a collection with `structure.root: true`, `Tree::root()` is simply the first branch. Localizing `rooms`, `suites` and `honeymoon` into an empty `el` tree gave `[rooms, suites › honeymoon]`. `rooms` became the Greek home page, with URI `/`, and `suites`, whose localized parent is now the root, went to the top level because the root page cannot have children. Localizing `home` afterwards appended it at the end, with URI `/home`; `rooms` stayed the root. Localizing `home` first reproduces the origin tree exactly. No placement can avoid this: in an empty tree, any first entry is the root. So the origin's root must be localized first (§A11 "Create").
+- **Own data.** A localization's `data()` holds only its own keys. `has()` is true for an explicit `null`, `get()` never falls back, and `value()` falls back for missing keys but returns `null` for an explicit `null`. A root entry's `fileData()` drops `null`, `''` and `[]`; a localization's keeps them (R4 §2.1 confirmed).
+- **Re-save cascade.** Saving an origin saves its direct localizations inside its own `save()`. Their `EntrySaved` fires first, with `isInitial()` false, then the origin's, with `isInitial()` true. Their data is unchanged.
+- **Unsaved localizations share Blink keys.** An unsaved `makeLocalization()` result has no id, and two Blink keys built from the id stop being private to it:
+  - **Blueprint** (statamic/cms#15509). Before 6.35.0 the key is `entry--blueprint` for every unsaved entry. In a loop that alternately localizes `pages` and `articles` entries, 6.30.0 gave the wrong collection's blueprint to 12 of 24 unsaved localizations, and core's `save()` used that wrong blueprint too (`EntrySaving` listeners, auto titles). From 6.35.0 the key is `entry-obj-{spl_object_id}-blueprint`, and the key of a saved or freed entry is never forgotten. PHP gives a freed object's id to the next object, so in one exploratory loop, where unsaved localizations were made and discarded, the tenth of twelve read another collection's blueprint. The same loop with saves gave 0 of 24 on 6.35.0, so this depends on allocation and cannot be asserted directly; the test plants the stale key instead.
+  - **Origin**, on every version: `HasOrigin::origin()` caches under `origin-Entry-{id}`, which is `origin-Entry-` for every unsaved entry. Two unsaved localizations held at once (a page's, then an article's) both resolve the page as their origin. The article's then inherits the page's title, and `blueprint()` throws `BlueprintNotFoundException`, because it looks for the page's blueprint handle in `articles`. `makeLocalization()` itself is safe, because its `origin()` setter forgets the key first.
+  - **Fix**, run on 6.30.0 and 6.35.0: give the localization an id right after `makeLocalization()` (`->id(Stache::generateId())`). Both keys then become private to it. The entry still saves as new (`Entry::find($id)` is null, so `EntryCreating` and `EntryCreated` fire), keeps that id, and is placed in the tree. With the fix, 96 of 96 blueprint and origin readings in the alternating loop belonged to the right collection: unsaved and discarded, before `save()`, in `EntryCreating` and in `EntrySaving`.
+- **One blueprint object per collection.** `Collection::entryBlueprint()` returns the same Blink-cached `Blueprint` object to every entry of a collection and calls `setParent($entry)` on it. So `$entryA->blueprint()->parent()` is whichever entry resolved its blueprint last, which is not always the entry itself. Code that needs the entry as parent (the round trip, fieldtypes that look at their parent) must call `setParent($entry)` right before `fields()`. Each entry's own `blueprint()` result is cached afterwards, so the parent changes only the first time an entry resolves it.
+
+### Round trip
+
+`roundTrip($v)` = `$entry->blueprint()->setParent($entry)->fields()->addValues([$h => $v])->preProcess()->process()->values()[$h]`. Run on 6.35.0 and 6.30.0:
+
+- **Idempotent.** `roundTrip(roundTrip($v))` equals `roundTrip($v)` exactly, ids included, for every case: the second pass keeps the ids the first one assigned. §A11 step 3 can rely on it.
+- **Replicator.** Rows without `id` get an 8-character alphanumeric id, and rows without `enabled` get `enabled: true`; an existing `id` and `enabled: false` are kept. Set fields missing from a row get their default: a toggle without a default becomes `false`, a toggle with `default: true` becomes `true`, and **a text field with a `default` gets its default text**, a new leaf in the source language. This is the same as the CP save (T2.2 check 4), so T2.4's question about defaulted text leaves applies to server-side normalisation too.
+- **Grid.** Rows get an `id`, and nothing else is added: a missing field without a default stays missing.
+- **Bard.** Sets get `attrs.id` (8 characters, placed before `values`), and set fields missing from a set get their defaults (`cite: 'Source'`, `wide: false`). Empty paragraphs, alignment attributes, marks and headings are kept as they are. The attributes the browser's Bard component adds on a CP save (`textAlign: null`, link `rel`/`target`/`title`, table cell attributes; T2.2 check 2) are **not** added. A later CP save therefore still rewrites a server-normalised Bard value, but changes no text.
+- **Group.** Unchanged; missing subfields are not added.
+- **Empty values.** A `null` group or grid becomes `[]`, a `null` Bard stays `null`, `[]` stays `[]` and `''` stays `''`. On a localization `[]` is stored and overrides the origin, so "clear" must `remove()` the key rather than write the normalised empty value (§A11 already says so).
+
+### Terms
+
+- `Term::find('topics::food')` returns a `LocalizedTerm` in the taxonomy's **default site**, whatever the current site is. The default site is the first of `$taxonomy->sites()`: with `['el', 'en']`, the default site is `el`, `in('el')` has no origin, and `in('en')->origin()` is the `el` term.
+- `->in('el')->merge([...])->save()` stores under `localizations.el` in the term's file and leaves the default site's data alone.
+- `LocalizedTerm::updateLastModified()` without a user throws `BadMethodCallException` ("Call to undefined method …LocalizedTerm::remove()"), as R4 §16.2 item 19 read. With a user it stores `updated_by` and `updated_at` in that site's data.
+- `LocalizedTerm::has()` is false for an explicit `null` that `data()->has()` reports, so `hasOverride()` must use `data()->has()` (T9.2 already does).
+- `Term::query()->where('taxonomy', …)->where('site', 'el')` returns `LocalizedTerm`s in `el`.
+
+### Global sets
+
+- `$set->in('el')` returns the `Variables` of an enabled site, whose `origin()` is the site configured in `$set->origins()`. A site that is not enabled gives `null`.
+- `GlobalSet::save()` creates the variables of every enabled site. A site enabled with `sites()` but not saved yet gives an unsaved `Variables` with the id `{handle}::{site}`.
+- `merge()->save()` persists; `has()` is false for inherited keys, `get()` does not fall back, `value()` does.
+- An explicit `null` is kept in localized variables and dropped from origin variables. This happens in `fileContents()`, not in `fileData()`, unlike entries.
+
+### Navigation
+
+- `($nav->in('el') ?? $nav->makeTree('el'))->tree($branches)->save()` creates the Greek tree; branch ids, titles, urls and children are stored as given.
+- A branch whose `entry` is the Greek localization's id resolves to the Greek page: its title and the URL `/el/about`. A branch holding the English id in the Greek tree resolves to the **English** page, with the English title and `/about`. So mapping each entry id to its localization (§A11, T9.4) is required.
+- A branch `title` wins over the entry's title.
+
+### Git
+
+- `Statamic\Git\Subscriber::disable()` and `enable()` exist (inherited from `Statamic\Events\Subscriber`) and switch the commit listener off and on. The subscriber is registered only on Pro.
+- `Subscriber::withoutListeners($callback)` calls `disable()`, the callback, then `enable()`, with no `try`. When the callback throws, the listener stays off for the rest of the process. A `try`/`finally` around `disable()` / `enable()` re-enables it (`GitListeners::suspended()`, §A11).
+- **One commit:** `Statamic\Facades\Git::dispatchCommit(?string $message)`, or `Git::as($user)->dispatchCommit($message)` to name the committer; without `as()` it uses `User::current()`, and then the configured git user. It records the save in the cache and dispatches `Statamic\Git\CommitJob` on `statamic.git.queue_connection`.
+- `CommitJob` is now `ShouldBeUnique` (`unique_lock_expiry`, 120 s by default), which R4 §10.4 did not have: a second dispatch while one is pending is dropped (with `Queue::fake()`, two calls push one job). On a real queue the pending job commits everything anyway. On `sync` each job runs at once, so every dispatch commits.
+- The `Git` class throws in its constructor when `statamic.git.enabled` is false. The facade caches the instance once it is resolved, so the guard can be stale within a process: check `statamic.git.enabled` and `statamic.git.automatic` on every call.
+
+### Stache and parallel writers
+
+Setup: sandbox on 6.35.0, `STATAMIC_STACHE_WATCHER=false`, `file` cache, `sync` queue. A temporary command (removed afterwards) behaved like a long-lived process. It read the `notes` collection first, loading paths and indexes into memory, then created entries at times set from the outside. A third process then checked every file on disk by slug query and by `Entry::find()` on the id in the file. The watcher is back to `auto` and the sandbox's `git status` is unchanged.
+
+| Run | Writers | Result |
+| --- | --- | --- |
+| 1. No lock, no refresh | 2 processes × 3 entries, saves 0.5 s apart | 6 files on disk; the 3 entries of the first writer are missing from the index (slug query and `find()`): the second writer saved its stale path map and indexes over them. |
+| 2. Lock + core's reset | the same, each save inside `Cache::lock('tolk:write')` after core's between-jobs reset | all 6 found |
+| 3. Core's reset, no lock | 2 × 10 entries started at the same moment, 50 ms apart | paths complete, but 3 entries not found by id: overlapping read-modify-write of the `id` index |
+| 4. Lock + core's reset, then a new index | another process starts querying `where('spike_tag', …)` after the writer has loaded, then the writer saves | the entry is missing from the new index for good: the writer's memoized index-usage list does not contain it, so its save does not update that index |
+| 5. Lock + core's reset + store memo, Blink kept | 2 processes, each checks `existsIn('de')` early, then creates the German localization of the same article inside the lock | **two** German localizations (`olive-oil-tasting.md` and `olive-oil-tasting.1.md`): `existsIn()` reads `entry-descendants-{id}` from Blink, which still held the earlier answer |
+| 6. Lock + full refresh | runs 3 to 5 again | every entry found by slug, by id and by the new index; the second localizer saw the first's localization and skipped |
+
+**How core resets between queue jobs** (6.27.1, `Statamic\Stache\ServiceProvider::resetMemoizedStateBetweenJobs()`, read): on `JobProcessing`, only when `Statamic::isWorker()` (argv starts with `queue:` or `horizon:`), `$stache->stores()->each->resetMemoizedState()` (a store forgets `paths`; an aggregate store also resets its child stores) and `app('stache.indexes')->each->resetMemoizedState()` (an index forgets its items). It does not reset a store's memoized index-usage list (`usedIndexes`) or key map (`keys`), and it does not touch Blink. Runs 4 and 5 show that both matter.
+
+**The refresh `ContentWriter` takes** (inside the lock, before the callback; `refreshStache()` in `StacheRefreshTest`):
+
+```php
+Stache::stores()->each->resetMemoizedState();
+app('stache.indexes')->each->resetMemoizedState();
+
+Stache::stores()
+    ->flatMap(fn (Store $store) => $store instanceof AggregateStore ? [$store, ...$store->stores()->all()] : [$store])
+    ->each(fn (Store $store) => Closure::bind(function () {
+        $this->keys = null;
+        $this->usedIndexes = null;
+    }, $store, Store::class)());
+
+Blink::clearResolvedInstance(\Statamic\Support\Blink::class);
+```
+
+- The second step clears two protected properties of `Statamic\Stache\Stores\Store`, because no public method does. `StacheRefreshTest` fails when Statamic renames them.
+- Replacing the store objects is not an option: the repositories, which are singletons, keep references to them.
+- The Blink manager is resolved through its facade only, so forgetting the facade's instance drops every Blink store.
+- The lock is required as well: run 3 lost entries with the refresh alone.
+- The refresh reads the paths and indexes other processes cached. It never rebuilds a store from the files while the cache is warm, so it adds no exposure to the cold multi-site rebuild bug fixed in 6.35.0 (#15550/#15551, a shared traversal filter). A cold rebuild after a host clears the Stache cache hits that bug on 6.30–6.34 with or without the addon.
+- `resetMemoizedState()` does not reset `fileChangesHandled`, so with the watcher on, a long-lived process does not look for changed files again. That does not matter here, because every write goes through Stache.
+- The stores' key map (`stache::keys/entries`) is shared by all collections. Core's own `stache:refresh` already leaves it incomplete (7 keys after a warm of the sandbox's 24 entries). It only serves duplicate-id detection; the full refresh keeps it complete for the addon's own writes.
+
+Consequences: with the lock and the full refresh, a long-lived process (a CLI worker, a queue lane, a web request that read content before taking the lock) can save safely. Without the Blink flush, a long-lived process can create duplicate localizations. Queue workers get only core's partial reset, so the queue driver also relies on `ContentWriter`.
+
+### Version floor (for T2.4)
+
+- statamic/cms#15509 reaches the addon on 6.30–6.34, where half the unsaved localizations in a mixed loop read the wrong blueprint. On 6.35.0 it reaches the addon rarely, through object-id reuse. The shared origin key affects every version. Assigning an id right after `makeLocalization()` fixes both on every version, so #15509 no longer argues for raising the floor.
+- #15551: the refresh does not rebuild stores, so the addon does not trigger the bug; a host-level cold rebuild on a multi-site install still can on 6.30–6.34.
+- Still standing from T2.2: 6.30.0 carries GHSA-jppw-r5j3-xf7x, which Composer blocks.
+- All 45 contract tests pass on 6.30.0. The only version-specific code is the `entry--blueprint` / `entry-obj-…` key that one test plants, and it plants both.
+
+### What the later tasks take from this
+
+- §A11 "Create" and T4.16: give a new localization its id right after `makeLocalization()`; create no localization other than the origin root's into an empty tree of a collection with a root; normalise with `setParent($entry)` right before `fields()`.
+- T4.7: `EntryTarget::fields()` for a missing localization keeps reading the source's blueprint.
+- T4.9: the commit call and the config guard.
+- T4.16: the refresh above, plus the lock.
+- T4.17, T4.18, T8.3: the origin root first and in tree order; `root_missing`.
+- T9.2: `data()->has()` and `updateLastModified()` only with a user (already written); T9.4: entry ids must be mapped (confirmed).
+- T2.4: the version floor facts above.
+
+### Changes made to TASKS.md (T2.3)
+
+- §A11: the refresh mechanism in "One writer at a time"; step 3 sets the parent before `fields()`; "Create" assigns the id at once and handles collections with a root.
+- §A12: run items of a collection with a root also depend on the root's item.
+- T4.7: the reason in `EntryTarget::fields()`.
+- T4.9: `GitListeners::commit()` names the call and the guard.
+- T4.16: `ContentWriter` refresh, the id, `RootMissing`, and three self-check cases.
+- T4.17: `RootMissing` is checked before planning.
+- T4.18: entries of structured collections in tree order; the sandbox check compares the Greek and English trees.
+- T8.3: items of a collection with a root depend on the root's item; `root_missing`.
+- T2.4: the version floor question now carries T2.3's answer, and the defaulted-text question notes the server-side round trip.
+- Risks table: the parallel-writer, #15509/#15551 and nav-branch rows are settled.

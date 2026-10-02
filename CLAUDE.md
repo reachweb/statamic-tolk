@@ -24,6 +24,7 @@ From the addon repo, `/Volumes/1TB/Sites/autotranslator`:
 - `vendor/bin/pest`: the default suite (Unit and Feature). Run it after every change to `src/`, `tests/` or `resources/js/`.
 - `composer test:live`: the opt-in live tests against real providers (Pest group `live`). Keys come from the environment or a git-ignored `.env.live`; providers without a key are skipped. The provider probe writes its measurements to `build/live-probe/` (git-ignored).
 - SDK contract tests live in `tests/Feature/Sdk/`; build provider HTTP fakes from `tests/Fixtures/providers/` through `tests/Support/ProviderFixtures.php`. If an SDK update breaks them, read `docs/research/07-spike-findings.md` "SDK" before changing code.
+- Content-model contract tests live in `tests/Feature/Contracts/` (localizations, the CP round trip, terms, globals, navs, git listeners, the Stache refresh). If a Statamic update breaks them, read `docs/research/07-spike-findings.md` "Content model" before changing code.
 - `vendor/bin/pint`: format PHP before a task is complete (`vendor/bin/pint --test` only checks).
 - `npm test`: Vitest for `resources/js/**/*.test.js`.
 - `npm run cp:build`: build the CP assets into `resources/dist/build`, which is committed.
