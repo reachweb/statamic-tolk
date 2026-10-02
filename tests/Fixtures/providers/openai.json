@@ -1,0 +1,41 @@
+{
+    "id": "resp_tolk_fixture",
+    "object": "response",
+    "created_at": 1790000000,
+    "status": "completed",
+    "model": "gpt-6.1-sol",
+    "output": [
+        {
+            "type": "reasoning",
+            "id": "rs_tolk_fixture",
+            "summary": [],
+            "encrypted_content": "gAAAAAB-fixture"
+        },
+        {
+            "type": "message",
+            "id": "msg_tolk_fixture",
+            "status": "completed",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": "{\"translations\":[{\"id\":\"s1\",\"text\":\"Καλώς ήρθατε στο Kyma Bay\"},{\"id\":\"s2\",\"text\":\"Η <1>θάλασσα</1> είναι ζεστή.<x1/>\"}]}",
+                    "annotations": []
+                }
+            ]
+        }
+    ],
+    "incomplete_details": null,
+    "usage": {
+        "input_tokens": 2520,
+        "input_tokens_details": {
+            "cached_tokens": 1800,
+            "cache_write_tokens": 600
+        },
+        "output_tokens": 60,
+        "output_tokens_details": {
+            "reasoning_tokens": 12
+        },
+        "total_tokens": 2580
+    }
+}
