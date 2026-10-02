@@ -1,0 +1,11 @@
+/tests export-ignore
+/docs/research export-ignore
+/TASKS.md export-ignore
+/CLAUDE.md export-ignore
+/.github export-ignore
+/.mcp.json export-ignore
+/.claude export-ignore
+/phpunit.xml export-ignore
+/vitest.config.js export-ignore
+/playwright.config.js export-ignore
+/pint.json export-ignore
