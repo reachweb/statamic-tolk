@@ -100,6 +100,21 @@ abstract class TestCase extends AddonTestCase
         return rtrim($this->temporaryDirectory.'/'.$path, '/');
     }
 
+    /**
+     * Clears every provider key, in both configs, then sets the given config values.
+     */
+    protected function withProviderKeys(array $keys = []): void
+    {
+        foreach (['anthropic', 'openai', 'gemini'] as $provider) {
+            config([
+                "ai.providers.{$provider}.key" => null,
+                "tolk.providers.{$provider}.key" => null,
+            ]);
+        }
+
+        config($keys);
+    }
+
     protected function useFileCache(): void
     {
         config([
