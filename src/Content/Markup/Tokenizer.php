@@ -12,12 +12,25 @@ final class Tokenizer
 
     private const array ESCAPES = ['&' => '&amp;', '<' => '&lt;', '>' => '&gt;'];
 
+    // An element tag, closed with ">", or a comment or doctype; "Kids < 12 & seniors > 65" has none.
+    private const string HTML_TAG = '/<\/?[a-zA-Z][^<>]*>|<!--|<![a-zA-Z][^<>]*>/';
+
     public static function tokenize(string $text, SegmentKind $kind): Tokenized
     {
         return match ($kind) {
             SegmentKind::Plain => self::plain($text),
             default => throw new InvalidArgumentException("The tokenizer does not support the [{$kind->value}] kind."),
         };
+    }
+
+    public static function withoutAntlers(string $text): string
+    {
+        return preg_replace(self::ANTLERS, '', $text) ?? $text;
+    }
+
+    public static function containsHtml(string $text): bool
+    {
+        return preg_match(self::HTML_TAG, self::withoutAntlers($text)) === 1;
     }
 
     public static function restore(string $text, Tokenized $source): string
