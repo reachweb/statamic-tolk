@@ -334,3 +334,61 @@ Consequences: with the lock and the full refresh, a long-lived process (a CLI wo
 - T8.3: items of a collection with a root depend on the root's item; `root_missing`.
 - T2.4: the version floor question now carries T2.3's answer, and the defaulted-text question notes the server-side round trip.
 - Risks table: the parallel-writer, #15509/#15551 and nav-branch rows are settled.
+
+## Reconciliation
+
+T2.4, 2026-10-02. This file was read against §A3–§A14 and the tasks of Phases 4–10 of `TASKS.md`. T2.1–T2.3 had already carried most of their results into the tasks they affect; this section records what was still open and what changed.
+
+### Checked, no change needed
+
+- **Placeholder syntax** (T2.1): `<1>…</1>` / `<x1/>` stays; §A3, T4.3 and the T4.11 prompt rules already say so, and T13.4 repeats the comparison as a stop-and-ask.
+- **Batch sizes** (T2.1): the defaults of §A15 stay (6,000 / 10,000 / 1,200). Only T6.11 still claimed that T2.1 had measured them.
+- **Fill delay and slug** (T2.2 checks 6 and 9): T5.7 (600 ms) and T5.9 (`keepOriginSlug`) already carry them.
+- **Rejected save** (T2.2 check 11): T5.8 already rejects with `PipelineStopped`.
+- **Stache refresh** (T2.3): §A11 and T4.16 already carry the lock and the full refresh.
+- Terms, global sets, navigation, git and the SDK facts are already in §A10, §A11, T3.7, T4.9, T4.12, T9.2 and T9.4.
+
+### Leaf texts after a CP save: defaulted text leaves
+
+Checks 2–4 of T2.2 and the round trip of T2.3 show that a CP save and the server-side normalisation change no text, with one exception: a set field with a text `default`, added to a blueprint after content was written, puts that default into every existing Replicator row, Grid row and Bard set. On a target this adds leaves in the source language, which would make a machine-translated field read as manual (and stop its updates) and would shift the leaves that reuse and review pair by position. The same happens without any CP save, because §A11 step 3 normalises every value the addon writes, and because the editor delivers pre-processed values.
+
+Decision: **walks over a target value leave out nested fields whose value equals their configured `default`** (§A3 "Target-side walks"). Walks over a source value keep them, so a default an editor left in place (a "Read more" label) is still translated. The rule depends only on the value and the blueprint and is applied the same way when a target hash is produced and when it is checked, so the normalised, the delivered and the stored value all have the same target leaves. Costs, accepted: a translation that equals its field's default is left out on both sides and only loses positional reuse for that field (the alignment guard notices); changing a set field's default later makes stored copies of the old default count as text again. Computed defaults are not compared.
+
+This does not change D27: it is the mechanics of "normalisation by the CP is not tracked", recorded as planner's details on the D27 row.
+
+The opposite direction needs no rule: when the origin itself gains the default (on its next CP save), its source fingerprint changes, its targets read outdated, and Update sends only the new default texts, because every other leaf is reused. The same reasoning covers a related effect seen in T2.2 check 4: the first CP save of origin content written outside the CP adds row ids and `enabled`, so its targets read outdated once and Update rebuilds them without a model call (§A4).
+
+### Other corrections
+
+- Statamic no longer ships `resources/js` (T2.2): the opening note of `TASKS.md` and T8.11 now say to read core's front-end source on GitHub at the installed tag.
+- With the refresh of T2.3, a long-lived process may apply, so the CLI no longer needs a `tolk:apply` child process per pass. The command applies in its own process, as the queue lanes and `--concurrency=1` already did, and the warning not to edit content in the CP during a CLI run is gone (§A12, T8.10).
+- Every entry of a collection shares one blueprint object (T2.3), so the two remaining places that pre-process or process values for an entry set its parent right before `fields()` (T5.3, T7.5).
+- A new localization created in the publish form is published on its first Save when the origin is published, because core's form switches the toggle on (T2.2 check 2). D10 concerns server-side flows; T5.9 now says the addon leaves the toggle alone.
+- `laravel/ai` 1.x counts cached tokens in `input` and reasoning tokens in `output` (R2 §12.2, T2.1), so `Pricing` must not bill cache tokens twice or add reasoning on top (T4.12).
+- The doctor reports a host-configured `ai.providers.tolk_{provider}` entry, which T3.7 already promised (T9.6).
+
+### Version floor: the owner's decision
+
+T2.2 and T2.3 found that the editor flow and the content model work on 6.30.0, and that the id assigned after `makeLocalization()` fixes #15509 on every version. Still standing: 6.30.0 carries GHSA-jppw-r5j3-xf7x, which Composer blocks by default; on 6.30–6.34 a host-level cold Stache rebuild on a multi-site install can drop entries from the index (#15550, fixed by #15551 in 6.35.0), after which the addon's queries would not see them either; and 6.35.0 adds item actions to the tree view (T8.11). Raising D13 is the owner's decision, asked in T2.4 with `^6.35` as the recommendation.
+
+### Changes made to TASKS.md (T2.4)
+
+- Opening note: core's CP front-end source is read on GitHub at the installed tag.
+- D27, status column: planner's details for the target-side walk (the decision itself is unchanged).
+- §A3: new "Target-side walks" paragraph.
+- §A4: `ofLeaves` uses the target-side walk, and "the target's text fingerprint" is defined; the "why" paragraph names the defaulted-text exception and the one-time "outdated" after the first CP save of origin content written outside the CP.
+- §A6 and §A7: `T` and the reuse pairing use the target-side walk.
+- §A11 step 3: the normalised value has the same target leaves as the assembled one.
+- §A12: the CLI driver applies in its own process.
+- T4.2: `WalkContext` knows the side; `mapFields()` skips nested fields equal to their default on target walks; `leaves()` and `inject()` take `$target`; a self-check case.
+- T4.8, T4.15, T4.16: status, `targetHash`, the alignment guard and the recomputed hash use the target-side walk.
+- T4.12: `Pricing` subtracts cache tokens from `input` and never adds reasoning.
+- T5.3: parent right before `fields()`; the pending hash equals the assembled one because defaults are left out.
+- T5.9: the published toggle of a localization created in the form is core's.
+- T6.6, T6.10, T6.11: self-check cases for defaulted set fields; T6.10's memory and T6.11's batch note corrected.
+- T7.4, T7.5: review pairs and writes target leaves with the target-side walk; parent before `fields()`.
+- T8.10: no `tolk:apply`; the command applies in its own process; the CP-editing warning is removed.
+- T8.11: the tree-view redirect is checked in core's front-end source on GitHub.
+- T9.6: doctor check 2 reports a host-configured `ai.providers.tolk_{provider}`.
+- T13.1: `statuses.md` explains the defaults rule and the one-time "outdated".
+- Risks table: the CP-save row is settled.
