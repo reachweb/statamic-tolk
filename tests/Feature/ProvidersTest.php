@@ -1,6 +1,7 @@
 <?php
 
 use Laravel\Ai\Ai;
+use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
 
@@ -111,7 +112,7 @@ it('builds an on-demand SDK provider under the addon name', function (string $pr
         ->and($built->driver())->toBe($provider)
         ->and($built->providerCredentials())->toBe(['key' => 'tolk-key'])
         ->and($built->additionalConfiguration()['url'])->toBe('https://tolk.example.com/v1');
-})->with(['anthropic', 'openai', 'gemini']);
+})->with(ModelRef::PROVIDERS);
 
 it('cannot build when the host configures a provider under the addon name', function () {
     config(['ai.providers.tolk_openai' => ['driver' => 'openai', 'key' => 'host-key']]);

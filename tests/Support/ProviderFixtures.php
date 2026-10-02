@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Gateway\Anthropic\AnthropicSchemaSanitizer;
 use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Responses\StructuredAgentResponse;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\ModelRef;
+use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Tests\Support\Agents\ProbeAgent;
 use RuntimeException;
 use Throwable;
@@ -46,13 +48,9 @@ final class ProviderFixtures
      */
     public static function model(string $provider, string $tier = 'quality'): array
     {
-        foreach (config("tolk.models.{$provider}", []) as $model) {
-            if ($model['tier'] === $tier) {
-                return $model;
-            }
-        }
+        $catalog = app(ModelCatalog::class);
 
-        throw new RuntimeException("The catalog has no {$tier} model for [{$provider}].");
+        return $catalog->find($catalog->default($provider, Tier::from($tier)));
     }
 
     public static function agent(string $provider, string $tier = 'quality', array $overrides = []): ProbeAgent

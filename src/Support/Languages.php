@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Support;
 
 use Illuminate\Support\Facades\Lang;
+use Illuminate\Support\Str;
 use Locale;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Statamic\Facades\Site as Sites;
@@ -36,7 +37,7 @@ class Languages
 
     private function name(string $lang): ?string
     {
-        $code = strtolower(preg_split('/[-_.@]/', $lang)[0]);
+        $code = Str::lower(preg_split('/[-_.@]/', $lang)[0]);
 
         if (! preg_match('/^[a-z]{2,8}$/', $code)) {
             return null;

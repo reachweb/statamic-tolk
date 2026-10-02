@@ -6,9 +6,12 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Laravel\Ai\AiServiceProvider;
+use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\ServiceProvider;
+use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\CreatesContent;
 use Statamic\Contracts\Auth\User as UserContract;
+use Statamic\Facades\Addon;
 use Statamic\Facades\Site;
 use Statamic\Facades\User;
 use Statamic\Licensing\Outpost;
@@ -105,7 +108,7 @@ abstract class TestCase extends AddonTestCase
      */
     protected function withProviderKeys(array $keys = []): void
     {
-        foreach (['anthropic', 'openai', 'gemini'] as $provider) {
+        foreach (ModelRef::PROVIDERS as $provider) {
             config([
                 "ai.providers.{$provider}.key" => null,
                 "tolk.providers.{$provider}.key" => null,
@@ -113,6 +116,16 @@ abstract class TestCase extends AddonTestCase
         }
 
         config($keys);
+    }
+
+    /**
+     * Saves the given addon settings and returns the Settings instance, freshly read.
+     */
+    protected function withSettings(array $values = []): Settings
+    {
+        Addon::get(Settings::PACKAGE)->settings()->set($values)->save();
+
+        return app(Settings::class)->fresh();
     }
 
     protected function useFileCache(): void

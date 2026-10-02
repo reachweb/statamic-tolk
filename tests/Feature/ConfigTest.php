@@ -10,38 +10,37 @@ use Reach\StatamicTolk\Enums\Tier;
  */
 function loadTolkConfig(array $env = []): array
 {
+    $put = function (string $name, ?string $server, ?string $environment, string|false $process): void {
+        unset($_SERVER[$name], $_ENV[$name]);
+        putenv($name);
+
+        if ($server !== null) {
+            $_SERVER[$name] = $server;
+        }
+
+        if ($environment !== null) {
+            $_ENV[$name] = $environment;
+        }
+
+        if ($process !== false) {
+            putenv("{$name}={$process}");
+        }
+    };
+
     $saved = [];
 
     foreach (['TOLK_ANTHROPIC_API_KEY', 'TOLK_OPENAI_API_KEY', 'TOLK_GEMINI_API_KEY', 'TOLK_FAKE_ENGINE'] as $name) {
         $saved[$name] = [$_SERVER[$name] ?? null, $_ENV[$name] ?? null, getenv($name)];
+        $value = $env[$name] ?? null;
 
-        unset($_SERVER[$name], $_ENV[$name]);
-        putenv($name);
-
-        if (isset($env[$name])) {
-            $_SERVER[$name] = $_ENV[$name] = $env[$name];
-            putenv("{$name}={$env[$name]}");
-        }
+        $put($name, $value, $value, $value ?? false);
     }
 
     try {
         return require dirname(__DIR__, 2).'/config/tolk.php';
     } finally {
-        foreach ($saved as $name => [$server, $environment, $process]) {
-            unset($_SERVER[$name], $_ENV[$name]);
-            putenv($name);
-
-            if ($server !== null) {
-                $_SERVER[$name] = $server;
-            }
-
-            if ($environment !== null) {
-                $_ENV[$name] = $environment;
-            }
-
-            if ($process !== false) {
-                putenv("{$name}={$process}");
-            }
+        foreach ($saved as $name => $values) {
+            $put($name, ...$values);
         }
     }
 }
