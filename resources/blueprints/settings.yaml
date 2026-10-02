@@ -1,0 +1,188 @@
+tabs:
+  general:
+    display: General
+    sections:
+      -
+        fields:
+          -
+            handle: translator_model
+            field:
+              type: text
+              display: 'Translator model'
+              instructions: 'The model that translates, written as `provider:model`, for example `anthropic:claude-sonnet-5-5`. Leave empty to use the quality model of the first provider with an API key.'
+          -
+            handle: review_enabled
+            field:
+              type: toggle
+              display: 'Review translations'
+              instructions: 'A second model checks every translation and corrects it. This roughly doubles the time and cost of a translation.'
+              default: false
+          -
+            handle: reviewer_model
+            field:
+              type: text
+              display: 'Reviewer model'
+              instructions: 'The model that reviews, written as `provider:model`. Leave empty to use the quality model of another provider with an API key, or the translator.'
+          -
+            handle: fallback_model
+            field:
+              type: text
+              display: 'Fallback model'
+              instructions: 'Used when the translator keeps failing, written as `provider:model`. Leave empty for no fallback.'
+          -
+            handle: new_localization_status
+            field:
+              type: button_group
+              display: 'New localizations'
+              instructions: 'The status of localizations that a bulk translation or the command line creates.'
+              options:
+                draft: Draft
+                mirror: 'Same as origin'
+              default: draft
+          -
+            handle: offer_on_create
+            field:
+              type: toggle
+              display: 'Offer to translate new localizations'
+              instructions: 'When you create a localization in the editor, offer to translate it from its origin.'
+              default: true
+          -
+            handle: strict_fields
+            field:
+              type: toggle
+              display: 'Strict fields'
+              instructions: 'When part of a field cannot be translated, leave the whole field untranslated instead of keeping that part in the original language.'
+              default: false
+  context:
+    display: Context
+    sections:
+      -
+        fields:
+          -
+            handle: site_profile
+            field:
+              type: textarea
+              display: 'Site profile'
+              instructions: 'A short description of the organisation, what it offers, its audience and its tone of voice. It is sent with every translation.'
+              default: ''
+          -
+            handle: instructions
+            field:
+              type: textarea
+              display: Instructions
+              instructions: 'Instructions for every translation, in any language.'
+              default: ''
+          -
+            handle: language_instructions
+            field:
+              type: grid
+              display: 'Language instructions'
+              instructions: 'How to address the reader and extra instructions for one language.'
+              mode: stacked
+              add_row: 'Add language'
+              default: []
+              fields:
+                -
+                  handle: site
+                  field:
+                    type: sites
+                    display: Site
+                    mode: select
+                    max_items: 1
+                -
+                  handle: formality
+                  field:
+                    type: button_group
+                    display: Formality
+                    options:
+                      default: Default
+                      formal: Formal
+                      informal: Informal
+                    default: default
+                -
+                  handle: instructions
+                  field:
+                    type: textarea
+                    display: Instructions
+  glossary:
+    display: Glossary
+    sections:
+      -
+        fields:
+          -
+            handle: glossary
+            field:
+              type: grid
+              display: Glossary
+              instructions: 'Terms that must always be translated the same way, or not at all.'
+              mode: table
+              add_row: 'Add term'
+              default: []
+              fields:
+                -
+                  handle: term
+                  field:
+                    type: text
+                    display: Term
+                -
+                  handle: site
+                  field:
+                    type: sites
+                    display: Site
+                    instructions: 'Leave empty for every language.'
+                    mode: select
+                    max_items: 1
+                -
+                  handle: translation
+                  field:
+                    type: text
+                    display: Translation
+                -
+                  handle: do_not_translate
+                  field:
+                    type: toggle
+                    display: 'Do not translate'
+                -
+                  handle: note
+                  field:
+                    type: text
+                    display: Note
+  content:
+    display: Content
+    sections:
+      -
+        fields:
+          -
+            handle: excluded_collections
+            field:
+              type: collections
+              display: 'Excluded collections'
+              instructions: 'Entries of these collections are never translated.'
+              mode: select
+              default: []
+          -
+            handle: excluded_taxonomies
+            field:
+              type: taxonomies
+              display: 'Excluded taxonomies'
+              instructions: 'Terms of these taxonomies are never translated.'
+              mode: select
+              default: []
+          -
+            handle: excluded_fields
+            field:
+              type: list
+              display: 'Excluded fields'
+              instructions: 'Field handles that are never translated, in any blueprint.'
+              default: []
+  providers:
+    display: Providers
+    sections:
+      -
+        fields:
+          -
+            handle: providers
+            field:
+              type: info
+              display: Providers
+              content: 'API keys are read from your `.env` file: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `GEMINI_API_KEY`. They are never stored in these settings.'
