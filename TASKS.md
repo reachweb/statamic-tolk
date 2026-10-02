@@ -118,28 +118,28 @@ Status: **Brief** = stated by the owner in the original request. **Confirmed** =
 19. **Do not edit `docs/research/01`–`06`.** Record new findings in `docs/research/07-spike-findings.md` (created in Phase 2, committed on `main`).
 20. **Sandbox safety:** the sandbox is the only site you may install the addon into. Never touch the owner's other projects under `/Volumes/1TB/Sites/`.
 
-## Version pins (re-verified in T0.3)
+## Version pins (re-verified in T0.3, 2026-10-02)
 
-| Package | Constraint | Latest seen 2026-10-01 | Why |
+| Package | Constraint | Latest seen 2026-10-02 | Why |
 | --- | --- | --- | --- |
 | `php` | `^8.3` | 8.4 local | `laravel/ai` needs 8.3 (R2 §2) |
-| `statamic/cms` | `^6.30` | 6.34.1 | 6.30 has the multi-site publish-form fixes the editor flow relies on (R3 §10.2) |
-| `laravel/framework` | `^12.62 \|\| ^13.15` | 13.33 | forced by `laravel/ai` through `illuminate/json-schema` (R2 §2) |
-| `laravel/ai` | `^1.0.1` | 1.0.1 | `Ai::build()` exists only from 1.0.1 (R2 §4.3) |
-| `orchestra/testbench` (dev) | `^10.8 \|\| ^11.0` | 11.x | Statamic 6 and `laravel/ai` dev constraints |
-| `pestphp/pest`, `pest-plugin-laravel` (dev) | `^4.0` | 4.x | owner's current test stack |
-| `laravel/pint` (dev) | `^1.2` | 1.29 | |
-| `laravel/boost` (dev, in the sandbox only) | `^2.1` | 2.4.6 | T1.7 |
-| `vite` / `laravel-vite-plugin` / `tailwindcss` + `@tailwindcss/vite` | `^8.0.0` / `^3.0.0` / `^4.0.0` | | R1 §3.1 |
-| `vitest`, `@playwright/test` (dev, npm) | latest compatible | | T1.3, T5.1 |
+| `statamic/cms` | `^6.30` | 6.35.0 | 6.30 has the multi-site publish-form fixes the editor flow relies on (R3 §10.2). 6.35.0 fixes two bugs the addon can hit on older versions (see "Risks and open verifications") |
+| `laravel/framework` | `^12.62 \|\| ^13.15` | 13.34.0; 12.69.3 on 12.x | forced by `laravel/ai` through `illuminate/json-schema` (R2 §2) |
+| `laravel/ai` | `^1.0.1` | 1.0.1 (no later release) | `Ai::build()` exists only from 1.0.1 (R2 §4.3) |
+| `orchestra/testbench` (dev) | `^10.8 \|\| ^11.0` | 11.3.0; 10.12.0 on 10.x | Statamic 6 and `laravel/ai` dev constraints |
+| `pestphp/pest`, `pest-plugin-laravel` (dev) | `^4.0` | 4.7.8 and 4.1.0 on 4.x; Pest 5.3.0 and plugin 5.0.1 exist but need PHP 8.4 | owner's current test stack (D20); CI tests PHP 8.3 (T1.8); Statamic's own suite uses Pest `^4.7` |
+| `laravel/pint` (dev) | `^1.2` | 1.32.1 | |
+| `laravel/boost` (dev, in the sandbox only) | `^2.10` | 2.10.1 | T1.7. `laravel/ai` 1.x conflicts with `laravel/mcp` below 1.0; Boost accepts `laravel/mcp` 1.0 from 2.9.0, and the SDK's upgrade guide asks for 2.10 |
+| `vite` / `laravel-vite-plugin` / `tailwindcss` + `@tailwindcss/vite` | `^8.0.0` / `^3.0.0` / `^4.0.0` | 8.3.2 / 3.2.0 / 4.3.3 + 4.3.3 | R1 §3.1 |
+| `vitest`, `@playwright/test` (dev, npm) | latest compatible | 5.0.3 (accepts Vite 8) / 1.63.0 | T1.3, T5.1 |
 
-Model catalog defaults (R6 §0 and §4a; re-verified in T0.3):
+Model catalog defaults (R6 §0 and §4a; re-verified in T0.3 against the vendors' model and pricing pages):
 
-| Provider | Quality tier | Fast tier | Request options to verify in T2.1 |
-| --- | --- | --- | --- |
-| `anthropic` | `claude-sonnet-5-5` | `claude-haiku-4-5` | Sonnet: `thinking: {type: between_tools}`; effort `low` only if it can coexist with structured output (R2 §11.2). Haiku: none. |
-| `openai` | `gpt-6.1-sol` | `gpt-6-luna` | Sol: `reasoning.effort: low`. Luna: `reasoning.effort: none`. Provider built with `store: false`. |
-| `gemini` | `gemini-3.8-flash` | `gemini-3.5-flash-lite` | 3.8 Flash: `thinking_level: low`. Flash-Lite: none. |
+| Provider | Quality tier | Fast tier | Latest seen 2026-10-02: max output tokens, USD per 1M input / output tokens | Request options to verify in T2.1 |
+| --- | --- | --- | --- | --- |
+| `anthropic` | `claude-sonnet-5-5` | `claude-haiku-4-5` | Sonnet 5.5: 128K, $2 / $10. Haiku 4.5: 64K, $1 / $5; `claude-haiku-4-5` is the alias of the snapshot `claude-haiku-4-5-20251001`, still "Active" with retirement "not sooner than October 15, 2026" and no deprecation notice (Anthropic gives at least 60 days). The vendor writes `128K` and `64K`; use 128000 and 64000. | Sonnet: `thinking: {type: between_tools}`; effort `low` only if it can coexist with structured output (R2 §11.2). Haiku: none. |
+| `openai` | `gpt-6.1-sol` | `gpt-6-luna` | 6.1 Sol: 128,000, $2 / $10. Luna: 128,000, $0.10 / $0.50. | Sol: `reasoning.effort: low`. Luna: `reasoning.effort: none`. Provider built with `store: false`. |
+| `gemini` | `gemini-3.8-flash` | `gemini-3.5-flash-lite` | 3.8 Flash: 65,536, $0.75 / $3.75 until 2026-12-31, then $1.50 / $7.50. Flash-Lite: 65,536, $0.30 / $2.50. | 3.8 Flash: `thinking_level: low`. Flash-Lite: none. |
 
 Never send `temperature`, `top_p` or `top_k` (R6 §0 trap 1).
 
@@ -582,7 +582,7 @@ Statamic forms are not localizable, and Statamic takes interface text from the L
   - First commit: `TASKS.md` and `docs/research/`.
   - **Self-check:** `git status` is clean; `git log --oneline` shows one commit.
 
-- [ ] **T0.3 Re-verify version pins and model ids**
+- [x] **T0.3 Re-verify version pins and model ids**
   - Read the latest versions from `https://repo.packagist.org/p2/{statamic/cms,laravel/ai,laravel/boost,pestphp/pest,orchestra/testbench}.json`.
   - For `laravel/ai`: read its `CHANGELOG.md` and `UPGRADE.md` for everything after 1.0.1. Note any change to the APIs cited in R2 §4–§13.
   - For `statamic/cms`: read the changelog entries after 6.34.1 that touch the publish form, localization, field actions, addon settings, actions or Stache.
@@ -688,7 +688,7 @@ Statamic forms are not localizable, and Statamic takes interface text from the L
 
 - [ ] **T1.7 Laravel Boost, in the sandbox**
   - Why the sandbox and not Testbench: under `vendor/bin/testbench` a root package is not in Statamic's addon manifest, so the addon's routes, commands and fieldtypes do not exist there; and Boost discovers guidelines and skills from the root `composer.json` of the app it runs in, which under Testbench is an empty skeleton (R1 §8.3, §9.2).
-  - In the sandbox: `composer require laravel/boost --dev`, and add `laravel/ai` as a direct requirement, because Boost only looks at direct dependencies (R1 §8.3).
+  - In the sandbox: `composer require laravel/boost:^2.10 --dev` (see "Version pins"), and add `laravel/ai` as a direct requirement, because Boost only looks at direct dependencies (R1 §8.3).
   - Run `php artisan boost:install` in the sandbox for Claude Code, with guidelines, skills and the MCP server, and select `statamic/cms` among the third-party packages. Confirm that the sandbox's `.claude/skills/` now contains the AI SDK skill (`ai-sdk-development`) and that its agent guidelines contain the `statamic/cms rules` section.
   - In the addon repo, `.mcp.json`: `{"mcpServers": {"laravel-boost": {"command": "php", "args": ["../tolk-sandbox/artisan", "boost:mcp"]}}}`. Boost's tools (documentation search, tinker, logs, routes) then operate on the sandbox, where the addon is really installed.
   - In the addon's `CLAUDE.md`, add: before working on the AI engine read `vendor/laravel/ai/resources/boost/skills/ai-sdk-development/SKILL.md`; before working on the CP read `vendor/statamic/cms/resources/boost/guidelines/core.blade.php`; prefer Boost's documentation search over memory for Laravel and SDK APIs.
@@ -746,7 +746,7 @@ The design rests on a few facts the research could only read from source. Verify
     11. Save hooks: reject `entry.saving` from a hook. What does the editor see, and does the Save button recover (it hung before 6.28, R3 §2.1)?
     12. What a successful save does to the form: are the container's values replaced from the response, and is `localizedFields` kept? Set a field value between the click on Save and the response and see what remains (R3 §7.3 describes the same reset for actions).
   - Drive the browser with whatever automation the session has. If none is available, write the checks as a checklist and ask the owner to run them (rule 18).
-  - Version coverage: the sandbox runs the latest Statamic, but D13's floor is 6.30. Either repeat checks 1–6, 9 and 11 once on a throwaway install pinned to the floor version, or propose raising the floor to the version the spike ran on (a stop-and-ask, since it changes D13).
+  - Version coverage: the sandbox runs the latest Statamic, but D13's floor is 6.30. Either repeat checks 1–6, 9 and 11 once on a throwaway install pinned to the floor version, or propose raising the floor to the version the spike ran on (a stop-and-ask, since it changes D13). The two 6.35.0 fixes in "Risks and open verifications" (statamic/cms#15509, #15551) also argue for a floor of `^6.35`; put them in the same question.
   - **Self-check:** all twelve checks have a recorded result; the spike branch is deleted and none of its code is on `main`; `07-spike-findings.md` is committed.
 
 - [ ] **T2.3 Content-model contract tests**
@@ -754,13 +754,13 @@ The design rests on a few facts the research could only read from source. Verify
     - `makeLocalization()` then `save()` places the entry in the target site's tree under its localized parent; a child localized before its parent lands at the root (R4 §2.3).
     - A localization's `data()` holds only overridden keys; `has()` is true for an explicit `null`; `get()` does not fall back to the origin.
     - Saving an origin re-saves its direct localizations, and `EntrySaved::isInitial()` is false for those (R4 §10.1).
-    - An unsaved `makeLocalization()` result has no id, and `blueprint()` on it is cached under a key shared by all such instances; the source's blueprint is the one to use.
+    - An unsaved `makeLocalization()` result has no id, and `blueprint()` caches its result in Blink under a key built from the id. Before Statamic 6.35.0 every unsaved entry shares `entry--blueprint`; 6.35.0 uses `spl_object_id()` instead (statamic/cms#15509), and PHP reuses an object id once the object is freed. So do not assert a shared key. In one process, create and save localizations of `pages` and `articles` entries alternately in a loop, and record whether `blueprint()` on each unsaved localization, and the blueprint core uses inside `save()` before the repository assigns the id (auto titles, `EntrySaving` listeners), belong to its own collection. If they do not, find a fix (for example an id from `Stache::generateId()` right after `makeLocalization()`), make the test assert the fixed behaviour, and add the fix to §A11 "Create". Until the first save, the addon takes the source's blueprint.
   - `tests/Feature/Contracts/RoundTripTest.php`: for a Replicator with rows lacking ids, a Grid, a Bard with sets and an empty paragraph, a group, and a set with a defaulted toggle: `rt($v)` = the blueprint's fields with the entry as parent, `addValues([$h => $v])->preProcess()->process()->values()[$h]`. Assert `rt(rt($v))` equals `rt($v)` once row and set ids are ignored, and record what `rt` changes (ids, `enabled`, defaults, removed empty nodes). §A11 step 3 relies on this being idempotent.
   - `tests/Feature/Contracts/TermLocalizationTest.php`: `Term::find('topics::x')->in('el')->merge([...])->save()` stores under that site; which site `Term::find()` returns; that `updateLastModified()` without a user throws on a `LocalizedTerm` (R4 §16.2 item 19); that the taxonomy's first site is the term's default site.
   - `tests/Feature/Contracts/GlobalsLocalizationTest.php`: `$set->in('el')` for an enabled and a not-enabled site; `origin()`; `merge()->save()` persists; `has()` on inherited keys is false.
   - `tests/Feature/Contracts/NavTreeTest.php`: building an `el` tree from the `en` tree with `makeTree()`; a branch whose `entry` is the Greek localization's id resolves to the Greek page and title, and one holding the English id does not.
   - `tests/Feature/Contracts/GitListenersTest.php`: with git enabled in config, `Statamic\Git\Subscriber::disable()` and `enable()` exist and switch the commit listener off and on; core's `withoutListeners()` leaves the listener off when its callback throws; find the call that dispatches one commit (`Statamic\Facades\Git`) and its signature (R4 §10.4).
-  - Stache and parallel writers (sandbox, not Pest, because it needs real processes and the real cache). With `STATAMIC_STACHE_WATCHER=false` in the sandbox `.env`: add a temporary command to the sandbox app that creates one entry and then sleeps for a few seconds. Start two of them at the same time with different slugs, then query both entries from a third process. Expected from the source: one is missing from the index although both files exist. Then read in vendor how core resets Stache's in-process memory between queue jobs (changelog 6.27.1) and find a call that makes a long-lived process see what other processes wrote. Repeat the experiment with each save wrapped in a cache lock plus that refresh, and confirm both entries are found. `ContentWriter` (T4.16) is built on the result. If no reliable refresh exists, record that every apply must run in a fresh process or request.
+  - Stache and parallel writers (sandbox, not Pest, because it needs real processes and the real cache). Run it on Statamic 6.35.0 or later. Before that, on a multi-site install, rebuilding a collection's entries store from a cold cache could keep only its first file and cache that list as its paths (statamic/cms#15550, fixed by #15551), which looks like the symptom this experiment is about. Note whether the refresh mechanism you pick rebuilds stores that way, because on 6.30–6.34 it would then hit that bug. With `STATAMIC_STACHE_WATCHER=false` in the sandbox `.env`: add a temporary command to the sandbox app that creates one entry and then sleeps for a few seconds. Start two of them at the same time with different slugs, then query both entries from a third process. Expected from the source: one is missing from the index although both files exist. Then read in vendor how core resets Stache's in-process memory between queue jobs (changelog 6.27.1) and find a call that makes a long-lived process see what other processes wrote. Repeat the experiment with each save wrapped in a cache lock plus that refresh, and confirm both entries are found. `ContentWriter` (T4.16) is built on the result. If no reliable refresh exists, record that every apply must run in a fresh process or request.
   - **Self-check:** `vendor/bin/pest tests/Feature/Contracts` is green; the Stache experiment and the refresh mechanism are written up in `07-spike-findings.md` under "Content model"; the temporary sandbox command is removed and `STATAMIC_STACHE_WATCHER` is back to its default.
 
 - [ ] **T2.4 Reconcile the plan with the findings**
@@ -884,7 +884,7 @@ Goal: `php please tolk:translate --collection=pages --site=el` translates the `t
     - access: `authorize(User $user): bool` (§A14);
     - lifecycle: `fresh(): static` re-resolves everything from new queries;
     - writing: `apply(array $fields, ApplyOptions $options): ApplyResult` (T4.16; throw `LogicException` until then).
-  - `src/Targets/EntryTarget.php`: holds the source entry id and the target site and resolves entries lazily, so `fresh()` is cheap. `hasOverride()` and `targetValue()` read the localization's own data (`has()` / `get()`). `fields()` takes the blueprint from the localization when it exists and from the source entry when it does not (Statamic caches an entry's blueprint under a key built from its id, so every unsaved `makeLocalization()` result shares one cache entry), and passes `auto_title` and `excluded_fields` to `TranslatableFields`.
+  - `src/Targets/EntryTarget.php`: holds the source entry id and the target site and resolves entries lazily, so `fresh()` is cheap. `hasOverride()` and `targetValue()` read the localization's own data (`has()` / `get()`). `fields()` takes the blueprint from the localization when it exists and from the source entry when it does not (Statamic caches an entry's blueprint under a key built from its id, so an unsaved `makeLocalization()` result can read another unsaved entry's blueprint; see T2.3), and passes `auto_title` and `excluded_fields` to `TranslatableFields`.
   - `src/Targets/TargetFactory.php`: `fromReference(string|TargetRef $reference): Target` (an entry reference must be a localization, otherwise `NotALocalization`); `forEntry(Entry|string $source, string $site): EntryTarget`; `fromDescription(array $describe): Target`. Term, globals and nav targets arrive in Phase 9.
   - **Self-check:** `tests/Feature/Targets/EntryTargetTest.php`: existing and missing localization; `sourceValue()` returns the source's own value and `null` for a field the source inherits; `hasOverride()` is true for an explicit `null`; a non-localizable field never appears in `fields()`; a missing localization uses the source's blueprint; `fresh()` sees a localization created after the target object was built.
 
@@ -1427,12 +1427,12 @@ Goal: many targets at once, with progress, from the CP and the CLI, on a site wi
 
 - [ ] **T8.11 `Actions\TranslateAction`**
   - `src/Actions/TranslateAction.php` (auto-discovered), title "Translate…".
-  - `visibleTo($item)`: an entry whose collection has more than one site (terms are added in T9.2), and only in list view (`($this->context['view'] ?? 'list') === 'list'`). In the publish form a PHP action resets the form's values but not its localized-fields list, which would lose data on the next save (R3 §7.3); the banner covers that case.
+  - `visibleTo($item)`: an entry whose collection has more than one site (terms are added in T9.2), and only in list or tree view (`in_array($this->context['view'] ?? 'list', ['list', 'tree'], true)`). In the publish form (`view` `form`) a PHP action resets the form's values but not its localized-fields list, which would lose data on the next save (R3 §7.3); the banner covers that case. Since Statamic 6.35.0, a structured collection's tree view (the default view of `pages`) also offers item actions, with `view` `tree` (statamic/cms#14331, #15547). Confirm in vendor that the tree view follows the action's `redirect()`; if it does not, show the action in list view only.
   - `authorize($user, $item)`: the user has `run bulk translations` and may edit the item.
   - `fieldItems()`: `sites` (checkboxes: the union of the selected items' container sites; default all but the default site), `mode` (select: "Only what is not translated yet", "Also update outdated translations", "Retranslate everything", "Review existing translations"), `overwrite_manual` (toggle), `review` (toggle, default from settings), `new_status` (button group "Drafts" / "Same as origin", default from settings).
   - `run($items, $values)`: build the `RunRequest` from the selected ids, create the **pending** run, keep the run id on the instance. `redirect($items, $values)`: `cp_route('tolk.runs.show', $runId)`; core evaluates `redirect()` after `run()` (R3 §7.3), and it does so even when `run()` threw, so return `false` when no run was created or the real error message is lost.
   - `buttonText()`: "Translate|Translate :count items".
-  - **Self-check:** `tests/Feature/Actions/TranslateActionTest.php`: visible for a multi-site entry in list view, hidden in form view, hidden for an asset; running it through the CP action route creates a pending run with the right items and returns a redirect; a user without the permission is refused. `tests/Browser/bulk-action.spec.js`: select three articles, run the action, land on the run page, Start, and reach "completed".
+  - **Self-check:** `tests/Feature/Actions/TranslateActionTest.php`: visible for a multi-site entry in list view (and in tree view unless the redirect check ruled it out), hidden in form view, hidden for an asset; running it through the CP action route creates a pending run with the right items and returns a redirect; a user without the permission is refused. `tests/Browser/bulk-action.spec.js`: select three articles, run the action, land on the run page, Start, and reach "completed".
 
 - [ ] **T8.12 Field actions**
   - `resources/js/editor/fieldActions.js`, called inside `Statamic.booting()`: for every handle in `Statamic.$config.get('tolk.fieldtypes')`, `Statamic.$fieldActions.add(handle + '-fieldtype', action)`. The binding is the fieldtype handle and there is no wildcard (R3 §3.1).
@@ -1766,7 +1766,8 @@ These are the points the research and the reviews could not verify, with the tas
 | Current Claude, GPT and Gemini models reject or ignore sampling and some thinking options | R6 §0, R2 §11.3 | T2.1 live probe |
 | The SDK's fakes with on-demand providers and array-returning closures were inferred, not run | R2 §13.1 | T2.1 |
 | Models may not preserve the numbered placeholders reliably | no vendor guidance (R6 §5) | T2.1 placeholder probe, §A3, §A10 repairs |
-| Model ids and prices change often; the SDK's own defaults changed four times in three months | R2 §3.5, R6 | T0.3, and the catalog is config |
+| Model ids and prices change often; the SDK's own defaults changed four times in three months, and a fifth change is waiting on its `1.x` branch (seen 2026-10-02) | R2 §3.5, R6 | T0.3, and the catalog is config |
+| On Statamic before 6.35.0, unsaved entries share one cached blueprint (statamic/cms#15509), and on a multi-site install a cold Stache rebuild can drop all but the first entry of a collection and cache that (#15550, fixed by #15551). Both fall within D13's floor of 6.30 | T0.3, Statamic 6.35.0 changelog | T2.3 tests both; the floor question in T2.2 asks whether to raise D13 to `^6.35` |
 | Which entry id a nav branch needs to render the localized page | R4 §5.3; the 6.34.1 source shows a branch must hold the entry of its own site | T2.3 confirms, T9.4 |
 | Eloquent driver behaviour was read from GitHub, not run | R4 §17 item 6 | T11.3 (optional) |
 | Pushed components may re-mount when Live Preview toggles | R3 §12 item 2 | T2.2 check 7 |
@@ -1781,3 +1782,4 @@ These are the points the research and the reviews could not verify, with the tas
 <!-- e.g. T0.2 done 2026-10-03: repository initialised, first commit contains TASKS.md and docs/research. -->
 T0.1 done 2026-10-02: the owner answered every question; all decisions are confirmed or rewritten. Changed: D2 now adds CLI-only `tolk:lang` and `tolk:forms` (new §A16, §A1, §A5 rows, T9.10, T9.11, a sandbox form and lang files in T0.5, acceptance item 9, out of scope, T9.7 note, T13.1) and moves alt text to a later version; D16 now never translates slugs (`slug_mode` and `slugMode` removed from §A11, §A15, T3.4, T4.16, T5.3, T5.4, T5.9, T8.3, T9.2, T9.7, T10.4, acceptance item 4). The brief question means Resrv's conventions, not a change log (D20, Phase 7 intro, out of scope, risks). D7 and D8 are confirmed with the owner's notes. D29: the owner deferred every Phase 11 extra, now marked `- [-]` so the loop skips them. The owner accepted every other recommendation, including Q30's go-ahead, with "for all the rest keep the recommended answers". No commit: the repository is created in T0.2.
 T0.2 done 2026-10-02: `git init -b main`; first `.gitignore` (`/vendor`, `/node_modules`, `.DS_Store`); the first and only commit contains `TASKS.md`, `docs/research/`, `.gitignore` and `.claude/` (loop and skills; `.claude/loop/.gitignore` keeps the loop's logs, state and lock out). "Location" in Project at a glance no longer says "not yet a git repository".
+T0.3 done 2026-10-02: no new major of `laravel/ai` or `statamic/cms`; both tables now say "Latest seen 2026-10-02". Differences from 2026-10-01: `statamic/cms` 6.34.1 → 6.35.0; `laravel/framework` 13.33 → 13.34.0 (12.69.3 on 12.x); `laravel/ai` still 1.0.1, and the seven commits on `1.x` since that tag (new SDK default models, unsupported provider tools now dropped instead of throwing, an `AiManager` refactor, Cohere text, a self-hosted Laya driver, and an upgrade note that 1.x needs `laravel/mcp` 1.0 and Boost 2.10) change none of the APIs in R2 §4–§13; testbench → 11.3.0; Pest 4 → 4.7.8 (Pest 5.3.0 needs PHP 8.4, so the pin stays `^4.0`); Pint 1.29 → 1.32.1; Boost 2.4.6 → 2.10.1, and its pin goes from `^2.1` to `^2.10` (T1.7 updated); npm versions filled in. All six model ids, their max output tokens and prices are unchanged; those values are now in the catalog table for T3.3; Haiku 4.5 is still Active, with retirement not before 2026-10-15. Statamic 6.35.0 changes that affect later tasks: item actions in the collection tree view (`view` `tree`, T8.11 updated), unsaved entries' blueprint cache key (#15509, T2.3 and the T4 `EntryTarget` note updated), and a cold multi-site Stache rebuild that dropped entries before 6.35.0 (#15551, T2.3 updated). Both fixes are added to the risks table and to T2.2's floor question. Other 6.35.0 publish-form fixes (#15518, #14871, #15148) need no task change, and nothing in it touches multi-site roadmap or approval-workflow features.
