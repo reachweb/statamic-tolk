@@ -6,11 +6,16 @@ use Reach\StatamicTolk\Enums\SegmentKind;
 
 final class Placeholders
 {
+    // A paired tag's opening or closing half (the slash in group 1, the id in group 2), or an atom (its id in group 3).
+    public const string IDS = '<(\/?)(\d+)>|<(x\d+)\/>';
+
+    public const string ATOM = '<x\d+\/>';
+
     // Paired tags, atoms, hard breaks, then anything a browser would start parsing as a tag (a "<" before a letter, "/", "!" or "?"), closed or not.
-    private const string TOKENS = '/<(\/?)(\d+)>|<x(\d+)\/>|(<br\/>)|<[a-zA-Z\/!?][^<>]*>?/';
+    private const string TOKENS = '/'.self::IDS.'|(<br\/>)|<[a-zA-Z\/!?][^<>]*>?/';
 
     // An inline link or image destination, or a reference definition, that is not an atom.
-    private const string RAW_DESTINATION = '/\]\((?!\s*<x\d+\/>)|^ {0,3}\[[^\]\n]+\]:(?!\s*<x\d+\/>)/m';
+    private const string RAW_DESTINATION = '/\]\((?!\s*'.self::ATOM.')|^ {0,3}\[[^\]\n]+\]:(?!\s*'.self::ATOM.')/m';
 
     /**
      * @return array{pairs: list<string>, atoms: list<string>, breaks: int}
@@ -40,8 +45,10 @@ final class Placeholders
         foreach (array_keys($expected['pairs']) as $id) {
             $count = $actual['pairs'][$id] ?? 0;
 
-            if ($count === 0 || ($count > 1 && ! $inline)) {
-                $problems[] = $count === 0 ? "<{$id}>…</{$id}> is missing" : "<{$id}>…</{$id}> appears {$count} times";
+            if ($count === 0) {
+                $problems[] = "<{$id}>…</{$id}> is missing";
+            } elseif ($count > 1 && ! $inline) {
+                $problems[] = "<{$id}>…</{$id}> appears {$count} times";
             }
         }
 
@@ -131,7 +138,7 @@ final class Placeholders
                     $scan['empty'][$id] = true;
                 }
             } elseif ($match[3][0] !== null) {
-                $id = 'x'.$match[3][0];
+                $id = $match[3][0];
                 $scan['atoms'][$id] = ($scan['atoms'][$id] ?? 0) + 1;
             } elseif ($match[4][0] !== null) {
                 $scan['breaks']++;

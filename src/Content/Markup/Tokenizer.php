@@ -37,7 +37,7 @@ final class Tokenizer
     {
         $restored = '';
 
-        foreach (preg_split('/(<x\d+\/>)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $index => $part) {
+        foreach (preg_split('/('.Placeholders::ATOM.')/', $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $index => $part) {
             $restored .= match (true) {
                 $index % 2 === 1 => $source->map[substr($part, 1, -2)] ?? $part,
                 $source->kind->escapes() => strtr($part, array_flip(self::ESCAPES)),
