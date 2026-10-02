@@ -369,7 +369,7 @@ The opposite direction needs no rule: when the origin itself gains the default (
 
 ### Version floor: the owner's decision
 
-T2.2 and T2.3 found that the editor flow and the content model work on 6.30.0, and that the id assigned after `makeLocalization()` fixes #15509 on every version. Still standing: 6.30.0 carries GHSA-jppw-r5j3-xf7x, which Composer blocks by default; on 6.30–6.34 a host-level cold Stache rebuild on a multi-site install can drop entries from the index (#15550, fixed by #15551 in 6.35.0), after which the addon's queries would not see them either; and 6.35.0 adds item actions to the tree view (T8.11). Raising D13 is the owner's decision, asked in T2.4 with `^6.35` as the recommendation.
+T2.2 and T2.3 found that the editor flow and the content model work on 6.30.0, and that the id assigned after `makeLocalization()` fixes #15509 on every version. Still standing: 6.30.0 carries GHSA-jppw-r5j3-xf7x, which Composer blocks by default; on 6.30–6.34 a host-level cold Stache rebuild on a multi-site install can drop entries from the index (#15550, fixed by #15551 in 6.35.0), after which the addon's queries would not see them either; and 6.35.0 adds item actions to the tree view (T8.11). Raising D13 is the owner's decision. Asked in T2.4 with `^6.35` as the recommendation, the owner answered "yes raise the floor" (2026-10-02): the floor is now `^6.35`. The addon's lock and the sandbox already ran 6.35.0, so no installed version changed; the slug steps of T5.9 lose their pre-6.34 branch, and the tree-view actions of T8.11 are always there. The contract tests still plant the pre-6.35 blueprint key as well, which is harmless.
 
 ### Changes made to TASKS.md (T2.4)
 
@@ -392,3 +392,4 @@ T2.2 and T2.3 found that the editor flow and the content model work on 6.30.0, a
 - T9.6: doctor check 2 reports a host-configured `ai.providers.tolk_{provider}`.
 - T13.1: `statuses.md` explains the defaults rule and the one-time "outdated".
 - Risks table: the CP-save row is settled.
+- After the owner's answer: D13 and its status, "Project at a glance", the `statamic/cms` version pin, §A11 "Create" (the blueprint key described for 6.35.0 and later), T5.9 (slug steps for 6.35.0 only), T8.11 (tree-view actions are always there), and the #15509/#15551 risks row now say `^6.35`. Outside `TASKS.md`: `composer.json` (`statamic/cms ^6.35`, lock hash refreshed), the README requirements, the `CLAUDE.md` stack line, and the sandbox's lock (`composer update reachweb/statamic-tolk`, committed there).

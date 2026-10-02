@@ -6,7 +6,7 @@ Guidance for agents working on this repository. Keep it under 120 lines, and upd
 
 Tolk (`reachweb/statamic-tolk`, namespace `Reach\StatamicTolk\`) is a commercial Statamic 6 addon that translates multi-site content from an origin site into its localizations with LLMs from Anthropic, OpenAI and Google Gemini, through the Laravel AI SDK (`laravel/ai`). It fills translations into the open entry editor unsaved, translates single fields, runs bulk translations from listings, a status overview and the CLI, and tracks per field whether a translation is outdated or was edited by hand, so it updates only what has changed.
 
-Stack: PHP `^8.3`, Statamic `^6.30` (Pro, multi-site), Laravel `^12.62 || ^13.15`, `laravel/ai ^1.0.1`, Vue 3 and Inertia in the Control Panel (CP), Pest 4 on `Statamic\Testing\AddonTestCase`, Vitest, and later Playwright against the sandbox.
+Stack: PHP `^8.3`, Statamic `^6.35` (Pro, multi-site), Laravel `^12.62 || ^13.15`, `laravel/ai ^1.0.1`, Vue 3 and Inertia in the Control Panel (CP), Pest 4 on `Statamic\Testing\AddonTestCase`, Vitest, and later Playwright against the sandbox.
 
 ## `TASKS.md` is the source of truth
 
