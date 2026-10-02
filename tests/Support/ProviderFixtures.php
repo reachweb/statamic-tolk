@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Tests\Support;
 
 use Illuminate\Http\Client\Request;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Gateway\Anthropic\AnthropicSchemaSanitizer;
 use Laravel\Ai\ObjectSchema;
@@ -43,6 +44,12 @@ final class ProviderFixtures
         ],
     ];
 
+    private const array TEXT_PATHS = [
+        'anthropic' => 'content.0.text',
+        'openai' => 'output.1.content.0.text',
+        'gemini' => 'steps.0.content.0.text',
+    ];
+
     public const array TRANSLATIONS = [
         ['id' => 's1', 'text' => 'Καλώς ήρθατε στο Kyma Bay'],
         ['id' => 's2', 'text' => 'Η <1>θάλασσα</1> είναι ζεστή.<x1/>'],
@@ -62,75 +69,38 @@ final class ProviderFixtures
 
     public static function response(string $provider): array
     {
-        $path = dirname(__DIR__)."/Fixtures/providers/{$provider}.json";
-
-        if (! is_file($path)) {
-            throw new RuntimeException("No response fixture for [{$provider}].");
-        }
-
-        return json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        return File::json(dirname(__DIR__)."/Fixtures/providers/{$provider}.json", JSON_THROW_ON_ERROR);
     }
 
     public static function withText(string $provider, string $text): array
     {
-        $data = self::response($provider);
-
-        switch ($provider) {
-            case 'anthropic':
-                $data['content'][0]['text'] = $text;
-                break;
-            case 'openai':
-                $data['output'][1]['content'][0]['text'] = $text;
-                break;
-            case 'gemini':
-                $data['steps'][0]['content'][0]['text'] = $text;
-                break;
-        }
-
-        return $data;
+        return self::patch(self::response($provider), [self::TEXT_PATHS[$provider] => $text]);
     }
 
     public static function truncated(string $provider): array
     {
-        $data = self::withText($provider, '{"translations":[{"id":"s1","text":"Καλώς ήρθα');
-
-        switch ($provider) {
-            case 'anthropic':
-                $data['stop_reason'] = 'max_tokens';
-                break;
-            case 'openai':
-                $data['status'] = 'incomplete';
-                $data['incomplete_details'] = ['reason' => 'max_output_tokens'];
-                $data['output'][1]['status'] = 'incomplete';
-                break;
-            case 'gemini':
-                $data['status'] = 'incomplete';
-                break;
-        }
-
-        return $data;
+        return self::patch(self::withText($provider, '{"translations":[{"id":"s1","text":"Καλώς ήρθα'), match ($provider) {
+            'anthropic' => ['stop_reason' => 'max_tokens'],
+            'openai' => [
+                'status' => 'incomplete',
+                'incomplete_details' => ['reason' => 'max_output_tokens'],
+                'output.1.status' => 'incomplete',
+            ],
+            'gemini' => ['status' => 'incomplete'],
+        });
     }
 
     public static function refusal(string $provider): array
     {
-        $data = self::response($provider);
-
-        switch ($provider) {
-            case 'anthropic':
-                $data['content'] = [];
-                $data['stop_reason'] = 'refusal';
-                break;
-            case 'openai':
-                $data['output'][1]['content'] = [['type' => 'refusal', 'refusal' => 'I can’t help with that.']];
-                break;
-            case 'gemini':
-                $data['status'] = 'failed';
-                $data['steps'] = [];
-                $data['errors'] = [['code' => 'blocked_safety', 'message' => 'The response was blocked.']];
-                break;
-        }
-
-        return $data;
+        return self::patch(self::response($provider), match ($provider) {
+            'anthropic' => ['content' => [], 'stop_reason' => 'refusal'],
+            'openai' => ['output.1.content' => [['type' => 'refusal', 'refusal' => 'I can’t help with that.']]],
+            'gemini' => [
+                'status' => 'failed',
+                'steps' => [],
+                'errors' => [['code' => 'blocked_safety', 'message' => 'The response was blocked.']],
+            ],
+        });
     }
 
     public static function error(string $provider, int $status, string $type, string $message, array $extra = []): array
@@ -149,35 +119,29 @@ final class ProviderFixtures
 
     public static function sentRequest(): Request
     {
-        $recorded = Http::recorded();
-
-        if ($recorded->count() !== 1) {
-            throw new RuntimeException("Expected exactly one request, {$recorded->count()} were sent.");
-        }
-
-        return $recorded->first()[0];
+        return Http::recorded()->sole()[0];
     }
 
     public static function prompt(string $provider, string $tier = 'quality', array $overrides = []): Request
     {
         self::fake($provider, self::response($provider));
 
-        self::agent($provider, $tier, $overrides)->prompt('{"segments":[]}');
+        self::send($provider, $tier, $overrides);
 
         return self::sentRequest();
     }
 
-    public static function respond(string $provider, array $body, int $status = 200, array $headers = []): StructuredAgentResponse
+    public static function respond(string $provider, ?array $body = null): StructuredAgentResponse
     {
-        self::fake($provider, $body, $status, $headers);
+        self::fake($provider, $body ?? self::response($provider));
 
-        return self::agent($provider)->prompt('{"segments":[]}');
+        return self::send($provider);
     }
 
     public static function thrown(string $provider): Throwable
     {
         try {
-            self::agent($provider)->prompt('{"segments":[]}');
+            self::send($provider);
         } catch (Throwable $exception) {
             return $exception;
         }
@@ -200,5 +164,19 @@ final class ProviderFixtures
             'type' => 'json_schema',
             'schema' => AnthropicSchemaSanitizer::sanitize((new ObjectSchema($schema))->toSchema()),
         ];
+    }
+
+    private static function send(string $provider, string $tier = 'quality', array $overrides = []): StructuredAgentResponse
+    {
+        return self::agent($provider, $tier, $overrides)->prompt('{"segments":[]}');
+    }
+
+    private static function patch(array $data, array $changes): array
+    {
+        foreach ($changes as $path => $value) {
+            data_set($data, $path, $value);
+        }
+
+        return $data;
     }
 }
