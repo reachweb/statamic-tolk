@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk;
 
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -54,6 +55,9 @@ class ServiceProvider extends AddonServiceProvider
     private function registerFieldtypes(): void
     {
         $registry = $this->app->make(FieldtypeRegistry::class);
+
+        $registry->register('text', TextHandler::class);
+        $registry->register('textarea', TextHandler::class);
 
         foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
             $registry->register($handle, $handlerClass);
