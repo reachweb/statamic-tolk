@@ -81,10 +81,6 @@ final class Fingerprint
             default => substr($digits, 0, $point).'.'.substr($digits, $point),
         };
 
-        if (str_contains($plain, '.')) {
-            $plain = rtrim(rtrim($plain, '0'), '.');
-        }
-
         return ($number < 0 && $plain !== '0' ? '-' : '').$plain;
     }
 }

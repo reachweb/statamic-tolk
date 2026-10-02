@@ -6,7 +6,7 @@ use Reach\StatamicTolk\Content\Leaf;
 
 final class Renumber
 {
-    private const string IDS = '/<(\/?)(\d+)>|<(x\d+)\/>/';
+    private const string IDS = '/'.Placeholders::IDS.'/';
 
     public static function like(Leaf $target, Leaf $source): ?string
     {
@@ -25,7 +25,7 @@ final class Renumber
     /**
      * Pairs each target placeholder with the first unused source placeholder of the same type and descriptor.
      *
-     * @return array<string, string>|null
+     * @return array<int|string, int|string>|null
      */
     private static function correspondence(array $target, array $source): ?array
     {
@@ -46,7 +46,7 @@ final class Renumber
                 return null;
             }
 
-            $ids[(string) $id] = (string) $match;
+            $ids[$id] = $match;
             unset($source[$match]);
         }
 
