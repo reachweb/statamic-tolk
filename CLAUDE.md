@@ -32,6 +32,14 @@ There is no booted host app in this repo: under `vendor/bin/testbench` a root pa
 
 A line marked *(Tn.n)* describes something that task builds; until then it does not work yet. The task that builds it verifies the line and removes the marker.
 
+## Laravel Boost
+
+- Boost is a dev dependency of the sandbox, not of the addon. The committed `.mcp.json` starts it as `php ../tolk-sandbox/artisan boost:mcp`, so its tools (`search-docs`, `application-info`, `read-log-entries`, `last-error`, `browser-logs`, `get-absolute-url`) work on the sandbox, where the addon is really installed. Boost 2.10 has no tinker or routes tool: run `php artisan tinker --execute="…"` or `php artisan route:list` from the sandbox folder instead. Boost starts only while the sandbox has `APP_ENV=local` or `APP_DEBUG=true`.
+- Prefer Boost's documentation search over memory for Laravel and `laravel/ai` APIs; when it and the installed source disagree, the source in `vendor/` wins.
+- Before working on the AI engine, read `vendor/laravel/ai/resources/boost/skills/ai-sdk-development/SKILL.md`.
+- Before working on the CP, read `vendor/statamic/cms/resources/boost/guidelines/core.blade.php`.
+- The sandbox's `boost.json` selects Claude Code and the `statamic/cms` guidelines. After a `composer update` there, `php artisan boost:update` refreshes its `CLAUDE.md` section and `.claude/skills/`.
+
 ## Architecture
 
 - §A1: layout and class map. `src/ServiceProvider.php` is the single root provider; Statamic auto-discovers `Actions`, `Console/Commands`, `Fieldtypes`, `Listeners` and `routes/cp.php` (not recursively).
