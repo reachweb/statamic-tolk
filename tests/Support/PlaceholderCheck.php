@@ -4,16 +4,32 @@ namespace Reach\StatamicTolk\Tests\Support;
 
 final class PlaceholderCheck
 {
-    public const array SYNTAXES = [
-        'numeric' => ['open' => '/^<(\d+)>$/', 'close' => '/^<\/(\d+)>$/'],
-        'g' => ['open' => '/^<g(\d+)>$/', 'close' => '/^<\/g(\d+)>$/'],
-    ];
+    public const array SYNTAXES = ['numeric' => '', 'g' => 'g'];
 
     public static function convert(string $text, string $syntax): string
     {
-        return $syntax === 'g'
-            ? preg_replace(['/<(\d+)>/', '/<\/(\d+)>/'], ['<g$1>', '</g$1>'], $text)
-            : $text;
+        return preg_replace('/<(\/?)(\d+)>/', '<$1'.self::SYNTAXES[$syntax].'$2>', $text);
+    }
+
+    /**
+     * @param  list<array{id: string, text: string}>  $source
+     * @param  array<string, string>  $translations
+     * @return array<string, array{problems: list<string>, source: string, translation: ?string}>
+     */
+    public static function failures(array $source, array $translations, string $syntax): array
+    {
+        $failures = [];
+
+        foreach ($source as $segment) {
+            $translation = $translations[$segment['id']] ?? null;
+            $problems = $translation === null ? ['missing'] : self::problems($segment['text'], $translation, $syntax);
+
+            if ($problems !== []) {
+                $failures[$segment['id']] = ['problems' => $problems, 'source' => $segment['text'], 'translation' => $translation];
+            }
+        }
+
+        return $failures;
     }
 
     /**
@@ -65,7 +81,7 @@ final class PlaceholderCheck
      */
     private static function scan(string $text, string $syntax): array
     {
-        $patterns = self::SYNTAXES[$syntax];
+        $prefix = self::SYNTAXES[$syntax];
         $result = ['pairs' => [], 'atoms' => [], 'breaks' => 0, 'problems' => []];
         $open = null;
         $offset = 0;
@@ -79,14 +95,14 @@ final class PlaceholderCheck
 
             $offset = $position + strlen($tag);
 
-            if (preg_match($patterns['open'], $tag, $id)) {
+            if (preg_match("/^<{$prefix}(\d+)>$/", $tag, $id)) {
                 if ($open !== null) {
                     $result['problems'][] = "pair {$id[1]} nested in {$open['id']}";
                 }
 
                 $open = ['id' => $id[1], 'text' => ''];
                 $result['pairs'][] = $id[1];
-            } elseif (preg_match($patterns['close'], $tag, $id)) {
+            } elseif (preg_match("/^<\/{$prefix}(\d+)>$/", $tag, $id)) {
                 if ($open === null || $open['id'] !== $id[1]) {
                     $result['problems'][] = "unbalanced close {$id[1]}";
                 } elseif (trim($open['text']) === '') {

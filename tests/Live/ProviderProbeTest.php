@@ -47,16 +47,7 @@ it('keeps the placeholders of twenty inline segments', function (string $provide
                 'outputCap' => 8192,
             ]), LiveProbe::user($source, 'inline'));
 
-            $problems = [];
-
-            foreach ($source as $segment) {
-                $translation = $result['translations'][$segment['id']] ?? null;
-                $found = $translation === null ? ['missing'] : PlaceholderCheck::problems($segment['text'], $translation, $syntax);
-
-                if ($found !== []) {
-                    $problems[$segment['id']] = ['problems' => $found, 'source' => $segment['text'], 'translation' => $translation];
-                }
-            }
+            $problems = PlaceholderCheck::failures($source, $result['translations'], $syntax);
 
             $report[$syntax][$target] = [
                 'failures' => count($problems),
@@ -88,14 +79,14 @@ it('measures 6,000 characters as one call and as four calls of 1,500', function 
 
     $one = $call($paragraphs);
     $four = array_map(fn (array $group) => [
-        'chars' => array_sum(array_map(fn (array $item) => mb_strlen($item['text']), $group)),
+        'chars' => LiveProbe::chars($group),
         ...$call($group),
     ], LiveProbe::groups($paragraphs, 4));
 
     $times = array_column($four, 'ms');
 
     LiveProbe::record($provider, $tier, 'latency', [
-        'chars' => array_sum(array_map(fn (array $item) => mb_strlen($item['text']), $paragraphs)),
+        'chars' => LiveProbe::chars($paragraphs),
         'one_call' => $one,
         'four_calls' => $four,
         'four_calls_slowest_ms' => max($times),

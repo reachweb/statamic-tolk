@@ -35,3 +35,16 @@ it('reports what breaks §A3', function (string $translation, array $problems) u
 it('reports a translation that is far too long', function () {
     expect(PlaceholderCheck::problems('Hi', str_repeat('Γεια ', 50), 'numeric'))->toBe(['too long']);
 });
+
+it('lists the failing segments of a batch, a missing translation included', function () use ($source) {
+    $segments = [['id' => 's1', 'text' => $source], ['id' => 's2', 'text' => 'Hello'], ['id' => 's3', 'text' => 'Bye']];
+
+    expect(PlaceholderCheck::failures($segments, ['s1' => 'Το check-in<x1/>', 's2' => 'Γεια'], 'numeric'))->toBe([
+        's1' => [
+            'problems' => ['pair 1 missing', 'pair 2 missing', '0 line breaks instead of 1'],
+            'source' => $source,
+            'translation' => 'Το check-in<x1/>',
+        ],
+        's3' => ['problems' => ['missing'], 'source' => 'Bye', 'translation' => null],
+    ]);
+});

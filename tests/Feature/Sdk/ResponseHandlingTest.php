@@ -5,7 +5,7 @@ use Laravel\Ai\Responses\StructuredAgentResponse;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 
 it('decodes the structured translations', function (string $provider) {
-    $response = ProviderFixtures::respond($provider, ProviderFixtures::response($provider));
+    $response = ProviderFixtures::respond($provider);
 
     expect($response)->toBeInstanceOf(StructuredAgentResponse::class)
         ->and($response->structured['translations'])->toBe(ProviderFixtures::TRANSLATIONS)
@@ -26,7 +26,7 @@ it('reports the model the provider returned, except for gemini, which reports th
 ]);
 
 it('maps usage, cache and reasoning tokens', function (string $provider, array $usage) {
-    $response = ProviderFixtures::respond($provider, ProviderFixtures::response($provider));
+    $response = ProviderFixtures::respond($provider);
 
     expect($response->usage->toArray())->toBe($usage);
 })->with([
