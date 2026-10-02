@@ -2,5 +2,13 @@
 /node_modules
 /resources/dist/hot
 .phpunit.cache
+.pest.cache
+/tests/__fixtures__/*
+!/tests/__fixtures__/dev-null/
+/tests/__fixtures__/dev-null/*
+!/tests/__fixtures__/dev-null/.gitkeep
 .env*
 .DS_Store
+/.claude/settings.local.json
+/test-results
+/playwright-report
