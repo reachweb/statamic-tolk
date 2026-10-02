@@ -158,7 +158,7 @@ class Settings
     {
         return $this->values ??= array_merge(
             self::DEFAULTS,
-            array_filter(Addon::get(self::PACKAGE)?->settings()->raw() ?? [], fn ($value) => $value !== null),
+            Arr::whereNotNull(Addon::get(self::PACKAGE)?->settings()->raw() ?? []),
         );
     }
 
@@ -184,7 +184,7 @@ class Settings
     {
         $rows = $this->values()[$key];
 
-        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+        return is_array($rows) ? array_filter($rows, 'is_array') : [];
     }
 
     private function handles(string $key): array

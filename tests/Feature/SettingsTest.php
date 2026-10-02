@@ -8,16 +8,6 @@ use Statamic\CP\PublishForm;
 use Statamic\Facades\Addon;
 use Statamic\Facades\YAML;
 
-function saveTolkSettings(array $values): void
-{
-    Addon::get(Settings::PACKAGE)->settings()->set($values)->save();
-}
-
-function tolkSettings(): Settings
-{
-    return app(Settings::class)->fresh();
-}
-
 function tolkSettingsBlueprintFields(): array
 {
     $blueprint = YAML::file(dirname(__DIR__, 2).'/resources/blueprints/settings.yaml')->parse();
@@ -62,7 +52,7 @@ it('uses sites fields with one item inside both grids', function () {
 });
 
 it('returns the defaults when nothing is saved', function () {
-    $settings = tolkSettings();
+    $settings = app(Settings::class);
 
     expect($settings->translatorModel())->toBeNull()
         ->and($settings->reviewEnabled())->toBeFalse()
@@ -81,7 +71,7 @@ it('returns the defaults when nothing is saved', function () {
 });
 
 it('lets saved raw values win over the defaults', function () {
-    saveTolkSettings([
+    $settings = $this->withSettings([
         'translator_model' => 'openai:gpt-6.1-sol',
         'review_enabled' => true,
         'reviewer_model' => 'anthropic:claude-sonnet-5-5',
@@ -102,8 +92,6 @@ it('lets saved raw values win over the defaults', function () {
         'excluded_fields' => ['internal_note'],
     ]);
 
-    $settings = tolkSettings();
-
     expect($settings->translatorModel())->toEqual(new ModelRef('openai', 'gpt-6.1-sol'))
         ->and($settings->reviewEnabled())->toBeTrue()
         ->and($settings->reviewerModel())->toEqual(new ModelRef('anthropic', 'claude-sonnet-5-5'))
@@ -123,11 +111,10 @@ it('lets saved raw values win over the defaults', function () {
 });
 
 it('keeps booleans as booleans, where core stringifies them', function () {
-    saveTolkSettings(['review_enabled' => true, 'offer_on_create' => false, 'strict_fields' => false]);
+    $settings = $this->withSettings(['review_enabled' => true, 'offer_on_create' => false, 'strict_fields' => false]);
 
     $stored = YAML::file(resource_path('addons/statamic-tolk.yaml'))->parse();
     $addonSettings = Addon::get(Settings::PACKAGE)->settings();
-    $settings = tolkSettings();
 
     expect($stored)->toBe(['review_enabled' => true, 'offer_on_create' => false, 'strict_fields' => false])
         ->and($addonSettings->raw()['offer_on_create'])->toBeFalse()
@@ -139,13 +126,11 @@ it('keeps booleans as booleans, where core stringifies them', function () {
 });
 
 it('memoizes the values until fresh() drops them', function () {
-    saveTolkSettings(['instructions' => 'First.']);
-
-    $settings = tolkSettings();
+    $settings = $this->withSettings(['instructions' => 'First.']);
 
     expect($settings->instructions())->toBe('First.');
 
-    saveTolkSettings(['instructions' => 'Second.']);
+    Addon::get(Settings::PACKAGE)->settings()->set(['instructions' => 'Second.'])->save();
 
     expect($settings->instructions())->toBe('First.')
         ->and($settings->fresh()->instructions())->toBe('Second.');
@@ -188,10 +173,9 @@ it('reads what the settings page saves', function () {
         'providers' => null,
     ]);
 
-    saveTolkSettings($values);
+    $settings = $this->withSettings($values);
 
     $stored = YAML::file(resource_path('addons/statamic-tolk.yaml'))->parse();
-    $settings = tolkSettings();
 
     expect($stored['review_enabled'])->toBeTrue()
         ->and($stored['offer_on_create'])->toBeFalse()
@@ -219,7 +203,7 @@ it('reads what the settings page saves', function () {
 });
 
 it('falls back to the defaults for empty and unknown values', function () {
-    saveTolkSettings([
+    $settings = $this->withSettings([
         'translator_model' => '  ',
         'review_enabled' => null,
         'new_localization_status' => 'published',
@@ -230,8 +214,6 @@ it('falls back to the defaults for empty and unknown values', function () {
         'excluded_collections' => null,
         'excluded_fields' => [' internal_note ', '', 'internal_note', null],
     ]);
-
-    $settings = tolkSettings();
 
     expect($settings->translatorModel())->toBeNull()
         ->and($settings->reviewEnabled())->toBeFalse()
@@ -245,9 +227,7 @@ it('falls back to the defaults for empty and unknown values', function () {
 });
 
 it('throws on a model reference that does not parse', function () {
-    saveTolkSettings(['translator_model' => 'mistral:large']);
-
-    tolkSettings()->translatorModel();
+    $this->withSettings(['translator_model' => 'mistral:large'])->translatorModel();
 })->throws(InvalidModelRef::class, 'Invalid model reference [mistral:large]');
 
 it('returns the glossary rows of a site and of all sites, sorted by term', function () {
@@ -262,11 +242,8 @@ it('returns the glossary rows of a site and of all sites, sorted by term', funct
         ['id' => '8', 'term' => 'agora', 'site' => ['el'], 'translation' => 'αγορά'],
     ];
 
-    saveTolkSettings(['glossary' => $rows]);
-    $greek = tolkSettings()->glossary('el');
-
-    saveTolkSettings(['glossary' => array_reverse($rows)]);
-    $reversed = tolkSettings()->glossary('el');
+    $greek = $this->withSettings(['glossary' => $rows])->glossary('el');
+    $reversed = $this->withSettings(['glossary' => array_reverse($rows)])->glossary('el');
 
     expect($greek)->toBe([
         ['term' => 'Agora', 'site' => null, 'translation' => 'Agora market', 'do_not_translate' => false, 'note' => 'The covered market'],
@@ -276,18 +253,16 @@ it('returns the glossary rows of a site and of all sites, sorted by term', funct
         ['term' => 'zeus', 'site' => null, 'translation' => 'Δίας', 'do_not_translate' => false, 'note' => ''],
     ])
         ->and($reversed)->toBe($greek)
-        ->and(array_column(tolkSettings()->glossary('de'), 'term'))->toBe(['Agora', 'Breakfast', 'Kyma Bay', 'zeus']);
+        ->and(array_column(app(Settings::class)->glossary('de'), 'term'))->toBe(['Agora', 'Breakfast', 'Kyma Bay', 'zeus']);
 });
 
 it('returns the language instructions of the first row for the site', function () {
-    saveTolkSettings(['language_instructions' => [
+    $settings = $this->withSettings(['language_instructions' => [
         ['id' => '1', 'formality' => 'formal', 'instructions' => 'No site.'],
         ['id' => '2', 'site' => 'el', 'formality' => 'casual', 'instructions' => ' Use the monotonic system. '],
         ['id' => '3', 'site' => 'el', 'formality' => 'formal', 'instructions' => 'Second row.'],
         ['id' => '4', 'site' => 'de', 'formality' => 'formal'],
     ]]);
-
-    $settings = tolkSettings();
 
     expect($settings->languageInstructions('el'))->toBe(['formality' => Formality::Default, 'instructions' => 'Use the monotonic system.'])
         ->and($settings->languageInstructions('de'))->toBe(['formality' => Formality::Formal, 'instructions' => ''])

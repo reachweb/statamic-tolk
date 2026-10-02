@@ -7,18 +7,10 @@ use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
 use Reach\StatamicTolk\Support\Settings;
-use Statamic\Facades\Addon;
 
 function modelCatalog(): ModelCatalog
 {
     return app(ModelCatalog::class);
-}
-
-function catalogSettings(array $values = []): Settings
-{
-    Addon::get(Settings::PACKAGE)->settings()->set($values)->save();
-
-    return app(Settings::class)->fresh();
 }
 
 function modelRef(string $reference): ModelRef
@@ -115,26 +107,26 @@ it('throws when the catalog has no model of a tier', function () {
 });
 
 it('resolves the translator from the override, then the setting, then the first configured provider', function () {
-    $settings = catalogSettings(['translator_model' => 'gemini:gemini-3.5-flash-lite']);
+    $settings = $this->withSettings(['translator_model' => 'gemini:gemini-3.5-flash-lite']);
 
     expect(modelCatalog()->resolveTranslator($settings, modelRef('openai:gpt-6-luna')))->toEqual(modelRef('openai:gpt-6-luna'))
         ->and(modelCatalog()->resolveTranslator($settings))->toEqual(modelRef('gemini:gemini-3.5-flash-lite'))
-        ->and(modelCatalog()->resolveTranslator(catalogSettings()))->toEqual(modelRef('anthropic:claude-sonnet-5-5'));
+        ->and(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('anthropic:claude-sonnet-5-5'));
 
     $this->withProviderKeys(['tolk.providers.openai.key' => 'tolk-key']);
 
-    expect(modelCatalog()->resolveTranslator(catalogSettings()))->toEqual(modelRef('openai:gpt-6.1-sol'));
+    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('openai:gpt-6.1-sol'));
 });
 
 it('throws when no provider is configured and nothing names a translator', function () {
     $this->withProviderKeys([]);
 
-    expect(fn () => modelCatalog()->resolveTranslator(catalogSettings()))
+    expect(fn () => modelCatalog()->resolveTranslator($this->withSettings()))
         ->toThrow(NoProviderConfigured::class, 'No AI provider is configured.');
 });
 
 it('lets an unparseable model setting propagate', function (string $key, Closure $resolve) {
-    $settings = catalogSettings([$key => 'mistral:mistral-large']);
+    $settings = $this->withSettings([$key => 'mistral:mistral-large']);
 
     expect(fn () => $resolve(modelCatalog(), $settings))->toThrow(InvalidModelRef::class, 'mistral:mistral-large');
 })->with([
@@ -144,7 +136,7 @@ it('lets an unparseable model setting propagate', function (string $key, Closure
 ]);
 
 it('resolves the reviewer from the override, then the setting', function () {
-    $settings = catalogSettings(['reviewer_model' => 'gemini:gemini-3.8-flash']);
+    $settings = $this->withSettings(['reviewer_model' => 'gemini:gemini-3.8-flash']);
     $translator = modelRef('anthropic:claude-sonnet-5-5');
 
     expect(modelCatalog()->resolveReviewer($settings, $translator, modelRef('anthropic:claude-haiku-4-5')))->toEqual(modelRef('anthropic:claude-haiku-4-5'))
@@ -152,7 +144,7 @@ it('resolves the reviewer from the override, then the setting', function () {
 });
 
 it('picks the quality model of another configured provider as the reviewer', function (string $translator, string $expected) {
-    expect(modelCatalog()->resolveReviewer(catalogSettings(), modelRef($translator)))->toEqual(modelRef($expected));
+    expect(modelCatalog()->resolveReviewer($this->withSettings(), modelRef($translator)))->toEqual(modelRef($expected));
 })->with([
     ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol'],
     ['openai:gpt-6-luna', 'anthropic:claude-sonnet-5-5'],
@@ -162,14 +154,14 @@ it('picks the quality model of another configured provider as the reviewer', fun
 it('skips unconfigured providers when it picks the reviewer', function () {
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'sdk-key', 'tolk.providers.gemini.key' => 'tolk-key']);
 
-    expect(modelCatalog()->resolveReviewer(catalogSettings(), modelRef('anthropic:claude-sonnet-5-5')))
+    expect(modelCatalog()->resolveReviewer($this->withSettings(), modelRef('anthropic:claude-sonnet-5-5')))
         ->toEqual(modelRef('gemini:gemini-3.8-flash'));
 });
 
 it('falls back to the translator as the reviewer when only one provider is configured', function () {
     $this->withProviderKeys(['ai.providers.openai.key' => 'sdk-key']);
 
-    $settings = catalogSettings();
+    $settings = $this->withSettings();
     $translator = modelCatalog()->resolveTranslator($settings);
 
     expect($translator)->toEqual(modelRef('openai:gpt-6.1-sol'))
@@ -179,15 +171,15 @@ it('falls back to the translator as the reviewer when only one provider is confi
 it('resolves the fallback model from the setting', function () {
     $translator = modelRef('anthropic:claude-sonnet-5-5');
 
-    expect(modelCatalog()->resolveFallback(catalogSettings(), $translator))->toBeNull()
-        ->and(modelCatalog()->resolveFallback(catalogSettings(['fallback_model' => 'openai:gpt-6.1-sol']), $translator))
+    expect(modelCatalog()->resolveFallback($this->withSettings(), $translator))->toBeNull()
+        ->and(modelCatalog()->resolveFallback($this->withSettings(['fallback_model' => 'openai:gpt-6.1-sol']), $translator))
         ->toEqual(modelRef('openai:gpt-6.1-sol'))
-        ->and(modelCatalog()->resolveFallback(catalogSettings(['fallback_model' => 'anthropic:claude-haiku-4-5']), $translator))
+        ->and(modelCatalog()->resolveFallback($this->withSettings(['fallback_model' => 'anthropic:claude-haiku-4-5']), $translator))
         ->toEqual(modelRef('anthropic:claude-haiku-4-5'));
 });
 
 it('resolves no fallback when it is the translator', function () {
-    $settings = catalogSettings(['fallback_model' => 'anthropic:claude-sonnet-5-5']);
+    $settings = $this->withSettings(['fallback_model' => 'anthropic:claude-sonnet-5-5']);
 
     expect(modelCatalog()->resolveFallback($settings, modelRef('anthropic:claude-sonnet-5-5')))->toBeNull();
 });
@@ -195,7 +187,7 @@ it('resolves no fallback when it is the translator', function () {
 it('resolves no fallback on an unconfigured provider', function () {
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'sdk-key']);
 
-    $settings = catalogSettings(['fallback_model' => 'gemini:gemini-3.8-flash']);
+    $settings = $this->withSettings(['fallback_model' => 'gemini:gemini-3.8-flash']);
 
     expect(modelCatalog()->resolveFallback($settings, modelRef('anthropic:claude-sonnet-5-5')))->toBeNull();
 

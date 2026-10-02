@@ -50,7 +50,7 @@ it('sends every catalog model with its options and keeps the structured output f
 
     foreach ($models as $index => $model) {
         $body = $bodies[$index];
-        $sent = $optionsPath === null ? $body : ($body[$optionsPath] ?? []);
+        $sent = data_get($body, $optionsPath, []);
 
         expect($body['model'])->toBe($model['id'])
             ->and(data_get($body, "{$formatPath}.required"))->toBe(['translations'])
