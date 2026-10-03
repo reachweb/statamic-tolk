@@ -8,4 +8,5 @@
 /phpunit.xml export-ignore
 /vitest.config.js export-ignore
 /playwright.config.js export-ignore
+/.env.browser.example export-ignore
 /pint.json export-ignore

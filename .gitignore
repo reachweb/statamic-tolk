@@ -8,8 +8,10 @@
 /tests/__fixtures__/dev-null/*
 !/tests/__fixtures__/dev-null/.gitkeep
 .env*
+!/.env.browser.example
 .DS_Store
 /.claude/settings.local.json
 /test-results
 /playwright-report
+/tests/Browser/.auth
 /build
