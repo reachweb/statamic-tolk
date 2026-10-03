@@ -31,6 +31,14 @@ final class Placeholders
         ];
     }
 
+    /**
+     * The text without its paired tags, atoms and hard breaks.
+     */
+    public static function strip(string $text): string
+    {
+        return preg_replace('/'.self::IDS.'|<br\/>/', '', $text) ?? $text;
+    }
+
     public static function validate(string $source, string $translated, SegmentKind $kind): ?string
     {
         if (self::blank($translated) && ! self::blank($source)) {

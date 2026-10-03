@@ -22,8 +22,6 @@ final class FakeEngine implements Engine
 
     public const string REVIEW_REASON = 'The source contains the [[review]] marker.';
 
-    private const string PLACEHOLDERS = '/'.Placeholders::IDS.'|<br\/>/';
-
     public static function enabled(): bool
     {
         return filter_var(config('tolk.fake_engine'), FILTER_VALIDATE_BOOL) && app()->environment('local', 'testing');
@@ -59,7 +57,7 @@ final class FakeEngine implements Engine
     private function translation(EngineCall $call, string $text): string
     {
         if (str_contains($text, self::INVALID)) {
-            $text = preg_replace(self::PLACEHOLDERS, '', $text);
+            $text = Placeholders::strip($text);
         }
 
         return '['.$call->target->lang.'] '.$text;
