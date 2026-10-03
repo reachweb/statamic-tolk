@@ -15,10 +15,7 @@ final readonly class UsageMap
 
     public function add(ModelRef $model, Usage $usage): self
     {
-        $usages = $this->usages;
-        $usages[(string) $model] = ($usages[(string) $model] ?? new Usage)->add($usage);
-
-        return new self($usages);
+        return $this->merge(new self([(string) $model => $usage]));
     }
 
     public function merge(self $map): self

@@ -87,7 +87,7 @@ final class PromptBuilder
             ? 'do not translate'
             : $this->quote($row['translation']));
 
-        $note = preg_replace('/\s+/u', ' ', $this->text($row['note'] ?? ''));
+        $note = Str::squish($this->text($row['note'] ?? ''));
 
         return $note === '' ? $line : "{$line} ({$note})";
     }

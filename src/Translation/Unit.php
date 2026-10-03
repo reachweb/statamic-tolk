@@ -53,10 +53,11 @@ final readonly class Unit
     public function halves(bool $useFallback): array
     {
         $size = (int) ceil(count($this->segmentIds) / 2);
+        $deeper = ['depth' => $this->depth + 1];
 
         return [
-            $this->derive('.a', array_slice($this->segmentIds, 0, $size), $useFallback, ['depth' => $this->depth + 1]),
-            $this->derive('.b', array_slice($this->segmentIds, $size), $useFallback, ['depth' => $this->depth + 1]),
+            $this->derive('.a', array_slice($this->segmentIds, 0, $size), $useFallback, $deeper),
+            $this->derive('.b', array_slice($this->segmentIds, $size), $useFallback, $deeper),
         ];
     }
 

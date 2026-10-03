@@ -20,7 +20,7 @@ use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Exceptions\RequestRejected;
 use Throwable;
 
-final class TranslationEngine implements Engine
+final readonly class TranslationEngine implements Engine
 {
     public const int MIN_OUTPUT_TOKENS = 2048;
 
@@ -31,11 +31,11 @@ final class TranslationEngine implements Engine
     private const int OUTPUT_FACTOR = 3;
 
     public function __construct(
-        private readonly ModelCatalog $catalog,
-        private readonly PromptBuilder $prompts,
-        private readonly ErrorClassifier $classifier,
-        private readonly RetryPolicy $retry,
-        private readonly Throttle $throttle,
+        private ModelCatalog $catalog,
+        private PromptBuilder $prompts,
+        private ErrorClassifier $classifier,
+        private RetryPolicy $retry,
+        private Throttle $throttle,
     ) {}
 
     public function translate(EngineCall $call): EngineResult
