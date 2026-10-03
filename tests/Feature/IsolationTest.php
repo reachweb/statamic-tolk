@@ -1,12 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\File;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Facades\Addon;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Role;
-use Statamic\Facades\YAML;
 
 $written = [];
 
@@ -21,9 +23,10 @@ it('writes a blueprint, a role, addon settings, an entry and a state record', fu
     $this->makeCollection('isolation_pages', ['en', 'el'], ['title' => ['type' => 'text']]);
     $entry = $this->makeEntry('isolation_pages', 'en', ['title' => 'Isolation']);
 
-    $state = config('tolk.state.path').'/isolation.yaml';
-    File::ensureDirectoryExists(dirname($state));
-    File::put($state, YAML::dump(['reference' => 'entry::isolation']));
+    $ref = TargetRef::parse('entry::'.$entry->id());
+    $repository = app(StateRepository::class);
+    $repository->update($ref, fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: '9f2c1a7e5b3d4c10')));
+    $state = $repository->path($ref);
 
     $written = [
         'blueprint' => $blueprint->path(),
@@ -43,5 +46,6 @@ it('starts the next test without any of them', function () use (&$written) {
         ->and(Role::find('isolation_role'))->toBeNull()
         ->and(Addon::get('reachweb/statamic-tolk')->settings()->raw())->toBe([])
         ->and(Collection::findByHandle('isolation_pages'))->toBeNull()
-        ->and(Entry::query()->count())->toBe(0);
+        ->and(Entry::query()->count())->toBe(0)
+        ->and(iterator_to_array(app(StateRepository::class)->references(), false))->toBe([]);
 });
