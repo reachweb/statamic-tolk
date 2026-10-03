@@ -15,6 +15,7 @@ use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\State\TargetStatus;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 
@@ -464,36 +465,7 @@ describe('item status', function () {
         $path = app(StateRepository::class)->path(statusRef($localization));
         $stored = File::get($path);
 
-        $repository = new class(app(StateRepository::class)) implements StateRepository
-        {
-            public int $writes = 0;
-
-            public function __construct(private StateRepository $inner) {}
-
-            public function get(TargetRef $ref): ItemState
-            {
-                return $this->inner->get($ref);
-            }
-
-            public function update(TargetRef $ref, Closure $callback): ItemState
-            {
-                $this->writes++;
-
-                return $this->inner->update($ref, $callback);
-            }
-
-            public function delete(TargetRef $ref): void
-            {
-                $this->writes++;
-
-                $this->inner->delete($ref);
-            }
-
-            public function references(): iterable
-            {
-                return $this->inner->references();
-            }
-        };
+        $repository = new CountingStateRepository(app(StateRepository::class));
         $this->app->instance(StateRepository::class, $repository);
 
         $status = statusOf($this->origin);
