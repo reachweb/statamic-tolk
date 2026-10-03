@@ -156,6 +156,20 @@ final readonly class FieldState
         );
     }
 
+    /**
+     * A baseline against the given source for a target whose text has the given fingerprint. That text reads manual from
+     * now on, machine output included (D27), so it leaves the history. Unsaved deliveries stay pending.
+     */
+    public function baselined(string $sourceHash, string $targetHash): self
+    {
+        return new self(
+            sourceHash: $sourceHash,
+            translator: $this->translator,
+            history: $this->historyReplacedBy($targetHash),
+            pending: $this->pending,
+        );
+    }
+
     public function toArray(): array
     {
         return array_filter([

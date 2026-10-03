@@ -67,9 +67,25 @@ final readonly class ItemState
         return new self($this->reference, $this->sourceSite, $this->version, $fields);
     }
 
+    public function withSourceSite(string $sourceSite): self
+    {
+        return new self($this->reference, $sourceSite, $this->version, $this->fields);
+    }
+
     public function isEmpty(): bool
     {
         return $this->fields === [];
+    }
+
+    public function hasPending(): bool
+    {
+        foreach ($this->fields as $field) {
+            if ($field->pending !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function toArray(): array
