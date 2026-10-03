@@ -6,7 +6,7 @@ Guidance for agents working on this repository. Keep it under 120 lines, and upd
 
 Tolk (`reachweb/statamic-tolk`, namespace `Reach\StatamicTolk\`) is a commercial Statamic 6 addon that translates multi-site content from an origin site into its localizations with LLMs from Anthropic, OpenAI and Google Gemini, through the Laravel AI SDK (`laravel/ai`). It fills translations into the open entry editor unsaved, translates single fields, runs bulk translations from listings, a status overview and the CLI, and tracks per field whether a translation is outdated or was edited by hand, so it updates only what has changed.
 
-Stack: PHP `^8.3`, Statamic `^6.35` (Pro, multi-site), Laravel `^12.62 || ^13.15`, `laravel/ai ^1.0.1`, Vue 3 and Inertia in the Control Panel (CP), Pest 4 on `Statamic\Testing\AddonTestCase`, Vitest, and later Playwright against the sandbox.
+Stack: PHP `^8.3`, Statamic `^6.35` (Pro, multi-site), Laravel `^12.62 || ^13.15`, `laravel/ai ^1.0.1`, Vue 3 and Inertia in the Control Panel (CP), Pest 4 on `Statamic\Testing\AddonTestCase`, Vitest, and Playwright against the sandbox.
 
 ## `TASKS.md` is the source of truth
 
@@ -28,6 +28,7 @@ From the addon repo, `/Volumes/1TB/Sites/autotranslator`:
 - Content-model contract tests live in `tests/Feature/Contracts/` (localizations, the CP round trip, terms, globals, navs, git listeners, the Stache refresh). If a Statamic update breaks them, read `docs/research/07-spike-findings.md` "Content model" before changing code.
 - `vendor/bin/pint`: format PHP before a task is complete (`vendor/bin/pint --test` only checks).
 - `npm test`: Vitest for `resources/js/**/*.test.js`.
+- `npm run test:browser`: Playwright scenarios (`tests/Browser/*.spec.js`) against the sandbox, one worker. It needs `npx playwright install chromium` and a git-ignored `.env.browser` (copy `.env.browser.example`; the passwords are in the sandbox's `SANDBOX.md` and never go into a committed file). The global setup fails fast unless the sandbox answers and its fake engine is on, and stores the admin's and the editor's logins in `tests/Browser/.auth/` (scenarios run as the admin; `test.use({ storageState: sessions.editor })` switches). Import `test` and `expect` from `tests/Browser/support/test.js` (it snoozes Statamic's licensing modal and provides `browserErrors()`, without core's known noise); `support/sandbox.js` has `artisan`, `please`, `tinker`, `reset`, `entryFile`, `openEntry` and `cpUrl`.
 - `npm run cp:build`: build the CP assets into `resources/dist/build`, which is committed.
 - `npm run cp:dev`: Vite dev server with hot reload; it writes `resources/dist/hot` while it runs.
 - CI (`.github/workflows/tests.yml`) runs Pint and Pest on PHP 8.3–8.5 × Laravel 12 and 13 with `composer update`, and fails when a fresh `npm run cp:build` differs from the committed `resources/dist/build`. It runs no live or browser tests.

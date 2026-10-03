@@ -5,13 +5,16 @@
     "scripts": {
         "cp:dev": "vite",
         "cp:build": "vite build",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:browser": "playwright test"
     },
     "devDependencies": {
+        "@playwright/test": "^1.63.0",
         "@tailwindcss/vite": "^4.0.0",
         "laravel-vite-plugin": "^3.0.0",
         "vite": "^8.0.0",
-        "vitest": "^5.0.3"
+        "vitest": "^5.0.3",
+        "yaml": "^2.9.1"
     },
     "dependencies": {
         "@statamic/cms": "file:./vendor/statamic/cms/resources/dist-package",
