@@ -125,6 +125,17 @@ it('throws when no provider is configured and nothing names a translator', funct
         ->toThrow(NoProviderConfigured::class, 'No AI provider is configured.');
 });
 
+it('resolves the quality model of the first provider under the fake engine when no provider is configured', function () {
+    $this->withProviderKeys([]);
+    config(['tolk.fake_engine' => true]);
+
+    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('anthropic:claude-sonnet-5-5'));
+
+    $this->withProviderKeys(['ai.providers.gemini.key' => 'test-key']);
+
+    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('gemini:gemini-3.8-flash'));
+});
+
 it('lets an unparseable model setting propagate', function (string $key, Closure $resolve) {
     $settings = $this->withSettings([$key => 'mistral:mistral-large']);
 

@@ -19,6 +19,11 @@ final class ContentWriter
 {
     public const string LOCK = 'tolk:write';
 
+    /**
+     * The message of the one commit that follows a batch of writes, which run without Statamic's git listener.
+     */
+    public const string COMMIT_MESSAGE = 'Content translated';
+
     private static bool $active = false;
 
     /**
