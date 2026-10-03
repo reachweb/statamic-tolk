@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk;
 
+use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\TranslationEngine;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
@@ -32,7 +33,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->app->scoped(Settings::class);
         $this->app->singleton(FieldtypeRegistry::class);
         $this->app->singleton(StateRepository::class, FileStateRepository::class);
-        $this->app->bind(Engine::class, TranslationEngine::class);
+        $this->app->bind(Engine::class, fn ($app) => $app->make(FakeEngine::enabled() ? FakeEngine::class : TranslationEngine::class));
     }
 
     public function bootAddon(): void

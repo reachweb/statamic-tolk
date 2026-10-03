@@ -4,6 +4,13 @@ use Illuminate\Cache\FileStore;
 use Illuminate\Http\Client\StrayRequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\ExpectationFailedException;
+use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
+use Reach\StatamicTolk\Ai\ModelRef;
+use Reach\StatamicTolk\Ai\Prompts\PromptBuilder;
+use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
+use Reach\StatamicTolk\Tests\Support\Agents\ProbeAgent;
+use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -110,4 +117,57 @@ it('switches to a file cache in the temporary directory', function () {
 
 it('blocks stray HTTP requests', function () {
     expect(fn () => Http::get('https://api.anthropic.com/v1/messages'))->toThrow(StrayRequestException::class);
+});
+
+function promptFakedTranslations(array $segments, string $provider = 'anthropic'): array
+{
+    $agent = new TranslationAgent(new ModelRef($provider, ProviderFixtures::model($provider)['id']), 'Translate.');
+
+    return $agent->prompt(app(PromptBuilder::class)->user([], $segments))->structured['translations'];
+}
+
+it('fakes translations with a [T] prefix outside any placeholder', function (string $provider) {
+    $this->fakeTranslations();
+
+    expect(promptFakedTranslations([
+        ['id' => 's1', 'field' => 'Title', 'kind' => 'plain', 'text' => 'Welcome'],
+        ['id' => 's2', 'field' => 'Intro', 'kind' => 'inline', 'text' => '<1>Bold</1> start.<x1/>'],
+    ], $provider))->toBe([
+        ['id' => 's1', 'text' => '[T] Welcome'],
+        ['id' => 's2', 'text' => '[T] <1>Bold</1> start.<x1/>'],
+    ]);
+})->with(ProviderFixtures::PROVIDERS);
+
+it('fakes translations with a transform that gets the text and the segment, and leaves out a null', function () {
+    $this->fakeTranslations(fn (string $text, array $segment) => $segment['id'] === 's2' ? null : "{$segment['field']}: {$text}");
+
+    expect(promptFakedTranslations([
+        ['id' => 's1', 'field' => 'Title', 'kind' => 'plain', 'text' => 'Welcome'],
+        ['id' => 's2', 'field' => 'Intro', 'kind' => 'plain', 'text' => 'Left out'],
+    ]))->toBe([['id' => 's1', 'text' => 'Title: Welcome']]);
+});
+
+it('counts the model calls of every agent', function () {
+    $this->assertNoModelCalls();
+
+    $this->fakeTranslations();
+    ProbeAgent::fake();
+
+    promptFakedTranslations([['id' => 's1', 'field' => 'Title', 'kind' => 'plain', 'text' => 'One']]);
+    promptFakedTranslations([['id' => 's1', 'field' => 'Title', 'kind' => 'plain', 'text' => 'Two']], 'gemini');
+    ProviderFixtures::agent('openai')->prompt('Three');
+
+    expect($this->modelCalls())->toBe(3)
+        ->and(fn () => $this->assertNoModelCalls())->toThrow(ExpectationFailedException::class, 'Expected no model calls, 3 were made.');
+});
+
+it('needs a provider key for a faked translation, as a real call does', function () {
+    $this->withProviderKeys();
+    $this->fakeTranslations();
+
+    expect(fn () => promptFakedTranslations([['id' => 's1', 'field' => 'Title', 'kind' => 'plain', 'text' => 'One']]))
+        ->toThrow(ProviderNotConfigured::class);
+
+    $this->assertNoModelCalls();
+    TranslationAgent::assertNeverPrompted();
 });

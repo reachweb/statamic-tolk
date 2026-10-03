@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\ServiceProvider;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\CreatesContent;
+use Reach\StatamicTolk\Tests\Support\FakesTranslation;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Addon;
 use Statamic\Facades\Site;
@@ -23,6 +24,7 @@ abstract class TestCase extends AddonTestCase
 {
     use CreatesContent;
     use FakesRoles;
+    use FakesTranslation;
     use PreventsSavingStacheItemsToDisk;
 
     protected string $addonServiceProvider = ServiceProvider::class;
