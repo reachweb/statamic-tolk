@@ -313,3 +313,55 @@ it('reads an item record leniently', function () {
 
     expect(ItemState::fromArray(['reference' => 'entry::0b5f', 'v' => 2])->version)->toBe(2);
 });
+
+it('reconciles to the same record when nothing is pending', function () {
+    $field = machineState('s1', 't1');
+
+    expect($field->reconcile('t2', CarbonImmutable::now()))->toBe($field)
+        ->and($field->inHistory('t1'))->toBeFalse()
+        ->and(machineState('s2', 't2', [['source_hash' => 's1', 'target_hash' => 't1']])->inHistory('t1'))->toBeTrue();
+});
+
+it('promotes the newest of several pending entries with the saved output and drops the rest', function () {
+    $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
+    $older = pendingState('t1', ['plan' => 'older', 'createdAt' => $now->subHours(2)]);
+    $newer = pendingState('t1', ['plan' => 'newer', 'createdAt' => $now->subHour()]);
+    $other = pendingState('t2', ['createdAt' => $now->subMinute()]);
+    $field = (new FieldState)->withPending($older)->withPending($newer)->withPending($other);
+
+    $reconciled = $field->reconcile('t1', $now);
+
+    expect($field->savedPending('t1'))->toBe($newer)
+        ->and($field->savedPending(null))->toBeNull()
+        ->and($reconciled->targetHash)->toBe('t1')
+        ->and($reconciled->translatedAt)->toEqual($newer->createdAt)
+        ->and($reconciled->pending)->toBe([]);
+});
+
+it('writes a baseline from the newest pending entry whose plan saw other text', function () {
+    $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
+    $unchanged = pendingState('t2', ['targetBefore' => 'edited', 'createdAt' => $now->subMinute()]);
+    $planned = pendingState('t3', ['targetBefore' => null, 'createdAt' => $now->subHour()]);
+    $field = machineState('s1', 't1')->withPending($planned)->withPending($unchanged);
+
+    $reconciled = $field->reconcile('edited', $now);
+
+    expect($field->editedPending('edited'))->toBe($planned)
+        ->and($field->editedPending(null))->toBeNull()
+        ->and($field->editedPending('t1'))->toBeNull()
+        ->and($reconciled->isBaseline())->toBeTrue()
+        ->and($reconciled->sourceHash)->toBe($planned->sourceHash)
+        ->and($reconciled->history)->toBe([['source_hash' => 's1', 'target_hash' => 't1']])
+        ->and($reconciled->pending)->toBe([]);
+});
+
+it('keeps unsaved pending entries for 30 days', function () {
+    $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
+    $fresh = pendingState('t2', ['targetBefore' => 't1', 'createdAt' => $now->subDays(FieldState::PENDING_DAYS)->addSecond()]);
+    $stale = pendingState('t3', ['targetBefore' => 't1', 'createdAt' => $now->subDays(FieldState::PENDING_DAYS)]);
+
+    $reconciled = machineState('s1', 't1')->withPending($stale)->withPending($fresh)->reconcile('t1', $now);
+
+    expect($reconciled->pending)->toBe([$fresh])
+        ->and($reconciled->targetHash)->toBe('t1');
+});
