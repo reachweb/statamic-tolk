@@ -17,6 +17,11 @@ trait ReadsStoredValues
         return is_string($value) && $value !== '' ? $value : null;
     }
 
+    private static function storedArray(array $data, string $key): array
+    {
+        return is_array($data[$key] ?? null) ? $data[$key] : [];
+    }
+
     private static function storedBool(array $data, string $key): bool
     {
         return ($data[$key] ?? false) === true;
@@ -27,13 +32,7 @@ trait ReadsStoredValues
      */
     private static function storedSegments(array $data): array
     {
-        $segments = $data['segments'] ?? [];
-
-        if (! is_array($segments)) {
-            return [];
-        }
-
-        return array_map(fn (mixed $hash) => is_string($hash) && $hash !== '' ? $hash : null, array_values($segments));
+        return array_map(fn (mixed $hash) => is_string($hash) && $hash !== '' ? $hash : null, array_values(self::storedArray($data, 'segments')));
     }
 
     private static function storedTime(array $data, string $key): ?CarbonImmutable

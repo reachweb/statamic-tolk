@@ -33,6 +33,11 @@ final class Tokenizer
         return preg_match(self::HTML_TAG, self::withoutAntlers($text)) === 1;
     }
 
+    public static function unescape(string $text): string
+    {
+        return strtr($text, array_flip(self::ESCAPES));
+    }
+
     public static function restore(string $text, Tokenized $source): string
     {
         $restored = '';
@@ -40,7 +45,7 @@ final class Tokenizer
         foreach (preg_split('/('.Placeholders::ATOM.')/', $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $index => $part) {
             $restored .= match (true) {
                 $index % 2 === 1 => $source->map[substr($part, 1, -2)] ?? $part,
-                $source->kind->escapes() => strtr($part, array_flip(self::ESCAPES)),
+                $source->kind->escapes() => self::unescape($part),
                 default => $part,
             };
         }

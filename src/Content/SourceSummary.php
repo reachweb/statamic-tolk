@@ -2,7 +2,9 @@
 
 namespace Reach\StatamicTolk\Content;
 
+use Illuminate\Support\Str;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
+use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Contracts\Target;
 
 final class SourceSummary
@@ -41,9 +43,9 @@ final class SourceSummary
         $texts = array_map(function (Leaf $leaf): string {
             $text = preg_replace('/'.Placeholders::IDS.'|<br\/>/', ' ', $leaf->text);
 
-            return $leaf->kind->escapes() ? strtr($text, ['&lt;' => '<', '&gt;' => '>', '&amp;' => '&']) : $text;
+            return $leaf->kind->escapes() ? Tokenizer::unescape($text) : $text;
         }, $leaves);
 
-        return trim(preg_replace('/\s+/u', ' ', implode("\n", $texts)));
+        return Str::squish(implode(' ', $texts));
     }
 }

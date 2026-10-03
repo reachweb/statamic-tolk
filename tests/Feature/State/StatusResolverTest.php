@@ -5,18 +5,15 @@ use Illuminate\Support\Facades\File;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
-use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ItemStatus;
 use Reach\StatamicTolk\State\FieldState;
-use Reach\StatamicTolk\State\ItemState;
-use Reach\StatamicTolk\State\PendingState;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\State\TargetStatus;
 use Reach\StatamicTolk\Targets\TargetFactory;
-use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 
 beforeEach(function () {
@@ -40,54 +37,6 @@ beforeEach(function () {
 function statusOf(EntryContract $origin, string $site = 'el'): TargetStatus
 {
     return app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry($origin, $site));
-}
-
-function statusRef(EntryContract $localization): TargetRef
-{
-    return new TargetRef(ContentType::Entry, $localization->id());
-}
-
-/**
- * @param  array<string, FieldState>  $fields
- */
-function recordStatusState(EntryContract $localization, array $fields): void
-{
-    app(StateRepository::class)->update(statusRef($localization), function (ItemState $state) use ($fields) {
-        foreach ($fields as $handle => $field) {
-            $state = $state->withField($handle, $field);
-        }
-
-        return $state;
-    });
-}
-
-function machineOutput(mixed $source, string $translation, array $overrides = []): FieldState
-{
-    return new FieldState(...[
-        'sourceHash' => Fingerprint::of($source),
-        'targetHash' => Fingerprint::ofLeaves([$translation]),
-        'segments' => [Fingerprint::ofText((string) $source)],
-        'translatedAt' => CarbonImmutable::parse('2026-10-01T12:00:00Z'),
-        'translator' => 'anthropic:claude-sonnet-5-5',
-        ...$overrides,
-    ]);
-}
-
-function pendingOutput(mixed $source, string $translation, array $overrides = []): PendingState
-{
-    return new PendingState(...[
-        'plan' => 'plan-'.Fingerprint::ofText($translation),
-        'sourceHash' => Fingerprint::of($source),
-        'targetHash' => Fingerprint::ofLeaves([$translation]),
-        'targetBefore' => null,
-        'segments' => [Fingerprint::ofText((string) $source)],
-        'identical' => false,
-        'incomplete' => false,
-        'translator' => 'openai:gpt-6.1-sol',
-        'reviewer' => null,
-        'createdAt' => CarbonImmutable::now()->startOfSecond()->subHour(),
-        ...$overrides,
-    ]);
 }
 
 function editOrigin(EntryContract $origin, array $values): void
@@ -124,7 +73,7 @@ describe('field status', function () {
 
     it('reads untouched machine output of the current source as current', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        recordStatusState($localization, ['title' => machineOutput('Hello', 'Γεια', ['reviewer' => 'gemini:gemini-3.8-flash'])]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια', ['reviewer' => 'gemini:gemini-3.8-flash'])]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -140,7 +89,7 @@ describe('field status', function () {
 
     it('reads machine output as outdated once the origin changes', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        recordStatusState($localization, ['title' => machineOutput('Hello', 'Γεια')]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
 
         editOrigin($this->origin, ['title' => 'Hello there']);
         $field = statusOf($this->origin)->fields['title'];
@@ -151,7 +100,7 @@ describe('field status', function () {
 
     it('reads incomplete machine output as outdated', function () {
         $localization = $this->localize($this->origin, 'el', ['intro' => 'A short intro.']);
-        recordStatusState($localization, ['intro' => machineOutput('A short intro.', 'A short intro.', [
+        StateFixtures::store($localization, ['intro' => StateFixtures::machine('A short intro.', 'A short intro.', [
             'segments' => [null],
             'identical' => true,
             'incomplete' => true,
@@ -182,7 +131,7 @@ describe('field status', function () {
 
     it('reads a baseline as manual with an unchanged source, then as changed after an origin edit', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
-        recordStatusState($localization, ['title' => new FieldState(sourceHash: Fingerprint::of('Hello'))]);
+        StateFixtures::store($localization, ['title' => new FieldState(sourceHash: Fingerprint::of('Hello'))]);
 
         $before = statusOf($this->origin)->fields['title'];
         editOrigin($this->origin, ['title' => 'Hello there']);
@@ -202,8 +151,8 @@ describe('field status', function () {
 describe('pending entries', function () {
     it('promotes a pending entry in memory when the saved text matches it', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        $pending = pendingOutput('Hello', 'Γεια');
-        recordStatusState($localization, ['title' => (new FieldState)->withPending($pending)]);
+        $pending = StateFixtures::pending('Hello', 'Γεια');
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -212,12 +161,12 @@ describe('pending entries', function () {
             ->and($field->state->targetHash)->toBe($pending->targetHash)
             ->and($field->translatedAt)->toEqual($pending->createdAt)
             ->and($field->translator)->toBe('openai:gpt-6.1-sol')
-            ->and(app(StateRepository::class)->get(statusRef($localization))->field('title')->pending)->toHaveCount(1);
+            ->and(app(StateRepository::class)->get(StateFixtures::ref($localization))->field('title')->pending)->toHaveCount(1);
     });
 
     it('reads a pending entry that was edited before saving as manual with an unchanged source', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
-        recordStatusState($localization, ['title' => (new FieldState)->withPending(pendingOutput('Hello', 'Γεια'))]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -230,10 +179,10 @@ describe('pending entries', function () {
 
     it('keeps the previous status while a pending entry has not been saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        $pending = pendingOutput('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
-        recordStatusState($localization, [
-            'title' => machineOutput('Hello', 'Γεια')->withPending($pending),
-            'intro' => (new FieldState)->withPending(pendingOutput('A short intro.', 'Μια σύντομη εισαγωγή.')),
+        $pending = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια')->withPending($pending),
+            'intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Μια σύντομη εισαγωγή.')),
         ]);
 
         $status = statusOf($this->origin);
@@ -247,8 +196,8 @@ describe('pending entries', function () {
 
     it('keeps a hand-written field manual while a delivery planned from its text is not saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
-        $pending = pendingOutput('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);
-        recordStatusState($localization, ['title' => (new FieldState)->withPending($pending)]);
+        $pending = StateFixtures::pending('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -259,11 +208,11 @@ describe('pending entries', function () {
 
     it('keeps pending entries while the target holds earlier machine output', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Παλιά εισαγωγή.']);
-        $titlePending = pendingOutput('Hello', 'Χαίρετε');
-        $introPending = pendingOutput('A short intro.', 'Εισαγωγή.');
-        recordStatusState($localization, [
-            'title' => machineOutput('Hello', 'Γεια')->withPending($titlePending),
-            'intro' => machineOutput('A short intro.', 'Νέα εισαγωγή.', ['history' => [
+        $titlePending = StateFixtures::pending('Hello', 'Χαίρετε');
+        $introPending = StateFixtures::pending('A short intro.', 'Εισαγωγή.');
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια')->withPending($titlePending),
+            'intro' => StateFixtures::machine('A short intro.', 'Νέα εισαγωγή.', ['history' => [
                 ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['Παλιά εισαγωγή.'])],
             ]])->withPending($introPending),
         ]);
@@ -278,9 +227,9 @@ describe('pending entries', function () {
 
     it('promotes the older of two pending entries when that one was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        $older = pendingOutput('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subHours(2)]);
-        $newer = pendingOutput('Hello', 'Χαίρετε', ['translator' => 'anthropic:claude-haiku-4-5']);
-        recordStatusState($localization, ['title' => (new FieldState)->withPending($older)->withPending($newer)]);
+        $older = StateFixtures::pending('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subHours(2)]);
+        $newer = StateFixtures::pending('Hello', 'Χαίρετε', ['translator' => 'anthropic:claude-haiku-4-5']);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($older)->withPending($newer)]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -293,7 +242,7 @@ describe('pending entries', function () {
 
     it('promotes an identical pending entry when the target inherits the field', function () {
         $localization = $this->localize($this->origin, 'el');
-        recordStatusState($localization, ['title' => (new FieldState)->withPending(pendingOutput('Hello', 'Hello', ['identical' => true]))]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Hello', ['identical' => true]))]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -304,9 +253,9 @@ describe('pending entries', function () {
 
     it('drops pending entries older than 30 days that were never saved', function () {
         $localization = $this->localize($this->origin, 'el');
-        $recent = pendingOutput('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(29)]);
-        $old = pendingOutput('Hello', 'Χαίρετε', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(31)]);
-        recordStatusState($localization, ['title' => (new FieldState)->withPending($old)->withPending($recent)]);
+        $recent = StateFixtures::pending('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(29)]);
+        $old = StateFixtures::pending('Hello', 'Χαίρετε', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(31)]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($old)->withPending($recent)]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -318,7 +267,7 @@ describe('pending entries', function () {
 describe('machine output', function () {
     it('reads an older machine output that was put back as outdated', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        recordStatusState($localization, ['title' => machineOutput('Hello', 'Χαίρετε', ['history' => [
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Χαίρετε', ['history' => [
             ['source_hash' => Fingerprint::of('Hello'), 'target_hash' => Fingerprint::ofLeaves(['Γεια'])],
         ]])]);
 
@@ -330,7 +279,7 @@ describe('machine output', function () {
 
     it('reads a translation identical to its source without an override as current, then outdated', function () {
         $localization = $this->localize($this->origin, 'el');
-        recordStatusState($localization, ['title' => machineOutput('Hello', 'Hello', ['identical' => true])]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Hello', ['identical' => true])]);
 
         $before = statusOf($this->origin)->fields['title'];
         editOrigin($this->origin, ['title' => 'Hello there']);
@@ -343,7 +292,7 @@ describe('machine output', function () {
 
     it('reads an incomplete translation identical to its source without an override as outdated', function () {
         $localization = $this->localize($this->origin, 'el');
-        recordStatusState($localization, ['title' => machineOutput('Hello', 'Hello', ['identical' => true, 'incomplete' => true, 'segments' => [null]])]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Hello', ['identical' => true, 'incomplete' => true, 'segments' => [null]])]);
 
         $field = statusOf($this->origin)->fields['title'];
 
@@ -353,7 +302,7 @@ describe('machine output', function () {
 
     it('reads machine output as outdated once its source was emptied', function () {
         $localization = $this->localize($this->origin, 'el', ['intro' => 'Μια σύντομη εισαγωγή.']);
-        recordStatusState($localization, ['intro' => machineOutput('A short intro.', 'Μια σύντομη εισαγωγή.')]);
+        StateFixtures::store($localization, ['intro' => StateFixtures::machine('A short intro.', 'Μια σύντομη εισαγωγή.')]);
 
         editOrigin($this->origin, ['intro' => null]);
         $field = statusOf($this->origin)->fields['intro'];
@@ -365,7 +314,7 @@ describe('machine output', function () {
     it('reads machine output of a source without text as current until the source changes', function () {
         editOrigin($this->origin, ['intro' => 'https://example.com/intro']);
         $localization = $this->localize($this->origin, 'el', ['intro' => 'https://example.com/intro']);
-        recordStatusState($localization, ['intro' => new FieldState(
+        StateFixtures::store($localization, ['intro' => new FieldState(
             sourceHash: Fingerprint::of('https://example.com/intro'),
             targetHash: Fingerprint::ofLeaves([]),
         )]);
@@ -392,7 +341,7 @@ describe('machine output', function () {
         $source = [['question' => 'Check-in?', 'answer' => 'From 14:00.']];
         editOrigin($this->origin, ['faq' => $source]);
         $localization = $this->localize($this->origin, 'el', ['faq' => [['question' => 'Άφιξη;', 'answer' => 'Από τις 14:00.']]]);
-        recordStatusState($localization, ['faq' => new FieldState(
+        StateFixtures::store($localization, ['faq' => new FieldState(
             sourceHash: Fingerprint::of($source),
             targetHash: Fingerprint::ofLeaves(['Άφιξη;', 'Από τις 14:00.']),
         )]);
@@ -423,25 +372,25 @@ describe('item status', function () {
     it('orders item statuses worst first', function () {
         editOrigin($this->origin, ['body' => 'The body.']);
         $localization = $this->localize($this->origin, 'el', ['intro' => 'Εισαγωγή.', 'body' => 'Χειροποίητο σώμα.']);
-        recordStatusState($localization, [
-            'intro' => machineOutput('An older intro.', 'Εισαγωγή.'),
+        StateFixtures::store($localization, [
+            'intro' => StateFixtures::machine('An older intro.', 'Εισαγωγή.'),
             'body' => new FieldState(sourceHash: Fingerprint::of('An older body.')),
         ]);
 
         $untranslated = statusOf($this->origin);
 
         $localization->set('title', 'Γεια')->save();
-        recordStatusState($localization, ['title' => machineOutput('Hello', 'Γεια')]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
         $outdated = statusOf($this->origin);
 
-        recordStatusState($localization, ['intro' => machineOutput('A short intro.', 'Εισαγωγή.')]);
+        StateFixtures::store($localization, ['intro' => StateFixtures::machine('A short intro.', 'Εισαγωγή.')]);
         $attention = statusOf($this->origin);
 
-        recordStatusState($localization, ['body' => new FieldState(sourceHash: Fingerprint::of('The body.'))]);
+        StateFixtures::store($localization, ['body' => new FieldState(sourceHash: Fingerprint::of('The body.'))]);
         $current = statusOf($this->origin);
 
         $localization->set('body', 'Άλλο σώμα.')->save();
-        recordStatusState($localization, ['body' => new FieldState]);
+        StateFixtures::store($localization, ['body' => new FieldState]);
         $untracked = statusOf($this->origin);
 
         expect($untranslated->itemStatus)->toBe(ItemStatus::Untranslated)
@@ -457,12 +406,12 @@ describe('item status', function () {
 
     it('never writes state', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Χειροποίητη εισαγωγή.']);
-        recordStatusState($localization, [
-            'title' => (new FieldState)->withPending(pendingOutput('Hello', 'Γεια')),
-            'intro' => (new FieldState)->withPending(pendingOutput('A short intro.', 'Εισαγωγή.')),
-            'body' => (new FieldState)->withPending(pendingOutput('The body.', 'Σώμα.', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(40)])),
+        StateFixtures::store($localization, [
+            'title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια')),
+            'intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Εισαγωγή.')),
+            'body' => (new FieldState)->withPending(StateFixtures::pending('The body.', 'Σώμα.', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(40)])),
         ]);
-        $path = app(StateRepository::class)->path(statusRef($localization));
+        $path = app(StateRepository::class)->path(StateFixtures::ref($localization));
         $stored = File::get($path);
 
         $repository = new CountingStateRepository(app(StateRepository::class));

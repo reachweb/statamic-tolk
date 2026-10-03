@@ -188,18 +188,7 @@ final readonly class FieldState
 
     private function withPendingEntries(array $pending): self
     {
-        return new self(
-            sourceHash: $this->sourceHash,
-            targetHash: $this->targetHash,
-            segments: $this->segments,
-            identical: $this->identical,
-            incomplete: $this->incomplete,
-            translatedAt: $this->translatedAt,
-            translator: $this->translator,
-            reviewer: $this->reviewer,
-            history: $this->history,
-            pending: array_slice(array_values($pending), 0, self::MAX_PENDING),
-        );
+        return new self(...[...get_object_vars($this), 'pending' => array_slice(array_values($pending), 0, self::MAX_PENDING)]);
     }
 
     /**
@@ -226,7 +215,7 @@ final readonly class FieldState
     {
         $history = [];
 
-        foreach (is_array($data['history'] ?? null) ? $data['history'] : [] as $pair) {
+        foreach (self::storedArray($data, 'history') as $pair) {
             if (is_array($pair) && ($targetHash = self::storedString($pair, 'target_hash')) !== null) {
                 $history[] = ['source_hash' => self::storedString($pair, 'source_hash'), 'target_hash' => $targetHash];
             }
@@ -239,7 +228,7 @@ final readonly class FieldState
     {
         $pending = [];
 
-        foreach (is_array($data['pending'] ?? null) ? $data['pending'] : [] as $entry) {
+        foreach (self::storedArray($data, 'pending') as $entry) {
             if (is_array($entry) && ($state = PendingState::fromArray($entry)) !== null) {
                 $pending[] = $state;
             }
