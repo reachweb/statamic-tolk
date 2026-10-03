@@ -11,6 +11,7 @@ use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Enums\SegmentKind;
+use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Enums\UnitKind;
 
@@ -54,6 +55,7 @@ it('pins every case and its value', function (string $enum, array $cases) {
         'Skipped' => 'skipped',
         'Failed' => 'failed',
     ]],
+    'TargetResultStatus' => [TargetResultStatus::class, ['Done' => 'done', 'Skipped' => 'skipped', 'Failed' => 'failed']],
     'RunDriver' => [RunDriver::class, ['Queue' => 'queue', 'Browser' => 'browser', 'Cli' => 'cli']],
     'Finish' => [Finish::class, ['Stop' => 'stop', 'Length' => 'length', 'Refused' => 'refused', 'Empty' => 'empty']],
     'ProviderErrorKind' => [ProviderErrorKind::class, [

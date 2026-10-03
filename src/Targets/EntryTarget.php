@@ -196,6 +196,18 @@ final class EntryTarget implements Target
     }
 
     /**
+     * @throws RootMissing when rootMissing() is true, naming the root page to translate first
+     */
+    public function ensureRootExists(): void
+    {
+        if ($this->rootMissing()) {
+            $root = Entry::find($this->sourceRootId() ?? '');
+
+            throw RootMissing::for($root?->id(), (string) ($root?->value('title') ?? $root?->slug() ?? 'the root page'), $this->siteName());
+        }
+    }
+
+    /**
      * @param  list<AssembledField>  $fields
      */
     private function applyFresh(array $fields, ApplyOptions $options): ApplyResult
@@ -291,11 +303,7 @@ final class EntryTarget implements Target
      */
     private function createLocalization(ApplyOptions $options): array
     {
-        if ($this->rootMissing()) {
-            $root = Entry::find($this->sourceRootId() ?? '');
-
-            throw RootMissing::for($root?->id(), (string) ($root?->value('title') ?? $root?->slug() ?? 'the root page'), $this->siteName());
-        }
+        $this->ensureRootExists();
 
         // The id comes first: an unsaved entry shares the Blink keys of its origin and blueprint with every other (§A11 "Create").
         $localization = $this->source()->makeLocalization($this->site)->id(Stache::generateId())->published(false);
