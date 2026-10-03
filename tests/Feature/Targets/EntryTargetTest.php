@@ -4,7 +4,6 @@ use Illuminate\Support\Facades\Event;
 use Reach\StatamicTolk\Content\SourceSummary;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
-use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
@@ -318,8 +317,4 @@ describe('authorization', function () {
         expect(entryTarget($this->origin, 'el')->authorize($this->signInWithPermissions(['access el site'])))->toBeFalse()
             ->and(entryTarget($this->origin, 'el')->authorize($this->signInAdmin()))->toBeTrue();
     });
-});
-
-it('refuses to apply until the write side is built', function () {
-    expect(fn () => entryTarget($this->origin, 'el')->apply([], new ApplyOptions))->toThrow(LogicException::class);
 });
