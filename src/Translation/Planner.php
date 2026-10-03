@@ -129,7 +129,7 @@ final readonly class Planner
             'index' => $index,
             'kind' => $leaf->kind->value,
             'text' => $leaf->text,
-            'label' => $leaf->label,
+            'label' => $leaf->label !== '' ? $leaf->label : $handle,
             'hint' => $leaf->hint,
             'max_length' => $leaf->maxLength,
             'before' => null,

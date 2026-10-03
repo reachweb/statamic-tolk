@@ -39,6 +39,16 @@ final class Placeholders
         return preg_replace('/'.self::IDS.'|<br\/>/', '', $text) ?? $text;
     }
 
+    /**
+     * What a reader sees of a segment's text: no placeholders, and escaped characters undone in the kinds that escape.
+     */
+    public static function visible(string $text, SegmentKind $kind): string
+    {
+        $text = self::strip($text);
+
+        return $kind->escapes() ? Tokenizer::unescape($text) : $text;
+    }
+
     public static function validate(string $source, string $translated, SegmentKind $kind): ?string
     {
         if (self::blank($translated) && ! self::blank($source)) {

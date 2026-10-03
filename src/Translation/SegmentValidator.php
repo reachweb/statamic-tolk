@@ -3,7 +3,6 @@
 namespace Reach\StatamicTolk\Translation;
 
 use Reach\StatamicTolk\Content\Markup\Placeholders;
-use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Enums\SegmentKind;
 
 /**
@@ -41,8 +40,7 @@ final class SegmentValidator
             return null;
         }
 
-        $visible = Placeholders::strip($translation);
-        $length = mb_strlen(SegmentKind::from($segment['kind'])->escapes() ? Tokenizer::unescape($visible) : $visible);
+        $length = mb_strlen(Placeholders::visible($translation, SegmentKind::from($segment['kind'])));
 
         return $length > $max ? "The translation has {$length} characters; it must not exceed {$max}." : null;
     }

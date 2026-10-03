@@ -15,12 +15,11 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\Fingerprint;
-use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
-use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\Finish;
+use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\ProviderTimeout;
@@ -96,14 +95,9 @@ final readonly class Pipeline
         }
 
         $timeout = (int) config("tolk.http.timeout.{$plan->options->profile}", 45);
-        $lock = $this->store->lock($plan->id, $unitId, $timeout + 10);
 
-        if (! $lock->get()) {
-            throw UnitBusy::for($plan->id, $unitId);
-        }
-
-        try {
-            if ($outcome = $this->store->outcome($plan->id, $unitId)) {
+        $outcome = $this->store->lock($plan->id, $unitId, $timeout + 10)->get(function () use ($plan, $unit, $timeout, $recordUsage) {
+            if ($outcome = $this->store->outcome($plan->id, $unit->id)) {
                 return $outcome;
             }
 
@@ -111,9 +105,9 @@ final readonly class Pipeline
             $this->store->putOutcome($plan->id, $outcome);
 
             return $outcome;
-        } finally {
-            $lock->release();
-        }
+        });
+
+        return $outcome ?: throw UnitBusy::for($plan->id, $unitId);
     }
 
     /**
@@ -141,7 +135,7 @@ final readonly class Pipeline
 
         return array_values(array_filter(
             $plan->fieldHandles(),
-            fn (string $handle) => array_intersect_key(array_flip($plan->fields[$handle]['segment_ids']), $pending) === [],
+            fn (string $handle) => array_intersect_key($plan->segmentsOfField($handle), $pending) === [],
         ));
     }
 
@@ -174,11 +168,13 @@ final readonly class Pipeline
         }
 
         if ($planned['clear']) {
-            return $this->cleared($plan, $field, $sourceValue);
+            return $this->cleared($plan->id, $planned, $field, $sourceValue);
         }
 
+        $sourceTexts = array_column($segments, 'text');
+
         // The same source value with another walk means the blueprint changed since planning.
-        if (array_map(fn (Leaf $leaf) => $leaf->text, $this->walker->leaves($field, $sourceValue)) !== array_column($segments, 'text')) {
+        if (array_column($this->walker->leaves($field, $sourceValue), 'text') !== $sourceTexts) {
             throw SourceChanged::field($handle);
         }
 
@@ -192,7 +188,7 @@ final readonly class Pipeline
                 $failed[$id] = $reason = $resolved['failed'][$id] ?? UnitOutcome::MISSING;
                 $texts[] = $segment['text'];
                 $hashes[] = null;
-                $warnings[] = "{$this->label($segment)}: \"{$this->excerpt($segment['text'])}\" was left untranslated ({$reason}).";
+                $warnings[] = "{$segment['label']}: \"{$this->excerpt($segment)}\" was left untranslated ({$reason}).";
 
                 continue;
             }
@@ -220,9 +216,9 @@ final readonly class Pipeline
             targetHash: $this->resolver->targetHash($field, $value),
             targetBefore: $planned['target_before'],
             segments: $this->aligned($field, $value, $texts) ? $hashes : [],
-            identical: $texts === array_column($segments, 'text'),
+            identical: $texts === $sourceTexts,
             incomplete: $failed !== [],
-            translator: $this->mostUsed($models),
+            translator: collect($models)->mode()[0] ?? null,
             corrections: array_values(array_intersect_key($resolved['corrections'], $segments)),
             warnings: array_values(array_unique($warnings)),
         );
@@ -231,8 +227,8 @@ final readonly class Pipeline
     private function call(Plan $plan, Unit $unit, int $timeout, ?Closure $recordUsage): UnitOutcome
     {
         $failures = $this->store->failures($plan->id, $unit->id);
-        $model = $this->model($plan, $unit, $failures);
-        $fallback = $plan->options->fallback !== null && (string) $model === (string) $plan->options->fallback;
+        $fallback = $this->usesFallback($plan, $unit, $failures);
+        $model = $fallback ? $plan->options->fallback : $plan->options->translator;
 
         try {
             $result = $this->engine->translate(new EngineCall(
@@ -259,9 +255,9 @@ final readonly class Pipeline
 
             throw $exception;
         } catch (RequestRejected $exception) {
-            return $exception->tooLarge() && $unit->canSplit()
-                ? new UnitOutcome(unit: $unit->id, model: (string) $model, spawned: $unit->halves($fallback))
-                : new UnitOutcome(unit: $unit->id, model: (string) $model, failed: $this->failAll($unit, UnitOutcome::REQUEST_REJECTED));
+            return $exception->tooLarge()
+                ? $this->splitOrFail($unit, $model, $fallback, UnitOutcome::REQUEST_REJECTED)
+                : $this->failed($unit, $model, UnitOutcome::REQUEST_REJECTED);
         }
 
         if ($recordUsage !== null) {
@@ -272,15 +268,23 @@ final readonly class Pipeline
 
         return match ($result->finish) {
             Finish::Stop => $this->accept($plan, $unit, $result, $usage, $fallback),
-            Finish::Length, Finish::Empty => match (true) {
-                $unit->canSplit() => new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: $unit->halves($fallback)),
-                $unit->capMultiplier === 1 => new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: [$unit->withDoubledCap($fallback)]),
-                default => new UnitOutcome(unit: $unit->id, model: (string) $model, failed: $this->failAll($unit, UnitOutcome::TOO_LONG), usage: $usage),
-            },
-            Finish::Refused => $unit->canSplit()
-                ? new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: $unit->halves($fallback))
-                : new UnitOutcome(unit: $unit->id, model: (string) $model, failed: $this->failAll($unit, UnitOutcome::REFUSED), usage: $usage),
+            Finish::Length, Finish::Empty => ! $unit->canSplit() && $unit->capMultiplier === 1
+                ? new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: [$unit->withDoubledCap($fallback)])
+                : $this->splitOrFail($unit, $model, $fallback, UnitOutcome::TOO_LONG, $usage),
+            Finish::Refused => $this->splitOrFail($unit, $model, $fallback, UnitOutcome::REFUSED, $usage),
         };
+    }
+
+    private function splitOrFail(Unit $unit, ModelRef $model, bool $fallback, string $reason, UsageMap $usage = new UsageMap): UnitOutcome
+    {
+        return $unit->canSplit()
+            ? new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: $unit->halves($fallback))
+            : $this->failed($unit, $model, $reason, $usage);
+    }
+
+    private function failed(Unit $unit, ModelRef $model, string $reason, UsageMap $usage = new UsageMap): UnitOutcome
+    {
+        return new UnitOutcome(unit: $unit->id, model: (string) $model, failed: array_fill_keys($unit->segmentIds, $reason), usage: $usage);
     }
 
     /**
@@ -318,16 +322,18 @@ final readonly class Pipeline
                     continue;
                 }
 
-                $warnings[$id][] = "{$this->label($segment)}: the translation of \"{$this->excerpt($segment['text'])}\" is longer than {$segment['max_length']} characters.";
+                $warnings[$id][] = "{$segment['label']}: the translation of \"{$this->excerpt($segment)}\" is longer than {$segment['max_length']} characters.";
             }
 
             $translations[$id] = $text;
         }
 
-        if ($missing !== [] && $unit->missingRetry) {
-            $failed += array_fill_keys($missing, UnitOutcome::MISSING);
-        } elseif ($missing !== []) {
-            $spawned[] = $unit->forMissing($missing, $fallback);
+        if ($missing !== []) {
+            if ($unit->missingRetry) {
+                $failed += array_fill_keys($missing, UnitOutcome::MISSING);
+            } else {
+                $spawned[] = $unit->forMissing($missing, $fallback);
+            }
         }
 
         return new UnitOutcome(
@@ -345,14 +351,13 @@ final readonly class Pipeline
      * From `retry.max_attempts` transient failures on, and for units spawned by a fallback answer, the fallback takes
      * over while its provider is not paused (§A10).
      */
-    private function model(Plan $plan, Unit $unit, int $failures): ModelRef
+    private function usesFallback(Plan $plan, Unit $unit, int $failures): bool
     {
         $fallback = $plan->options->fallback;
-        $wanted = $unit->useFallback || $failures >= (int) config('tolk.retry.max_attempts', 3);
 
-        return $fallback !== null && $wanted && $this->throttle->pausedFor($fallback->provider) === 0
-            ? $fallback
-            : $plan->options->translator;
+        return $fallback !== null
+            && ($unit->useFallback || $failures >= (int) config('tolk.retry.max_attempts', 3))
+            && $this->throttle->pausedFor($fallback->provider) === 0;
     }
 
     /**
@@ -367,7 +372,7 @@ final readonly class Pipeline
 
             return [
                 'id' => $id,
-                'field' => $this->label($segment),
+                'field' => $segment['label'],
                 'kind' => $segment['kind'],
                 'hint' => $segment['hint'] ?? null,
                 'max_length' => $segment['max_length'] ?? null,
@@ -377,14 +382,6 @@ final readonly class Pipeline
                 'note' => $unit->notes[$id] ?? null,
             ];
         }, $unit->segmentIds);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function failAll(Unit $unit, string $reason): array
-    {
-        return array_fill_keys($unit->segmentIds, $reason);
     }
 
     /**
@@ -429,7 +426,7 @@ final readonly class Pipeline
             'failed' => array_diff_key($failed, $translations),
             'corrections' => $corrections,
             'warnings' => $warnings,
-            'models' => array_filter($models, 'is_string'),
+            'models' => $models,
             'pending' => $pending,
         ];
     }
@@ -438,14 +435,13 @@ final readonly class Pipeline
      * A field whose source lost its text: the override is removed when the source value is empty, and the source value
      * is copied when it only has no text (§A7).
      */
-    private function cleared(Plan $plan, Field $field, mixed $sourceValue): AssembledField
+    private function cleared(string $planId, array $planned, Field $field, mixed $sourceValue): AssembledField
     {
-        $planned = $plan->fields[$field->handle()];
         $remove = in_array(Fingerprint::canonical($sourceValue), [null, '', []], true);
 
         return new AssembledField(
             handle: $field->handle(),
-            plan: $plan->id,
+            plan: $planId,
             value: $remove ? null : $sourceValue,
             remove: $remove,
             sourceHash: $planned['source_hash'],
@@ -474,7 +470,7 @@ final readonly class Pipeline
         }
 
         foreach ($leaves as $index => $leaf) {
-            if ($this->visible($leaf->text) !== $this->visible($texts[$index])) {
+            if (Placeholders::visible($leaf->text, $leaf->kind) !== Placeholders::visible($texts[$index], $leaf->kind)) {
                 return false;
             }
         }
@@ -482,32 +478,8 @@ final readonly class Pipeline
         return true;
     }
 
-    private function visible(string $text): string
+    private function excerpt(array $segment): string
     {
-        return Tokenizer::unescape(Placeholders::strip($text));
-    }
-
-    /**
-     * @param  list<string>  $models
-     */
-    private function mostUsed(array $models): ?string
-    {
-        if ($models === []) {
-            return null;
-        }
-
-        $counts = array_count_values($models);
-
-        return array_search(max($counts), $counts, true);
-    }
-
-    private function label(array $segment): string
-    {
-        return ($segment['label'] ?? '') !== '' ? $segment['label'] : $segment['field'];
-    }
-
-    private function excerpt(string $text): string
-    {
-        return Str::limit(trim(preg_replace('/\s+/u', ' ', $this->visible($text))), 40);
+        return Str::limit(Str::squish(Placeholders::visible($segment['text'], SegmentKind::from($segment['kind']))), 40);
     }
 }

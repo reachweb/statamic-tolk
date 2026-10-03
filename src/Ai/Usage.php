@@ -64,9 +64,9 @@ final readonly class Usage
 
     public static function fromArray(array $data): self
     {
-        return new self(...array_combine(
-            array_values(self::KEYS),
-            array_map(fn (string $key) => is_numeric($data[$key] ?? null) ? max(0, (int) $data[$key]) : 0, array_keys(self::KEYS)),
+        return new self(...array_map(
+            fn (string $key) => is_numeric($data[$key] ?? null) ? max(0, (int) $data[$key]) : 0,
+            array_flip(self::KEYS),
         ));
     }
 }

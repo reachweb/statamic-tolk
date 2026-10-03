@@ -34,10 +34,10 @@ final class ScriptedEngine implements Engine
      */
     public static function translated(EngineCall $call): EngineResult
     {
-        return self::result($call, Finish::Stop, array_column(array_map(
-            fn (array $segment) => ['id' => $segment['id'], 'text' => '[T] '.$segment['text']],
-            $call->segments,
-        ), 'text', 'id'));
+        return self::result($call, Finish::Stop, array_combine(
+            array_column($call->segments, 'id'),
+            array_map(fn (array $segment) => '[T] '.$segment['text'], $call->segments),
+        ));
     }
 
     public function translate(EngineCall $call): EngineResult

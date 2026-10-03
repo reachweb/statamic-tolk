@@ -25,7 +25,7 @@ final class Sanitizer
     {
         $text = str_replace(self::configuredKeys(), self::REDACTED, $text);
         $text = preg_replace(self::PATTERNS, '$1'.self::REDACTED, $text) ?? '';
-        $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+        $text = Str::squish($text) ?? '';
 
         return Str::limit($text, self::MAX_LENGTH, '…');
     }
