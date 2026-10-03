@@ -1,30 +1,14 @@
 <?php
 
+use Reach\StatamicTolk\Support\ContentWriter;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Stache;
-use Statamic\Stache\Stores\AggregateStore;
-use Statamic\Stache\Stores\Store;
-use Statamic\Support\Blink as BlinkManager;
 
-/**
- * The refresh `ContentWriter` (T4.16) runs after taking the write lock; see
- * docs/research/07-spike-findings.md "Content model" for the experiment.
+/*
+ * Guards ContentWriter::refreshStache(), which ContentWriter runs after taking the write
+ * lock; see docs/research/07-spike-findings.md "Content model" for the experiment.
  */
-function refreshStache(): void
-{
-    Stache::stores()->each->resetMemoizedState();
-    app('stache.indexes')->each->resetMemoizedState();
-
-    Stache::stores()
-        ->flatMap(fn (Store $store) => $store instanceof AggregateStore ? [$store, ...$store->stores()->all()] : [$store])
-        ->each(fn (Store $store) => Closure::bind(function () {
-            $this->keys = null;
-            $this->usedIndexes = null;
-        }, $store, Store::class)());
-
-    Blink::clearResolvedInstance(BlinkManager::class);
-}
 
 beforeEach(function () {
     $this->makeCollection('articles', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
@@ -61,7 +45,7 @@ it('reloads paths and index items, but not index usage and keys, with the reset 
 });
 
 it('reloads everything with the full refresh', function () {
-    refreshStache();
+    ContentWriter::refreshStache();
 
     expect(($this->written)())->toBe(['path' => true, 'slug index' => true, 'index usage' => true, 'keys' => true]);
 });
@@ -72,7 +56,7 @@ it('drops Blink caches such as the descendants behind existsIn()', function () {
 
     expect($this->origin->fresh()->existsIn('el'))->toBeFalse();
 
-    refreshStache();
+    ContentWriter::refreshStache();
 
     expect(Blink::has('entry-descendants-'.$this->origin->id()))->toBeFalse()
         ->and($this->origin->fresh()->in('el')->id())->toBe($localization->id());

@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Targets;
 
+use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\SourceSummary;
 use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Contracts\Target;
@@ -11,6 +12,8 @@ use Reach\StatamicTolk\Exceptions\NotALocalization;
 use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\State\StateWriter;
+use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
@@ -22,6 +25,9 @@ final class TargetFactory
         private readonly TranslatableFields $translatableFields,
         private readonly SourceSummary $summary,
         private readonly Settings $settings,
+        private readonly ContentWalker $walker,
+        private readonly StatusResolver $resolver,
+        private readonly StateWriter $stateWriter,
     ) {}
 
     /**
@@ -61,7 +67,7 @@ final class TargetFactory
             throw InvalidTarget::siteNotInCollection($entry->collectionHandle(), $site);
         }
 
-        return new EntryTarget((string) $entry->id(), $site, $this->translatableFields, $this->summary, $this->settings);
+        return new EntryTarget((string) $entry->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->walker, $this->resolver, $this->stateWriter);
     }
 
     public function fromDescription(array $describe): Target

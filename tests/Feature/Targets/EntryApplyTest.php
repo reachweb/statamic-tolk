@@ -1,0 +1,524 @@
+<?php
+
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
+use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Fingerprint;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Exceptions\ApplyFailed;
+use Reach\StatamicTolk\Exceptions\NotSupportedYet;
+use Reach\StatamicTolk\Exceptions\RootMissing;
+use Reach\StatamicTolk\Exceptions\SourceChanged;
+use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\ApplyOptions;
+use Reach\StatamicTolk\Targets\ApplyResult;
+use Reach\StatamicTolk\Targets\EntryTarget;
+use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Tests\Support\Handlers\FakeReplicatorHandler;
+use Reach\StatamicTolk\Translation\AssembledField;
+use Reach\StatamicTolk\Translation\Pipeline;
+use Reach\StatamicTolk\Translation\Planner;
+use Reach\StatamicTolk\Translation\PlanOptions;
+use Reach\StatamicTolk\Translation\PlanStore;
+use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Events\EntryCreating;
+use Statamic\Events\EntrySaved;
+use Statamic\Events\EntrySaving;
+use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
+use Statamic\Facades\Stache;
+use Statamic\Git\CommitJob;
+use Statamic\Git\Subscriber;
+
+beforeEach(function () {
+    $this->useFileCache();
+    $this->fakeTranslations();
+
+    $this->makeCollection('articles', ['en', 'el', 'de'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+        'intro' => ['type' => 'textarea', 'localizable' => true],
+        'body' => ['type' => 'textarea', 'localizable' => true],
+        'note' => ['type' => 'text'],
+        'featured' => ['type' => 'toggle', 'localizable' => true],
+    ]);
+
+    $this->origin = $this->makeEntry('articles', 'en', [
+        'title' => 'Hello',
+        'intro' => 'A short intro.',
+        'body' => 'The body.',
+        'note' => 'Internal',
+        'featured' => true,
+    ], 'hello');
+});
+
+function applyTarget(EntryContract|string $source, string $site = 'el'): EntryTarget
+{
+    return app(TargetFactory::class)->forEntry($source, $site);
+}
+
+/**
+ * Plans the target, runs every unit and assembles every planned field from a fresh target.
+ *
+ * @return list<AssembledField>
+ */
+function applyAssembled(EntryContract|string $source, string $site = 'el', array $options = []): array
+{
+    $target = applyTarget($source, $site);
+    $plan = app(Planner::class)->plan($target, PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), $options));
+    app(PlanStore::class)->put($plan);
+    $pipeline = app(Pipeline::class);
+
+    while (($runnable = $pipeline->runnable($plan)) !== []) {
+        $pipeline->runUnit($plan, array_key_first($runnable));
+    }
+
+    $fresh = $target->fresh();
+
+    return array_map(fn (string $handle) => $pipeline->assemble($plan, $fresh, $handle), $plan->fieldHandles());
+}
+
+function applyInWriter(EntryContract|string $source, array $fields, ApplyOptions $options = new ApplyOptions, string $site = 'el'): ApplyResult
+{
+    return ContentWriter::write(fn () => applyTarget($source, $site)->apply($fields, $options));
+}
+
+function translateInto(EntryContract|string $source, string $site = 'el', ApplyOptions $options = new ApplyOptions, array $plan = []): ApplyResult
+{
+    return applyInWriter($source, applyAssembled($source, $site, $plan), $options, $site);
+}
+
+function applyStatuses(EntryContract|string $source, string $site = 'el'): array
+{
+    return array_map(fn ($field) => $field->status, app(StatusResolver::class)->resolve(applyTarget($source, $site))->fields);
+}
+
+describe('creating a localization', function () {
+    it('creates a draft whose own data holds the applied fields and no other', function () {
+        $result = translateInto($this->origin);
+
+        $localization = $this->origin->fresh()->in('el');
+
+        expect($result->created)->toBeTrue()
+            ->and($result->ref)->toEqual(new TargetRef(ContentType::Entry, $localization->id()))
+            ->and($result->applied)->toBe(['title', 'intro', 'body'])
+            ->and($result->skipped)->toBe([])
+            ->and($result->warnings)->toBe([])
+            ->and($localization->data()->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.', 'body' => '[T] The body.'])
+            ->and($localization->published())->toBeFalse()
+            ->and($localization->origin()->id())->toBe($this->origin->id())
+            ->and(applyStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+
+        $state = app(StateRepository::class)->get($result->ref);
+
+        expect($state->hasPending())->toBeFalse()
+            ->and($state->sourceSite)->toBe('en')
+            ->and($state->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['[T] Hello']))
+            ->and($state->field('title')->translator)->toBe('anthropic:claude-sonnet-5-5');
+    });
+
+    it('adds updated_at and updated_by with a user', function () {
+        $user = $this->signInAdmin();
+
+        translateInto($this->origin, options: new ApplyOptions(user: $user));
+
+        $localization = $this->origin->fresh()->in('el');
+
+        expect(array_keys($localization->data()->all()))->toEqualCanonicalizing(['title', 'intro', 'body', 'updated_at', 'updated_by'])
+            ->and($localization->get('updated_by'))->toBe($user->id());
+    });
+
+    it('mirrors the origin\'s published state with mirror', function () {
+        translateInto($this->origin, 'el', new ApplyOptions(newStatus: 'mirror'));
+
+        $draft = $this->makeEntry('articles', 'en', ['title' => 'Draft'], 'draft');
+        $draft->published(false)->save();
+        translateInto($draft, 'el', new ApplyOptions(newStatus: 'mirror'));
+
+        expect($this->origin->fresh()->in('el')->published())->toBeTrue()
+            ->and($draft->fresh()->in('el')->published())->toBeFalse();
+    });
+
+    it('mirrors for a user who may publish, and stays a draft for one who may not', function () {
+        $editor = $this->signInWithPermissions(['access el site', 'access de site', 'view articles entries', 'edit articles entries']);
+        translateInto($this->origin, 'el', new ApplyOptions(user: $editor, newStatus: 'mirror'));
+
+        $publisher = $this->signInWithPermissions(['access el site', 'access de site', 'view articles entries', 'edit articles entries', 'publish articles entries']);
+        translateInto($this->origin, 'de', new ApplyOptions(user: $publisher, newStatus: 'mirror'));
+
+        expect($this->origin->fresh()->in('el')->published())->toBeFalse()
+            ->and($this->origin->fresh()->in('de')->published())->toBeTrue();
+    });
+
+    it('stays a draft with mirror when a field is incomplete', function () {
+        $this->fakeTranslations(fn (string $text) => $text === 'A short intro.' ? null : '[T] '.$text);
+
+        $result = translateInto($this->origin, 'el', new ApplyOptions(newStatus: 'mirror'));
+
+        $localization = $this->origin->fresh()->in('el');
+
+        expect($result->applied)->toBe(['title', 'intro', 'body'])
+            ->and($localization->get('intro'))->toBe('A short intro.')
+            ->and($localization->published())->toBeFalse()
+            ->and(applyStatuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+    });
+
+    it('stays a draft with mirror when a field with source text was not delivered', function () {
+        $fields = array_values(array_filter(applyAssembled($this->origin), fn (AssembledField $field) => $field->handle !== 'body'));
+
+        applyInWriter($this->origin, $fields, new ApplyOptions(newStatus: 'mirror'));
+
+        expect($this->origin->fresh()->in('el')->published())->toBeFalse()
+            ->and(applyStatuses($this->origin)['body'])->toBe(FieldStatus::Untranslated);
+    });
+
+    it('creates the localization of a localization from that source', function () {
+        $el = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+
+        translateInto($el->fresh(), 'de');
+
+        $de = $this->origin->fresh()->in('de');
+
+        expect($de->origin()->id())->toBe($el->id())
+            ->and($de->data()->all())->toBe(['title' => '[T] Γεια']);
+    });
+});
+
+describe('slugs', function () {
+    it('keeps the origin\'s slug although the title is translated', function () {
+        $result = translateInto($this->origin);
+
+        expect($result->slug)->toBe('hello')
+            ->and($this->origin->fresh()->in('el')->slug())->toBe('hello');
+    });
+
+    it('adds a suffix and a warning when another entry in the target site has the slug', function () {
+        $this->makeEntry('articles', 'el', ['title' => 'Άλλο'], 'hello');
+        $this->makeEntry('articles', 'el', ['title' => 'Τρίτο'], 'hello-2');
+        $this->makeEntry('articles', 'de', ['title' => 'Andere'], 'other');
+
+        $el = translateInto($this->origin);
+        $de = translateInto($this->origin, 'de');
+
+        expect($el->slug)->toBe('hello-3')
+            ->and($this->origin->fresh()->in('el')->slug())->toBe('hello-3')
+            ->and($el->warnings)->toBe(['The slug "hello" is already used in Greek, so the new localization got "hello-3".'])
+            ->and($de->slug)->toBe('hello')
+            ->and($de->warnings)->toBe([]);
+    });
+
+    it('keeps the slug and published state of an existing localization', function () {
+        $localization = $this->localize($this->origin, 'el')->slug('geia')->published(false);
+        $localization->save();
+        $published = $this->localize($this->origin->fresh(), 'de')->slug('hallo');
+        $published->save();
+
+        $el = translateInto($this->origin, 'el', new ApplyOptions(newStatus: 'mirror'));
+        $de = translateInto($this->origin, 'de', new ApplyOptions(newStatus: 'mirror'));
+
+        expect($el->created)->toBeFalse()
+            ->and($el->slug)->toBeNull()
+            ->and($localization->fresh()->slug())->toBe('geia')
+            ->and($localization->fresh()->published())->toBeFalse()
+            ->and($localization->fresh()->get('title'))->toBe('[T] Hello')
+            ->and($de->created)->toBeFalse()
+            ->and($published->fresh()->slug())->toBe('hallo')
+            ->and($published->fresh()->published())->toBeTrue();
+    });
+});
+
+/**
+ * A structured `pages` collection with the English tree of the given shape: `['about', 'rooms' => ['suites']]`.
+ *
+ * @return array<string, EntryContract>
+ */
+function applyPages(array $shape, bool $root): array
+{
+    $collection = test()->makeCollection('pages', ['en', 'el', 'de'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+    ], structured: true);
+
+    $collection->structureContents(['root' => $root, 'max_depth' => 3])->save();
+
+    $entries = [];
+    $branches = function (array $shape) use (&$branches, &$entries): array {
+        return collect($shape)->map(function ($children, $slug) use (&$branches, &$entries) {
+            [$slug, $children] = is_int($slug) ? [$children, []] : [$slug, $children];
+            $entries[$slug] = test()->makeEntry('pages', 'en', ['title' => ucfirst($slug)], $slug);
+
+            return array_filter(['entry' => $entries[$slug]->id(), 'children' => $branches($children) ?: null]);
+        })->values()->all();
+    };
+
+    Collection::find('pages')->structure()->in('en')->tree($branches($shape))->save();
+
+    return $entries;
+}
+
+function applyTreeOfSlugs(string $site): array
+{
+    $slugs = function (array $branches) use (&$slugs): array {
+        return collect($branches)->mapWithKeys(fn (array $branch) => [
+            Entry::find($branch['entry'])->slug() => isset($branch['children']) ? $slugs($branch['children']) : [],
+        ])->all();
+    };
+
+    return $slugs(Collection::find('pages')->structure()->in($site)->tree());
+}
+
+describe('trees', function () {
+    it('places a child under its localized parent', function () {
+        $pages = applyPages(['about', 'rooms' => ['suites']], root: false);
+
+        translateInto($pages['rooms']->id());
+        translateInto($pages['suites']->id());
+
+        expect(applyTreeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
+    });
+
+    it('refuses any entry but the origin root into an empty tree of a collection with a root, and saves nothing', function () {
+        $pages = applyPages(['home', 'rooms' => ['suites']], root: true);
+        $fields = applyAssembled($pages['rooms']->id());
+
+        expect(applyTarget($pages['rooms']->id())->rootMissing())->toBeTrue()
+            ->and(applyTarget($pages['home']->id())->rootMissing())->toBeFalse()
+            ->and(fn () => applyInWriter($pages['rooms']->id(), $fields))->toThrow(RootMissing::class, 'Translate Home into Greek first.')
+            ->and(Entry::query()->where('collection', 'pages')->where('site', 'el')->count())->toBe(0)
+            ->and(applyTreeOfSlugs('el'))->toBe([]);
+    });
+
+    it('gives the target the origin\'s tree when the root is applied first', function () {
+        $pages = applyPages(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
+
+        foreach (['home', 'rooms', 'suites', 'honeymoon'] as $slug) {
+            translateInto($pages[$slug]->id());
+        }
+
+        expect(applyTreeOfSlugs('el'))->toBe(applyTreeOfSlugs('en'))
+            ->and(applyTreeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]]])
+            ->and(applyTarget($pages['rooms']->id(), 'de')->rootMissing())->toBeTrue()
+            ->and(applyTarget($pages['rooms']->id())->rootMissing())->toBeFalse();
+    });
+});
+
+it('gives a new localization its id before its first save, so it never reads another collection\'s blueprint or origin', function () {
+    $this->makeCollection('pages', ['en', 'el', 'de'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+        'page_only' => ['type' => 'text'],
+    ]);
+
+    $origins = collect(range(1, 4))->flatMap(fn (int $i) => [
+        $this->makeEntry('pages', 'en', ['title' => "Page {$i}"]),
+        $this->makeEntry('articles', 'en', ['title' => "Article {$i}"]),
+    ]);
+
+    $seen = [];
+    Event::listen(EntryCreating::class, function (EntryCreating $event) use (&$seen) {
+        $entry = $event->entry;
+        $seen[] = [$entry->id() !== null, $entry->collectionHandle(), $entry->blueprint()->namespace(), $entry->origin()->collectionHandle()];
+    });
+
+    foreach (['el', 'de'] as $site) {
+        foreach ($origins as $origin) {
+            translateInto($origin->id(), $site);
+        }
+    }
+
+    expect($seen)->toHaveCount(16);
+
+    foreach ($seen as [$hasId, $collection, $blueprint, $originCollection]) {
+        expect([$hasId, $blueprint, $originCollection])->toBe([true, "collections.{$collection}", $collection]);
+    }
+});
+
+it('lets the callback of ContentWriter::write() see what another process cached', function () {
+    $store = Stache::store('entries::articles');
+    Entry::query()->where('collection', 'articles')->where('slug', 'hello')->get();
+
+    $cache = Stache::cacheStore();
+    $cache->forever('stache::indexes::entries::articles::path', [...$cache->get('stache::indexes::entries::articles::path'), 'other' => '/content/collections/articles/en/other.md']);
+    $cache->forever('stache::indexes::entries::articles::_indexes', [...$cache->get('stache::indexes::entries::articles::_indexes'), 'late_index']);
+
+    $before = [$store->paths()->has('other'), $store->indexUsage()->contains('late_index')];
+    $inside = ContentWriter::write(fn () => [$store->paths()->has('other'), $store->indexUsage()->contains('late_index')]);
+
+    expect($before)->toBe([false, false])
+        ->and($inside)->toBe([true, true]);
+});
+
+describe('existing localizations', function () {
+    it('skips a field edited between plan and apply and keeps the human value', function () {
+        $localization = $this->localize($this->origin, 'el');
+        $fields = applyAssembled($this->origin);
+
+        $localization->fresh()->set('title', 'Χειροποίητο')->save();
+
+        $result = applyInWriter($this->origin, $fields);
+
+        expect($result->skipped)->toBe(['title' => 'target_changed'])
+            ->and($result->applied)->toBe(['intro', 'body'])
+            ->and($localization->fresh()->get('title'))->toBe('Χειροποίητο')
+            ->and($localization->fresh()->get('intro'))->toBe('[T] A short intro.')
+            ->and(applyStatuses($this->origin)['title'])->toBe(FieldStatus::Manual)
+            ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Entry, $localization->id()))->field('title')->pending)->toBe([]);
+    });
+
+    it('overwrites a field edited between plan and apply with overwriteManual', function () {
+        $localization = $this->localize($this->origin, 'el');
+        $fields = applyAssembled($this->origin);
+
+        $localization->fresh()->set('title', 'Χειροποίητο')->save();
+
+        $result = applyInWriter($this->origin, $fields, new ApplyOptions(overwriteManual: true));
+
+        expect($result->skipped)->toBe([])
+            ->and($localization->fresh()->get('title'))->toBe('[T] Hello')
+            ->and(applyStatuses($this->origin)['title'])->toBe(FieldStatus::Current);
+    });
+
+    it('removes the override of a field whose source was emptied, and forgets its state', function () {
+        translateInto($this->origin);
+        $this->origin->fresh()->remove('intro')->save();
+
+        expect(applyStatuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+
+        $fields = applyAssembled($this->origin, 'el', ['mode' => Mode::Update]);
+
+        expect(array_map(fn (AssembledField $field) => [$field->handle, $field->remove], $fields))->toBe([['intro', true]]);
+
+        $result = applyInWriter($this->origin, $fields);
+        $localization = $this->origin->fresh()->in('el');
+
+        expect($result->applied)->toBe(['intro'])
+            ->and($localization->has('intro'))->toBeFalse()
+            ->and(app(StateRepository::class)->get($result->ref)->fields)->not->toHaveKey('intro')
+            ->and(applyStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::NotApplicable, 'body' => FieldStatus::Current]);
+
+        $this->origin->fresh()->set('intro', 'Back again.')->save();
+
+        expect(applyStatuses($this->origin)['intro'])->toBe(FieldStatus::Untranslated);
+    });
+
+    it('leaves a pending entry that reads as machine and current when it fails after save()', function () {
+        $localization = $this->localize($this->origin, 'el');
+        $fields = applyAssembled($this->origin);
+
+        Event::listen(EntrySaved::class, function (EntrySaved $event) {
+            if ($event->entry->locale() === 'el') {
+                throw new RuntimeException('After save');
+            }
+        });
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(RuntimeException::class, 'After save');
+
+        $state = app(StateRepository::class)->get(new TargetRef(ContentType::Entry, $localization->id()));
+
+        expect($localization->fresh()->get('title'))->toBe('[T] Hello')
+            ->and($state->field('title')->pending)->toHaveCount(1)
+            ->and($state->field('title')->targetHash)->toBeNull()
+            ->and(applyStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current])
+            ->and(ContentWriter::active())->toBeFalse();
+    });
+});
+
+it('stores a normalised value that keeps its status after a CP round trip', function () {
+    app(FieldtypeRegistry::class)->register('replicator', FakeReplicatorHandler::class);
+    $this->makeCollection('stories', ['en', 'el'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+        'body' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+            'text' => ['fields' => [
+                ['handle' => 'heading', 'field' => ['type' => 'text']],
+                ['handle' => 'featured', 'field' => ['type' => 'toggle', 'default' => true]],
+                ['handle' => 'kicker', 'field' => ['type' => 'text', 'default' => 'Read this']],
+            ]],
+            'cta' => ['fields' => [
+                ['handle' => 'label', 'field' => ['type' => 'text']],
+            ]],
+        ]]]],
+    ]);
+    $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'body' => [
+        ['type' => 'text', 'heading' => 'First'],
+        ['type' => 'cta', 'label' => 'Book now'],
+    ]]);
+
+    translateInto($origin->id());
+
+    $localization = $origin->fresh()->in('el');
+    $stored = $localization->get('body');
+    $roundTrip = fn (EntryContract $entry, mixed $value) => $entry->blueprint()->setParent($entry)->fields()
+        ->addValues(['body' => $value])->preProcess()->process()->values()['body'];
+
+    expect($stored[0])->toMatchArray(['type' => 'text', 'heading' => '[T] First', 'featured' => true, 'kicker' => 'Read this', 'enabled' => true])
+        ->and($stored[0]['id'])->toMatch('/^[A-Za-z0-9]{8}$/')
+        ->and($roundTrip($localization, $stored))->toBe($stored);
+
+    $localization->set('body', $roundTrip($localization, $stored))->save();
+
+    expect(applyStatuses($origin->id()))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+});
+
+describe('the writer', function () {
+    it('throws outside ContentWriter::write() and saves nothing', function () {
+        $fields = applyAssembled($this->origin);
+
+        expect(fn () => applyTarget($this->origin)->apply($fields, new ApplyOptions))->toThrow(LogicException::class)
+            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
+    });
+
+    it('saves without Statamic\'s git listener and turns it back on afterwards', function () {
+        Queue::fake();
+        config(['statamic.git.enabled' => true, 'statamic.git.automatic' => true]);
+        $listeners = fn () => count(array_filter(Event::getRawListeners()[EntrySaved::class] ?? [], fn ($listener) => $listener === Subscriber::class.'@commit'));
+        $fields = applyAssembled($this->origin);
+
+        $during = [];
+        Event::listen(EntrySaved::class, function () use (&$during, $listeners) {
+            $during[] = $listeners();
+        });
+
+        applyInWriter($this->origin, $fields);
+
+        Queue::assertNotPushed(CommitJob::class);
+        expect($during)->toBe([0, 0])
+            ->and($listeners())->toBe(1);
+    });
+
+    it('throws for a field that is no longer in scope, before anything is saved', function () {
+        $fields = applyAssembled($this->origin);
+        $blueprint = Collection::find('articles')->entryBlueprint();
+        $blueprint->ensureFieldHasConfig('body', ['type' => 'textarea', 'localizable' => false])->save();
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(SourceChanged::class)
+            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
+    });
+
+    it('throws ApplyFailed when a listener cancels the save', function () {
+        $this->localize($this->origin, 'el');
+        $fields = applyAssembled($this->origin);
+        Event::listen(EntrySaving::class, fn () => false);
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(ApplyFailed::class);
+    });
+
+    it('does not apply to a collection with revisions yet', function () {
+        config(['statamic.revisions.enabled' => true]);
+        Collection::find('articles')->revisionsEnabled(true)->save();
+        $fields = applyAssembled($this->origin);
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(NotSupportedYet::class)
+            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
+    });
+});
+
+it('fails authorize() for a user without access to the target site', function () {
+    $user = $this->signInWithPermissions(['access en site', 'access de site', 'view articles entries', 'edit articles entries']);
+
+    expect(applyTarget($this->origin)->authorize($user))->toBeFalse()
+        ->and(applyTarget($this->origin, 'de')->authorize($user))->toBeTrue();
+});
