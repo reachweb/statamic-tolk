@@ -2,9 +2,11 @@
 
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\Formality;
 use Reach\StatamicTolk\Enums\ItemStatus;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
@@ -53,6 +55,14 @@ it('pins every case and its value', function (string $enum, array $cases) {
         'Failed' => 'failed',
     ]],
     'RunDriver' => [RunDriver::class, ['Queue' => 'queue', 'Browser' => 'browser', 'Cli' => 'cli']],
+    'Finish' => [Finish::class, ['Stop' => 'stop', 'Length' => 'length', 'Refused' => 'refused', 'Empty' => 'empty']],
+    'ProviderErrorKind' => [ProviderErrorKind::class, [
+        'Paused' => 'paused',
+        'Timeout' => 'timeout',
+        'Unavailable' => 'unavailable',
+        'Rejected' => 'rejected',
+        'RequestRejected' => 'request_rejected',
+    ]],
 ]);
 
 it('picks the worst item status in the order of §A6', function () {
