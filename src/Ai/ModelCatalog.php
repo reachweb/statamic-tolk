@@ -100,7 +100,9 @@ class ModelCatalog
             return $model;
         }
 
-        $provider = Arr::first($this->providers->configured()) ?? throw NoProviderConfigured::make();
+        // The fake engine needs no key, so a sandbox without keys still gets a translator to plan with.
+        $provider = Arr::first($this->providers->configured())
+            ?? (FakeEngine::enabled() ? ModelRef::PROVIDERS[0] : throw NoProviderConfigured::make());
 
         return $this->default($provider, Tier::Quality);
     }

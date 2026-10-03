@@ -34,6 +34,8 @@ From the addon repo, `/Volumes/1TB/Sites/autotranslator`:
 
 There is no booted host app in this repo: under `vendor/bin/testbench` a root package is not in Statamic's addon manifest, so the addon's commands, routes and CP pages do not exist there. Run the addon's own `tolk:*` commands, and anything else that needs a booted addon, from the sandbox folder, `/Volumes/1TB/Sites/tolk-sandbox`, for example `php please tolk:doctor` *(T9.6)*.
 
+`TOLK_FAKE_ENGINE=true php please tolk:translate --collection=pages --site=el --yes` translates the demo pages without provider keys. Without `--yes` its confirmation waits for input in an agent's shell. Afterwards reset with `git clean -fd content` in the sandbox; never clean `users/`, which holds the owner's own account.
+
 A line marked *(Tn.n)* describes something that task builds; until then it does not work yet. The task that builds it verifies the line and removes the marker.
 
 ## Laravel Boost
