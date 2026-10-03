@@ -4,6 +4,8 @@ namespace Reach\StatamicTolk;
 
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -27,6 +29,7 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->app->scoped(Settings::class);
         $this->app->singleton(FieldtypeRegistry::class);
+        $this->app->singleton(StateRepository::class, FileStateRepository::class);
     }
 
     public function bootAddon(): void
