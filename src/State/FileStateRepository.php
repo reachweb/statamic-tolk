@@ -26,19 +26,30 @@ final class FileStateRepository implements StateRepository
 
     public function get(TargetRef $ref): ItemState
     {
-        return $this->read($ref);
+        try {
+            $data = $this->parse($this->path($ref));
+        } catch (FileNotFoundException) {
+            return ItemState::empty($ref);
+        }
+
+        return ($data['reference'] ?? null) === (string) $ref ? ItemState::fromArray($data) : ItemState::empty($ref);
     }
 
     public function update(TargetRef $ref, Closure $callback): ItemState
     {
         return $this->lock($ref)->block(5, function () use ($ref, $callback) {
-            $state = $callback($this->read($ref));
+            $stored = $this->get($ref);
+            $state = $callback($stored);
 
             if (! $state instanceof ItemState || (string) $state->reference !== (string) $ref) {
                 throw new LogicException("A state update of [{$ref}] must return the ItemState of that target.");
             }
 
-            $state->isEmpty() ? $this->remove($ref) : $this->write($ref, $state);
+            if ($state->isEmpty()) {
+                $this->remove($ref);
+            } elseif ($state->toArray() !== $stored->toArray()) {
+                $this->write($ref, $state);
+            }
 
             return $state;
         });
@@ -72,17 +83,6 @@ final class FileStateRepository implements StateRepository
         return $this->root().'/'.$ref->storageKey().'.yaml';
     }
 
-    private function read(TargetRef $ref): ItemState
-    {
-        try {
-            $data = $this->parse($this->path($ref));
-        } catch (FileNotFoundException) {
-            return ItemState::empty($ref);
-        }
-
-        return ($data['reference'] ?? null) === (string) $ref ? ItemState::fromArray($data) : ItemState::empty($ref);
-    }
-
     private function parse(string $path): array
     {
         $data = YAML::file($path)->parse($this->files->get($path));
@@ -102,7 +102,7 @@ final class FileStateRepository implements StateRepository
             $temporary = $path.'.'.Str::random(16).'.tmp';
 
             try {
-                if ($this->files->put($temporary, $contents) === false || ! rename($temporary, $path)) {
+                if ($this->files->put($temporary, $contents) === false || ! $this->files->move($temporary, $path)) {
                     throw new RuntimeException("Unable to write the translation state file [{$path}].");
                 }
             } finally {

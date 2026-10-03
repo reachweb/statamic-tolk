@@ -48,7 +48,6 @@ final readonly class StatusResolver
         $handle = $field->handle();
         $sourceValue = $target->sourceValue($handle);
         $sourceHash = Fingerprint::of($sourceValue);
-        $sourceHasText = $this->walker->leaves($field, $sourceValue) !== [];
         $targetHash = $target->hasOverride($handle) ? $this->targetHash($field, $target->targetValue($handle)) : null;
         $state = $stored->reconcile($targetHash, $now);
 
@@ -57,7 +56,7 @@ final readonly class StatusResolver
 
         // A source without text still has a fingerprint: machine output made from it is current, such as the copy written by a clear (§A7).
         $status = match (true) {
-            $targetHash === null && ! $sourceHasText => FieldStatus::NotApplicable,
+            $targetHash === null && $this->walker->leaves($field, $sourceValue) === [] => FieldStatus::NotApplicable,
             $machine => ! $state->incomplete && $state->sourceHash === $sourceHash ? FieldStatus::Current : FieldStatus::Outdated,
             $targetHash === null => FieldStatus::Untranslated,
             $state->inHistory($targetHash) => FieldStatus::Outdated,

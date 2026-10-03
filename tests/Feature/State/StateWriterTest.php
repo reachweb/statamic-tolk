@@ -5,12 +5,10 @@ use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
-use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\State\ConfirmReport;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\ItemState;
-use Reach\StatamicTolk\State\PendingState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\State\TargetStatus;
@@ -19,6 +17,7 @@ use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Git;
 use Statamic\Git\CommitJob;
@@ -56,57 +55,9 @@ function writerStatus(EntryContract $origin, string $site = 'el'): TargetStatus
     return app(StatusResolver::class)->resolve(writerTarget($origin, $site));
 }
 
-function writerRef(EntryContract $localization): TargetRef
-{
-    return new TargetRef(ContentType::Entry, $localization->id());
-}
-
 function storedState(EntryContract $localization): ItemState
 {
-    return app(StateRepository::class)->get(writerRef($localization));
-}
-
-/**
- * @param  array<string, FieldState>  $fields
- */
-function storeState(EntryContract $localization, array $fields): void
-{
-    app(StateRepository::class)->update(writerRef($localization), function (ItemState $state) use ($fields) {
-        foreach ($fields as $handle => $field) {
-            $state = $state->withField($handle, $field);
-        }
-
-        return $state;
-    });
-}
-
-function machineField(mixed $source, string $translation, array $overrides = []): FieldState
-{
-    return new FieldState(...[
-        'sourceHash' => Fingerprint::of($source),
-        'targetHash' => Fingerprint::ofLeaves([$translation]),
-        'segments' => [Fingerprint::ofText((string) $source)],
-        'translatedAt' => CarbonImmutable::parse('2026-10-01T12:00:00Z'),
-        'translator' => 'anthropic:claude-sonnet-5-5',
-        ...$overrides,
-    ]);
-}
-
-function delivery(mixed $source, string $translation, array $overrides = []): PendingState
-{
-    return new PendingState(...[
-        'plan' => 'plan-'.Fingerprint::ofText($translation),
-        'sourceHash' => Fingerprint::of($source),
-        'targetHash' => Fingerprint::ofLeaves([$translation]),
-        'targetBefore' => null,
-        'segments' => [Fingerprint::ofText((string) $source)],
-        'identical' => false,
-        'incomplete' => false,
-        'translator' => 'openai:gpt-6.1-sol',
-        'reviewer' => null,
-        'createdAt' => CarbonImmutable::now()->startOfSecond()->subHour(),
-        ...$overrides,
-    ]);
+    return app(StateRepository::class)->get(StateFixtures::ref($localization));
 }
 
 function switchGitOn(): void
@@ -117,10 +68,10 @@ function switchGitOn(): void
 describe('recordPending', function () {
     it('prepends a pending entry, keeps three and records the source site', function () {
         $localization = $this->localize($this->origin, 'el');
-        $entries = array_map(fn (string $text) => delivery('Hello', $text), ['Ένα', 'Δύο', 'Τρία', 'Τέσσερα']);
+        $entries = array_map(fn (string $text) => StateFixtures::pending('Hello', $text), ['Ένα', 'Δύο', 'Τρία', 'Τέσσερα']);
 
         foreach ($entries as $entry) {
-            writer()->recordPending(writerRef($localization), 'en', 'title', $entry);
+            writer()->recordPending(StateFixtures::ref($localization), 'en', 'title', $entry);
         }
 
         $state = storedState($localization);
@@ -133,23 +84,23 @@ describe('recordPending', function () {
 
     it('keeps the confirmed output and the other fields of the record', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        storeState($localization, ['title' => machineField('Hello', 'Γεια'), 'intro' => machineField('A short intro.', 'Εισαγωγή.')]);
-        $pending = delivery('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια'), 'intro' => StateFixtures::machine('A short intro.', 'Εισαγωγή.')]);
+        $pending = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
 
-        writer()->recordPending(writerRef($localization), 'en', 'title', $pending);
+        writer()->recordPending(StateFixtures::ref($localization), 'en', 'title', $pending);
         $state = storedState($localization);
 
         expect($state->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['Γεια']))
             ->and($state->field('title')->pending)->toEqual([$pending])
-            ->and($state->field('intro'))->toEqual(machineField('A short intro.', 'Εισαγωγή.'));
+            ->and($state->field('intro'))->toEqual(StateFixtures::machine('A short intro.', 'Εισαγωγή.'));
     });
 });
 
 describe('confirm', function () {
     it('promotes a pending entry the target saved and moves the previous output to history', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χαίρετε']);
-        $pending = delivery('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
-        storeState($localization, ['title' => machineField('Hello', 'Γεια')->withPending($pending)]);
+        $pending = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')->withPending($pending)]);
 
         $report = writer()->confirm(writerTarget($this->origin));
         $field = storedState($localization)->field('title');
@@ -166,7 +117,7 @@ describe('confirm', function () {
 
     it('writes a baseline for a delivery that was edited before it was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
-        storeState($localization, ['title' => (new FieldState)->withPending(delivery('Hello', 'Γεια'))]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
 
         $report = writer()->confirm(writerTarget($this->origin));
         $field = storedState($localization)->field('title');
@@ -183,10 +134,10 @@ describe('confirm', function () {
 
     it('keeps pending entries and the previous output while nothing was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        $title = delivery('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
-        $intro = delivery('A short intro.', 'Μια σύντομη εισαγωγή.');
-        storeState($localization, [
-            'title' => machineField('Hello', 'Γεια')->withPending($title),
+        $title = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
+        $intro = StateFixtures::pending('A short intro.', 'Μια σύντομη εισαγωγή.');
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια')->withPending($title),
             'intro' => (new FieldState)->withPending($intro),
         ]);
 
@@ -195,14 +146,14 @@ describe('confirm', function () {
 
         expect($report)->toEqual(new ConfirmReport(unresolved: ['title', 'intro']))
             ->and($report->changed())->toBeFalse()
-            ->and($state->field('title'))->toEqual(machineField('Hello', 'Γεια')->withPending($title))
+            ->and($state->field('title'))->toEqual(StateFixtures::machine('Hello', 'Γεια')->withPending($title))
             ->and($state->field('intro')->pending)->toEqual([$intro]);
     });
 
     it('keeps a delivery planned from hand-written text that was not saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
-        $pending = delivery('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);
-        storeState($localization, ['title' => (new FieldState)->withPending($pending)]);
+        $pending = StateFixtures::pending('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
 
         $report = writer()->confirm(writerTarget($this->origin));
 
@@ -213,8 +164,8 @@ describe('confirm', function () {
 
     it('keeps pending entries while the target holds an earlier machine output', function () {
         $localization = $this->localize($this->origin, 'el', ['intro' => 'Παλιά εισαγωγή.']);
-        $pending = delivery('A short intro.', 'Εισαγωγή.');
-        storeState($localization, ['intro' => machineField('A short intro.', 'Νέα εισαγωγή.', ['history' => [
+        $pending = StateFixtures::pending('A short intro.', 'Εισαγωγή.');
+        StateFixtures::store($localization, ['intro' => StateFixtures::machine('A short intro.', 'Νέα εισαγωγή.', ['history' => [
             ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['Παλιά εισαγωγή.'])],
         ]])->withPending($pending)]);
 
@@ -227,9 +178,9 @@ describe('confirm', function () {
 
     it('promotes the older of two pending entries when that one was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        $older = delivery('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subHours(2)]);
-        $newer = delivery('Hello', 'Χαίρετε', ['translator' => 'anthropic:claude-haiku-4-5']);
-        storeState($localization, ['title' => (new FieldState)->withPending($older)->withPending($newer)]);
+        $older = StateFixtures::pending('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subHours(2)]);
+        $newer = StateFixtures::pending('Hello', 'Χαίρετε', ['translator' => 'anthropic:claude-haiku-4-5']);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($older)->withPending($newer)]);
 
         $report = writer()->confirm(writerTarget($this->origin));
         $field = storedState($localization)->field('title');
@@ -243,7 +194,7 @@ describe('confirm', function () {
 
     it('promotes an identical pending entry when the target inherits the field', function () {
         $localization = $this->localize($this->origin, 'el');
-        storeState($localization, ['title' => (new FieldState)->withPending(delivery('Hello', 'Hello', ['identical' => true]))]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Hello', ['identical' => true]))]);
 
         $report = writer()->confirm(writerTarget($this->origin));
         $field = storedState($localization)->field('title');
@@ -260,12 +211,12 @@ describe('confirm', function () {
         $localization = $this->localize($this->origin, 'el', ['faq' => [
             ['id' => 'mf3k2a9x', 'question' => 'Άφιξη;', 'answer' => 'Από τις 14:00.', 'more' => 'Read more', 'enabled' => true],
         ]]);
-        $pending = delivery('', '', [
+        $pending = StateFixtures::pending('', '', [
             'sourceHash' => Fingerprint::of($source),
             'targetHash' => Fingerprint::ofLeaves(['Άφιξη;', 'Από τις 14:00.']),
             'segments' => [Fingerprint::ofText('Check-in?'), Fingerprint::ofText('From 14:00.')],
         ]);
-        storeState($localization, ['faq' => (new FieldState)->withPending($pending)]);
+        StateFixtures::store($localization, ['faq' => (new FieldState)->withPending($pending)]);
 
         $report = writer()->confirm(writerTarget($this->origin));
 
@@ -276,13 +227,13 @@ describe('confirm', function () {
 
     it('drops pending entries older than 30 days and keeps the recent ones', function () {
         $localization = $this->localize($this->origin, 'el');
-        $recent = delivery('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(29)]);
-        $old = delivery('Hello', 'Χαίρετε', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(31)]);
-        storeState($localization, [
+        $recent = StateFixtures::pending('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(29)]);
+        $old = StateFixtures::pending('Hello', 'Χαίρετε', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subDays(31)]);
+        StateFixtures::store($localization, [
             'title' => (new FieldState)->withPending($old)->withPending($recent),
-            'intro' => (new FieldState)->withPending(delivery('A short intro.', 'Εισαγωγή.', ['createdAt' => CarbonImmutable::now()->subDays(40)])),
+            'intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Εισαγωγή.', ['createdAt' => CarbonImmutable::now()->subDays(40)])),
         ]);
-        $path = app(StateRepository::class)->path(writerRef($localization));
+        $path = app(StateRepository::class)->path(StateFixtures::ref($localization));
 
         $report = writer()->confirm(writerTarget($this->origin));
 
@@ -295,9 +246,9 @@ describe('confirm', function () {
 
     it('leaves pending entries of fields that are out of scope alone', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        $retired = delivery('Old', 'Παλιό');
-        storeState($localization, [
-            'title' => (new FieldState)->withPending(delivery('Hello', 'Γεια')),
+        $retired = StateFixtures::pending('Old', 'Παλιό');
+        StateFixtures::store($localization, [
+            'title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια')),
             'retired' => (new FieldState)->withPending($retired),
         ]);
 
@@ -309,7 +260,7 @@ describe('confirm', function () {
 
     it('writes nothing for a target without pending entries or without a localization', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        storeState($localization, ['title' => machineField('Hello', 'Γεια')]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
         $repository = new CountingStateRepository(app(StateRepository::class));
         $this->app->instance(StateRepository::class, $repository);
 
@@ -347,7 +298,7 @@ describe('baseline', function () {
 
     it('moves a baseline to the current source and counts nothing when there is nothing to change', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
-        storeState($localization, ['title' => new FieldState(sourceHash: Fingerprint::of('Hi'), translator: 'openai:gpt-6.1-sol')]);
+        StateFixtures::store($localization, ['title' => new FieldState(sourceHash: Fingerprint::of('Hi'), translator: 'openai:gpt-6.1-sol')]);
 
         $first = writer()->baseline(writerTarget($this->origin));
         $second = writer()->baseline(writerTarget($this->origin));
@@ -359,7 +310,7 @@ describe('baseline', function () {
 
     it('leaves machine output alone unless machine fields are included', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Χειροποίητη εισαγωγή.']);
-        storeState($localization, ['title' => machineField('Hello', 'Γεια')]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
 
         $count = writer()->baseline(writerTarget($this->origin));
         $status = writerStatus($this->origin);
@@ -372,9 +323,9 @@ describe('baseline', function () {
 
     it('turns machine output manual with $includeMachine', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Παλιά εισαγωγή.']);
-        storeState($localization, [
-            'title' => machineField('Hello', 'Γεια'),
-            'intro' => machineField('A short intro.', 'Νέα εισαγωγή.', ['history' => [
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια'),
+            'intro' => StateFixtures::machine('A short intro.', 'Νέα εισαγωγή.', ['history' => [
                 ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['Παλιά εισαγωγή.'])],
             ]]),
         ]);
@@ -397,7 +348,7 @@ describe('baseline', function () {
 
     it('confirms a saved delivery before it turns it manual', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
-        storeState($localization, ['title' => (new FieldState)->withPending(delivery('Hello', 'Γεια'))]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
 
         $count = writer()->baseline(writerTarget($this->origin), includeMachine: true);
         $confirmed = writer()->confirm(writerTarget($this->origin));
@@ -410,8 +361,8 @@ describe('baseline', function () {
 
     it('keeps unsaved deliveries of a manual field pending', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
-        $pending = delivery('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);
-        storeState($localization, ['title' => (new FieldState)->withPending($pending)]);
+        $pending = StateFixtures::pending('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
 
         writer()->baseline(writerTarget($this->origin));
 
@@ -421,7 +372,7 @@ describe('baseline', function () {
     it('skips a field whose state changed after its status was read', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
         $inner = app(StateRepository::class);
-        $this->app->instance(StateRepository::class, new class($inner, writerRef($localization)) implements StateRepository
+        $this->app->instance(StateRepository::class, new class($inner, StateFixtures::ref($localization)) implements StateRepository
         {
             private bool $raced = false;
 
@@ -436,7 +387,7 @@ describe('baseline', function () {
             {
                 if (! $this->raced) {
                     $this->raced = true;
-                    $this->inner->update($this->ref, fn (ItemState $state) => $state->withField('title', machineField('Hello', 'Γεια')));
+                    $this->inner->update($this->ref, fn (ItemState $state) => $state->withField('title', StateFixtures::machine('Hello', 'Γεια')));
                 }
 
                 return $this->inner->update($ref, $callback);
@@ -456,19 +407,19 @@ describe('baseline', function () {
         $count = writer()->baseline(writerTarget($this->origin));
 
         expect($count)->toBe(0)
-            ->and(storedState($localization)->field('title'))->toEqual(machineField('Hello', 'Γεια'));
+            ->and(storedState($localization)->field('title'))->toEqual(StateFixtures::machine('Hello', 'Γεια'));
     });
 
     it('baselines only the given fields and never a field the target inherits', function () {
         $localization = $this->localize($this->origin, 'el', ['intro' => 'Χειροποίητη εισαγωγή.', 'body' => 'Χειροποίητο σώμα.']);
-        storeState($localization, ['title' => machineField('Hello', 'Hello', ['identical' => true])]);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Hello', ['identical' => true])]);
 
         $count = writer()->baseline(writerTarget($this->origin), ['title', 'intro'], includeMachine: true);
         $state = storedState($localization);
 
         expect($count)->toBe(1)
             ->and($state->field('intro')->isBaseline())->toBeTrue()
-            ->and($state->field('title'))->toEqual(machineField('Hello', 'Hello', ['identical' => true]))
+            ->and($state->field('title'))->toEqual(StateFixtures::machine('Hello', 'Hello', ['identical' => true]))
             ->and($state->fields)->not->toHaveKey('body')
             ->and(writer()->baseline(writerTarget($this->origin, 'de')))->toBe(0);
     });
@@ -477,14 +428,14 @@ describe('baseline', function () {
 describe('forget', function () {
     it('deletes the state of a target or of single fields', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Εισαγωγή.']);
-        storeState($localization, ['title' => machineField('Hello', 'Γεια'), 'intro' => machineField('A short intro.', 'Εισαγωγή.')]);
-        $path = app(StateRepository::class)->path(writerRef($localization));
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια'), 'intro' => StateFixtures::machine('A short intro.', 'Εισαγωγή.')]);
+        $path = app(StateRepository::class)->path(StateFixtures::ref($localization));
 
-        $field = writer()->forget(writerRef($localization), ['title', 'body']);
-        $absent = writer()->forget(writerRef($localization), ['body']);
+        $field = writer()->forget(StateFixtures::ref($localization), ['title', 'body']);
+        $absent = writer()->forget(StateFixtures::ref($localization), ['body']);
         $fields = array_keys(storedState($localization)->fields);
-        $all = writer()->forget(writerRef($localization));
-        $again = writer()->forget(writerRef($localization));
+        $all = writer()->forget(StateFixtures::ref($localization));
+        $again = writer()->forget(StateFixtures::ref($localization));
 
         expect([$field, $absent, $all, $again])->toBe([true, false, true, false])
             ->and($fields)->toBe(['intro'])
@@ -497,9 +448,9 @@ describe('git', function () {
         Queue::fake();
 
         $this->localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο', 'intro' => 'Εισαγωγή.']);
-        storeState($this->localization, [
+        StateFixtures::store($this->localization, [
             'title' => new FieldState(sourceHash: Fingerprint::of('Hi')),
-            'intro' => (new FieldState)->withPending(delivery('A short intro.', 'Εισαγωγή.')),
+            'intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Εισαγωγή.')),
         ]);
 
         switchGitOn();
@@ -514,30 +465,30 @@ describe('git', function () {
         Queue::assertPushed(CommitJob::class, fn (CommitJob $job) => $job->message === StateWriter::COMMIT_MESSAGE);
     })->with([
         'recordPending' => function ($test, bool $commit) {
-            writer()->recordPending(writerRef($test->localization), 'en', 'body', delivery('', 'Σώμα.', ['plan' => 'plan-'.(int) $commit]), commit: $commit);
+            writer()->recordPending(StateFixtures::ref($test->localization), 'en', 'body', StateFixtures::pending('', 'Σώμα.', ['plan' => 'plan-'.(int) $commit]), commit: $commit);
 
             return true;
         },
         'confirm' => function ($test, bool $commit) {
             if ($commit) {
-                storeState($test->localization, ['intro' => (new FieldState)->withPending(delivery('A short intro.', 'Εισαγωγή.'))]);
+                StateFixtures::store($test->localization, ['intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Εισαγωγή.'))]);
             }
 
             return writer()->confirm(writerTarget($test->origin), commit: $commit)->changed();
         },
         'baseline' => fn ($test, bool $commit) => writer()->baseline(writerTarget($test->origin), [$commit ? 'intro' : 'title'], includeMachine: $commit, commit: $commit) === 1,
-        'forget' => fn ($test, bool $commit) => writer()->forget(writerRef($test->localization), $commit ? null : ['intro'], commit: $commit),
+        'forget' => fn ($test, bool $commit) => writer()->forget(StateFixtures::ref($test->localization), $commit ? null : ['intro'], commit: $commit),
     ]);
 
     it('dispatches no commit when nothing changed', function () {
         writer()->confirm(writerTarget($this->origin));
         writer()->confirm(writerTarget($this->origin), commit: true);
-        writer()->recordPending(writerRef($this->localization), 'en', 'body', delivery('', 'Σώμα.'));
+        writer()->recordPending(StateFixtures::ref($this->localization), 'en', 'body', StateFixtures::pending('', 'Σώμα.'));
         $unresolved = writer()->confirm(writerTarget($this->origin), commit: true);
         writer()->baseline(writerTarget($this->origin), ['intro'], commit: true);
         writer()->baseline(writerTarget($this->origin), ['title']);
         $baselined = writer()->baseline(writerTarget($this->origin), ['title'], commit: true);
-        writer()->forget(writerRef($this->localization), ['faq'], commit: true);
+        writer()->forget(StateFixtures::ref($this->localization), ['faq'], commit: true);
 
         expect($unresolved)->toEqual(new ConfirmReport(unresolved: ['body']))
             ->and($baselined)->toBe(0);
@@ -558,9 +509,9 @@ describe('deleted content', function () {
     it('forgets the state of a deleted localization and keeps that of its siblings', function () {
         $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
         $german = $this->localize($this->origin, 'de', ['title' => 'Hallo']);
-        storeState($greek, ['title' => machineField('Hello', 'Γεια')]);
-        storeState($german, ['title' => machineField('Hello', 'Hallo')]);
-        $path = app(StateRepository::class)->path(writerRef($greek));
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        StateFixtures::store($german, ['title' => StateFixtures::machine('Hello', 'Hallo')]);
+        $path = app(StateRepository::class)->path(StateFixtures::ref($greek));
 
         $greek->delete();
 
@@ -571,8 +522,8 @@ describe('deleted content', function () {
     it('forgets the state of every localization deleted with its origin', function () {
         $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
         $german = $this->localize($this->origin, 'de', ['title' => 'Hallo']);
-        storeState($greek, ['title' => machineField('Hello', 'Γεια')]);
-        storeState($german, ['title' => machineField('Hello', 'Hallo')]);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        StateFixtures::store($german, ['title' => StateFixtures::machine('Hello', 'Hallo')]);
 
         $this->origin->deleteDescendants();
         $this->origin->delete();
@@ -587,7 +538,7 @@ describe('deleted content', function () {
         $refs = array_map(fn (string $id) => TargetRef::parse($id), ['term::topics::travel::el', 'term::topics::travel::de', 'term::topics::food::el']);
 
         foreach ($refs as $ref) {
-            app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('title', machineField('Travel', 'Ταξίδια')));
+            app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('title', StateFixtures::machine('Travel', 'Ταξίδια')));
         }
 
         $travel->delete();
@@ -598,7 +549,7 @@ describe('deleted content', function () {
     it('commits the forgotten state once, and nothing for content without state', function () {
         $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
         $german = $this->localize($this->origin, 'de', ['title' => 'Hallo']);
-        storeState($greek, ['title' => machineField('Hello', 'Γεια')]);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
         switchGitOn();
         $messages = [];
         Git::shouldReceive('as')->andReturnSelf();

@@ -2,10 +2,13 @@
 
 namespace Reach\StatamicTolk\State;
 
+use Reach\StatamicTolk\State\Concerns\ReadsStoredValues;
 use Reach\StatamicTolk\Targets\TargetRef;
 
 final readonly class ItemState
 {
+    use ReadsStoredValues;
+
     public const int VERSION = 1;
 
     /** @var array<string, FieldState> */
@@ -35,15 +38,15 @@ final readonly class ItemState
     {
         $fields = [];
 
-        foreach (is_array($data['fields'] ?? null) ? $data['fields'] : [] as $handle => $field) {
+        foreach (self::storedArray($data, 'fields') as $handle => $field) {
             if (is_array($field)) {
                 $fields[(string) $handle] = FieldState::fromArray($field);
             }
         }
 
         return new self(
-            reference: TargetRef::parse(is_string($data['reference'] ?? null) ? $data['reference'] : ''),
-            sourceSite: is_string($data['source_site'] ?? null) && $data['source_site'] !== '' ? $data['source_site'] : null,
+            reference: TargetRef::parse(self::storedString($data, 'reference') ?? ''),
+            sourceSite: self::storedString($data, 'source_site'),
             version: is_int($data['v'] ?? null) ? $data['v'] : 0,
             fields: $fields,
         );
