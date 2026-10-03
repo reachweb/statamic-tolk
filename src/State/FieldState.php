@@ -13,6 +13,8 @@ final readonly class FieldState
 
     public const int MAX_PENDING = 3;
 
+    public const int PENDING_DAYS = 30;
+
     /**
      * @param  list<?string>  $segments
      * @param  list<array{source_hash: ?string, target_hash: string}>  $history  newest first
@@ -65,20 +67,69 @@ final readonly class FieldState
         return $this->sourceHash === null && $this->targetHash === null && $this->history === [] && $this->pending === [];
     }
 
+    public function inHistory(string $targetHash): bool
+    {
+        return in_array($targetHash, array_column($this->history, 'target_hash'), true);
+    }
+
     public function withPending(PendingState $pending): self
     {
-        return new self(
-            sourceHash: $this->sourceHash,
-            targetHash: $this->targetHash,
-            segments: $this->segments,
-            identical: $this->identical,
-            incomplete: $this->incomplete,
-            translatedAt: $this->translatedAt,
-            translator: $this->translator,
-            reviewer: $this->reviewer,
-            history: $this->history,
-            pending: array_slice([$pending, ...$this->pending], 0, self::MAX_PENDING),
-        );
+        return $this->withPendingEntries([$pending, ...$this->pending]);
+    }
+
+    /**
+     * Resolves the pending entries against the target's text fingerprint, null when the target has no override (§A5 "Reconcile").
+     */
+    public function reconcile(?string $targetHash, CarbonImmutable $now): self
+    {
+        if ($this->pending === []) {
+            return $this;
+        }
+
+        if (($saved = $this->savedPending($targetHash)) !== null) {
+            return $this->promote($saved);
+        }
+
+        if (($edited = $this->editedPending($targetHash)) !== null) {
+            return $this->toBaseline($edited);
+        }
+
+        $cutoff = $now->subDays(self::PENDING_DAYS);
+
+        return $this->withPendingEntries(array_filter($this->pending, fn (PendingState $pending) => $pending->createdAt->greaterThan($cutoff)));
+    }
+
+    /**
+     * Reconcile rule 1: the entry whose output the target holds, or, without an override, an output identical to the source.
+     */
+    public function savedPending(?string $targetHash): ?PendingState
+    {
+        foreach ($this->pending as $pending) {
+            if ($targetHash === null ? $pending->identical : $pending->targetHash === $targetHash) {
+                return $pending;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Reconcile rule 2: the newest entry whose output was edited before it was saved. The target holds text that changed
+     * since the entry's plan and is no machine output.
+     */
+    public function editedPending(?string $targetHash): ?PendingState
+    {
+        if ($targetHash === null || $targetHash === $this->targetHash || $this->inHistory($targetHash)) {
+            return null;
+        }
+
+        foreach ($this->pending as $pending) {
+            if ($pending->targetBefore !== $targetHash) {
+                return $pending;
+            }
+        }
+
+        return null;
     }
 
     public function promote(PendingState $pending): self
@@ -119,6 +170,22 @@ final readonly class FieldState
             'history' => $this->history,
             'pending' => array_map(fn (PendingState $pending) => $pending->toArray(), $this->pending),
         ], fn (mixed $value) => $value !== null && $value !== false && $value !== []);
+    }
+
+    private function withPendingEntries(array $pending): self
+    {
+        return new self(
+            sourceHash: $this->sourceHash,
+            targetHash: $this->targetHash,
+            segments: $this->segments,
+            identical: $this->identical,
+            incomplete: $this->incomplete,
+            translatedAt: $this->translatedAt,
+            translator: $this->translator,
+            reviewer: $this->reviewer,
+            history: $this->history,
+            pending: array_slice(array_values($pending), 0, self::MAX_PENDING),
+        );
     }
 
     /**
