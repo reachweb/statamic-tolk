@@ -37,11 +37,12 @@ final class ContentWriter
         }
 
         $lock = Cache::store(config('tolk.cache_store'))->lock(self::LOCK, (int) config('tolk.write.lock_seconds'));
+        $wait = (int) config('tolk.write.wait_seconds');
 
         try {
-            $lock->block((int) config('tolk.write.wait_seconds'));
+            $lock->block($wait);
         } catch (LockTimeoutException) {
-            throw WriterBusy::waited((int) config('tolk.write.wait_seconds'));
+            throw WriterBusy::waited($wait);
         }
 
         self::$active = true;

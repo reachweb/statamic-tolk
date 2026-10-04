@@ -27,10 +27,8 @@ final class EntryFamilies
         $roots = [];
 
         foreach ($collections as $handle) {
-            foreach (Entry::query()->where('collection', $handle)->lazy() as $entry) {
-                if ($entry->isRoot()) {
-                    $roots[(string) $entry->id()] ??= $entry;
-                }
+            foreach (Entry::query()->where('collection', $handle)->whereNull('origin')->lazy() as $entry) {
+                $roots[(string) $entry->id()] ??= $entry;
             }
         }
 
@@ -40,8 +38,8 @@ final class EntryFamilies
         }
 
         return collect($roots)
-            ->groupBy(fn (EntryContract $root) => $root->collectionHandle(), preserveKeys: true)
-            ->flatMap(fn ($group) => $this->inTreeOrder($group->values()->all()))
+            ->groupBy(fn (EntryContract $root) => $root->collectionHandle())
+            ->flatMap(fn ($group) => $this->inTreeOrder($group->all()))
             ->values()
             ->all();
     }

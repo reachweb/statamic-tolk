@@ -12,7 +12,7 @@ use Reach\StatamicTolk\Enums\Finish;
 
 /**
  * An engine whose answer to each call comes from a closure, for the finish reasons and failures that faked agents
- * cannot produce. Bind it with `app()->instance(Engine::class, $engine)` before resolving the pipeline.
+ * cannot produce. Bind it with `bind()` before resolving the pipeline.
  */
 final class ScriptedEngine implements Engine
 {
@@ -23,6 +23,20 @@ final class ScriptedEngine implements Engine
      * @param  Closure(EngineCall, int): EngineResult  $script  receives the call and its number, starting at 1
      */
     public function __construct(private readonly Closure $script) {}
+
+    /**
+     * Binds a new engine with the script as the container's Engine.
+     *
+     * @param  Closure(EngineCall, int): EngineResult  $script
+     */
+    public static function bind(Closure $script): self
+    {
+        $engine = new self($script);
+
+        app()->instance(Engine::class, $engine);
+
+        return $engine;
+    }
 
     public static function result(EngineCall $call, Finish $finish, array $items = []): EngineResult
     {

@@ -42,20 +42,24 @@ class ModelCatalog
     public function grouped(): array
     {
         return collect($this->all())
-            ->map(fn (array $entries, string $provider) => collect($entries)
-                ->filter(fn (array $entry) => is_string($entry['id'] ?? null))
-                ->map(function (array $entry) use ($provider) {
-                    $model = new ModelRef($provider, $entry['id']);
+            ->map(function (array $entries, string $provider) {
+                $configured = $this->providers->isConfigured($provider);
 
-                    return [
-                        'value' => (string) $model,
-                        'label' => $this->label($model),
-                        'tier' => $entry['tier'] ?? null,
-                        'configured' => $this->providers->isConfigured($provider),
-                    ];
-                })
-                ->values()
-                ->all())
+                return collect($entries)
+                    ->filter(fn (array $entry) => is_string($entry['id'] ?? null))
+                    ->map(function (array $entry) use ($provider, $configured) {
+                        $model = new ModelRef($provider, $entry['id']);
+
+                        return [
+                            'value' => (string) $model,
+                            'label' => $this->label($model),
+                            'tier' => $entry['tier'] ?? null,
+                            'configured' => $configured,
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            })
             ->all();
     }
 

@@ -13,7 +13,6 @@ use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
-use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
@@ -22,6 +21,7 @@ use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeReplicatorHandler;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\Pipeline;
 use Reach\StatamicTolk\Translation\Planner;
@@ -94,11 +94,6 @@ function translateInto(EntryContract|string $source, string $site = 'el', ApplyO
     return applyInWriter($source, applyAssembled($source, $site, $plan), $options, $site);
 }
 
-function applyStatuses(EntryContract|string $source, string $site = 'el'): array
-{
-    return array_map(fn ($field) => $field->status, app(StatusResolver::class)->resolve(applyTarget($source, $site))->fields);
-}
-
 describe('creating a localization', function () {
     it('creates a draft whose own data holds the applied fields and no other', function () {
         $result = translateInto($this->origin);
@@ -113,7 +108,7 @@ describe('creating a localization', function () {
             ->and($localization->data()->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.', 'body' => '[T] The body.'])
             ->and($localization->published())->toBeFalse()
             ->and($localization->origin()->id())->toBe($this->origin->id())
-            ->and(applyStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current]);
 
         $state = app(StateRepository::class)->get($result->ref);
 
@@ -166,7 +161,7 @@ describe('creating a localization', function () {
         expect($result->applied)->toBe(['title', 'intro', 'body'])
             ->and($localization->get('intro'))->toBe('A short intro.')
             ->and($localization->published())->toBeFalse()
-            ->and(applyStatuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+            ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
     });
 
     it('stays a draft with mirror when a field with source text was not delivered', function () {
@@ -175,7 +170,7 @@ describe('creating a localization', function () {
         applyInWriter($this->origin, $fields, new ApplyOptions(newStatus: 'mirror'));
 
         expect($this->origin->fresh()->in('el')->published())->toBeFalse()
-            ->and(applyStatuses($this->origin)['body'])->toBe(FieldStatus::Untranslated);
+            ->and(StateFixtures::statuses($this->origin)['body'])->toBe(FieldStatus::Untranslated);
     });
 
     it('creates the localization of a localization from that source', function () {
@@ -233,75 +228,36 @@ describe('slugs', function () {
     });
 });
 
-/**
- * A structured `pages` collection with the English tree of the given shape: `['about', 'rooms' => ['suites']]`.
- *
- * @return array<string, EntryContract>
- */
-function applyPages(array $shape, bool $root): array
-{
-    $collection = test()->makeCollection('pages', ['en', 'el', 'de'], [
-        'title' => ['type' => 'text', 'localizable' => true],
-    ], structured: true);
-
-    $collection->structureContents(['root' => $root, 'max_depth' => 3])->save();
-
-    $entries = [];
-    $branches = function (array $shape) use (&$branches, &$entries): array {
-        return collect($shape)->map(function ($children, $slug) use (&$branches, &$entries) {
-            [$slug, $children] = is_int($slug) ? [$children, []] : [$slug, $children];
-            $entries[$slug] = test()->makeEntry('pages', 'en', ['title' => ucfirst($slug)], $slug);
-
-            return array_filter(['entry' => $entries[$slug]->id(), 'children' => $branches($children) ?: null]);
-        })->values()->all();
-    };
-
-    Collection::find('pages')->structure()->in('en')->tree($branches($shape))->save();
-
-    return $entries;
-}
-
-function applyTreeOfSlugs(string $site): array
-{
-    $slugs = function (array $branches) use (&$slugs): array {
-        return collect($branches)->mapWithKeys(fn (array $branch) => [
-            Entry::find($branch['entry'])->slug() => isset($branch['children']) ? $slugs($branch['children']) : [],
-        ])->all();
-    };
-
-    return $slugs(Collection::find('pages')->structure()->in($site)->tree());
-}
-
 describe('trees', function () {
     it('places a child under its localized parent', function () {
-        $pages = applyPages(['about', 'rooms' => ['suites']], root: false);
+        $pages = $this->makePages(['about', 'rooms' => ['suites']], root: false);
 
         translateInto($pages['rooms']->id());
         translateInto($pages['suites']->id());
 
-        expect(applyTreeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
+        expect($this->treeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
     });
 
     it('refuses any entry but the origin root into an empty tree of a collection with a root, and saves nothing', function () {
-        $pages = applyPages(['home', 'rooms' => ['suites']], root: true);
+        $pages = $this->makePages(['home', 'rooms' => ['suites']], root: true);
         $fields = applyAssembled($pages['rooms']->id());
 
         expect(applyTarget($pages['rooms']->id())->rootMissing())->toBeTrue()
             ->and(applyTarget($pages['home']->id())->rootMissing())->toBeFalse()
             ->and(fn () => applyInWriter($pages['rooms']->id(), $fields))->toThrow(RootMissing::class, 'Translate Home into Greek first.')
             ->and(Entry::query()->where('collection', 'pages')->where('site', 'el')->count())->toBe(0)
-            ->and(applyTreeOfSlugs('el'))->toBe([]);
+            ->and($this->treeOfSlugs('el'))->toBe([]);
     });
 
     it('gives the target the origin\'s tree when the root is applied first', function () {
-        $pages = applyPages(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
+        $pages = $this->makePages(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
 
         foreach (['home', 'rooms', 'suites', 'honeymoon'] as $slug) {
             translateInto($pages[$slug]->id());
         }
 
-        expect(applyTreeOfSlugs('el'))->toBe(applyTreeOfSlugs('en'))
-            ->and(applyTreeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]]])
+        expect($this->treeOfSlugs('el'))->toBe($this->treeOfSlugs('en'))
+            ->and($this->treeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]]])
             ->and(applyTarget($pages['rooms']->id(), 'de')->rootMissing())->toBeTrue()
             ->and(applyTarget($pages['rooms']->id())->rootMissing())->toBeFalse();
     });
@@ -365,7 +321,7 @@ describe('existing localizations', function () {
             ->and($result->applied)->toBe(['intro', 'body'])
             ->and($localization->fresh()->get('title'))->toBe('Χειροποίητο')
             ->and($localization->fresh()->get('intro'))->toBe('[T] A short intro.')
-            ->and(applyStatuses($this->origin)['title'])->toBe(FieldStatus::Manual)
+            ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Manual)
             ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Entry, $localization->id()))->field('title')->pending)->toBe([]);
     });
 
@@ -379,14 +335,14 @@ describe('existing localizations', function () {
 
         expect($result->skipped)->toBe([])
             ->and($localization->fresh()->get('title'))->toBe('[T] Hello')
-            ->and(applyStatuses($this->origin)['title'])->toBe(FieldStatus::Current);
+            ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Current);
     });
 
     it('removes the override of a field whose source was emptied, and forgets its state', function () {
         translateInto($this->origin);
         $this->origin->fresh()->remove('intro')->save();
 
-        expect(applyStatuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+        expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
 
         $fields = applyAssembled($this->origin, 'el', ['mode' => Mode::Update]);
 
@@ -398,11 +354,11 @@ describe('existing localizations', function () {
         expect($result->applied)->toBe(['intro'])
             ->and($localization->has('intro'))->toBeFalse()
             ->and(app(StateRepository::class)->get($result->ref)->fields)->not->toHaveKey('intro')
-            ->and(applyStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::NotApplicable, 'body' => FieldStatus::Current]);
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::NotApplicable, 'body' => FieldStatus::Current]);
 
         $this->origin->fresh()->set('intro', 'Back again.')->save();
 
-        expect(applyStatuses($this->origin)['intro'])->toBe(FieldStatus::Untranslated);
+        expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Untranslated);
     });
 
     it('leaves a pending entry that reads as machine and current when it fails after save()', function () {
@@ -422,7 +378,7 @@ describe('existing localizations', function () {
         expect($localization->fresh()->get('title'))->toBe('[T] Hello')
             ->and($state->field('title')->pending)->toHaveCount(1)
             ->and($state->field('title')->targetHash)->toBeNull()
-            ->and(applyStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current])
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current])
             ->and(ContentWriter::active())->toBeFalse();
     });
 });
@@ -460,7 +416,7 @@ it('stores a normalised value that keeps its status after a CP round trip', func
 
     $localization->set('body', $roundTrip($localization, $stored))->save();
 
-    expect(applyStatuses($origin->id()))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+    expect(StateFixtures::statuses($origin->id()))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
 });
 
 describe('the writer', function () {

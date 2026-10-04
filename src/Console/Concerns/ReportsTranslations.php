@@ -2,9 +2,9 @@
 
 namespace Reach\StatamicTolk\Console\Concerns;
 
-use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\TargetResult;
@@ -54,8 +54,9 @@ trait ReportsTranslations
     {
         foreach ($target->explainFields() as $field) {
             if (! $field['in_scope'] && $field['reason'] !== 'slug') {
-                $this->outOfScope[$target->container().'.'.$field['handle'].':'.$field['reason']] ??= [
-                    'field' => $target->container().'.'.$field['handle'],
+                $name = $target->container().'.'.$field['handle'];
+                $this->outOfScope[$name.':'.$field['reason']] ??= [
+                    'field' => $name,
                     'type' => $field['type'],
                     'reason' => $field['reason'],
                 ];
@@ -177,7 +178,7 @@ trait ReportsTranslations
 
         $details = array_filter([
             'left incomplete' => $this->fieldsWith($result, TargetResult::INCOMPLETE),
-            'manual edits kept' => $this->fieldsWith($result, 'manual'),
+            'manual edits kept' => $this->fieldsWith($result, FieldStatus::Manual->value),
             'edited meanwhile, kept' => $this->fieldsWith($result, TargetResult::TARGET_CHANGED),
         ]);
 
@@ -193,7 +194,7 @@ trait ReportsTranslations
      */
     private function fieldsWith(TargetResult $result, string $outcome): array
     {
-        return array_keys(Arr::where($result->fields, fn (string $value) => $value === $outcome));
+        return array_keys($result->fields, $outcome, true);
     }
 
     private function count(int $count, string $noun): string

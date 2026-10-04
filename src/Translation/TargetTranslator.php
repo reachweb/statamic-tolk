@@ -181,14 +181,18 @@ final readonly class TargetTranslator
 
     private function failed(Target $target, RuntimeException|LogicException $exception): TargetResult
     {
-        [$reason, $message] = match (true) {
-            $exception instanceof RootMissing => [TargetResult::ROOT_MISSING, $exception->getMessage()],
-            $exception instanceof SourceChanged => [TargetResult::SOURCE_CHANGED, $exception->getMessage()],
-            $exception instanceof TransientProviderFailure => [TargetResult::PROVIDER_UNAVAILABLE, "The AI provider [{$exception->provider}] was still unavailable after ".self::MAX_WAITS.' waits.'],
-            $exception instanceof WriterBusy => [TargetResult::WRITER_BUSY, $exception->getMessage()],
-            $exception instanceof ApplyFailed => [TargetResult::APPLY_FAILED, $exception->getMessage()],
-            default => [TargetResult::NOT_SUPPORTED, $exception->getMessage()],
+        $reason = match (true) {
+            $exception instanceof RootMissing => TargetResult::ROOT_MISSING,
+            $exception instanceof SourceChanged => TargetResult::SOURCE_CHANGED,
+            $exception instanceof TransientProviderFailure => TargetResult::PROVIDER_UNAVAILABLE,
+            $exception instanceof WriterBusy => TargetResult::WRITER_BUSY,
+            $exception instanceof ApplyFailed => TargetResult::APPLY_FAILED,
+            default => TargetResult::NOT_SUPPORTED,
         };
+
+        $message = $exception instanceof TransientProviderFailure
+            ? "The AI provider [{$exception->provider}] was still unavailable after ".self::MAX_WAITS.' waits.'
+            : $exception->getMessage();
 
         return TargetResult::failed($reason, $message, $target->fresh()->ref());
     }

@@ -4,20 +4,15 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\ProviderError;
-use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
-use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
-use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
-use Statamic\Contracts\Entries\Entry as EntryContract;
-use Statamic\Facades\Collection;
-use Statamic\Facades\Entry;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Facades\Git;
 
 beforeEach(function () {
@@ -44,62 +39,6 @@ function translateCommand(array $options): array
     $exitCode = Artisan::call('tolk:translate', ['--yes' => true, ...$options]);
 
     return [$exitCode, Artisan::output()];
-}
-
-function commandStatuses(EntryContract $source, string $site = 'el'): array
-{
-    return array_map(fn ($field) => $field->status, app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry($source, $site))->fields);
-}
-
-function commandEngine(Closure $script): ScriptedEngine
-{
-    $engine = new ScriptedEngine($script);
-
-    app()->instance(Engine::class, $engine);
-
-    return $engine;
-}
-
-/**
- * A structured `pages` collection whose English tree has the given shape (`['home', 'rooms' => ['suites']]`). The
- * entries are created in the given order, which need not be the tree's.
- *
- * @return array<string, EntryContract>
- */
-function commandPages(array $shape, array $creationOrder, bool $root = true): array
-{
-    test()->makeCollection('pages', ['en', 'el', 'de'], ['title' => ['type' => 'text', 'localizable' => true]], structured: true)
-        ->structureContents(['root' => $root, 'max_depth' => 3])
-        ->save();
-
-    $entries = [];
-
-    foreach ($creationOrder as $slug) {
-        $entries[$slug] = test()->makeEntry('pages', 'en', ['title' => ucfirst($slug)], $slug);
-    }
-
-    $branches = function (array $shape) use (&$branches, $entries): array {
-        return collect($shape)->map(function ($children, $slug) use (&$branches, $entries) {
-            [$slug, $children] = is_int($slug) ? [$children, []] : [$slug, $children];
-
-            return array_filter(['entry' => $entries[$slug]->id(), 'children' => $branches($children) ?: null]);
-        })->values()->all();
-    };
-
-    Collection::find('pages')->structure()->in('en')->tree($branches($shape))->save();
-
-    return $entries;
-}
-
-function commandTreeOfSlugs(string $site): array
-{
-    $slugs = function (array $branches) use (&$slugs): array {
-        return collect($branches)->mapWithKeys(fn (array $branch) => [
-            Entry::find($branch['entry'])->slug() => isset($branch['children']) ? $slugs($branch['children']) : [],
-        ])->all();
-    };
-
-    return $slugs(Collection::find('pages')->structure()->in($site)->tree());
 }
 
 /**
@@ -145,6 +84,16 @@ describe('validation', function () {
 
         expect($exitCode)->toBe(1)
             ->and($output)->toContain('No AI provider is configured.');
+    });
+
+    it('fails with a clear message when the catalog has no default model for the provider', function () {
+        $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
+        config(['tolk.models.anthropic' => [['id' => 'claude-haiku-4-5', 'tier' => 'fast']]]);
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('The model catalog (tolk.models) has no quality model for [anthropic].');
     });
 
     it('fails when the translator\'s provider has no key and the fake engine is off', function () {
@@ -198,7 +147,7 @@ describe('dry run', function () {
     });
 
     it('shows a target that would fail because its root page is missing, unless the root is planned before it', function () {
-        $pages = commandPages(['home', 'rooms' => ['suites']], ['home', 'rooms', 'suites']);
+        $pages = $this->makePages(['home', 'rooms' => ['suites']]);
 
         [, $alone] = translateCommand(['--entry' => [$pages['rooms']->id()], '--site' => ['el'], '--dry-run' => true]);
         [, $all] = translateCommand(['--collection' => ['pages'], '--site' => ['el'], '--dry-run' => true]);
@@ -218,8 +167,8 @@ describe('translating', function () {
         [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
 
         expect($exitCode)->toBe(0)
-            ->and(commandStatuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
-            ->and(commandStatuses($this->world))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
+            ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
+            ->and(StateFixtures::statuses($this->world))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
             ->and($this->hello->fresh()->in('el')->data()->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.'])
             ->and($this->hello->fresh()->in('el')->published())->toBeFalse()
             ->and($this->world->fresh()->in('el')->published())->toBeFalse()
@@ -260,7 +209,7 @@ describe('translating', function () {
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello again')
             ->and($output)->toContain('Hello again → Greek: done, 1 field')
             ->and($output)->toContain('World → Greek: skipped, nothing to do')
-            ->and(commandStatuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+            ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
     });
 
     it('keeps a manual field in mode update and overwrites it with --force', function () {
@@ -277,7 +226,7 @@ describe('translating', function () {
             ->and($kept)->toContain('Hello again → Greek: skipped, nothing to do; manual edits kept: title')
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello again')
             ->and($forced)->toContain('Hello again → Greek: done, 1 field')
-            ->and(commandStatuses($this->hello)['title'])->toBe(FieldStatus::Current);
+            ->and(StateFixtures::statuses($this->hello)['title'])->toBe(FieldStatus::Current);
     });
 
     it('mirrors the origin\'s published state with --publish', function () {
@@ -358,15 +307,15 @@ describe('enumeration', function () {
 
     it('translates a structured collection in tree order, so the root page comes first and the tree keeps its shape', function () {
         $this->fakeTranslations();
-        $pages = commandPages(['home', 'rooms' => ['suites' => ['honeymoon']], 'dining'], ['honeymoon', 'dining', 'suites', 'rooms', 'home']);
+        $pages = $this->makePages(['home', 'rooms' => ['suites' => ['honeymoon']], 'dining'], creationOrder: ['honeymoon', 'dining', 'suites', 'rooms', 'home']);
 
         [$exitCode, $output] = translateCommand(['--collection' => ['pages'], '--site' => ['el']]);
 
         expect($exitCode)->toBe(0)
             ->and($output)->toMatch('/Home → Greek.*\n.*Rooms → Greek.*\n.*Suites → Greek.*\n.*Honeymoon → Greek.*\n.*Dining → Greek/')
             ->and($output)->not->toContain('failed')
-            ->and(commandTreeOfSlugs('el'))->toBe(commandTreeOfSlugs('en'))
-            ->and(commandTreeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]], 'dining' => []]);
+            ->and($this->treeOfSlugs('el'))->toBe($this->treeOfSlugs('en'))
+            ->and($this->treeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]], 'dining' => []]);
     });
 
     it('warns about a collection that is not available in a site', function () {
@@ -396,7 +345,7 @@ describe('enumeration', function () {
 describe('failures', function () {
     it('fails a target whose root page is missing before calling the model, and exits 1', function () {
         $this->fakeTranslations();
-        $pages = commandPages(['home', 'rooms'], ['home', 'rooms']);
+        $pages = $this->makePages(['home', 'rooms']);
 
         [$exitCode, $output] = translateCommand(['--entry' => [$pages['rooms']->id()], '--site' => ['el']]);
 
@@ -408,7 +357,7 @@ describe('failures', function () {
     });
 
     it('stops at ProviderRejected with its message and exits 1', function () {
-        $engine = commandEngine(fn (EngineCall $call) => throw ProviderRejected::from(
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => throw ProviderRejected::from(
             $call->model,
             new ProviderError(ProviderErrorKind::Rejected, 'Your credit balance is too low.', 400, ProviderError::INSUFFICIENT_CREDITS),
         ));
@@ -424,7 +373,7 @@ describe('failures', function () {
     });
 
     it('counts fields left incomplete and names them', function () {
-        commandEngine(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
             ? ScriptedEngine::result($call, Finish::Refused)
             : ScriptedEngine::translated($call));
 
@@ -465,7 +414,7 @@ describe('summary and git', function () {
 
     it('commits what was saved before ProviderRejected stopped the loop', function () {
         $commits = commandCommits();
-        commandEngine(fn (EngineCall $call, int $number) => $number === 1
+        ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? ScriptedEngine::translated($call)
             : throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
 
