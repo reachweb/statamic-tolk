@@ -15,7 +15,7 @@ final class ModelReference implements ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         try {
-            ModelRef::fromString((string) $value);
+            ModelRef::fromString(is_string($value) ? $value : '');
         } catch (InvalidModelRef) {
             $fail(__('The :attribute must name a model as provider:model.'));
         }

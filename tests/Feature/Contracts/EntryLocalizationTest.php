@@ -11,41 +11,6 @@ use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Stache;
 
-function pagesWithTree(array $shape, bool $root): array
-{
-    $collection = test()->makeCollection('pages', ['en', 'el', 'de'], [
-        'title' => ['type' => 'text', 'localizable' => true],
-    ], structured: true);
-
-    $collection->structureContents(['root' => $root, 'max_depth' => 3])->save();
-
-    $entries = [];
-    $branches = function (array $shape) use (&$branches, &$entries): array {
-        return collect($shape)->map(function ($children, $slug) use (&$branches, &$entries) {
-            [$slug, $children] = is_int($slug) ? [$children, []] : [$slug, $children];
-            $entries[$slug] = test()->makeEntry('pages', 'en', ['title' => ucfirst($slug)], $slug);
-
-            return array_filter(['entry' => $entries[$slug]->id(), 'children' => $branches($children) ?: null]);
-        })->values()->all();
-    };
-
-    $tree = $branches($shape);
-    Collection::find('pages')->structure()->in('en')->tree($tree)->save();
-
-    return $entries;
-}
-
-function treeOfSlugs(string $site): array
-{
-    $slugs = function (array $branches) use (&$slugs): array {
-        return collect($branches)->mapWithKeys(fn (array $branch) => [
-            Entry::find($branch['entry'])->slug() => isset($branch['children']) ? $slugs($branch['children']) : [],
-        ])->all();
-    };
-
-    return $slugs(Collection::find('pages')->structure()->in($site)->tree());
-}
-
 function localizeFresh(EntryContract $origin, string $site): EntryContract
 {
     return test()->localize($origin->fresh(), $site);
@@ -53,25 +18,25 @@ function localizeFresh(EntryContract $origin, string $site): EntryContract
 
 describe('tree placement', function () {
     it('places a localization under its localized parent', function () {
-        $pages = pagesWithTree(['about', 'rooms' => ['suites']], root: false);
+        $pages = $this->makePages(['about', 'rooms' => ['suites']], root: false);
 
         localizeFresh($pages['rooms'], 'el');
         localizeFresh($pages['suites'], 'el');
 
-        expect(treeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
+        expect($this->treeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
     });
 
     it('places a child localized before its parent at the top level and leaves it there', function () {
-        $pages = pagesWithTree(['about', 'rooms' => ['suites']], root: false);
+        $pages = $this->makePages(['about', 'rooms' => ['suites']], root: false);
 
         localizeFresh($pages['suites'], 'el');
         localizeFresh($pages['rooms'], 'el');
 
-        expect(treeOfSlugs('el'))->toBe(['suites' => [], 'rooms' => []]);
+        expect($this->treeOfSlugs('el'))->toBe(['suites' => [], 'rooms' => []]);
     });
 
     it('makes the first localization saved into an empty tree the home page when the structure expects a root', function () {
-        $pages = pagesWithTree(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
+        $pages = $this->makePages(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
 
         localizeFresh($pages['rooms'], 'el');
         localizeFresh($pages['suites'], 'el');
@@ -80,21 +45,21 @@ describe('tree placement', function () {
 
         $tree = Collection::find('pages')->structure()->in('el');
 
-        expect(treeOfSlugs('el'))->toBe(['rooms' => [], 'suites' => ['honeymoon' => []], 'home' => []])
+        expect($this->treeOfSlugs('el'))->toBe(['rooms' => [], 'suites' => ['honeymoon' => []], 'home' => []])
             ->and($tree->root()['entry'])->toBe($pages['rooms']->in('el')->id())
             ->and($home->fresh()->uri())->toBe('/home')
             ->and($pages['rooms']->in('el')->fresh()->uri())->toBe('/');
     });
 
     it('keeps the origin tree when the root is localized first', function () {
-        $pages = pagesWithTree(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
+        $pages = $this->makePages(['home', 'rooms' => ['suites' => ['honeymoon']]], root: true);
 
         foreach (['home', 'rooms', 'suites', 'honeymoon'] as $slug) {
             localizeFresh($pages[$slug], 'de');
         }
 
-        expect(treeOfSlugs('de'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]]])
-            ->and(treeOfSlugs('de'))->toBe(treeOfSlugs('en'));
+        expect($this->treeOfSlugs('de'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]]])
+            ->and($this->treeOfSlugs('de'))->toBe($this->treeOfSlugs('en'));
     });
 });
 
@@ -235,7 +200,7 @@ describe('unsaved localizations', function () {
     });
 
     it('saves a localization with an id assigned in advance as a new entry and places it in the tree', function () {
-        $pages = pagesWithTree(['about', 'rooms' => ['suites']], root: false);
+        $pages = $this->makePages(['about', 'rooms' => ['suites']], root: false);
         localizeFresh($pages['rooms'], 'el');
 
         $created = [];
@@ -250,6 +215,6 @@ describe('unsaved localizations', function () {
             ->and($localization->id())->toBe($id)
             ->and($created)->toBe([$id])
             ->and(Entry::find($id)->origin()->id())->toBe($pages['suites']->id())
-            ->and(treeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
+            ->and($this->treeOfSlugs('el'))->toBe(['rooms' => ['suites' => []]]);
     });
 });

@@ -27,6 +27,7 @@ it('refuses an invalid plan request', function (array $body, string $error) {
     'unknown mode' => [['mode' => 'everything'], 'mode'],
     'translator without a provider' => [['translator' => 'gpt-6-luna'], 'translator'],
     'translator of an unsupported provider' => [['translator' => 'mistral:mistral-large'], 'translator'],
+    'translator that is not a string' => [['translator' => ['anthropic:claude-sonnet-5-5']], 'translator'],
     'overwrite flag that is not a boolean' => [['overwrite_manual' => 'sometimes'], 'overwrite_manual'],
     'field list that is not a list' => [['fields' => 'title'], 'fields'],
     'skip handle that is not a string' => [['skip' => [['title']]], 'skip.0'],

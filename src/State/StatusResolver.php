@@ -43,12 +43,20 @@ final readonly class StatusResolver
         return Fingerprint::ofLeaves(array_map(fn (Leaf $leaf) => $leaf->text, $this->walker->leaves($field, $value, target: true)));
     }
 
+    /**
+     * The text fingerprint of the field's value in the target now, or null while the target does not override it.
+     */
+    public function currentTargetHash(Target $target, Field $field): ?string
+    {
+        return $target->hasOverride($field->handle()) ? $this->targetHash($field, $target->targetValue($field->handle())) : null;
+    }
+
     private function field(Target $target, Field $field, FieldState $stored, CarbonImmutable $now): FieldStatusInfo
     {
         $handle = $field->handle();
         $sourceValue = $target->sourceValue($handle);
         $sourceHash = Fingerprint::of($sourceValue);
-        $targetHash = $target->hasOverride($handle) ? $this->targetHash($field, $target->targetValue($handle)) : null;
+        $targetHash = $this->currentTargetHash($target, $field);
         $state = $stored->reconcile($targetHash, $now);
 
         // Machine output the target still holds; without an override only a translation identical to its source counts.

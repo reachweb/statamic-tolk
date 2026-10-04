@@ -6,9 +6,13 @@ use Carbon\CarbonImmutable;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\PendingState;
+use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 
@@ -17,6 +21,14 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
  */
 final class StateFixtures
 {
+    /**
+     * @return array<string, FieldStatus> the status of each in-scope field of the entry's target in the site
+     */
+    public static function statuses(EntryContract|string $source, string $site = 'el'): array
+    {
+        return array_map(fn (FieldStatusInfo $field) => $field->status, app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry($source, $site))->fields);
+    }
+
     public static function ref(EntryContract $localization): TargetRef
     {
         return new TargetRef(ContentType::Entry, $localization->id());

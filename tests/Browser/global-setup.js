@@ -30,11 +30,24 @@ export default async function globalSetup() {
 
     await assertAnswers();
 
+    // More than about five logins a minute answer 429, so a stored session is reused while it is still valid.
+    const logins = [
+        [sessions.admin, process.env.SANDBOX_ADMIN_EMAIL, process.env.SANDBOX_ADMIN_PASSWORD],
+        [sessions.editor, process.env.SANDBOX_EDITOR_EMAIL, process.env.SANDBOX_EDITOR_PASSWORD],
+    ];
+    const valid = await Promise.all(logins.map(([file]) => stillLoggedIn(file)));
+    const expired = logins.filter((login, index) => !valid[index]);
+
+    if (expired.length === 0) {
+        return;
+    }
+
     const browser = await chromium.launch();
 
     try {
-        await storeSession(browser, sessions.admin, process.env.SANDBOX_ADMIN_EMAIL, process.env.SANDBOX_ADMIN_PASSWORD);
-        await storeSession(browser, sessions.editor, process.env.SANDBOX_EDITOR_EMAIL, process.env.SANDBOX_EDITOR_PASSWORD);
+        for (const [file, email, password] of expired) {
+            await storeSession(browser, file, email, password);
+        }
     } finally {
         await browser.close();
     }
@@ -65,12 +78,7 @@ async function assertAnswers() {
     }
 }
 
-// More than about five logins a minute answer 429, so a stored session is reused while it is still valid.
 async function storeSession(browser, file, email, password) {
-    if (await stillLoggedIn(file)) {
-        return;
-    }
-
     const context = await browser.newContext({ baseURL: process.env.SANDBOX_URL });
     const page = await context.newPage();
 

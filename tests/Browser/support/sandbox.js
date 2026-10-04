@@ -30,24 +30,26 @@ export function tinker(code) {
     return artisan(['tinker', `--execute=${code}`]);
 }
 
+function execOptions() {
+    return { cwd: sandboxPath(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
+}
+
 function php(script, command) {
-    const options = { cwd: sandboxPath(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
+    const args = Array.isArray(command) ? command : null;
 
     try {
-        const output = Array.isArray(command)
-            ? execFileSync('php', [script, ...command], options)
-            : execSync(`php ${script} ${command}`, options);
+        const output = args
+            ? execFileSync('php', [script, ...args], execOptions())
+            : execSync(`php ${script} ${command}`, execOptions());
 
         return output.trim();
     } catch (error) {
-        const name = Array.isArray(command) ? command.join(' ') : command;
-
-        throw new Error(`php ${script} ${name} failed in the sandbox:\n${error.stdout ?? ''}${error.stderr ?? error.message}`);
+        throw new Error(`php ${script} ${args ? args.join(' ') : command} failed in the sandbox:\n${error.stdout ?? ''}${error.stderr ?? error.message}`);
     }
 }
 
 function git(...args) {
-    return execFileSync('git', args, { cwd: sandboxPath(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return execFileSync('git', args, execOptions());
 }
 
 // Puts the sandbox's content back to its last commit. `users/` is restored (a listing visit writes view preferences

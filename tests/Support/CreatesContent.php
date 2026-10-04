@@ -70,6 +70,55 @@ trait CreatesContent
         return $entry;
     }
 
+    /**
+     * A structured `pages` collection in `en`, `el` and `de` whose English tree has the given shape, such as
+     * `['home', 'rooms' => ['suites']]`. The entries are created in tree order, or in `$creationOrder` when given.
+     *
+     * @return array<string, EntryContract> by slug
+     */
+    protected function makePages(array $shape, bool $root = true, ?array $creationOrder = null): array
+    {
+        $this->makeCollection('pages', ['en', 'el', 'de'], ['title' => ['type' => 'text', 'localizable' => true]], structured: true)
+            ->structureContents(['root' => $root, 'max_depth' => 3])
+            ->save();
+
+        $treeOrder = function (array $shape) use (&$treeOrder): array {
+            return collect($shape)->flatMap(fn ($children, $slug) => is_int($slug) ? [$children] : [$slug, ...$treeOrder($children)])->all();
+        };
+
+        $entries = [];
+
+        foreach ($creationOrder ?? $treeOrder($shape) as $slug) {
+            $entries[$slug] = $this->makeEntry('pages', 'en', ['title' => ucfirst($slug)], $slug);
+        }
+
+        $branches = function (array $shape) use (&$branches, $entries): array {
+            return collect($shape)->map(function ($children, $slug) use (&$branches, $entries) {
+                [$slug, $children] = is_int($slug) ? [$children, []] : [$slug, $children];
+
+                return array_filter(['entry' => $entries[$slug]->id(), 'children' => $branches($children) ?: null]);
+            })->values()->all();
+        };
+
+        Collection::find('pages')->structure()->in('en')->tree($branches($shape))->save();
+
+        return $entries;
+    }
+
+    /**
+     * The `pages` tree of a site as nested slugs.
+     */
+    protected function treeOfSlugs(string $site): array
+    {
+        $slugs = function (array $branches) use (&$slugs): array {
+            return collect($branches)->mapWithKeys(fn (array $branch) => [
+                Entry::find($branch['entry'])->slug() => isset($branch['children']) ? $slugs($branch['children']) : [],
+            ])->all();
+        };
+
+        return $slugs(Collection::find('pages')->structure()->in($site)->tree());
+    }
+
     protected function localize(EntryContract $origin, string $site, array $data = []): EntryContract
     {
         $localization = $origin->makeLocalization($site)->merge($data);

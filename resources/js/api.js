@@ -9,11 +9,11 @@ export class ApiError extends Error {
 }
 
 export function get(path, params = {}) {
-    return send((axios, url) => axios.get(url, { params }), path);
+    return send('get', path, { params });
 }
 
 export function post(path, data = {}) {
-    return send((axios, url) => axios.post(url, data), path);
+    return send('post', path, data);
 }
 
 // Core's instance sends the CSRF header and shows the server's toasts. Statamic.$app does not exist yet when this
@@ -22,12 +22,12 @@ function coreAxios() {
     return Statamic.$app.config.globalProperties.$axios;
 }
 
-async function send(request, path) {
+async function send(method, path, payload) {
     const axios = coreAxios();
     const url = cp_url(`tolk/${path.replace(/^\/+/, '')}`);
 
     try {
-        const response = await request(axios, url);
+        const response = await axios[method](url, payload);
 
         return response.data;
     } catch (error) {

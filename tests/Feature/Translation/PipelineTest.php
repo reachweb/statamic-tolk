@@ -11,7 +11,6 @@ use Reach\StatamicTolk\Ai\Throttle;
 use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
-use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\Mode;
@@ -101,15 +100,6 @@ function pipelineRun(Plan $plan): array
     }
 
     return $ran;
-}
-
-function pipelineEngine(Closure $script): ScriptedEngine
-{
-    $engine = new ScriptedEngine($script);
-
-    app()->instance(Engine::class, $engine);
-
-    return $engine;
 }
 
 describe('running units', function () {
@@ -215,7 +205,7 @@ describe('running units', function () {
     });
 
     it('records the usage of every call in the outcome and through the callback', function () {
-        pipelineEngine(fn (EngineCall $call) => ScriptedEngine::translated($call));
+        ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
         $plan = pipelinePlan($this->origin);
         $recorded = [];
 
@@ -381,7 +371,7 @@ describe('missing and invalid translations', function () {
 
 describe('finish reasons and request failures', function () {
     it('splits a three-segment unit that hit its length limit into halves', function () {
-        $engine = pipelineEngine(fn (EngineCall $call, int $number) => $number === 1
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? ScriptedEngine::result($call, Finish::Length)
             : ScriptedEngine::translated($call));
         $plan = pipelinePlan($this->origin, ['fields' => ['title', 'intro', 'body']]);
@@ -400,7 +390,7 @@ describe('finish reasons and request failures', function () {
     });
 
     it('retries one segment with a doubled cap, then fails it as too long', function () {
-        $engine = pipelineEngine(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Length));
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Length));
         $plan = pipelinePlan($this->origin, ['fields' => ['title']]);
 
         $outcome = tolkPipeline()->runUnit($plan, 'b1');
@@ -415,7 +405,7 @@ describe('finish reasons and request failures', function () {
     });
 
     it('treats an empty answer like a length limit', function () {
-        pipelineEngine(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Empty));
+        ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Empty));
         $plan = pipelinePlan($this->origin, ['fields' => ['title', 'intro']]);
 
         expect(pipelineRun($plan))->toBe(['b1', 'b1.a', 'b1.a^', 'b1.b', 'b1.b^'])
@@ -423,7 +413,7 @@ describe('finish reasons and request failures', function () {
     });
 
     it('splits a refused unit with several segments and fails a refused single segment', function () {
-        pipelineEngine(fn (EngineCall $call) => in_array('s2', array_column($call->segments, 'id'), true)
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('s2', array_column($call->segments, 'id'), true)
             ? ScriptedEngine::result($call, Finish::Refused)
             : ScriptedEngine::translated($call));
         $plan = pipelinePlan($this->origin, ['fields' => ['title', 'intro']]);
@@ -442,7 +432,7 @@ describe('finish reasons and request failures', function () {
     });
 
     it('splits a unit with several segments after a timeout without counting a failure', function () {
-        pipelineEngine(fn (EngineCall $call, int $number) => $number === 1
+        ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? throw ProviderTimeout::after('anthropic', 45, 2)
             : ScriptedEngine::translated($call));
         $plan = pipelinePlan($this->origin, ['fields' => ['title', 'intro']]);
@@ -456,7 +446,7 @@ describe('finish reasons and request failures', function () {
     });
 
     it('lets a timeout of one segment propagate, counts it and stores nothing', function () {
-        $engine = pipelineEngine(fn (EngineCall $call, int $number) => $number === 1
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? throw ProviderTimeout::after('anthropic', 45, 2)
             : ScriptedEngine::translated($call));
         $plan = pipelinePlan($this->origin, ['fields' => ['title']]);
@@ -472,7 +462,7 @@ describe('finish reasons and request failures', function () {
 
     it('splits a request that was too large and fails the segments of another rejected request', function () {
         $rejected = fn (int $status) => RequestRejected::from('anthropic', new ProviderError(ProviderErrorKind::RequestRejected, 'Rejected.', $status));
-        pipelineEngine(fn (EngineCall $call, int $number) => match ($number) {
+        ScriptedEngine::bind(fn (EngineCall $call, int $number) => match ($number) {
             1 => throw $rejected(413),
             2 => throw $rejected(400),
             3 => throw $rejected(413),
@@ -520,7 +510,7 @@ describe('provider failures and the fallback', function () {
 
     it('counts attempts from retry.max_attempts', function () {
         config(['tolk.retry.max_attempts' => 1]);
-        $engine = pipelineEngine(fn (EngineCall $call, int $number) => $number === 1
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? throw ProviderUnavailable::connection('anthropic', 3)
             : ScriptedEngine::translated($call));
         $plan = pipelinePlan($this->origin, ['fields' => ['title'], 'fallback' => 'openai:gpt-6-luna']);
@@ -533,7 +523,7 @@ describe('provider failures and the fallback', function () {
     });
 
     it('does not use a fallback whose provider is paused', function () {
-        $engine = pipelineEngine(fn (EngineCall $call, int $number) => $number <= 3
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number <= 3
             ? throw ProviderUnavailable::connection($call->model->provider, 3)
             : ScriptedEngine::translated($call));
         app(Throttle::class)->pause('openai', 60);
@@ -551,7 +541,7 @@ describe('provider failures and the fallback', function () {
     });
 
     it('runs the units spawned by a fallback answer on the fallback', function () {
-        $engine = pipelineEngine(fn (EngineCall $call, int $number) => match (true) {
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => match (true) {
             $number <= 3 => throw ProviderUnavailable::connection('anthropic', 3),
             $number === 4 => ScriptedEngine::result($call, Finish::Length),
             default => ScriptedEngine::translated($call),

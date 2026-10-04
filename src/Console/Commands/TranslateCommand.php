@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Concerns\ReportsTranslations;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
 use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
@@ -69,7 +70,7 @@ class TranslateCommand extends Command
             if (! FakeEngine::enabled() && ! $providers->isConfigured($options->translator->provider)) {
                 throw ProviderNotConfigured::for($options->translator->provider);
             }
-        } catch (InvalidArgumentException|NoProviderConfigured|ProviderNotConfigured|TargetNotFound $exception) {
+        } catch (InvalidArgumentException|MissingDefaultModel|NoProviderConfigured|ProviderNotConfigured|TargetNotFound $exception) {
             $this->components->error($exception->getMessage());
 
             return self::FAILURE;

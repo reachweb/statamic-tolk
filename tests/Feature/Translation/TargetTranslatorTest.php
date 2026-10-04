@@ -9,7 +9,6 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Content\Fingerprint;
-use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
@@ -20,7 +19,6 @@ use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\State\FieldState;
-use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -69,20 +67,6 @@ function translateTarget(EntryContract|string $source, string $site = 'el', ?Pla
     return app(TargetTranslator::class)->translate(app(TargetFactory::class)->forEntry($source, $site), $options ?? translatorOptions(), $apply);
 }
 
-function translatorStatuses(EntryContract|string $source, string $site = 'el'): array
-{
-    return array_map(fn ($field) => $field->status, app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry($source, $site))->fields);
-}
-
-function translatorEngine(Closure $script): ScriptedEngine
-{
-    $engine = new ScriptedEngine($script);
-
-    app()->instance(Engine::class, $engine);
-
-    return $engine;
-}
-
 /**
  * Every plan key written so far is gone from the cache.
  */
@@ -112,7 +96,7 @@ describe('translating a target', function () {
             ->and($result->error)->toBeNull()
             ->and($localization->data()->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.', 'body' => '[T] The body.'])
             ->and($localization->published())->toBeFalse()
-            ->and(translatorStatuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current])
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current])
             ->and($this->modelCalls())->toBe(1);
         assertPlansForgotten($this->planKeys);
     });
@@ -150,7 +134,7 @@ describe('translating a target', function () {
             ->and($result->created)->toBeFalse()
             ->and($result->fields)->toBe(['title' => 'current', 'intro' => 'applied', 'body' => 'current'])
             ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('[T] A longer intro.')
-            ->and(translatorStatuses($this->origin))->each->toBe(FieldStatus::Current);
+            ->and(StateFixtures::statuses($this->origin))->each->toBe(FieldStatus::Current);
     });
 
     it('leaves a manually edited field alone', function () {
@@ -165,7 +149,7 @@ describe('translating a target', function () {
         expect($result->fields)->toBe(['title' => 'manual', 'intro' => 'applied', 'body' => 'current'])
             ->and($localization->get('title'))->toBe('Γεια σας')
             ->and($localization->get('intro'))->toBe('[T] A longer intro.')
-            ->and(translatorStatuses($this->origin)['title'])->toBe(FieldStatus::Manual);
+            ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Manual);
     });
 
     it('replaces a manually edited field with overwriteManual', function () {
@@ -182,7 +166,7 @@ describe('translating a target', function () {
 
         expect($result->fields)->toBe(['title' => 'applied', 'intro' => 'current', 'body' => 'current'])
             ->and($this->origin->fresh()->in('el')->get('title'))->toBe('[T] Hello again')
-            ->and(translatorStatuses($this->origin)['title'])->toBe(FieldStatus::Current);
+            ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Current);
     });
 
     it('confirms pending state first, even when nothing is sent', function () {
@@ -272,7 +256,7 @@ describe('failures', function () {
             ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('[T] An edited intro.')
             ->and($this->modelCalls())->toBe(2)
             ->and($result->usage->get(ModelRef::fromString('anthropic:claude-sonnet-5-5'))->calls)->toBe(2)
-            ->and(translatorStatuses($this->origin))->each->toBe(FieldStatus::Current);
+            ->and(StateFixtures::statuses($this->origin))->each->toBe(FieldStatus::Current);
         assertPlansForgotten($this->planKeys);
     });
 
@@ -300,7 +284,7 @@ describe('failures', function () {
 
     it('waits through transient failures as long as each one asks', function () {
         Sleep::fake();
-        $engine = translatorEngine(fn (EngineCall $call, int $number) => match ($number) {
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => match ($number) {
             1 => throw ProviderPaused::for('anthropic', 7),
             2 => throw ProviderUnavailable::connection('anthropic', 0),
             default => ScriptedEngine::translated($call),
@@ -316,7 +300,7 @@ describe('failures', function () {
 
     it('gives up after ten waits in a row', function () {
         Sleep::fake();
-        $engine = translatorEngine(fn (EngineCall $call) => throw ProviderUnavailable::connection('anthropic', 3));
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => throw ProviderUnavailable::connection('anthropic', 3));
 
         $result = translateTarget($this->origin);
 
@@ -332,7 +316,7 @@ describe('failures', function () {
     it('counts the waits of each unit on its own', function () {
         Sleep::fake();
         config(['tolk.batch.max_segments' => 1]);
-        $engine = translatorEngine(fn (EngineCall $call, int $number) => $number % 9 === 0
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number % 9 === 0
             ? ScriptedEngine::translated($call)
             : throw ProviderUnavailable::connection('anthropic', 3));
 
@@ -354,7 +338,7 @@ describe('failures', function () {
     });
 
     it('saves a field with a part left in the source language as incomplete', function () {
-        translatorEngine(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
             ? ScriptedEngine::result($call, Finish::Refused)
             : ScriptedEngine::translated($call));
 
@@ -369,7 +353,7 @@ describe('failures', function () {
 
     it('fails a field with strict fields and saves the others', function () {
         Event::fake([TargetTranslated::class]);
-        translatorEngine(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
             ? ScriptedEngine::result($call, Finish::Refused)
             : ScriptedEngine::translated($call));
 
@@ -386,7 +370,7 @@ describe('failures', function () {
 
     it('fails the target and saves nothing when every field failed with strict fields', function () {
         Event::fake([TargetTranslated::class]);
-        translatorEngine(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Refused));
+        ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Refused));
 
         $result = translateTarget($this->origin, options: translatorOptions(['strict' => true]));
 

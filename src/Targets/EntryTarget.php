@@ -21,6 +21,7 @@ use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Translation\AssembledField;
+use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
@@ -228,8 +229,8 @@ final class EntryTarget implements Target
         $writes = $skipped = [];
 
         foreach ($fields as $handle => $field) {
-            if ($this->targetHashNow($handle) !== $field->targetBefore && ! $options->overwriteManual) {
-                $skipped[$handle] = 'target_changed';
+            if ($this->resolver->currentTargetHash($this, $this->fields()->get($handle)) !== $field->targetBefore && ! $options->overwriteManual) {
+                $skipped[$handle] = TargetResult::TARGET_CHANGED;
             } else {
                 $writes[$handle] = $field;
             }
@@ -348,11 +349,6 @@ final class EntryTarget implements Target
         if ($localization->save() === false) {
             throw ApplyFailed::vetoed('entry::'.$localization->id());
         }
-    }
-
-    private function targetHashNow(string $handle): ?string
-    {
-        return $this->hasOverride($handle) ? $this->resolver->targetHash($this->fields()->get($handle), $this->targetValue($handle)) : null;
     }
 
     /**

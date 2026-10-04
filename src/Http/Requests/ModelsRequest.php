@@ -12,9 +12,4 @@ class ModelsRequest extends FormRequest
 
         return $user->can('translate content') || $user->can('run bulk translations');
     }
-
-    public function rules(): array
-    {
-        return [];
-    }
 }
