@@ -10,8 +10,10 @@ use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\Support\Settings;
+use Statamic\Facades\Addon;
 use Statamic\Facades\Permission;
 use Statamic\Facades\Site;
+use Statamic\Facades\User;
 use Statamic\Providers\AddonServiceProvider;
 use Statamic\Statamic;
 
@@ -81,6 +83,14 @@ class ServiceProvider extends AddonServiceProvider
             'concurrency' => max(1, (int) config('tolk.concurrency.editor')),
             'multisite' => Site::multiEnabled() && Site::hasMultiple(),
             'fakeEngine' => FakeEngine::enabled(),
+            'settingsUrl' => $this->settingsUrl(),
         ]]);
+    }
+
+    private function settingsUrl(): ?string
+    {
+        $addon = Addon::get(Settings::PACKAGE);
+
+        return $addon && User::current()?->can('editSettings', $addon) ? $addon->settingsUrl() : null;
     }
 }
