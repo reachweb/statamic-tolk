@@ -7,6 +7,11 @@ test.beforeEach(() => {
     reset();
 });
 
+// Leave the sandbox as it was: other specs read the German home page's counts without resetting.
+test.afterAll(() => {
+    reset();
+});
+
 test('Translate fills the untranslated fields, and Save stores them with their state', async ({ page, browserErrors }) => {
     const origin = entryFile('pages', 'en', 'home');
     const before = entryFile('pages', 'de', 'home');

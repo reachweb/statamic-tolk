@@ -5,7 +5,7 @@ import { ApiError } from '../api.js';
 import { SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
-import { createTranslations, remainingHandles, skipHandles, undoable } from './translate.js';
+import { createTranslations, remainingHandles, skipHandles, slugToKeep, undoable } from './translate.js';
 
 let store;
 let registry;
@@ -508,6 +508,157 @@ describe('translate', () => {
 
         expect(base().progress.cancelling).toBe(true);
         finish.resolve(summary());
+    });
+});
+
+describe('a localization created in the form', () => {
+    // What the offer module records on `localization.created`, with the origin's slug from the status.
+    function created(extra = {}) {
+        const ctx = mount();
+        base().created = true;
+        base().status.localization.origin_slug = 'home';
+        Object.assign(base(), extra);
+
+        return ctx;
+    }
+
+    const filled = { stale: false, applied: ['intro'], skipped: {}, repeated: [] };
+
+    it('needs the creation, a slug not kept yet and the origin slug', () => {
+        const status = { localization: { origin_slug: 'home' } };
+
+        expect(slugToKeep({ created: true, slugKept: false, status })).toBe('home');
+        expect(slugToKeep({ created: false, slugKept: false, status })).toBeNull();
+        expect(slugToKeep({ created: true, slugKept: true, status })).toBeNull();
+        expect(slugToKeep({ created: true, slugKept: false, status: { localization: {} } })).toBeNull();
+        expect(slugToKeep({ created: true, slugKept: false, status: null })).toBeNull();
+        expect(slugToKeep(null)).toBeNull();
+    });
+
+    it('keeps the origin slug before the first fill and checks it again after the fills, while Save stays refused', async () => {
+        const ctx = created();
+        const order = [];
+        const kept = deferred();
+        const rechecked = deferred();
+        const keepSlug = vi.fn(() => {
+            order.push('keep');
+
+            return kept.promise;
+        });
+        const recheckSlug = vi.fn(() => {
+            order.push('recheck');
+
+            return rechecked.promise;
+        });
+        const fill = vi.fn(async () => {
+            order.push('fill');
+
+            return filled;
+        });
+        const run = vi.fn(async ({ onFields }) => {
+            await onFields({ intro: { value: '[de] A family-run hotel.', meta: null } });
+
+            return summary({ delivered: ['intro'] });
+        });
+        const t = translations({ run, fill, keepSlug, recheckSlug });
+
+        const promise = t.translate('base');
+
+        expect(keepSlug).toHaveBeenCalledOnce();
+        const [keptCtx, slug, options] = keepSlug.mock.calls[0];
+        expect(keptCtx).toBe(ctx);
+        expect(slug).toBe('home');
+        expect(options.reference).toBe('entry::de');
+        expect(options.active()).toBe(true);
+        base().lastChangeAt = 4_000;
+        expect(options.lastChangeAt()).toBe(4_000);
+
+        await flush();
+        expect(run).not.toHaveBeenCalled();
+        expect(base().phase).toBe('planning');
+
+        kept.resolve({ stale: false, kept: true, reset: true });
+        await flush();
+        expect(base().slugKept).toBe(true);
+        expect(recheckSlug).toHaveBeenCalledExactlyOnceWith(ctx, 'home', expect.objectContaining({ reference: 'entry::de' }));
+        expect(base().phase).toBe('working');
+
+        rechecked.resolve(false);
+        await promise;
+
+        expect(order).toEqual(['keep', 'fill', 'recheck']);
+        expect(base().phase).toBe('done');
+    });
+
+    it('leaves the slug alone on a later translation', async () => {
+        created({ slugKept: true });
+        const keepSlug = vi.fn();
+        const recheckSlug = vi.fn();
+        const t = translations({ keepSlug, recheckSlug, run: async () => summary({ delivered: ['intro'] }) });
+
+        await t.translate('base', { mode: 'update' });
+
+        expect(keepSlug).not.toHaveBeenCalled();
+        expect(recheckSlug).not.toHaveBeenCalled();
+    });
+
+    it('leaves the slug of a localization that existed before the form opened alone', async () => {
+        mount();
+        base().status.localization.origin_slug = 'home';
+        const keepSlug = vi.fn();
+        const recheckSlug = vi.fn();
+        const t = translations({ keepSlug, recheckSlug, run: async () => summary({ delivered: ['intro'] }) });
+
+        await t.translate('base');
+
+        expect(keepSlug).not.toHaveBeenCalled();
+        expect(recheckSlug).not.toHaveBeenCalled();
+        expect(base().phase).toBe('done');
+    });
+
+    it('does not check the slug again when nothing was filled', async () => {
+        created();
+        const recheckSlug = vi.fn();
+        const t = translations({ keepSlug: async () => ({ stale: false, kept: true, reset: true }), recheckSlug });
+
+        await t.translate('base');
+
+        expect(recheckSlug).not.toHaveBeenCalled();
+        expect(base()).toMatchObject({ phase: 'done', slugKept: true });
+    });
+
+    it('keeps the slug on the next try when the plan request failed, and the first try stops', async () => {
+        created();
+        const api = fakeApi(new ApiError({ status: 503, code: null, message: 'Unavailable.', data: null }));
+        const keepSlug = vi.fn(async () => ({ stale: false, kept: true, reset: true }));
+        const t = translations({ api, keepSlug });
+
+        await t.translate('base');
+
+        expect(base()).toMatchObject({ phase: 'error', slugKept: false });
+        expect(keepSlug.mock.calls[0][2].active()).toBe(false);
+
+        await t.retry('base');
+
+        expect(keepSlug).toHaveBeenCalledTimes(2);
+        expect(base()).toMatchObject({ phase: 'done', slugKept: true });
+    });
+
+    it('fills nothing when the editor switches while the slug is kept', async () => {
+        created();
+        const kept = deferred();
+        const run = vi.fn();
+        const t = translations({ run, keepSlug: () => kept.promise });
+
+        const promise = t.translate('base');
+        await flush();
+        t.abort('base');
+        store.switched('base', 'entry::el', 5_000);
+        kept.resolve({ stale: true, kept: false, reset: false });
+
+        expect(await promise).toBeNull();
+        expect(run).not.toHaveBeenCalled();
+        expect(base()).toMatchObject({ reference: 'entry::el', phase: 'idle', slugKept: false });
     });
 });
 

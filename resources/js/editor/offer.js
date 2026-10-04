@@ -1,0 +1,158 @@
+import { watch } from 'vue';
+import { registry as sharedRegistry } from './registry.js';
+import { describe } from './statuses.js';
+import { useEditorStore } from './store.js';
+import { translations as sharedTranslations } from './translate.js';
+
+const BASE = 'base';
+
+// The user preference behind "Don't offer again".
+export const OFFER_PREFERENCE = 'tolk.offer';
+
+export function offersEnabled(preferences = Statamic.$preferences) {
+    return preferences.get(OFFER_PREFERENCE, true) !== false;
+}
+
+// The offer needs the `offer_on_create` setting, the user's preference, a model to translate with and untranslated
+// fields.
+export function shouldOffer(status, preferences = Statamic.$preferences) {
+    return status?.offer === true && offersEnabled(preferences) && describe(status).localization?.translate === true;
+}
+
+// What the offer says: how many fields, from which site into which, with which model.
+export function describeOffer(status) {
+    const banner = describe(status);
+    const count = status?.localization?.counts?.untranslated ?? 0;
+
+    return {
+        count,
+        source: banner.localization?.source?.name ?? '',
+        target: banner.localization?.target?.name ?? '',
+        translator: banner.translator,
+    };
+}
+
+// The offer after creating a localization in the publish form (§A13). Core emits `localization.created` once the form
+// shows the new localization, and the banner's watcher has already run its switch, which resets the store. So the
+// offer waits for the new item's status, and it waits for the switch too in case the event came first.
+export function createOffers({
+    store = useEditorStore,
+    registry = sharedRegistry,
+    translations = sharedTranslations,
+    preferences = () => Statamic.$preferences,
+    toast = () => Statamic.$toast,
+} = {}) {
+    const waiting = new Map();
+    let listening = false;
+
+    function listen(events = Statamic.$events) {
+        if (listening) {
+            return;
+        }
+
+        listening = true;
+        events.$on('localization.created', created);
+    }
+
+    // The payload's `container` is the container's exposed instance; `name` is a plain string there.
+    function created(payload) {
+        const name = payload?.container?.name;
+        const reference = registry.context(name)?.reference?.value;
+
+        if (name !== BASE || !reference) {
+            return;
+        }
+
+        stopWaiting(name);
+
+        const editor = store();
+
+        if (settle(editor, name, reference)) {
+            return;
+        }
+
+        const stop = watch(
+            () => {
+                const container = editor.containers[name];
+
+                return [container?.reference, container?.status];
+            },
+            () => {
+                if (settle(editor, name, reference)) {
+                    stop();
+
+                    if (waiting.get(name) === stop) {
+                        waiting.delete(name);
+                    }
+                }
+            },
+        );
+
+        waiting.set(name, stop);
+    }
+
+    // True once there is nothing left to wait for.
+    function settle(editor, name, reference) {
+        const container = editor.containers[name];
+
+        if (container?.reference !== reference) {
+            // Before the switch to the new localization, or after the editor moved on.
+            return registry.context(name)?.reference?.value !== reference;
+        }
+
+        container.created = true;
+
+        if (container.status === null) {
+            return false;
+        }
+
+        if (container.phase === 'idle' && shouldOffer(container.status, preferences())) {
+            editor.setPhase(name, 'offer');
+        }
+
+        return true;
+    }
+
+    function stopWaiting(name) {
+        waiting.get(name)?.();
+        waiting.delete(name);
+    }
+
+    function remember(dontOfferAgain) {
+        if (!dontOfferAgain) {
+            return;
+        }
+
+        Promise.resolve(preferences().set(OFFER_PREFERENCE, false)).catch(() => {
+            toast().error(__('Your choice could not be saved.'));
+        });
+    }
+
+    function accept(name, { dontOfferAgain = false } = {}) {
+        const editor = store();
+
+        if (editor.phaseOf(name) !== 'offer') {
+            return null;
+        }
+
+        remember(dontOfferAgain);
+        editor.setPhase(name, 'idle');
+
+        return translations.translate(name, { mode: 'missing' });
+    }
+
+    function decline(name, { dontOfferAgain = false } = {}) {
+        const editor = store();
+
+        if (editor.phaseOf(name) !== 'offer') {
+            return;
+        }
+
+        remember(dontOfferAgain);
+        editor.setPhase(name, 'idle');
+    }
+
+    return { listen, created, accept, decline, waiting: (name) => waiting.has(name) };
+}
+
+export const offers = createOffers();
