@@ -5,6 +5,7 @@ namespace Reach\StatamicTolk\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Http\Rules\CatalogModel;
 use Reach\StatamicTolk\Http\Rules\ModelReference;
 
 class EditorPlanRequest extends FormRequest
@@ -19,7 +20,7 @@ class EditorPlanRequest extends FormRequest
             'fields.*' => ['string'],
             'skip' => ['array'],
             'skip.*' => ['string'],
-            'translator' => ['nullable', 'string', new ModelReference],
+            'translator' => ['nullable', 'string', new ModelReference, new CatalogModel($this->user())],
         ];
     }
 }

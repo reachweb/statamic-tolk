@@ -33,9 +33,24 @@ it('refuses an invalid plan request', function (array $body, string $error) {
     'skip handle that is not a string' => [['skip' => [['title']]], 'skip.0'],
 ]);
 
-it('accepts a translator outside the catalog at validation', function () {
-    $this->postJson(cp_route('tolk.editor.plan'), ['reference' => 'entry::a', 'mode' => 'missing', 'translator' => 'anthropic:claude-opus-5-5'])
-        ->assertJsonMissingValidationErrors();
+it('accepts a translator outside the catalog only from a user who may edit the settings', function () {
+    $body = ['reference' => 'entry::a', 'mode' => 'missing', 'translator' => 'anthropic:claude-opus-5-5'];
+
+    $this->postJson(cp_route('tolk.editor.plan'), $body)
+        ->assertUnprocessable()
+        ->assertOnlyJsonValidationErrors(['translator']);
+
+    $this->postJson(cp_route('tolk.editor.plan'), [...$body, 'translator' => 'anthropic:claude-haiku-4-5'])->assertJsonMissingValidationErrors();
+
+    $this->signInWithPermissions(['access cp', 'translate content', 'edit reachweb/statamic-tolk settings']);
+
+    $this->postJson(cp_route('tolk.editor.plan'), $body)->assertJsonMissingValidationErrors();
+});
+
+it('reports only the format of a malformed translator', function () {
+    $this->postJson(cp_route('tolk.editor.plan'), ['reference' => 'entry::a', 'mode' => 'missing', 'translator' => 'claude-opus-5-5'])
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.translator', [__('The :attribute must name a model as provider:model.', ['attribute' => 'translator'])]);
 });
 
 it('refuses a malformed confirm or baseline request', function (string $route, array $body, string $error) {

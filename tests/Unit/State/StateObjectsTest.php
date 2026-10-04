@@ -204,6 +204,15 @@ it('prepends pending entries and keeps three', function () {
         ->and($field->targetHash)->toBe('t1');
 });
 
+it('replaces a pending entry of the same plan', function () {
+    $field = (new FieldState)
+        ->withPending(pendingState('p1', ['plan' => 'one']))
+        ->withPending(pendingState('p2', ['plan' => 'two']))
+        ->withPending(pendingState('p3', ['plan' => 'one']));
+
+    expect(array_map(fn (PendingState $pending) => [$pending->plan, $pending->targetHash], $field->pending))->toBe([['one', 'p3'], ['two', 'p2']]);
+});
+
 it('changes fields of an item without changing the item', function () {
     $item = ItemState::empty(TargetRef::parse('term::topics::food::el'));
     $title = machineState('s1', 't1');
