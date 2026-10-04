@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Concerns\ReportsTranslations;
 use Reach\StatamicTolk\Contracts\Target;
@@ -42,10 +43,13 @@ class TranslateCommand extends Command
         {--entry=* : Translate the family of this entry (any of its localizations names it)}
         {--collection=* : Translate every entry of this collection}
         {--site=* : The site to translate into (required)}
-        {--mode=missing : missing (only what is not translated yet), update (also outdated translations) or all (everything again)}
-        {--force : Overwrite fields that were edited by hand}
+        {--mode=missing : missing (only what is not translated yet), update (also outdated translations), all (everything again) or review (only review the existing machine translations)}
+        {--force : Overwrite fields that were edited by hand (in mode review: review them too; they stay manual)}
         {--publish : Publish a new localization when its origin is published, instead of saving it as a draft}
         {--translator= : The model to translate with, as provider:model}
+        {--review : Review the translations with a second model and apply its corrections (default from the settings)}
+        {--no-review : Do not review the translations, whatever the settings say}
+        {--reviewer= : The model to review with, as provider:model (implies --review)}
         {--dry-run : Show what would be translated, without calling the model or saving anything}
         {--yes : Translate without asking for confirmation}';
 
@@ -53,22 +57,25 @@ class TranslateCommand extends Command
 
     public function handle(Settings $settings, ModelCatalog $catalog, Providers $providers, EntryFamilies $families, TargetFactory $factory): int
     {
-        $this->startReport();
-
         try {
             $sites = $this->sites();
             $mode = $this->mode();
+            $review = $this->review($mode);
             $collections = $this->collections($settings);
             $entryIds = $this->entryIds($settings);
             $options = PlanOptions::fromSettings($settings, $catalog, [
                 'translator' => $this->option('translator') ?: null,
                 'mode' => $mode,
                 'overwriteManual' => (bool) $this->option('force'),
+                'review' => $review,
+                'reviewer' => $this->option('reviewer') ?: null,
                 'profile' => 'background',
             ]);
 
-            if (! FakeEngine::enabled() && ! $providers->isConfigured($options->translator->provider)) {
-                throw ProviderNotConfigured::for($options->translator->provider);
+            foreach ($this->models($options) as $model) {
+                if (! FakeEngine::enabled() && ! $providers->isConfigured($model->provider)) {
+                    throw ProviderNotConfigured::for($model->provider);
+                }
             }
         } catch (InvalidArgumentException|MissingDefaultModel|NoProviderConfigured|ProviderNotConfigured|TargetNotFound $exception) {
             $this->components->error($exception->getMessage());
@@ -76,22 +83,30 @@ class TranslateCommand extends Command
             return self::FAILURE;
         }
 
+        $this->startReport($options->review);
+        $reviewOnly = $options->mode === Mode::Review;
+
         $roots = $families->roots($collections, $entryIds);
         $this->warnAboutMissingSites($roots, $sites);
         $targets = $families->targets($roots, $sites);
 
         if ($targets === []) {
-            $this->components->info('Nothing to translate.');
+            $this->components->info($reviewOnly ? 'Nothing to review.' : 'Nothing to translate.');
 
             return self::SUCCESS;
         }
 
+        $models = '';
+
+        foreach ($this->models($options) as $role => $model) {
+            $models .= "{$role}: {$catalog->label($model)} ({$model}). ";
+        }
+
         $this->line(sprintf(
-            'Targets: %s (%s). Translator: %s (%s). Mode: %s.',
+            'Targets: %s (%s). %sMode: %s.',
             number_format(count($targets)),
             implode(', ', array_map(fn (string $site) => Site::get($site)->name(), $sites)),
-            $catalog->label($options->translator),
-            $options->translator,
+            $models,
             $options->mode->value,
         ));
 
@@ -103,8 +118,8 @@ class TranslateCommand extends Command
             return $this->dryRun($targets, $factory, $options);
         }
 
-        if (! $this->option('yes') && ! $this->confirm('Translate and save them?', true)) {
-            $this->components->warn('Nothing was translated.');
+        if (! $this->option('yes') && ! $this->confirm($reviewOnly ? 'Review them and save the corrections?' : 'Translate and save them?', true)) {
+            $this->components->warn($reviewOnly ? 'Nothing was reviewed.' : 'Nothing was translated.');
 
             return self::SUCCESS;
         }
@@ -134,7 +149,9 @@ class TranslateCommand extends Command
                 $this->startTarget($label);
 
                 try {
-                    $this->reportResult($label, $translator->translate($target, $options, $apply));
+                    $this->reportResult($label, $options->mode === Mode::Review
+                        ? $translator->review($target, $options, $apply)
+                        : $translator->translate($target, $options, $apply));
                 } catch (ProviderRejected $rejected) {
                     $this->newLine();
                     $this->components->error($rejected->getMessage());
@@ -145,7 +162,7 @@ class TranslateCommand extends Command
             }
         } finally {
             // Content saved inside ContentWriter::write() has no git listener (§A11), so it is committed once here.
-            if ($this->resultCounts()['done'] > 0) {
+            if ($this->savedCount() > 0) {
                 GitListeners::commit(ContentWriter::COMMIT_MESSAGE);
             }
         }
@@ -172,14 +189,18 @@ class TranslateCommand extends Command
             $this->noteOutOfScope($target);
             $this->startTarget($this->targetLabel($target));
 
-            if (($failure = $this->rootFailure($target, $planned)) !== null) {
+            if ($options->mode === Mode::Review) {
+                // A review never creates a localization, so a missing root page does not stop it.
+                $plan = $planner->planReview($target, $options);
+            } elseif (($failure = $this->rootFailure($target, $planned)) !== null) {
                 $this->output->writeln("<fg=red>would fail</>, {$failure}");
 
                 continue;
+            } else {
+                $planned[$description['source_id'].'|'.$description['site']] = true;
+                $plan = $planner->plan($target, $options);
             }
 
-            $planned[$description['source_id'].'|'.$description['site']] = true;
-            $plan = $planner->plan($target, $options);
             $this->reportPlan($plan);
 
             if (! $plan->isEmpty()) {
@@ -192,9 +213,14 @@ class TranslateCommand extends Command
 
         $this->newLine();
         $this->line(sprintf(
-            'Dry run: %s of %s would be translated (%s, %s). Nothing was sent or saved.',
+            'Dry run: %s of %s would be %s (%s, %s). Nothing was sent or saved.',
             number_format($totals['targets']),
             $this->count(count($targets), 'target'),
+            match (true) {
+                $options->mode === Mode::Review => 'reviewed',
+                $options->review => 'translated and reviewed',
+                default => 'translated',
+            },
             $this->count($totals['segments'], 'segment'),
             $this->count($totals['characters'], 'character'),
         ));
@@ -246,13 +272,36 @@ class TranslateCommand extends Command
 
     private function mode(): Mode
     {
-        $mode = Mode::tryFrom((string) $this->option('mode'));
+        return Mode::tryFrom((string) $this->option('mode'))
+            ?? throw new InvalidArgumentException("Invalid mode [{$this->option('mode')}]. Use missing, update, all or review.");
+    }
 
-        if (! in_array($mode, [Mode::Missing, Mode::Update, Mode::All], true)) {
-            throw new InvalidArgumentException("Invalid mode [{$this->option('mode')}]. Use missing, update or all.");
+    /**
+     * @return ?bool null when the settings decide
+     */
+    private function review(Mode $mode): ?bool
+    {
+        if (! $this->option('no-review')) {
+            // Naming a reviewer asks for a review.
+            return $this->option('review') || $this->option('reviewer') ? true : null;
         }
 
-        return $mode;
+        if ($this->option('review') || $this->option('reviewer') || $mode === Mode::Review) {
+            throw new InvalidArgumentException('--no-review cannot be combined with --review, --reviewer or --mode=review.');
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, ModelRef> the models the operation calls, by role
+     */
+    private function models(PlanOptions $options): array
+    {
+        return array_filter([
+            'Translator' => $options->mode === Mode::Review ? null : $options->translator,
+            'Reviewer' => $options->reviewer,
+        ]);
     }
 
     /**

@@ -9,6 +9,7 @@ use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Facades\Site;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
  * The output of commands that translate targets one by one: a line per target, then a summary and the fields that were
@@ -32,13 +33,18 @@ trait ReportsTranslations
     /** @var array<string, array{field: string, type: string, reason: string}> */
     private array $outOfScope = [];
 
+    private bool $reviews = false;
+
     /**
      * Forgets the previous report: one command instance serves every call in a process (Artisan::call(), the scheduler).
+     *
+     * @param  bool  $reviews  whether the operation reviews, so the lines and the summary count corrections
      */
-    protected function startReport(): void
+    protected function startReport(bool $reviews = false): void
     {
         $this->results = [];
         $this->outOfScope = [];
+        $this->reviews = $reviews;
     }
 
     protected function targetLabel(Target $target): string
@@ -77,6 +83,20 @@ trait ReportsTranslations
         foreach ($result->warnings as $warning) {
             $this->output->writeln("    <comment>{$warning}</comment>");
         }
+
+        if ($this->output->isVerbose()) {
+            foreach ($result->corrections as $handle => $corrections) {
+                foreach ($corrections as $correction) {
+                    $this->output->writeln(OutputFormatter::escape(sprintf(
+                        '    %s: "%s" → "%s" (%s)',
+                        $handle,
+                        $correction['before'],
+                        $correction['after'],
+                        $correction['reason'],
+                    )));
+                }
+            }
+        }
     }
 
     protected function reportPlan(Plan $plan): void
@@ -107,17 +127,25 @@ trait ReportsTranslations
     }
 
     /**
-     * @return array{done: int, skipped: int, failed: int}
+     * @return array{done: int, skipped: int, failed: int} a target reviewed without corrections counts as done
      */
     protected function resultCounts(): array
     {
         $counts = ['done' => 0, 'skipped' => 0, 'failed' => 0];
 
         foreach ($this->results as ['result' => $result]) {
-            $counts[$result->status->value]++;
+            $counts[$result->reason === TargetResult::NO_CORRECTIONS ? 'done' : $result->status->value]++;
         }
 
         return $counts;
+    }
+
+    /**
+     * @return int the number of targets that were saved
+     */
+    protected function savedCount(): int
+    {
+        return count(array_filter($this->results, fn (array $row) => $row['result']->status === TargetResultStatus::Done));
     }
 
     protected function summarize(): void
@@ -132,8 +160,17 @@ trait ReportsTranslations
             }
         }
 
+        $corrections = array_sum(array_map(fn (array $row) => $this->correctionCount($row['result']), $this->results));
+
         $this->newLine();
-        $this->table(['Done', 'Skipped', 'Failed', 'Fields left incomplete'], [[...array_values($this->resultCounts()), $incompleteFields]]);
+        $this->table(
+            ['Done', 'Skipped', 'Failed', 'Fields left incomplete', ...($this->reviews ? ['Corrections'] : [])],
+            [[...array_values($this->resultCounts()), $incompleteFields, ...($this->reviews ? [$corrections] : [])]],
+        );
+
+        if ($corrections > 0 && ! $this->output->isVerbose()) {
+            $this->line('Run the command with -v to see each correction and its reason.');
+        }
 
         if ($incomplete !== []) {
             $this->line('Parts of these fields could not be translated and are still in the source language. The next update retries them.');
@@ -166,14 +203,15 @@ trait ReportsTranslations
     {
         $applied = $result->appliedFields();
 
-        $description = match ($result->status) {
-            TargetResultStatus::Done => '<info>done</info>, '.($result->created ? 'created, ' : '').$this->count(count($applied), 'field'),
-            TargetResultStatus::Skipped => '<comment>skipped</comment>, '.match ($result->reason) {
+        $description = match (true) {
+            $result->status === TargetResultStatus::Done => '<info>done</info>, '.($result->created ? 'created, ' : '').$this->count(count($applied), 'field').$this->correctionsNote($result),
+            $result->reason === TargetResult::NO_CORRECTIONS => '<info>reviewed</info>, nothing to correct',
+            $result->status === TargetResultStatus::Skipped => '<comment>skipped</comment>, '.match ($result->reason) {
                 TargetResult::NOTHING_TO_DO => 'nothing to do',
                 TargetResult::TARGET_CHANGED => 'edited by someone while it was being translated',
                 default => str_replace('_', ' ', (string) $result->reason),
             },
-            TargetResultStatus::Failed => '<fg=red>failed</>, '.$result->error,
+            default => '<fg=red>failed</>, '.$result->error,
         };
 
         $details = array_filter([
@@ -187,6 +225,22 @@ trait ReportsTranslations
         }
 
         return $description;
+    }
+
+    private function correctionsNote(TargetResult $result): string
+    {
+        if (! $this->reviews) {
+            return '';
+        }
+
+        $count = $this->correctionCount($result);
+
+        return ', '.($count > 0 ? $this->count($count, 'correction') : 'no corrections');
+    }
+
+    private function correctionCount(TargetResult $result): int
+    {
+        return array_sum(array_map('count', $result->corrections));
     }
 
     /**

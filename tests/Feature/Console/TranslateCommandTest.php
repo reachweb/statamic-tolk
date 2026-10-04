@@ -72,9 +72,12 @@ describe('validation', function () {
         'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection or --entry.'],
         'unknown collection' => [['--collection' => ['blog'], '--site' => ['el']], 'Collection [blog] not found.'],
         'unknown entry' => [['--entry' => ['missing-id'], '--site' => ['el']], 'Entry [missing-id] not found.'],
-        'invalid mode' => [['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'everything'], 'Invalid mode [everything]. Use missing, update or all.'],
-        'mode review' => [['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review'], 'Invalid mode [review]. Use missing, update or all.'],
+        'invalid mode' => [['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'everything'], 'Invalid mode [everything]. Use missing, update, all or review.'],
         'invalid translator' => [['--collection' => ['articles'], '--site' => ['el'], '--translator' => 'mistral:large'], 'Invalid model reference [mistral:large].'],
+        'invalid reviewer' => [['--collection' => ['articles'], '--site' => ['el'], '--reviewer' => 'mistral:large'], 'Invalid model reference [mistral:large].'],
+        '--no-review with --review' => [['--collection' => ['articles'], '--site' => ['el'], '--review' => true, '--no-review' => true], '--no-review cannot be combined with --review, --reviewer or --mode=review.'],
+        '--no-review with --reviewer' => [['--collection' => ['articles'], '--site' => ['el'], '--reviewer' => 'openai:gpt-6.1-sol', '--no-review' => true], '--no-review cannot be combined'],
+        '--no-review with mode review' => [['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review', '--no-review' => true], '--no-review cannot be combined'],
     ]);
 
     it('fails with a clear message when no provider is configured and the fake engine is off', function () {
@@ -342,6 +345,199 @@ describe('enumeration', function () {
     });
 });
 
+describe('review', function () {
+    it('reviews the translations with --review, applies the corrections and records the reviewer', function () {
+        $this->fakeTranslations();
+        $this->fakeReview(fn (string $source) => $source === 'A short intro.' ? 'Μια σύντομη εισαγωγή.' : null);
+
+        [$exitCode, $output] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--review' => true]);
+
+        $state = StateFixtures::stored($this->hello->fresh()->in('el'));
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5). Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol). Mode: missing.')
+            ->and($output)->toContain('Hello → Greek: done, created, 2 fields, 1 correction')
+            ->and($output)->toMatch('/\| Done \| Skipped \| Failed \| Fields left incomplete \| Corrections \|\n.*\n\| 1 +\| 0 +\| 0 +\| 0 +\| 1 +\|/')
+            ->and($output)->toContain('Run the command with -v to see each correction and its reason.')
+            ->and($this->hello->fresh()->in('el')->data()->all())->toBe(['title' => '[T] Hello', 'intro' => 'Μια σύντομη εισαγωγή.'])
+            ->and($state->field('title')->reviewer)->toBe('openai:gpt-6.1-sol')
+            ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.1-sol')
+            ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
+            ->and($this->modelCalls())->toBe(2);
+    });
+
+    it('reviews when the settings turn review on, and --no-review overrides them', function () {
+        $this->fakeTranslations();
+        $reviewed = [];
+        $this->fakeReview(function (string $source) use (&$reviewed) {
+            $reviewed[] = $source;
+
+            return null;
+        });
+        $this->withSettings(['review_enabled' => true]);
+
+        [, $notReviewed] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--no-review' => true]);
+        $reviewedFirst = $reviewed;
+        [, $output] = translateCommand(['--entry' => [$this->world->id()], '--site' => ['el']]);
+
+        expect($reviewedFirst)->toBe([])
+            ->and($notReviewed)->not->toContain('Reviewer:')
+            ->and($notReviewed)->toMatch('/Hello → Greek: done, created, 2 fields$/m')
+            ->and($notReviewed)->not->toContain('Corrections')
+            ->and(StateFixtures::stored($this->hello->fresh()->in('el'))->field('title')->reviewer)->toBeNull()
+            ->and($reviewed)->toBe(['World', 'Another intro.'])
+            ->and($output)->toContain('Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol).')
+            ->and($output)->toContain('World → Greek: done, created, 2 fields, no corrections')
+            ->and($output)->not->toContain('Run the command with -v')
+            ->and(StateFixtures::stored($this->world->fresh()->in('el'))->field('title')->reviewer)->toBe('openai:gpt-6.1-sol');
+    });
+
+    it('reviews with the model of --reviewer, which asks for a review', function () {
+        $this->fakeTranslations();
+        $this->fakeReview();
+
+        [, $output] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--reviewer' => 'gemini:gemini-3.8-flash']);
+
+        expect($output)->toContain('Reviewer: Gemini 3.8 Flash (gemini:gemini-3.8-flash).')
+            ->and(StateFixtures::stored($this->hello->fresh()->in('el'))->field('intro')->reviewer)->toBe('gemini:gemini-3.8-flash');
+    });
+
+    it('lists each correction with its reason in verbose output', function () {
+        $this->fakeTranslations();
+        $this->fakeReview(fn (string $source) => $source === 'Hello' ? ['text' => 'Γεια σας', 'reason' => 'Use the polite form.'] : null);
+
+        [, $output] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--review' => true, '-v' => true]);
+
+        expect($output)->toContain('    title: "[T] Hello" → "Γεια σας" (Use the polite form.)')
+            ->and($output)->not->toContain('Run the command with -v');
+    });
+
+    it('fails before any call when a reviewer\'s provider has no key', function (array $options, array $settings) {
+        $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
+        $this->withSettings($settings);
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], ...$options]);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('The AI provider [openai] has no API key.')
+            ->and($output)->not->toContain('Targets:');
+        $this->assertNoModelCalls();
+    })->with([
+        '--reviewer' => [['--reviewer' => 'openai:gpt-6.1-sol'], []],
+        'the settings\' reviewer' => [['--review' => true], ['reviewer_model' => 'openai:gpt-6.1-sol']],
+        'mode review' => [['--mode' => 'review'], ['reviewer_model' => 'openai:gpt-6.1-sol']],
+    ]);
+
+    it('checks only the reviewer\'s provider in mode review', function () {
+        $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
+        $this->withSettings(['translator_model' => 'openai:gpt-6-luna']);
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review']);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Targets: 2 (Greek). Reviewer: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5). Mode: review.')
+            ->and($output)->not->toContain('Translator:')
+            ->and($output)->toContain('Hello → Greek: skipped, nothing to do');
+        $this->assertNoModelCalls();
+    });
+
+    it('reviews existing machine translations in mode review and saves only the corrected fields', function () {
+        $translated = [];
+        $this->fakeTranslations(function (string $text) use (&$translated) {
+            $translated[] = $text;
+
+            return '[T] '.$text;
+        });
+        translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+        $translated = [];
+        $reviewed = [];
+        $this->fakeReview(function (string $source, string $translation) use (&$reviewed) {
+            $reviewed[] = $translation;
+
+            return $translation === '[T] A short intro.' ? ['text' => 'Μια σύντομη εισαγωγή.', 'reason' => 'The intro was left in English.'] : null;
+        });
+        $saved = [];
+        Event::listen(TargetTranslated::class, function (TargetTranslated $event) use (&$saved) {
+            $saved[] = $event->ref->id;
+        });
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review']);
+
+        $hello = $this->hello->fresh()->in('el');
+        $state = StateFixtures::stored($hello);
+        expect($exitCode)->toBe(0)
+            ->and($translated)->toBe([])
+            ->and($reviewed)->toBe(['[T] Hello', '[T] A short intro.', '[T] World', '[T] Another intro.'])
+            ->and($output)->toContain('Targets: 2 (Greek). Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol). Mode: review.')
+            ->and($output)->toContain('Hello → Greek: done, 1 field, 1 correction')
+            ->and($output)->toContain('World → Greek: reviewed, nothing to correct')
+            ->and($output)->toMatch('/\| 2 +\| 0 +\| 0 +\| 0 +\| 1 +\|/')
+            ->and($hello->data()->all())->toBe(['title' => '[T] Hello', 'intro' => 'Μια σύντομη εισαγωγή.'])
+            ->and($this->world->fresh()->in('el')->data()->all())->toBe(['title' => '[T] World', 'intro' => '[T] Another intro.'])
+            ->and($saved)->toBe([$hello->id()])
+            ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.1-sol')
+            ->and($state->field('title')->reviewer)->toBeNull()
+            ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+    });
+
+    it('reviews manual fields in mode review only with --force, and they stay manual', function () {
+        $this->fakeTranslations();
+        translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el']]);
+        $this->hello->fresh()->in('el')->set('title', 'Γεια σου')->save();
+        $this->fakeReview(fn (string $source, string $translation) => $translation === 'Γεια σου' ? 'Γεια σας' : null);
+
+        [, $kept] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--mode' => 'review']);
+        $afterKept = $this->hello->fresh()->in('el')->get('title');
+        [, $forced] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--mode' => 'review', '--force' => true]);
+
+        expect($afterKept)->toBe('Γεια σου')
+            ->and($kept)->toContain('Hello → Greek: reviewed, nothing to correct; manual edits kept: title')
+            ->and($forced)->toContain('Hello → Greek: done, 1 field, 1 correction')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('Γεια σας')
+            ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Manual, 'intro' => FieldStatus::Current]);
+    });
+
+    it('plans a review in a dry run without calling the model', function () {
+        $this->fakeTranslations();
+        translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el']]);
+        $calls = $this->modelCalls();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review', '--dry-run' => true]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Hello → Greek: title, intro (2 segments, 19 characters)')
+            ->and($output)->toContain('World → Greek: nothing to do')
+            ->and($output)->toContain('Dry run: 1 of 2 targets would be reviewed (2 segments, 19 characters). Nothing was sent or saved.')
+            ->and($this->modelCalls())->toBe($calls);
+    });
+
+    it('does not report a missing root page in a dry run of a review, which creates nothing', function () {
+        $pages = $this->makePages(['home', 'rooms']);
+
+        [, $output] = translateCommand(['--entry' => [$pages['rooms']->id()], '--site' => ['el'], '--mode' => 'review', '--dry-run' => true]);
+
+        expect($output)->toContain('Rooms → Greek: nothing to do')
+            ->and($output)->not->toContain('would fail');
+    });
+
+    it('names the review in a dry run of a translation with --review', function () {
+        [, $output] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--review' => true, '--dry-run' => true]);
+
+        expect($output)->toContain('Dry run: 1 of 1 target would be translated and reviewed (2 segments, 19 characters).');
+        $this->assertNoModelCalls();
+    });
+
+    it('asks before it reviews, and reviews nothing when declined', function () {
+        $this->fakeReview();
+
+        $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review'])
+            ->expectsConfirmation('Review them and save the corrections?', 'no')
+            ->expectsOutputToContain('Nothing was reviewed.')
+            ->assertExitCode(0);
+
+        $this->assertNoModelCalls();
+    });
+});
+
 describe('failures', function () {
     it('fails a target whose root page is missing before calling the model, and exits 1', function () {
         $this->fakeTranslations();
@@ -410,6 +606,19 @@ describe('summary and git', function () {
 
         expect($first)->toBe([ContentWriter::COMMIT_MESSAGE])
             ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+    });
+
+    it('does not commit a review that corrected nothing', function () {
+        $this->fakeTranslations();
+        $this->fakeReview();
+        translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+        $commits = commandCommits();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review']);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toMatch('/\| 2 +\| 0 +\| 0 +\| 0 +\| 0 +\|/')
+            ->and($commits->getArrayCopy())->toBe([]);
     });
 
     it('commits what was saved before ProviderRejected stopped the loop', function () {
