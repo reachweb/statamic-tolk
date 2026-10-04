@@ -8,7 +8,7 @@ final class Fingerprint
 
     public static function of(mixed $value): string
     {
-        return substr(hash('sha256', json_encode(self::canonical($value), self::JSON_FLAGS)), 0, 16);
+        return substr(hash('sha256', self::canonicalJson($value)), 0, 16);
     }
 
     public static function ofLeaves(array $texts): string
@@ -19,6 +19,11 @@ final class Fingerprint
     public static function ofText(string $text): string
     {
         return substr(hash('sha256', $text), 0, 12);
+    }
+
+    public static function canonicalJson(mixed $value): string
+    {
+        return json_encode(self::canonical($value), self::JSON_FLAGS);
     }
 
     public static function canonical(mixed $value): mixed
