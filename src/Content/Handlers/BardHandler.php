@@ -55,11 +55,24 @@ final class BardHandler implements FieldHandler
     private function mapHtml(string $value, ?string $hint, Closure $translate, WalkContext $context): string
     {
         $pieces = array_map(
-            fn (string $piece) => $this->block($piece, fn (string $core) => Tokenizer::tokenize($core, SegmentKind::Html), $hint, $translate, $context),
+            fn (string $piece) => $this->htmlBlock($piece, $hint, $translate, $context),
             Tokenizer::splitHtmlBlocks($value),
         );
 
         return implode('', $pieces);
+    }
+
+    /**
+     * The leaf of a block element is its content, so a translation cannot put text outside the block: text between
+     * blocks would belong to the next block on the next walk.
+     */
+    private function htmlBlock(string $piece, ?string $hint, Closure $translate, WalkContext $context): string
+    {
+        $core = trim($piece, self::WHITESPACE);
+        [$open, $content, $close] = Tokenizer::unwrapBlock($core) ?? ['', $core, ''];
+        $translated = $this->block($content, fn (string $html) => Tokenizer::tokenize($html, SegmentKind::Html), $hint, $translate, $context);
+
+        return $translated === $content ? $piece : substr_replace($piece, $open.$translated.$close, strspn($piece, self::WHITESPACE), strlen($core));
     }
 
     private function mapNodes(array $nodes, Fieldtype $fieldtype, ?string $hint, Closure $translate, WalkContext $context): array

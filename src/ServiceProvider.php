@@ -27,6 +27,19 @@ use Statamic\Statamic;
 
 class ServiceProvider extends AddonServiceProvider
 {
+    private const array HANDLERS = [
+        'text' => TextHandler::class,
+        'textarea' => TextHandler::class,
+        'markdown' => MarkdownHandler::class,
+        'bard' => BardHandler::class,
+        'replicator' => ReplicatorHandler::class,
+        'grid' => GridHandler::class,
+        'group' => GroupHandler::class,
+        'table' => TableHandler::class,
+        'list' => ListHandler::class,
+        'array' => ArrayHandler::class,
+    ];
+
     protected $vite = [
         'input' => [
             'resources/js/cp.js',
@@ -43,7 +56,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/tolk.php', 'tolk');
 
         $this->app->scoped(Settings::class);
-        $this->app->singleton(FieldtypeRegistry::class);
+        $this->app->singleton(FieldtypeRegistry::class, fn ($app) => $this->builtInHandlers(new FieldtypeRegistry($app)));
         $this->app->singleton(StateRepository::class, FileStateRepository::class);
         $this->app->bind(Engine::class, fn ($app) => $app->make(FakeEngine::enabled() ? FakeEngine::class : TranslationEngine::class));
     }
@@ -72,20 +85,19 @@ class ServiceProvider extends AddonServiceProvider
         }));
     }
 
+    // The built-in handlers come with the registry, so an addon that boots before this one (Tolk::registerFieldtype()) can replace them.
+    private function builtInHandlers(FieldtypeRegistry $registry): FieldtypeRegistry
+    {
+        foreach (self::HANDLERS as $handle => $handlerClass) {
+            $registry->register($handle, $handlerClass);
+        }
+
+        return $registry;
+    }
+
     private function registerFieldtypes(): void
     {
         $registry = $this->app->make(FieldtypeRegistry::class);
-
-        $registry->register('text', TextHandler::class);
-        $registry->register('textarea', TextHandler::class);
-        $registry->register('markdown', MarkdownHandler::class);
-        $registry->register('bard', BardHandler::class);
-        $registry->register('replicator', ReplicatorHandler::class);
-        $registry->register('grid', GridHandler::class);
-        $registry->register('group', GroupHandler::class);
-        $registry->register('table', TableHandler::class);
-        $registry->register('list', ListHandler::class);
-        $registry->register('array', ArrayHandler::class);
 
         foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
             $registry->register($handle, $handlerClass);

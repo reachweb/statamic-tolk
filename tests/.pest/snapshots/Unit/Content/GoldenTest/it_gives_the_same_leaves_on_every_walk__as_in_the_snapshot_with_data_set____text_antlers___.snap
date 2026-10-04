@@ -1,0 +1,18 @@
+[
+    {
+        "path": [
+            "text_antlers"
+        ],
+        "label": "Welcome line",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Welcome to <x1/>, <x2/>! Book before <x3/> and save <x4/>%.",
+        "placeholders": {
+            "x1": "{{ site:name }}",
+            "x2": "{{ current_user:first_name ?? \"guest\" }}",
+            "x3": "{{ offer:ends_at format=\"j F\" }}",
+            "x4": "{{ offer:discount }}"
+        }
+    }
+]

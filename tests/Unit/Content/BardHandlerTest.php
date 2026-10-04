@@ -297,8 +297,8 @@ it('gives the field hint to text leaves and fixed hints to titles and alts', fun
         ['plain', 'Our spa', 'Content', 'link title'],
         ['inline', '<1>Spa</1>', 'Content', 'Formal tone'],
         ['plain', 'The spa', 'Content', 'image alt text'],
-    ])->and(bardLeaves(bardField(['save_html' => true, 'tolk_hint' => 'Formal tone']), '<p>Spa</p>'))->toBe([
-        ['html', '<1>Spa</1>', 'Content', 'Formal tone'],
+    ])->and(bardLeaves(bardField(['save_html' => true, 'tolk_hint' => 'Formal tone']), '<p>Spa <em>daily</em></p>'))->toBe([
+        ['html', 'Spa <1>daily</1>', 'Content', 'Formal tone'],
     ]);
 });
 
@@ -383,21 +383,22 @@ it('does not read inline content or a value without sets as legacy data', functi
         ->and(bardLeaves(bardField(), $text))->toBe([['inline', 'Welcome', 'Content', null]]);
 });
 
-it('makes one html leaf per block of a value saved as HTML', function () {
+it('makes one html leaf per block of a value saved as HTML, of the content of a block element', function () {
     $field = ContentFixtures::field('bard-html-string');
     $leaves = bardWalker()->leaves($field, ContentFixtures::value('bard-html-string'));
 
     expect(array_map(fn (Leaf $leaf) => $leaf->text, $leaves))->toBe([
-        '<1>Our new spa</1>',
-        '<1>The spa opens on <2>1 April</2> in the old olive press. Book a treatment at <3>the front desk</3> or read the <4>price list</4>.</1>',
-        '<1><2>Open daily</2><x1/>10:00–20:00, kids &lt; 12 &amp; guests over 70 with a companion</1>',
-        '<1>Treatments</1>',
-        '<1><2><3>Olive oil massage, 60 minutes</3></2><4><5>Sea salt scrub</5><6><7><8>with <9><10>Cretan</10></9> honey</8></7><11><12>with thyme</12></11></6></4></1>',
-        '<1><2>The best hour of our holiday. <3>Anna, Vienna</3></2></1>',
-        '<1><2><3><4><5>Treatment</5></4><6><7>Price</7></6></3><8><9><10>Massage</10></9><11><12>€80</12></11></8></2></1>',
-        '<1>Room size 45 m<2>2</2>, code <x1/> for 10% off, and <3>eleven o&#039;clock</3> is never too late for coffee.</1>',
+        'Our new spa',
+        'The spa opens on <1>1 April</1> in the old olive press. Book a treatment at <2>the front desk</2> or read the <3>price list</3>.',
+        '<1>Open daily</1><x1/>10:00–20:00, kids &lt; 12 &amp; guests over 70 with a companion',
+        'Treatments',
+        '<1><2>Olive oil massage, 60 minutes</2></1><3><4>Sea salt scrub</4><5><6><7>with <8><9>Cretan</9></8> honey</7></6><10><11>with thyme</11></10></5></3>',
+        '<1>The best hour of our holiday. <2>Anna, Vienna</2></1>',
+        '<1><2><3><4>Treatment</4></3><5><6>Price</6></5></2><7><8><9>Massage</9></8><10><11>€80</11></10></7></1>',
+        'Room size 45 m<1>2</1>, code <x1/> for 10% off, and <2>eleven o&#039;clock</2> is never too late for coffee.',
     ])->and(array_unique(array_map(fn (Leaf $leaf) => $leaf->kind, $leaves), SORT_REGULAR))->toBe([SegmentKind::Html])
-        ->and($leaves[1]->placeholders[4])->toBe('<a target="_blank" href="statamic://asset::assets::spa-prices.pdf" title="Spa prices for 2026 (PDF)">')
+        ->and($leaves[1]->placeholders[3])->toBe('<a target="_blank" href="statamic://asset::assets::spa-prices.pdf" title="Spa prices for 2026 (PDF)">')
+        ->and($leaves[2]->placeholders)->toBe([1 => '<em>', 'x1' => '<br>'])
         ->and($leaves[0]->path)->toBe(['bard_html_string'])
         ->and($leaves[0]->label)->toBe('Body');
 });
@@ -407,7 +408,7 @@ it('writes a translated HTML block back with its tags', function () {
     $source = '<p>The spa opens on <strong>1 April</strong> in the old olive press. Book a treatment at <a href="statamic://entry::51c8a58f-8a3d-47fa-90cc-91f543aa618f">the front desk</a> or read the <a target="_blank" href="statamic://asset::assets::spa-prices.pdf" title="Spa prices for 2026 (PDF)">price list</a>.</p>';
 
     $translated = bardTranslated(ContentFixtures::field('bard-html-string'), $value, [
-        '<1>The spa opens on <2>1 April</2> in the old olive press. Book a treatment at <3>the front desk</3> or read the <4>price list</4>.</1>' => '<1>Διαβάστε τον <4>τιμοκατάλογο</4> ή κλείστε στη <3>ρεσεψιόν</3>. Το σπα ανοίγει την <2>1η Απριλίου</2>.</1>',
+        'The spa opens on <1>1 April</1> in the old olive press. Book a treatment at <2>the front desk</2> or read the <3>price list</3>.' => 'Διαβάστε τον <3>τιμοκατάλογο</3> ή κλείστε στη <2>ρεσεψιόν</2>. Το σπα ανοίγει την <1>1η Απριλίου</1>.',
     ]);
 
     expect($value)->toContain($source)
@@ -417,8 +418,19 @@ it('writes a translated HTML block back with its tags', function () {
 it('keeps whitespace between HTML blocks outside the leaves', function () {
     $field = bardField(['save_html' => true]);
 
-    expect(bardLeaves($field, "<p>One</p>\n<p>Two</p>\n"))->toBe([['html', '<1>One</1>', 'Content', null], ['html', '<1>Two</1>', 'Content', null]])
-        ->and(bardWalker()->mapField($field, "<p>One</p>\n<p>Two</p>\n", fn (Leaf $leaf) => "[el] {$leaf->text}"))->toBe("[el] <p>One</p>\n[el] <p>Two</p>\n");
+    expect(bardLeaves($field, "<p>One</p>\n<p>Two</p>\n"))->toBe([['html', 'One', 'Content', null], ['html', 'Two', 'Content', null]])
+        ->and(bardWalker()->mapField($field, "<p>One</p>\n<p>Two</p>\n", fn (Leaf $leaf) => "[el] {$leaf->text}"))->toBe("<p>[el] One</p>\n<p>[el] Two</p>\n");
+});
+
+it('keeps the tags of a block element and the whitespace inside it outside its leaf', function () {
+    $field = bardField(['save_html' => true]);
+    $value = "<blockquote class=\"note\">\n<p>Calm</p>\n</blockquote><hr><p><img src=\"/a.jpg\"></p>Loose <b>text</b><h2>Spa</h2>";
+
+    expect(bardLeaves($field, $value))->toBe([
+        ['html', '<1>Calm</1>', 'Content', null],
+        ['html', 'Loose <1>text</1><2>Spa</2>', 'Content', null],
+    ])->and(bardWalker()->mapField($field, $value, fn (Leaf $leaf) => "«{$leaf->text}»"))
+        ->toBe("<blockquote class=\"note\">\n«<p>Calm</p>»\n</blockquote><hr><p><img src=\"/a.jpg\"></p>«Loose <b>text</b><h2>Spa</h2>»");
 });
 
 it('makes one inline leaf of a field with the inline option', function () {

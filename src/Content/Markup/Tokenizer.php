@@ -212,6 +212,26 @@ final class Tokenizer
     }
 
     /**
+     * The opening tag, the content and the closing tag of HTML that is exactly one block element, or null when anything
+     * stands before its opening tag or after its closing tag.
+     *
+     * @return array{0: string, 1: string, 2: string}|null
+     */
+    public static function unwrapBlock(string $html): ?array
+    {
+        $tokens = self::lex($html, self::HTML_TOKENS);
+        $first = $tokens[0] ?? null;
+        $last = end($tokens);
+
+        if ($first === null || $first['type'] !== 'open' || $last['type'] !== 'close' || $last['pair'] !== $first['pair']
+            || ! in_array($first['name'], self::BLOCK_ELEMENTS, true)) {
+            return null;
+        }
+
+        return [$first['text'], substr($html, strlen($first['text']), -strlen($last['text'])), $last['text']];
+    }
+
+    /**
      * Cuts a Markdown document at blank lines outside code fences, Antlers tags and the HTML blocks that may hold blank
      * lines. A fence or such an HTML block is a block of its own, cut from the lines around it at their line breaks.
      * Blocks are at the even indexes and the separators at the odd ones; joined, they give the input back.

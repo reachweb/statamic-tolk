@@ -1,0 +1,38 @@
+[
+    {
+        "path": [
+            "array_keyed",
+            "when"
+        ],
+        "label": "Facts › When",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "All year",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_keyed",
+            "where"
+        ],
+        "label": "Facts › Where",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Old town, Chania",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_keyed",
+            "price"
+        ],
+        "label": "Facts › Price",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "€10–30 per person",
+        "placeholders": []
+    }
+]

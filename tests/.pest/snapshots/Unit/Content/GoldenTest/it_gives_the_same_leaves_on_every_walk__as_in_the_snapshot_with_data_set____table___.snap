@@ -1,0 +1,100 @@
+[
+    {
+        "path": [
+            "table",
+            0,
+            "cells",
+            0
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Season",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table",
+            0,
+            "cells",
+            1
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Garden double",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table",
+            0,
+            "cells",
+            2
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Sea view suite",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table",
+            1,
+            "cells",
+            0
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "April – June",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table",
+            2,
+            "cells",
+            0
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "July &amp; August",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table",
+            3,
+            "cells",
+            0
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Children &lt; 12",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table",
+            3,
+            "cells",
+            1
+        ],
+        "label": "Prices",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "**Free**",
+        "placeholders": []
+    }
+]

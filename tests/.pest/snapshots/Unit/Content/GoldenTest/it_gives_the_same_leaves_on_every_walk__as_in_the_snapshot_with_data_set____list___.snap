@@ -1,0 +1,50 @@
+[
+    {
+        "path": [
+            "list",
+            0
+        ],
+        "label": "Features",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Sea view",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "list",
+            1
+        ],
+        "label": "Features",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Free Wi-Fi",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "list",
+            5
+        ],
+        "label": "Features",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Breakfast &amp; dinner",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "list",
+            6
+        ],
+        "label": "Features",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Airport transfer on request",
+        "placeholders": []
+    }
+]
