@@ -2,7 +2,8 @@ import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { ApiError } from '../api.js';
-import { attachBanner, createBanners, SETTLE_MS, shouldPush } from './banner.js';
+import { attachBanner, createBanners, shouldPush } from './banner.js';
+import { SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 
