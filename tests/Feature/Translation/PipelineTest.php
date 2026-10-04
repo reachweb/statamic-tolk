@@ -9,7 +9,6 @@ use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Ai\Throttle;
 use Reach\StatamicTolk\Ai\Usage;
-use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\Finish;
@@ -26,7 +25,6 @@ use Reach\StatamicTolk\Exceptions\UnitBusy;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\Pipeline;
@@ -41,7 +39,6 @@ use Statamic\Facades\Blink;
 
 beforeEach(function () {
     $this->useFileCache();
-    app(FieldtypeRegistry::class)->register('grid', FakeGridHandler::class);
 
     $this->makeCollection('articles', ['en', 'el'], [
         'title' => ['type' => 'text', 'localizable' => true],

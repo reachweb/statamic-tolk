@@ -2,11 +2,11 @@
 
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Handlers\GroupHandler;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Tests\Support\ContentFixtures;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGroupHandler;
 use Statamic\Fields\Field;
 
 function textWalker(): ContentWalker
@@ -60,7 +60,7 @@ it('builds one plain leaf with the path, label and placeholders', function () {
 it('takes the label trail and path of a nested field from the context', function () {
     $registry = new FieldtypeRegistry(app());
     $registry->register('text', TextHandler::class);
-    $registry->register('group', FakeGroupHandler::class);
+    $registry->register('group', GroupHandler::class);
     $field = new Field('hero', ['type' => 'group', 'display' => 'Hero', 'fields' => [
         ['handle' => 'heading', 'field' => ['type' => 'text', 'display' => 'Heading']],
     ]]);

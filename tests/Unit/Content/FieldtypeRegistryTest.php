@@ -1,15 +1,15 @@
 <?php
 
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Handlers\GroupHandler;
 use Reach\StatamicTolk\Exceptions\InvalidFieldHandler;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGroupHandler;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeTextHandler;
 use Statamic\Fields\Field;
 
 it('registers handlers by fieldtype handle', function () {
     $registry = new FieldtypeRegistry(app());
     $registry->register('text', FakeTextHandler::class);
-    $registry->register('group', FakeGroupHandler::class);
+    $registry->register('group', GroupHandler::class);
 
     expect($registry->has('text'))->toBeTrue()
         ->and($registry->has('group'))->toBeTrue()
@@ -37,9 +37,9 @@ it('treats a field without a type as text, as Statamic does', function () {
 it('replaces an earlier registration for the same handle', function () {
     $registry = new FieldtypeRegistry(app());
     $registry->register('text', FakeTextHandler::class);
-    $registry->register('text', FakeGroupHandler::class);
+    $registry->register('text', GroupHandler::class);
 
-    expect($registry->for(new Field('title', ['type' => 'text'])))->toBeInstanceOf(FakeGroupHandler::class)
+    expect($registry->for(new Field('title', ['type' => 'text'])))->toBeInstanceOf(GroupHandler::class)
         ->and($registry->handles())->toBe(['text']);
 });
 

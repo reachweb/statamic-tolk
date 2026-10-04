@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Cache;
 use Reach\StatamicTolk\Ai\ModelCatalog;
-use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\Mode;
@@ -10,7 +9,6 @@ use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\Planner;
@@ -19,7 +17,6 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 
 beforeEach(function () {
     $this->useFileCache();
-    app(FieldtypeRegistry::class)->register('grid', FakeGridHandler::class);
 
     $this->makeCollection('articles', ['en', 'el', 'de'], [
         'title' => ['type' => 'text', 'localizable' => true],
