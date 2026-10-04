@@ -28,6 +28,8 @@ use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
 use Statamic\Facades\Stache;
 use Statamic\Fields\Blueprint;
+use Statamic\Fields\Fields;
+use Statamic\Support\Arr;
 
 /**
  * Build it with TargetFactory, which validates the source and the site.
@@ -136,6 +138,30 @@ final class EntryTarget implements Target
     public function targetValue(string $handle): mixed
     {
         return $this->localization()?->get($handle);
+    }
+
+    // The source's own data merged over its origins', as the CP's edit page reads it; value() would add the collection's
+    // injected values. That page also drops a root's null, '' and [] values, so the field shows its default.
+    public function inheritedValue(string $handle): mixed
+    {
+        for ($entry = $this->source(); $entry !== null; $entry = $entry->origin()) {
+            if ($entry->has($handle)) {
+                return $entry->isRoot() ? Arr::removeNullValues([$handle => $entry->get($handle)])[$handle] ?? null : $entry->get($handle);
+            }
+        }
+
+        return null;
+    }
+
+    public function formFields(array $values, bool $source = false): Fields
+    {
+        $item = $this->localization() ?? $this->source();
+
+        // Every entry of a collection shares one blueprint object, so the parent is set right before fields().
+        return $item->blueprint()
+            ->setParent($source ? $this->source() : $item->fromWorkingCopy())
+            ->fields()
+            ->addValues($values);
     }
 
     public function document(): array

@@ -148,6 +148,47 @@ describe('content', function () {
             ->and($target->hasOverride('body'))->toBeFalse()
             ->and($target->targetValue('body'))->toBeNull();
     });
+
+    it('reads what the target inherits from the source and the source\'s own origins', function () {
+        $el = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => '', 'body' => null]);
+        $this->localize($el->fresh(), 'de', ['title' => 'Hallo']);
+
+        $target = entryTarget($this->origin, 'de');
+
+        expect($target->inheritedValue('title'))->toBe('Γεια')
+            ->and($target->inheritedValue('intro'))->toBe('')
+            ->and($target->inheritedValue('body'))->toBeNull()
+            ->and($target->inheritedValue('note'))->toBe('Internal')
+            ->and($target->inheritedValue('missing'))->toBeNull();
+    });
+
+    it('reads a root\'s empty value as unset, as the CP\'s edit page does', function () {
+        $this->origin->merge(['intro' => '', 'body' => []])->save();
+
+        $target = entryTarget($this->origin, 'el');
+
+        expect($target->inheritedValue('intro'))->toBeNull()
+            ->and($target->inheritedValue('body'))->toBeNull()
+            ->and($target->inheritedValue('featured'))->toBeTrue();
+    });
+});
+
+describe('form fields', function () {
+    it('holds the given values with the target as parent, or with the source', function () {
+        $el = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        $target = entryTarget($this->origin, 'el');
+
+        $fields = $target->formFields(['intro' => 'Μια εισαγωγή.']);
+
+        expect($fields->values()->get('intro'))->toBe('Μια εισαγωγή.')
+            ->and($fields->values()->get('title'))->toBeNull()
+            ->and($fields->get('intro')->parent()->id())->toBe($el->id())
+            ->and($target->formFields([], source: true)->get('intro')->parent()->id())->toBe($this->origin->id());
+    });
+
+    it('takes a missing target\'s fields from the source', function () {
+        expect(entryTarget($this->origin, 'el')->formFields([])->get('intro')->parent()->id())->toBe($this->origin->id());
+    });
 });
 
 describe('fields', function () {

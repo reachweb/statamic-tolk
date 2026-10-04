@@ -9,6 +9,7 @@ use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Contracts\Auth\User;
 use Statamic\Fields\Field;
+use Statamic\Fields\Fields;
 
 interface Target
 {
@@ -79,6 +80,19 @@ interface Target
      * The target's own raw value; null for a field it inherits.
      */
     public function targetValue(string $handle): mixed;
+
+    /**
+     * The raw value the publish form shows for a field the target does not override, read as the CP's edit page reads it:
+     * the source's own value, else what the source inherits; null where the form shows the field's default.
+     */
+    public function inheritedValue(string $handle): mixed;
+
+    /**
+     * The fields of the target's blueprint holding the given raw values, as the CP's publish form builds them: with the
+     * target as parent (its working copy when revisions are on), or with $source the source, whose values the fields the
+     * target inherits show.
+     */
+    public function formFields(array $values, bool $source = false): Fields;
 
     /**
      * Context for prompts (§A8).
