@@ -411,7 +411,3 @@ it('lets an exception it does not know pass through', function () {
 
     expect(fn () => engineTranslate())->toThrow(DomainException::class, 'Something else.');
 });
-
-it('does not review yet', function () {
-    expect(fn () => app(Engine::class)->review(engineCall()))->toThrow(LogicException::class);
-});

@@ -5,6 +5,7 @@ use Illuminate\Http\Client\StrayRequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\ExpectationFailedException;
+use Reach\StatamicTolk\Ai\Agents\ReviewAgent;
 use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Prompts\PromptBuilder;
@@ -146,6 +147,24 @@ it('fakes translations with a transform that gets the text and the segment, and 
         ['id' => 's2', 'field' => 'Intro', 'kind' => 'plain', 'text' => 'Left out'],
     ]))->toBe([['id' => 's1', 'text' => 'Title: Welcome']]);
 });
+
+it('fakes a review without corrections by default, with them by id or from a closure', function (array|Closure|null $corrections, array $expected) {
+    $corrections === null ? $this->fakeReview() : $this->fakeReview($corrections);
+    $agent = new ReviewAgent(new ModelRef('gemini', ProviderFixtures::model('gemini')['id']), 'Review.');
+
+    $structured = $agent->prompt(app(PromptBuilder::class)->user([], [
+        ['id' => 's1', 'field' => 'Title', 'kind' => 'plain', 'source' => 'Welcome', 'translation' => 'Καλώς ήρθατε'],
+        ['id' => 's2', 'field' => 'Intro', 'kind' => 'plain', 'source' => 'Hello', 'translation' => 'Γεια'],
+    ]))->structured;
+
+    expect($structured)->toBe(['corrections' => $expected])
+        ->and($this->modelCalls())->toBe(1);
+})->with([
+    'default' => [null, []],
+    'by id' => [['s2' => 'Γεια σας', 's9' => 'Not asked for'], [['id' => 's2', 'text' => 'Γεια σας', 'reason' => 'The fake reviewer corrected this segment.']]],
+    'with a reason' => [['s1' => ['text' => 'Καλώς ορίσατε', 'reason' => 'Greeting.']], [['id' => 's1', 'text' => 'Καλώς ορίσατε', 'reason' => 'Greeting.']]],
+    'closure' => [fn () => fn (string $source, string $translation) => $source === 'Hello' ? "{$translation}!" : null, [['id' => 's2', 'text' => 'Γεια!', 'reason' => 'The fake reviewer corrected this segment.']]],
+]);
 
 it('counts the model calls of every agent', function () {
     $this->assertNoModelCalls();

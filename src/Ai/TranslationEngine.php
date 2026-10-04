@@ -2,12 +2,14 @@
 
 namespace Reach\StatamicTolk\Ai;
 
+use Closure;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\StructuredAgentResponse;
-use LogicException;
+use Reach\StatamicTolk\Ai\Agents\ReviewAgent;
+use Reach\StatamicTolk\Ai\Agents\StructuredAgent;
 use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
 use Reach\StatamicTolk\Ai\Prompts\PromptBuilder;
 use Reach\StatamicTolk\Contracts\Engine;
@@ -40,11 +42,7 @@ final readonly class TranslationEngine implements Engine
 
     public function translate(EngineCall $call): EngineResult
     {
-        $provider = $call->model->provider;
-
-        if (($seconds = $this->throttle->pausedFor($provider)) > 0) {
-            throw ProviderPaused::for($provider, $seconds);
-        }
+        $this->ensureNotPaused($call);
 
         $agent = new TranslationAgent(
             model: $call->model,
@@ -54,20 +52,22 @@ final readonly class TranslationEngine implements Engine
             maxTokens: $this->outputCap($call),
         );
 
-        $prompt = $this->prompts->user($call->document, $call->segments);
-
-        try {
-            $response = $agent->prompt($prompt);
-        } catch (Throwable $exception) {
-            throw $this->failure($exception, $call, $agent);
-        }
-
-        return $this->result($response, $call);
+        return $this->send($agent, $call, $this->translations(...));
     }
 
     public function review(EngineCall $call): EngineResult
     {
-        throw new LogicException('Review is not built yet (T7.2).');
+        $this->ensureNotPaused($call);
+
+        $agent = new ReviewAgent(
+            model: $call->model,
+            instructions: $this->prompts->reviewSystem($call->source, $call->target, $call->context),
+            providerOptions: $this->catalog->options($call->model),
+            timeout: $call->timeout,
+            maxTokens: $this->reviewCap($call),
+        );
+
+        return $this->send($agent, $call, $this->corrections(...));
     }
 
     /**
@@ -76,17 +76,53 @@ final readonly class TranslationEngine implements Engine
      */
     public function outputCap(EngineCall $call): int
     {
+        return $this->cap($call, $call->sourceChars());
+    }
+
+    /**
+     * Sized from the translations under review, because at most every one of them comes back corrected.
+     */
+    public function reviewCap(EngineCall $call): int
+    {
+        return $this->cap($call, $call->translationChars());
+    }
+
+    private function cap(EngineCall $call, int $chars): int
+    {
         $charsPerToken = (float) config('tolk.tokens.chars_per_token', 3);
         $charsPerToken = $charsPerToken > 0 ? $charsPerToken : 3.0;
 
-        $tokens = max((int) ceil($call->sourceChars() / $charsPerToken * self::OUTPUT_FACTOR), self::MIN_OUTPUT_TOKENS);
+        $tokens = max((int) ceil($chars / $charsPerToken * self::OUTPUT_FACTOR), self::MIN_OUTPUT_TOKENS);
         $cap = $tokens * max(1, $call->capMultiplier) + $this->catalog->reasoningHeadroom($call->model);
         $max = $this->catalog->maxOutputTokens($call->model);
 
         return $max === null ? $cap : min($cap, $max);
     }
 
-    private function result(AgentResponse $response, EngineCall $call): EngineResult
+    private function ensureNotPaused(EngineCall $call): void
+    {
+        $provider = $call->model->provider;
+
+        if (($seconds = $this->throttle->pausedFor($provider)) > 0) {
+            throw ProviderPaused::for($provider, $seconds);
+        }
+    }
+
+    /**
+     * @param  Closure(array, EngineCall): array  $items
+     */
+    private function send(StructuredAgent $agent, EngineCall $call, Closure $items): EngineResult
+    {
+        try {
+            $response = $agent->prompt($this->prompts->user($call->document, $call->segments));
+        } catch (Throwable $exception) {
+            throw $this->failure($exception, $call, $agent);
+        }
+
+        return $this->result($response, $call, $items);
+    }
+
+    private function result(AgentResponse $response, EngineCall $call, Closure $items): EngineResult
     {
         $structured = $response instanceof StructuredAgentResponse ? $response->structured : [];
         $reason = $response->steps->last()?->finishReason;
@@ -99,7 +135,7 @@ final readonly class TranslationEngine implements Engine
         };
 
         return new EngineResult(
-            items: $finish === Finish::Stop ? $this->translations($structured, $call) : [],
+            items: $finish === Finish::Stop ? $items($structured, $call) : [],
             finish: $finish,
             usage: Usage::fromResponse($response),
             model: $call->model,
@@ -107,22 +143,44 @@ final readonly class TranslationEngine implements Engine
     }
 
     /**
-     * The SDK does not validate decoded data (T2.1), so items without a string id and text, ids that were not asked
-     * for and repeated ids are dropped.
-     *
      * @return array<string, string>
      */
     private function translations(array $structured, EngineCall $call): array
     {
+        return array_map(fn (array $item) => $item['text'], $this->items($structured['translations'] ?? [], $call, ['text']));
+    }
+
+    /**
+     * @return array<string, array{text: string, reason: string}>
+     */
+    private function corrections(array $structured, EngineCall $call): array
+    {
+        return $this->items($structured['corrections'] ?? [], $call, ['text', 'reason']);
+    }
+
+    /**
+     * The SDK does not validate decoded data (T2.1), so items without a string id and string values for the keys, ids
+     * that were not asked for and repeated ids are dropped.
+     *
+     * @param  list<string>  $keys
+     * @return array<string, array<string, string>>
+     */
+    private function items(mixed $list, EngineCall $call, array $keys): array
+    {
         $requested = array_flip(array_filter(array_column($call->segments, 'id'), 'is_string'));
         $items = [];
 
-        foreach (Arr::wrap($structured['translations'] ?? []) as $item) {
+        foreach (Arr::wrap($list) as $item) {
             $id = is_array($item) ? ($item['id'] ?? null) : null;
-            $text = is_array($item) ? ($item['text'] ?? null) : null;
 
-            if (is_string($id) && is_string($text) && isset($requested[$id]) && ! isset($items[$id])) {
-                $items[$id] = $text;
+            if (! is_string($id) || ! isset($requested[$id]) || isset($items[$id])) {
+                continue;
+            }
+
+            $values = array_map(fn (string $key) => $item[$key] ?? null, array_combine($keys, $keys));
+
+            if (count(array_filter($values, 'is_string')) === count($keys)) {
+                $items[$id] = $values;
             }
         }
 
@@ -138,7 +196,7 @@ final readonly class TranslationEngine implements Engine
             && in_array('refusal', (array) $response->raw?->json('output.*.content.*.type'), true);
     }
 
-    private function failure(Throwable $exception, EngineCall $call, TranslationAgent $agent): Throwable
+    private function failure(Throwable $exception, EngineCall $call, StructuredAgent $agent): Throwable
     {
         $provider = $call->model->provider;
         $error = $this->classifier->classify($exception, $provider);
@@ -163,10 +221,11 @@ final readonly class TranslationEngine implements Engine
     /**
      * Logs the shape of the request, never its content (§A10).
      */
-    private function rejectedRequest(EngineCall $call, TranslationAgent $agent, ProviderError $error): RequestRejected
+    private function rejectedRequest(EngineCall $call, StructuredAgent $agent, ProviderError $error): RequestRejected
     {
         Log::warning('Tolk: the AI provider rejected a request.', [
             'model' => (string) $call->model,
+            'agent' => class_basename($agent),
             'status' => $error->status,
             'message' => $error->message,
             'segments' => count($call->segments),

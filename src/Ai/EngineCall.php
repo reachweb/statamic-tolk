@@ -23,8 +23,21 @@ final readonly class EngineCall
         public int $attempt = 1,
     ) {}
 
+    /**
+     * The `text` of translation segments, the `source` of review segments.
+     */
     public function sourceChars(): int
     {
-        return array_sum(array_map(fn (array $segment) => mb_strlen((string) ($segment['text'] ?? '')), $this->segments));
+        return $this->chars(fn (array $segment) => $segment['text'] ?? $segment['source'] ?? '');
+    }
+
+    public function translationChars(): int
+    {
+        return $this->chars(fn (array $segment) => $segment['translation'] ?? '');
+    }
+
+    private function chars(callable $text): int
+    {
+        return array_sum(array_map(fn (array $segment) => mb_strlen((string) $text($segment)), $this->segments));
     }
 }

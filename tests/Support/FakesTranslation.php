@@ -6,10 +6,13 @@ use Closure;
 use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Events\PromptingAgent;
 use Laravel\Ai\Gateway\FakeTextGateway;
+use Reach\StatamicTolk\Ai\Agents\ReviewAgent;
 use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
 
 trait FakesTranslation
 {
+    public const string FAKE_REVIEW_REASON = 'The fake reviewer corrected this segment.';
+
     private int $modelCallCount = 0;
 
     /**
@@ -45,6 +48,34 @@ trait FakesTranslation
             }
 
             return ['translations' => $translations];
+        });
+    }
+
+    /**
+     * Answers every prompt of the review agent with corrections for the segments of its user JSON. An array maps a
+     * segment id to its corrected text, or to `text` and `reason`; ids the prompt does not hold are left out. A closure
+     * gets the segment's source, its translation and the segment and returns the same, or null for no correction.
+     *
+     * @param  array<string, string|array{text: string, reason: string}>|(Closure(string, string, array): (string|array{text: string, reason: string}|null))  $corrections
+     */
+    protected function fakeReview(array|Closure $corrections = []): FakeTextGateway
+    {
+        $correct = $corrections instanceof Closure
+            ? $corrections
+            : fn (string $source, string $translation, array $segment) => $corrections[$segment['id']] ?? null;
+
+        return ReviewAgent::fake(function (string $prompt) use ($correct) {
+            $items = [];
+
+            foreach (json_decode($prompt, true, flags: JSON_THROW_ON_ERROR)['segments'] as $segment) {
+                $correction = $correct((string) ($segment['source'] ?? ''), (string) ($segment['translation'] ?? ''), $segment);
+
+                if ($correction !== null) {
+                    $items[] = ['id' => $segment['id'], ...(is_string($correction) ? ['text' => $correction, 'reason' => self::FAKE_REVIEW_REASON] : $correction)];
+                }
+            }
+
+            return ['corrections' => $items];
         });
     }
 
