@@ -366,6 +366,39 @@ describe('missing and invalid translations', function () {
     });
 });
 
+describe('glossary', function () {
+    it('adds glossary notes to the warnings of an accepted translation without failing it', function () {
+        $this->withSettings(['glossary' => [
+            ['id' => 'g1', 'term' => 'Example', 'do_not_translate' => true],
+            ['id' => 'g2', 'term' => 'intro', 'site' => ['el'], 'translation' => 'εισαγωγή'],
+            ['id' => 'g3', 'term' => 'body', 'site' => ['el'], 'translation' => 'κείμενο'],
+        ]]);
+        $this->fakeTranslations(fn (string $text) => match ($text) {
+            'Hello | Example' => 'Γεια | Παράδειγμα',
+            'A short intro.' => 'Μια σύντομη εισαγωγή.',
+            'The body text.' => 'Το κυρίως μέρος.',
+            default => '[T] '.$text,
+        });
+        $plan = pipelinePlan($this->origin, ['fields' => ['intro', 'body', 'seo_title']]);
+
+        $outcome = tolkPipeline()->runUnit($plan, 'b1');
+
+        expect($outcome->translations)->toHaveCount(3)
+            ->and($outcome->failed)->toBe([])
+            ->and($outcome->warnings)->toBe([
+                's2' => ['Body: the glossary translates "body" as "κείμενο", but the translation does not seem to use it.'],
+                's3' => ['SEO title: the glossary keeps "Example" untranslated, but the translation does not contain it.'],
+            ]);
+
+        $field = tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'seo_title');
+
+        expect($field->value)->toBe('Γεια | Παράδειγμα')
+            ->and($field->incomplete)->toBeFalse()
+            ->and($field->warnings)->toBe(['SEO title: the glossary keeps "Example" untranslated, but the translation does not contain it.'])
+            ->and(tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro')->warnings)->toBe([]);
+    });
+});
+
 describe('finish reasons and request failures', function () {
     it('splits a three-segment unit that hit its length limit into halves', function () {
         $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1

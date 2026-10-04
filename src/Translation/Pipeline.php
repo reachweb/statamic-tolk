@@ -291,11 +291,13 @@ final readonly class Pipeline
     }
 
     /**
-     * Validates each translation of a finished call: invalid ones get a repair, missing ids one more request.
+     * Validates each translation of a finished call: invalid ones get a repair, missing ids one more request. Accepted
+     * ones are checked against the glossary, whose notes are warnings only.
      */
     private function accept(Plan $plan, Unit $unit, EngineResult $result, UsageMap $usage, bool $fallback): UnitOutcome
     {
         $translations = $failed = $warnings = $spawned = $missing = [];
+        $glossary = Glossary::fromSettings($this->settings, $plan->targetSite);
 
         foreach ($unit->segmentIds as $id) {
             $segment = $plan->segments[$id];
@@ -329,6 +331,10 @@ final readonly class Pipeline
             }
 
             $translations[$id] = $text;
+
+            foreach ($glossary->check($segment['text'], $text, SegmentKind::from($segment['kind'])) as $note) {
+                $warnings[$id][] = "{$segment['label']}: {$note['message']}";
+            }
         }
 
         if ($missing !== []) {
