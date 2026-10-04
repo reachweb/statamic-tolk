@@ -101,6 +101,36 @@ describe('translating a target', function () {
         assertPlansForgotten($this->planKeys);
     });
 
+    it('translates a textarea holding HTML, restores its tags and reads it current afterwards', function () {
+        $sent = [];
+        $this->fakeTranslations(function (string $text) use (&$sent) {
+            $sent[] = $text;
+
+            return '[T] '.$text;
+        });
+        $this->origin->set('body', '<p>Our <strong>spa</strong> opens at <a href="{{ link to="spa" }}">9:00</a>.<br>Kids &lt; 12 swim free.</p><!-- checked -->')->save();
+
+        $result = translateTarget($this->origin);
+        $again = translateTarget($this->origin);
+
+        expect($result->status)->toBe(TargetResultStatus::Done)
+            ->and($result->warnings)->toBe([])
+            ->and($sent)->toContain('<1>Our <2>spa</2> opens at <3>9:00</3>.<x1/>Kids &lt; 12 swim free.</1><x2/>')
+            ->and($this->origin->fresh()->in('el')->get('body'))->toBe('[T] <p>Our <strong>spa</strong> opens at <a href="{{ link to="spa" }}">9:00</a>.<br>Kids &lt; 12 swim free.</p><!-- checked -->')
+            ->and(StateFixtures::statuses($this->origin)['body'])->toBe(FieldStatus::Current)
+            ->and($again->reason)->toBe(TargetResult::NOTHING_TO_DO);
+    });
+
+    it('reads current after a translation that reorders the HTML pairs', function () {
+        $this->fakeTranslations(fn (string $text) => $text === '<1><2>Book</2> a <3>suite</3>.</1>' ? '<1>Μια <3>σουίτα</3> <2>κλείστε</2>.</1>' : $text);
+        $this->origin->set('body', '<p><a href="/rooms">Book</a> a <strong>suite</strong>.</p>')->save();
+
+        translateTarget($this->origin);
+
+        expect($this->origin->fresh()->in('el')->get('body'))->toBe('<p>Μια <strong>σουίτα</strong> <a href="/rooms">κλείστε</a>.</p>')
+            ->and(StateFixtures::statuses($this->origin)['body'])->toBe(FieldStatus::Current);
+    });
+
     it('sends nothing when the target is current', function () {
         $this->fakeTranslations();
         $first = translateTarget($this->origin);
