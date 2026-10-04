@@ -90,6 +90,8 @@ class ServiceProvider extends AddonServiceProvider
         foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
             $registry->register($handle, $handlerClass);
         }
+
+        $registry->appendConfigFields();
     }
 
     private function provideScriptData(): void
