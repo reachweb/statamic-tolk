@@ -6,6 +6,7 @@ use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
@@ -21,8 +22,8 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\Unit;
 
 /**
- * The payloads of `editor/plan` and `editor/unit` (D24): the browser runs a plan's units in parallel and fills each field
- * into the open form as soon as no unit holds a part of it any more.
+ * The payloads of `editor/plan`, `editor/review` and `editor/unit` (D24): the browser runs a plan's units in parallel and
+ * fills each field into the open form as soon as no unit holds a part of it any more.
  */
 final readonly class EditorTranslation
 {
@@ -46,18 +47,22 @@ final readonly class EditorTranslation
      */
     public function plan(Target $target, PlanOptions $options): array
     {
-        $plan = $this->planner->plan($target, $options);
-        $this->store->put($plan);
+        return $this->payload($this->planner->plan($target, $options), $target);
+    }
 
-        [$ready] = $this->deliver($plan, $target, $this->pipeline->readyFields($plan));
+    /**
+     * Plans a review of the open form's values (T7.5), given in publish-form shape, and stores the plan. They are
+     * processed as the CP processes a save, so the review sees what a save would store.
+     *
+     * @param  array<string, mixed>  $values
+     *
+     * @throws SourceChanged
+     */
+    public function review(Target $target, PlanOptions $options, array $values): array
+    {
+        $stored = $target->formFields($values)->process()->values()->only(array_keys($values))->all();
 
-        return [
-            'plan' => $plan->id,
-            'units' => array_map(fn (array $batch) => $this->describe($plan, Unit::batch($batch, $plan->kind)), $plan->batches),
-            'fields' => $plan->fieldHandles(),
-            'skipped' => $plan->skipped,
-            'ready' => $ready,
-        ];
+        return $this->payload($this->planner->planReview($target, $options, $stored), $target);
     }
 
     /**
@@ -76,25 +81,44 @@ final readonly class EditorTranslation
         });
 
         $ready = array_intersect($this->pipeline->readyFields($plan), $this->fieldsOf($plan, $unit));
-        [$fields, $failed, $warnings] = $this->deliver($plan, $target->fresh(), array_values($ready));
+        [$fields, $failed, $warnings, $unchanged] = $this->deliver($plan, $target->fresh(), array_values($ready));
 
         return [
             'fields' => $fields,
+            'unchanged' => $unchanged,
             'spawned' => array_map(fn (Unit $spawned) => $this->describe($plan, $spawned), $outcome->spawned),
             'failed' => $failed,
             'warnings' => $warnings,
             'usage' => $usage->toArray(),
             'remaining' => count($this->pipeline->runnable($plan)),
+            // A review that could not be made keeps the translation as it was (§A10).
+            'review_skipped' => $unit->kind === UnitKind::Review && $outcome->model === null,
+        ];
+    }
+
+    private function payload(Plan $plan, Target $target): array
+    {
+        $this->store->put($plan);
+
+        [$ready] = $this->deliver($plan, $target, $this->pipeline->readyFields($plan));
+
+        return [
+            'plan' => $plan->id,
+            'units' => array_map(fn (array $batch) => $this->describe($plan, Unit::batch($batch, $plan->kind)), $plan->batches),
+            'fields' => $plan->fieldHandles(),
+            'skipped' => $plan->skipped,
+            'ready' => $ready,
+            'reviewer' => $plan->options->reviewer?->__toString(),
         ];
     }
 
     /**
      * Delivers the fields. In a strict plan a field with a part that failed is left out and reported with the reason of
      * its first failed part (D28); delivery assembles every field before it writes anything, so the others are
-     * delivered again without it.
+     * delivered again without it. A reviewed field without corrections is not delivered but listed as unchanged.
      *
      * @param  list<string>  $handles
-     * @return array{0: array<string, array>, 1: array<string, string>, 2: list<string>}
+     * @return array{0: array<string, array>, 1: array<string, string>, 2: list<string>, 3: list<string>}
      */
     private function deliver(Plan $plan, Target $target, array $handles): array
     {
@@ -116,7 +140,9 @@ final readonly class EditorTranslation
             array_push($warnings, ...($field['warnings'] ?? []));
         }
 
-        return [$fields, $failed, array_values(array_unique($warnings))];
+        $unchanged = array_filter($fields, fn (array $field) => $field['unchanged'] ?? false);
+
+        return [array_diff_key($fields, $unchanged), $failed, array_values(array_unique($warnings)), array_keys($unchanged)];
     }
 
     /**

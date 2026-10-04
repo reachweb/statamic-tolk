@@ -75,7 +75,7 @@ it('delivers a text field as core\'s edit page gives it', function () {
     $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro', 'subtitle']);
 
     expect(array_keys($delivered))->toBe(['intro', 'subtitle'])
-        ->and($delivered['intro'])->toBe(['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => []])
+        ->and($delivered['intro'])->toBe(['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null])
         ->and($delivered['subtitle']['value'])->toBe('[T] All about it');
 
     $entry = Entry::find($this->greek->id());
@@ -173,7 +173,7 @@ it('delivers a copy of a source without text', function () {
     $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['subtitle']);
     $pending = StateFixtures::stored($this->greek)->field('subtitle')->pending;
 
-    expect($delivered['subtitle'])->toBe(['value' => '2026', 'meta' => null, 'incomplete' => false, 'warnings' => []])
+    expect($delivered['subtitle'])->toBe(['value' => '2026', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null])
         ->and($pending[0]->identical)->toBeTrue()
         ->and($pending[0]->targetHash)->toBe(Fingerprint::ofLeaves([]));
 });

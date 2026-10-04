@@ -11,6 +11,7 @@ function tolkCpRoutes(): array
     return [
         'editor status' => ['tolk.editor.status', 'GET', 'tolk/editor/status', 'editor'],
         'editor plan' => ['tolk.editor.plan', 'POST', 'tolk/editor/plan', 'editor'],
+        'editor review' => ['tolk.editor.review', 'POST', 'tolk/editor/review', 'editor'],
         'editor unit' => ['tolk.editor.unit', 'POST', 'tolk/editor/unit', 'editor'],
         'editor confirm' => ['tolk.editor.confirm', 'POST', 'tolk/editor/confirm', 'editor'],
         'editor baseline' => ['tolk.editor.baseline', 'POST', 'tolk/editor/baseline', 'editor'],

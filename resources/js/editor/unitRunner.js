@@ -81,6 +81,8 @@ export async function runPlan({
     const cancelledUnits = [];
     const failed = {};
     const warnings = new Set();
+    const unchanged = new Set();
+    const reviewSkipped = new Set();
     const usage = {};
     let stopped = null;
 
@@ -108,7 +110,7 @@ export async function runPlan({
         );
     }
 
-    function record(response) {
+    function record(unit, response) {
         deliver(response?.fields);
 
         for (const [handle, reason] of entries(response?.failed)) {
@@ -116,6 +118,11 @@ export async function runPlan({
         }
 
         (Array.isArray(response?.warnings) ? response.warnings : []).forEach((warning) => warnings.add(warning));
+        (Array.isArray(response?.unchanged) ? response.unchanged : []).forEach((handle) => unchanged.add(handle));
+
+        if (response?.review_skipped === true) {
+            reviewSkipped.add(unit.id);
+        }
 
         for (const [model, calls] of entries(response?.usage)) {
             usage[model] = addUsage(usage[model] ?? {}, calls);
@@ -133,7 +140,7 @@ export async function runPlan({
 
         for (;;) {
             try {
-                return record(await api.post('editor/unit', { plan: plan.plan, unit: unit.id }));
+                return record(unit, await api.post('editor/unit', { plan: plan.plan, unit: unit.id }));
             } catch (error) {
                 const action = classify(error);
                 const repeat =
@@ -214,6 +221,8 @@ export async function runPlan({
         failedUnits,
         cancelledUnits,
         warnings: [...warnings],
+        unchanged,
+        reviewSkipped: [...reviewSkipped],
         usage,
         stopped,
         aborted: Boolean(signal?.aborted),
@@ -221,7 +230,7 @@ export async function runPlan({
     });
 }
 
-function summarize(fills, { received, failed, failedUnits, cancelledUnits, warnings, usage, stopped, aborted, progress }) {
+function summarize(fills, { received, failed, failedUnits, cancelledUnits, warnings, unchanged, reviewSkipped, usage, stopped, aborted, progress }) {
     const delivered = [];
     const skipped = {};
     let stale = false;
@@ -262,6 +271,15 @@ function summarize(fills, { received, failed, failedUnits, cancelledUnits, warni
         failedUnits,
         cancelledUnits,
         warnings,
+        // The reviewer's corrections of the fields that were filled, each with its field's handle.
+        corrections: delivered.flatMap((handle) => {
+            const corrections = received.get(handle)?.corrections;
+
+            return Array.isArray(corrections) ? corrections.map((correction) => ({ handle, ...correction })) : [];
+        }),
+        // Reviewed without a correction, so the server did not deliver them.
+        unchanged: [...unchanged].filter((handle) => !delivered.includes(handle)),
+        reviewSkipped,
         usage,
         models: Object.keys(usage),
         stopped,

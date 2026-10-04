@@ -191,26 +191,25 @@ export function fieldLabels(handles, status) {
     return handles.map((handle) => fields[handle]?.label ?? handle).join(', ');
 }
 
-// What the banner says once a translation has finished, was cancelled or stopped. Fields are named by their labels
-// from the status.
+// What the banner says once a translation or a review has finished, was cancelled or stopped. Fields are named by
+// their labels from the status.
 export function describeSummary(summary, status = null) {
     if (!summary) {
         return null;
     }
 
+    const reviewing = summary.kind === 'review';
     const count = summary.delivered.length;
-    const models = summary.models.map(modelName).join(', ');
+    const corrections = summary.corrections?.length ?? 0;
     const edited = Object.keys(summary.skipped).filter((handle) => summary.skipped[handle] === 'edited');
     const manual = Object.keys(summary.planSkipped ?? {}).filter((handle) => summary.planSkipped[handle] === 'manual');
     const failed = Object.keys(summary.failed);
 
     return {
-        translated:
-            count === 0
-                ? __('No fields were translated.')
-                : models
-                  ? __n(':count field translated with :model.|:count fields translated with :model.', count, { model: models })
-                  : __n(':count field translated.|:count fields translated.', count),
+        translated: reviewing ? null : translatedLine(count, translators(summary)),
+        reviewed: reviewedLine(summary, corrections),
+        corrections,
+        reviewSkipped: summary.reviewSkipped?.length ? __('Part of the text could not be reviewed and was kept as it was.') : null,
         incomplete: summary.incomplete.length
             ? __n(
                   ':fields is partly untranslated. Update translates the rest after you save.|:fields are partly untranslated. Update translates the rest after you save.',
@@ -225,17 +224,66 @@ export function describeSummary(summary, status = null) {
                   { fields: fieldLabels(edited, status) },
               )
             : null,
-        manual: manual.length
-            ? __n(
-                  ':fields was skipped because it was edited by hand. Overwrite manual edits in the options replaces it.|:fields were skipped because they were edited by hand. Overwrite manual edits in the options replaces them.',
-                  manual.length,
-                  { fields: fieldLabels(manual, status) },
-              )
-            : null,
+        manual: manual.length ? manualLine(manual, reviewing, status) : null,
         failed: failed.length
-            ? __n(':fields could not be translated.|:fields could not be translated.', failed.length, { fields: fieldLabels(failed, status) })
+            ? reviewing
+                ? __n(':fields could not be reviewed.|:fields could not be reviewed.', failed.length, { fields: fieldLabels(failed, status) })
+                : __n(':fields could not be translated.|:fields could not be translated.', failed.length, { fields: fieldLabels(failed, status) })
             : null,
-        cancelled: summary.cancelled ? __('The translation was cancelled before it finished.') : null,
+        cancelled: summary.cancelled
+            ? reviewing
+                ? __('The review was cancelled before it finished.')
+                : __('The translation was cancelled before it finished.')
+            : null,
         unsaved: count > 0 ? __('Not saved yet. Check the fields, then save.') : null,
     };
+}
+
+// The models that translated: every model called, without the reviewer unless it translated as well.
+function translators(summary) {
+    const others = summary.models.filter((model) => model !== summary.reviewer);
+
+    return (others.length ? others : summary.models).map(modelName).join(', ');
+}
+
+function translatedLine(count, models) {
+    if (count === 0) {
+        return __('No fields were translated.');
+    }
+
+    return models
+        ? __n(':count field translated with :model.|:count fields translated with :model.', count, { model: models })
+        : __n(':count field translated.|:count fields translated.', count);
+}
+
+function reviewedLine(summary, corrections) {
+    if (summary.kind === 'review' && (summary.planned ?? []).length === 0) {
+        return __('There was nothing to review: no field holds a translation that is up to date.');
+    }
+
+    if (!summary.reviewer) {
+        return null;
+    }
+
+    const model = modelName(summary.reviewer);
+
+    return corrections > 0
+        ? __n('Reviewed with :model: :count correction.|Reviewed with :model: :count corrections.', corrections, { model })
+        : __('Reviewed with :model: nothing to correct.', { model });
+}
+
+function manualLine(handles, reviewing, status) {
+    const fields = fieldLabels(handles, status);
+
+    return reviewing
+        ? __n(
+              ':fields was not reviewed because it was edited by hand. Overwrite manual edits in the options reviews it too.|:fields were not reviewed because they were edited by hand. Overwrite manual edits in the options reviews them too.',
+              handles.length,
+              { fields },
+          )
+        : __n(
+              ':fields was skipped because it was edited by hand. Overwrite manual edits in the options replaces it.|:fields were skipped because they were edited by hand. Overwrite manual edits in the options replaces them.',
+              handles.length,
+              { fields },
+          );
 }

@@ -2,10 +2,10 @@ import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { ApiError } from '../api.js';
-import { SETTLE_MS } from './fill.js';
+import { restore, SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
-import { createTranslations, keptMessage, remainingHandles, skipHandles, slugToKeep, undoable } from './translate.js';
+import { createTranslations, keptMessage, remainingHandles, reviewable, reviewHandles, skipHandles, slugToKeep, undoable } from './translate.js';
 
 let store;
 let registry;
@@ -119,11 +119,12 @@ const summary = (extra = {}) => ({
     ...extra,
 });
 
-// An API whose `editor/plan` answers are queued by the test (a value, an error, or a deferred's promise).
+// An API whose `editor/plan` and `editor/review` answers are queued by the test (a value, an error, or a deferred's
+// promise).
 function fakeApi(...answers) {
     return {
         post: vi.fn(async (path) => {
-            if (path !== 'editor/plan') {
+            if (path !== 'editor/plan' && path !== 'editor/review') {
                 throw new Error(`Unexpected request to ${path}.`);
             }
 
@@ -224,6 +225,34 @@ describe('remainingHandles', () => {
         ]);
         expect(remainingHandles(null)).toEqual([]);
     });
+
+    it('leaves out the fields a review left unchanged', () => {
+        expect(remainingHandles({ planned: ['title', 'intro', 'seo_title'], delivered: ['intro'], skipped: {}, unchanged: ['title'] })).toEqual(['seo_title']);
+    });
+});
+
+describe('reviewHandles', () => {
+    it('lists the fields in scope the form holds a value of its own for', () => {
+        const ctx = mount({ localized: ['title', 'slug', 'intro'] });
+
+        expect(reviewHandles(ctx, base().status)).toEqual(['title', 'intro']);
+        expect(reviewHandles(ctx, null)).toEqual([]);
+    });
+});
+
+describe('reviewable', () => {
+    const counts = (current) => ({ status: { localization: { counts: { current } } } });
+
+    it('is true while a field is stored up to date or was filled since the last save', () => {
+        expect(reviewable(counts(1))).toBe(true);
+        expect(reviewable({ ...counts(0), delivered: { intro: { plan: 'p1', pending: false } } })).toBe(true);
+    });
+
+    it('is false without such a field, while a fill is pending, and for a field put back to inherited', () => {
+        expect(reviewable(counts(0))).toBe(false);
+        expect(reviewable({ ...counts(0), delivered: { intro: { plan: 'p1', pending: true }, slug: { plan: 'p1', pending: false, sync: true } } })).toBe(false);
+        expect(reviewable(null)).toBe(false);
+    });
 });
 
 describe('undoable', () => {
@@ -272,6 +301,8 @@ describe('translate', () => {
             fields: null,
             skip: ['intro'],
             translator: null,
+            review: null,
+            reviewer: null,
         });
 
         const options = run.mock.calls[0][0];
@@ -293,18 +324,36 @@ describe('translate', () => {
         expect(result).toMatchObject({ plan: 'p1', planned: ['intro', 'seo_title'], delivered: ['seo_title'], skipped: { intro: 'edited' }, cancelled: false });
         expect(result.planSkipped).toEqual({ title: 'manual' });
         expect(base()).toMatchObject({ phase: 'done', summary: result, planReference: 'entry::de', error: null });
-        expect(base().request).toEqual({ mode: 'missing', fields: null, overwriteManual: false, translator: null });
+        expect(base().request).toEqual({ kind: 'translate', mode: 'missing', fields: null, overwriteManual: false, translator: null, review: null, reviewer: null });
         expect(t.running('base')).toBe(false);
     });
 
-    it('sends the requested fields, the overwrite flag and the translator', async () => {
+    it('sends the requested fields, the overwrite flag, the translator and the review switch', async () => {
         mount();
         const api = fakeApi();
         const t = translations({ api });
 
-        await t.translate('base', { mode: 'all', fields: ['intro'], overwriteManual: true, translator: 'openai:gpt-6-luna' });
+        await t.translate('base', { mode: 'all', fields: ['intro'], overwriteManual: true, translator: 'openai:gpt-6-luna', review: true, reviewer: 'gemini:gemini-3.8-flash' });
 
-        expect(api.post.mock.calls[0][1]).toMatchObject({ mode: 'all', fields: ['intro'], overwrite_manual: true, translator: 'openai:gpt-6-luna' });
+        expect(api.post.mock.calls[0][1]).toMatchObject({
+            mode: 'all',
+            fields: ['intro'],
+            overwrite_manual: true,
+            translator: 'openai:gpt-6-luna',
+            review: true,
+            reviewer: 'gemini:gemini-3.8-flash',
+        });
+    });
+
+    it('keeps the plan\'s reviewer and the corrections in the result', async () => {
+        mount();
+        const corrections = [{ handle: 'intro', id: 's1', label: 'Intro', before: '[de] a', after: '[de] b', reason: 'Better.' }];
+        const t = translations({ api: fakeApi(planResponse({ reviewer: 'openai:gpt-6.1-sol' })), run: vi.fn(async () => summary({ delivered: ['intro'], corrections })) });
+
+        const result = await t.translate('base');
+
+        expect(result).toMatchObject({ kind: 'translate', reviewer: 'openai:gpt-6.1-sol', corrections });
+        expect((await translations().translate('base')).reviewer).toBeNull();
     });
 
     it('keeps no plan reasons when the plan skipped nothing', async () => {
@@ -552,6 +601,72 @@ describe('translate', () => {
 
         expect(base().progress.cancelling).toBe(true);
         finish.resolve(summary());
+    });
+});
+
+describe('review', () => {
+    it('sends the form\'s values of the fields it holds, runs the plan and fills the corrections', async () => {
+        const ctx = mount({ values: { ...stored(), intro: '[de] A family-run hotel.' }, localized: ['title', 'intro', 'slug'] });
+        const api = fakeApi(planResponse({ fields: ['intro'], skipped: { title: 'manual' }, reviewer: 'openai:gpt-6.1-sol' }));
+        const fill = vi.fn(async () => ({ stale: false, applied: ['intro'], skipped: {}, repeated: [] }));
+        const run = vi.fn(async ({ onFields }) => {
+            await onFields({ intro: { value: '[de] A family hotel.', meta: null, corrections: [] } });
+
+            return summary({ delivered: ['intro'], unchanged: [], models: ['openai:gpt-6.1-sol'] });
+        });
+        const t = translations({ api, run, fill });
+
+        const result = await t.review('base', { reviewer: 'openai:gpt-6.1-sol' });
+
+        expect(api.post).toHaveBeenCalledExactlyOnceWith('editor/review', {
+            reference: 'entry::de',
+            values: { title: 'Startseite', intro: '[de] A family-run hotel.' },
+            overwrite_manual: false,
+            reviewer: 'openai:gpt-6.1-sol',
+        });
+        expect(fill.mock.calls[0][2]).toMatchObject({ reference: 'entry::de', plan: 'p1', planValues: ctx.values.value });
+        expect(result).toMatchObject({ kind: 'review', reviewer: 'openai:gpt-6.1-sol', planned: ['intro'], delivered: ['intro'], planSkipped: { title: 'manual' } });
+        expect(Object.keys(base().snapshot.fields)).toEqual(['title', 'intro']);
+        expect(base()).toMatchObject({ phase: 'done', request: { kind: 'review', fields: null, overwriteManual: false, reviewer: 'openai:gpt-6.1-sol' } });
+    });
+
+    it('sends the overwrite flag, and only the requested fields', async () => {
+        mount({ localized: ['title', 'intro'] });
+        const api = fakeApi();
+
+        await translations({ api }).review('base', { fields: ['intro'], overwriteManual: true });
+
+        expect(api.post.mock.calls[0][1]).toEqual({ reference: 'entry::de', values: { intro: 'A family-run hotel.' }, overwrite_manual: true, reviewer: null });
+    });
+
+    it('does not start while a translation is under way', async () => {
+        mount();
+        const api = fakeApi(deferred().promise);
+        const t = translations({ api });
+
+        t.translate('base');
+
+        expect(await t.review('base')).toBeNull();
+        expect(api.post).toHaveBeenCalledOnce();
+    });
+
+    it('reviews again on retry, limited to the fields not reviewed yet', async () => {
+        mount({ localized: ['title', 'intro', 'seo_title'] });
+        const stopped = { status: 502, code: 'provider_rejected', message: 'No.' };
+        const api = fakeApi(planResponse({ fields: ['title', 'intro', 'seo_title'] }), planResponse({ plan: 'p2' }));
+        const run = vi
+            .fn()
+            .mockImplementationOnce(async () => summary({ delivered: ['intro'], unchanged: ['title'], stopped }))
+            .mockImplementationOnce(async () => summary());
+        const t = translations({ api, run });
+
+        await t.review('base', { reviewer: 'gemini:gemini-3.8-flash' });
+        expect(base().phase).toBe('error');
+
+        await t.retry('base');
+
+        expect(api.post.mock.calls[1]).toEqual(['editor/review', { reference: 'entry::de', values: { seo_title: 'Kyma Bay Hotel' }, overwrite_manual: false, reviewer: 'gemini:gemini-3.8-flash' }]);
+        expect(base().phase).toBe('done');
     });
 });
 
@@ -850,5 +965,78 @@ describe('with the real runner and fill', () => {
         expect(base().phase).toBe('done');
         expect(undoable(base())).toBe(true);
         expect(dirty.has('base')).toBe(true);
+    });
+
+    it('reviews the filled form, and Undo puts back the translation from before the review', async () => {
+        vi.useFakeTimers({ now: 100_000 });
+        const ctx = mount();
+        const correction = { id: 's1', label: 'Intro', before: '[de] A family-run hotel.', after: '[de] A family hotel.', reason: 'Shorter.' };
+        const api = {
+            post: vi.fn(async (path, data) => {
+                if (path === 'editor/plan') {
+                    return planResponse();
+                }
+
+                if (path === 'editor/review') {
+                    return { ...planResponse({ plan: 'r1', units: [{ id: 'b1', fields: ['intro', 'seo_title'], chars: 40 }] }), reviewer: 'openai:gpt-6.1-sol' };
+                }
+
+                if (data.plan === 'p1') {
+                    return {
+                        fields: {
+                            intro: { value: '[de] A family-run hotel.', meta: null, incomplete: false, warnings: [], corrections: [], reviewer: null },
+                            seo_title: { value: '[de] Kyma Bay Hotel', meta: null, incomplete: false, warnings: [], corrections: [], reviewer: null },
+                        },
+                        unchanged: [],
+                        spawned: [],
+                        failed: [],
+                        warnings: [],
+                        usage: {},
+                        remaining: 0,
+                        review_skipped: false,
+                    };
+                }
+
+                return {
+                    fields: { intro: { value: '[de] A family hotel.', meta: null, incomplete: false, warnings: [], corrections: [correction], reviewer: 'openai:gpt-6.1-sol' } },
+                    unchanged: ['seo_title'],
+                    spawned: [],
+                    failed: [],
+                    warnings: [],
+                    usage: { 'openai:gpt-6.1-sol': { input: 10, output: 5, calls: 1 } },
+                    remaining: 0,
+                    review_skipped: false,
+                };
+            }),
+        };
+        const t = createTranslations({ store: () => store, registry, api, undoFill: (ctx, snap, delivered) => restore(ctx, snap, delivered, { registry }) });
+
+        const translated = t.translate('base');
+        await vi.advanceTimersByTimeAsync(SETTLE_MS + 1_000);
+        await translated;
+
+        const reviewed = t.review('base');
+        await vi.advanceTimersByTimeAsync(SETTLE_MS + 1_000);
+        const result = await reviewed;
+
+        expect(api.post.mock.calls[2]).toEqual(['editor/review', {
+            reference: 'entry::de',
+            values: { title: 'Startseite', intro: '[de] A family-run hotel.', seo_title: '[de] Kyma Bay Hotel' },
+            overwrite_manual: false,
+            reviewer: null,
+        }]);
+        expect(ctx.values.value).toMatchObject({ intro: '[de] A family hotel.', seo_title: '[de] Kyma Bay Hotel' });
+        expect(result).toMatchObject({ kind: 'review', delivered: ['intro'], unchanged: ['seo_title'], corrections: [{ handle: 'intro', ...correction }] });
+        expect(base().delivered.intro).toMatchObject({ plan: 'r1', value: '[de] A family hotel.' });
+        expect(undoable(base())).toBe(true);
+
+        const undone = t.undo('base');
+        await vi.advanceTimersByTimeAsync(1_000);
+        await undone;
+
+        expect(ctx.values.value).toMatchObject({ intro: '[de] A family-run hotel.', seo_title: '[de] Kyma Bay Hotel' });
+        expect(base().delivered.intro).toMatchObject({ plan: 'p1', value: '[de] A family-run hotel.' });
+        expect(base().phase).toBe('idle');
+        expect(reviewable(base())).toBe(true);
     });
 });

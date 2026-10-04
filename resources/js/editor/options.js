@@ -5,11 +5,12 @@ import { registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 import { BUSY, translations as sharedTranslations } from './translate.js';
 
-// The model a user picked in the options, remembered per user. Null (or nothing stored) means the settings' default.
+// The models a user picked in the options, remembered per user. Null (or nothing stored) means the settings' default.
 export const TRANSLATOR_PREFERENCE = 'tolk.editor.translator';
+export const REVIEWER_PREFERENCE = 'tolk.editor.reviewer';
 
-export function rememberedModel(preferences = Statamic.$preferences) {
-    const value = preferences.get(TRANSLATOR_PREFERENCE, null);
+export function rememberedModel(preferences = Statamic.$preferences, key = TRANSLATOR_PREFERENCE) {
+    const value = preferences.get(key, null);
 
     return typeof value === 'string' && value !== '' ? value : null;
 }
@@ -45,14 +46,34 @@ export function initialModel(options, { remembered = null, defaultModel = null }
     return offered(defaultModel) ? defaultModel : (options[0]?.value ?? null);
 }
 
-// Translate in the options: everything that needs work (mode `update`), or everything (`all`). The default model is
-// sent as null, so the plan uses the settings as the banner's buttons do.
-export function optionsRequest({ model = null, defaultModel = null, retranslate = false, overwriteManual = false } = {}) {
+// A chosen model, or null for the default, so the request uses the settings as the banner's buttons do.
+function chosen(model, defaultModel) {
+    return model && model !== defaultModel ? model : null;
+}
+
+// Translate in the options: everything that needs work (mode `update`), or everything (`all`). "Review after
+// translating" sends `review` (null leaves it to the settings), and the reviewer only while it is on.
+export function optionsRequest({
+    model = null,
+    defaultModel = null,
+    retranslate = false,
+    overwriteManual = false,
+    review = null,
+    reviewer = null,
+    defaultReviewer = null,
+} = {}) {
     return {
         mode: retranslate ? 'all' : 'update',
         overwriteManual,
-        translator: model && model !== defaultModel ? model : null,
+        translator: chosen(model, defaultModel),
+        review,
+        reviewer: review === true ? chosen(reviewer, defaultReviewer) : null,
     };
+}
+
+// Review in the options: the form's machine output, with "Overwrite manual edits" its manual fields too (D8).
+export function reviewRequest({ reviewer = null, defaultReviewer = null, overwriteManual = false } = {}) {
+    return { overwriteManual, reviewer: chosen(reviewer, defaultReviewer) };
 }
 
 // Whether the state actions have work: manual fields whose source changed or that are untracked, and fields holding
@@ -76,7 +97,8 @@ export function baselineMessage(count, protect) {
         : __n(':count field marked as up to date.|:count fields marked as up to date.', count);
 }
 
-// The options menu (T5.10): translate with another model or mode, the two state actions and the offer preference.
+// The options menu (T5.10): translate with another model or mode, review with a chosen reviewer (T7.5), the two state
+// actions and the offer preference.
 export function createOptions({
     store = useEditorStore,
     registry = sharedRegistry,
@@ -98,6 +120,13 @@ export function createOptions({
         return models;
     }
 
+    // Stores a model choice only when it changed; the default is stored as null.
+    function remember(key, model) {
+        if (model !== rememberedModel(preferences(), key)) {
+            savePreference(key, model, { preferences, toast });
+        }
+    }
+
     function translate(name, choice = {}) {
         const request = optionsRequest(choice);
 
@@ -105,11 +134,25 @@ export function createOptions({
             return null;
         }
 
-        if (request.translator !== rememberedModel(preferences())) {
-            savePreference(TRANSLATOR_PREFERENCE, request.translator, { preferences, toast });
+        remember(TRANSLATOR_PREFERENCE, request.translator);
+
+        if (request.review === true) {
+            remember(REVIEWER_PREFERENCE, request.reviewer);
         }
 
         return translations.translate(name, request);
+    }
+
+    function review(name, choice = {}) {
+        const request = reviewRequest(choice);
+
+        if (BUSY.includes(store().phaseOf(name))) {
+            return null;
+        }
+
+        remember(REVIEWER_PREFERENCE, request.reviewer);
+
+        return translations.review(name, request);
     }
 
     // `editor/baseline` for the open localization; the returned status replaces the banner's.
@@ -141,7 +184,7 @@ export function createOptions({
         return savePreference(OFFER_PREFERENCE, enabled, { preferences, toast });
     }
 
-    return { loadModels, translate, baseline, setOffers };
+    return { loadModels, translate, review, baseline, setOffers };
 }
 
 export const options = createOptions();

@@ -438,6 +438,9 @@ describe('describeSummary', () => {
     it('names the count and the model', () => {
         expect(describeSummary(summary({ delivered: ['intro', 'seo_title'], models: ['anthropic:claude-sonnet-5-5'] }), status)).toEqual({
             translated: '2 fields translated with claude-sonnet-5-5.',
+            reviewed: null,
+            corrections: 0,
+            reviewSkipped: null,
             incomplete: null,
             edited: null,
             manual: null,
@@ -445,6 +448,60 @@ describe('describeSummary', () => {
             cancelled: null,
             unsaved: 'Not saved yet. Check the fields, then save.',
         });
+    });
+
+    it('names the reviewer and the corrections of a translation that was reviewed', () => {
+        const corrections = [{ handle: 'intro', id: 's2', label: 'Introduction', before: 'a', after: 'b', reason: 'Better.' }];
+        const text = describeSummary(
+            summary({ delivered: ['intro', 'seo_title'], models: ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol'], reviewer: 'openai:gpt-6.1-sol', corrections }),
+            status,
+        );
+
+        expect(text.translated).toBe('2 fields translated with claude-sonnet-5-5.');
+        expect(text.reviewed).toBe('Reviewed with gpt-6.1-sol: 1 correction.');
+        expect(text.corrections).toBe(1);
+        expect(describeSummary(summary({ delivered: ['intro'], reviewer: 'openai:gpt-6.1-sol', corrections: [...corrections, ...corrections] }), status).reviewed).toBe(
+            'Reviewed with gpt-6.1-sol: 2 corrections.',
+        );
+    });
+
+    it('names the reviewer as the translator when it translated too', () => {
+        const text = describeSummary(summary({ delivered: ['intro'], models: ['anthropic:claude-sonnet-5-5'], reviewer: 'anthropic:claude-sonnet-5-5' }), status);
+
+        expect(text.translated).toBe('1 field translated with claude-sonnet-5-5.');
+        expect(text.reviewed).toBe('Reviewed with claude-sonnet-5-5: nothing to correct.');
+        expect(text.corrections).toBe(0);
+    });
+
+    it('describes a review without a translated line', () => {
+        const review = (extra = {}) =>
+            summary({ kind: 'review', planned: ['intro', 'seo_title'], models: ['openai:gpt-6.1-sol'], reviewer: 'openai:gpt-6.1-sol', ...extra });
+        const corrected = describeSummary(review({ delivered: ['intro'], corrections: [{ handle: 'intro', id: 's1' }] }), status);
+
+        expect(corrected.translated).toBeNull();
+        expect(corrected.reviewed).toBe('Reviewed with gpt-6.1-sol: 1 correction.');
+        expect(corrected.unsaved).toBe('Not saved yet. Check the fields, then save.');
+
+        const unchanged = describeSummary(review(), status);
+
+        expect(unchanged.reviewed).toBe('Reviewed with gpt-6.1-sol: nothing to correct.');
+        expect(unchanged.unsaved).toBeNull();
+        expect(describeSummary(review({ planned: [] }), status).reviewed).toBe('There was nothing to review: no field holds a translation that is up to date.');
+        expect(describeSummary(review({ cancelled: true }), status).cancelled).toBe('The review was cancelled before it finished.');
+        expect(describeSummary(review({ failed: { intro: 'failed' } }), status).failed).toBe('Introduction could not be reviewed.');
+    });
+
+    it('says that a review left out manual fields, and how to include them', () => {
+        expect(describeSummary(summary({ kind: 'review', planned: ['intro'], planSkipped: { title: 'manual', seo_title: 'outdated' } }), status).manual).toBe(
+            'Title was not reviewed because it was edited by hand. Overwrite manual edits in the options reviews it too.',
+        );
+    });
+
+    it('says when part of the review could not be made', () => {
+        expect(describeSummary(summary({ delivered: ['intro'], reviewer: 'openai:gpt-6.1-sol', reviewSkipped: ['b1.v'] }), status).reviewSkipped).toBe(
+            'Part of the text could not be reviewed and was kept as it was.',
+        );
+        expect(describeSummary(summary({ reviewSkipped: [] }), status).reviewSkipped).toBeNull();
     });
 
     it('names every model used and the singular', () => {

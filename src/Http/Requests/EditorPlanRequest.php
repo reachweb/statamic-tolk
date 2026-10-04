@@ -21,6 +21,8 @@ class EditorPlanRequest extends FormRequest
             'skip' => ['array'],
             'skip.*' => ['string'],
             'translator' => ['nullable', 'string', new ModelReference, new CatalogModel($this->user())],
+            'review' => ['nullable', 'boolean'],
+            'reviewer' => ['nullable', 'string', new ModelReference, new CatalogModel($this->user())],
         ];
     }
 }

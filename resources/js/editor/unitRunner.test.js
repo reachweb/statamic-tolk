@@ -473,6 +473,35 @@ describe('runPlan', () => {
         expect(summary.warnings).toEqual(['Part of Title was left in English.', 'Intro could not be translated.']);
     });
 
+    it('collects the corrections of the filled fields with their handles', async () => {
+        const correction = (id) => ({ id, label: 'Title', before: '[de] a', after: '[de] b', reason: 'Better.' });
+        const server = fakeApi({
+            a: [response({ title: payload('title', { corrections: [correction('s1'), correction('s2')] }), intro: payload('intro', { corrections: [] }) })],
+            b: [response({ body: payload('body', { corrections: [correction('s5')] }) })],
+        });
+        const onFields = vi.fn(async (fields) => ({ stale: false, applied: Object.keys(fields).filter((handle) => handle !== 'body'), skipped: { body: 'edited' }, repeated: [] }));
+
+        const summary = await runPlan({ api: server.api, plan: plan([unit('a', ['title', 'intro']), unit('b', ['body'])]), onFields });
+
+        expect(summary.corrections).toEqual([
+            { handle: 'title', ...correction('s1') },
+            { handle: 'title', ...correction('s2') },
+        ]);
+    });
+
+    it('lists the fields a review left unchanged, and the review units that were skipped', async () => {
+        const server = fakeApi({
+            'b1.v': [response({ title: payload('title') }, { unchanged: ['intro'], review_skipped: false })],
+            'b2.v': [response({}, { unchanged: ['body', 'title'], review_skipped: true })],
+        });
+
+        const summary = await runPlan({ api: server.api, plan: plan([unit('b1.v', ['title', 'intro']), unit('b2.v', ['body'])]) });
+
+        expect(summary.unchanged).toEqual(['intro', 'body']);
+        expect(summary.reviewSkipped).toEqual(['b2.v']);
+        expect(summary.corrections).toEqual([]);
+    });
+
     it('resolves at once for a plan without units', async () => {
         const server = fakeApi();
         const onProgress = vi.fn();
@@ -481,7 +510,7 @@ describe('runPlan', () => {
 
         expect(server.requests).toEqual([]);
         expect(onProgress).toHaveBeenLastCalledWith({ total: 0, done: 0, waiting: 0 });
-        expect(summary).toMatchObject({ delivered: [], stopped: null, aborted: false, units: { total: 0, done: 0 } });
+        expect(summary).toMatchObject({ delivered: [], corrections: [], unchanged: [], reviewSkipped: [], stopped: null, aborted: false, units: { total: 0, done: 0 } });
     });
 });
 

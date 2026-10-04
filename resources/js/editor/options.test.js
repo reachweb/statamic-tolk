@@ -10,6 +10,8 @@ import {
     modelOptions,
     optionsRequest,
     rememberedModel,
+    REVIEWER_PREFERENCE,
+    reviewRequest,
     stateActions,
     TRANSLATOR_PREFERENCE,
 } from './options.js';
@@ -176,6 +178,13 @@ describe('rememberedModel', () => {
         expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: null }))).toBeNull();
         expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: '' }))).toBeNull();
     });
+
+    it('reads the reviewer from its own preference', () => {
+        const stored = fakePreferences({ [TRANSLATOR_PREFERENCE]: 'gemini:gemini-3.8-flash', [REVIEWER_PREFERENCE]: 'openai:gpt-6-luna' });
+
+        expect(rememberedModel(stored, REVIEWER_PREFERENCE)).toBe('openai:gpt-6-luna');
+        expect(rememberedModel(preferences, REVIEWER_PREFERENCE)).toBeNull();
+    });
 });
 
 describe('optionsRequest', () => {
@@ -184,14 +193,35 @@ describe('optionsRequest', () => {
             mode: 'update',
             overwriteManual: false,
             translator: null,
+            review: null,
+            reviewer: null,
         });
-        expect(optionsRequest({ retranslate: true, overwriteManual: true })).toEqual({ mode: 'all', overwriteManual: true, translator: null });
+        expect(optionsRequest({ retranslate: true, overwriteManual: true })).toEqual({ mode: 'all', overwriteManual: true, translator: null, review: null, reviewer: null });
+    });
+
+    it('turns the review on or off, and names the reviewer only while it is on and not the default', () => {
+        const reviewers = { reviewer: 'gemini:gemini-3.8-flash', defaultReviewer: 'openai:gpt-6.1-sol' };
+
+        expect(optionsRequest({ review: true, ...reviewers })).toMatchObject({ review: true, reviewer: 'gemini:gemini-3.8-flash' });
+        expect(optionsRequest({ review: true, reviewer: 'openai:gpt-6.1-sol', defaultReviewer: 'openai:gpt-6.1-sol' })).toMatchObject({ review: true, reviewer: null });
+        expect(optionsRequest({ review: false, ...reviewers })).toMatchObject({ review: false, reviewer: null });
     });
 
     it('names the model only when it is not the default', () => {
         expect(optionsRequest({ model: 'gemini:gemini-3.8-flash', defaultModel: 'anthropic:claude-sonnet-5-5' }).translator).toBe(
             'gemini:gemini-3.8-flash',
         );
+    });
+});
+
+describe('reviewRequest', () => {
+    it('names the reviewer only when it is not the default, and passes the overwrite flag', () => {
+        expect(reviewRequest({ reviewer: 'gemini:gemini-3.8-flash', defaultReviewer: 'openai:gpt-6.1-sol', overwriteManual: true })).toEqual({
+            overwriteManual: true,
+            reviewer: 'gemini:gemini-3.8-flash',
+        });
+        expect(reviewRequest({ reviewer: 'openai:gpt-6.1-sol', defaultReviewer: 'openai:gpt-6.1-sol' })).toEqual({ overwriteManual: false, reviewer: null });
+        expect(reviewRequest()).toEqual({ overwriteManual: false, reviewer: null });
     });
 });
 
@@ -256,8 +286,15 @@ describe('translate', () => {
             overwriteManual: true,
         });
 
-        expect(translations.translate).toHaveBeenCalledWith('base', { mode: 'all', overwriteManual: true, translator: 'gemini:gemini-3.8-flash' });
+        expect(translations.translate).toHaveBeenCalledWith('base', {
+            mode: 'all',
+            overwriteManual: true,
+            translator: 'gemini:gemini-3.8-flash',
+            review: null,
+            reviewer: null,
+        });
         expect(preferences.set).toHaveBeenCalledWith(TRANSLATOR_PREFERENCE, 'gemini:gemini-3.8-flash');
+        expect(preferences.set).toHaveBeenCalledTimes(1);
     });
 
     it('does not store the preference again when it is unchanged', () => {
@@ -266,7 +303,13 @@ describe('translate', () => {
         create().translate('base', { model: 'gemini:gemini-3.8-flash', defaultModel: 'anthropic:claude-sonnet-5-5' });
 
         expect(preferences.set).not.toHaveBeenCalled();
-        expect(translations.translate).toHaveBeenCalledWith('base', { mode: 'update', overwriteManual: false, translator: 'gemini:gemini-3.8-flash' });
+        expect(translations.translate).toHaveBeenCalledWith('base', {
+            mode: 'update',
+            overwriteManual: false,
+            translator: 'gemini:gemini-3.8-flash',
+            review: null,
+            reviewer: null,
+        });
     });
 
     it('forgets a remembered model when the default is chosen, and stores nothing without one', () => {
@@ -279,6 +322,23 @@ describe('translate', () => {
 
         preferences.set.mockClear();
         created.translate('base', { model: 'anthropic:claude-sonnet-5-5', defaultModel: 'anthropic:claude-sonnet-5-5' });
+        expect(preferences.set).not.toHaveBeenCalled();
+    });
+
+    it('reviews after translating with the chosen reviewer, and remembers it', () => {
+        mount();
+        create().translate('base', { review: true, reviewer: 'gemini:gemini-3.8-flash', defaultReviewer: 'openai:gpt-6.1-sol' });
+
+        expect(translations.translate).toHaveBeenCalledWith('base', { mode: 'update', overwriteManual: false, translator: null, review: true, reviewer: 'gemini:gemini-3.8-flash' });
+        expect(preferences.set).toHaveBeenCalledExactlyOnceWith(REVIEWER_PREFERENCE, 'gemini:gemini-3.8-flash');
+    });
+
+    it('leaves the remembered reviewer alone when the review is off', () => {
+        preferences = fakePreferences({ [REVIEWER_PREFERENCE]: 'gemini:gemini-3.8-flash' });
+        mount();
+        create().translate('base', { review: false, reviewer: 'openai:gpt-6.1-sol', defaultReviewer: 'openai:gpt-6.1-sol' });
+
+        expect(translations.translate.mock.calls[0][1]).toMatchObject({ review: false, reviewer: null });
         expect(preferences.set).not.toHaveBeenCalled();
     });
 
@@ -299,6 +359,38 @@ describe('translate', () => {
 
         expect(toast.error).toHaveBeenCalledWith('Your choice could not be saved.');
         expect(translations.translate).toHaveBeenCalled();
+    });
+});
+
+describe('review', () => {
+    beforeEach(() => {
+        translations.review = vi.fn(() => Promise.resolve(null));
+    });
+
+    it('reviews with the chosen reviewer and flag, and remembers the reviewer', () => {
+        mount();
+        create().review('base', { reviewer: 'gemini:gemini-3.8-flash', defaultReviewer: 'openai:gpt-6.1-sol', overwriteManual: true });
+
+        expect(translations.review).toHaveBeenCalledWith('base', { overwriteManual: true, reviewer: 'gemini:gemini-3.8-flash' });
+        expect(preferences.set).toHaveBeenCalledExactlyOnceWith(REVIEWER_PREFERENCE, 'gemini:gemini-3.8-flash');
+    });
+
+    it('forgets a remembered reviewer when the default is chosen', () => {
+        preferences = fakePreferences({ [REVIEWER_PREFERENCE]: 'gemini:gemini-3.8-flash' });
+        mount();
+        create().review('base', { reviewer: 'openai:gpt-6.1-sol', defaultReviewer: 'openai:gpt-6.1-sol' });
+
+        expect(translations.review).toHaveBeenCalledWith('base', { overwriteManual: false, reviewer: null });
+        expect(preferences.set).toHaveBeenCalledExactlyOnceWith(REVIEWER_PREFERENCE, null);
+    });
+
+    it('does nothing while a translation is under way', () => {
+        mount();
+        store.setPhase('base', 'planning');
+
+        expect(create().review('base', { reviewer: 'gemini:gemini-3.8-flash' })).toBeNull();
+        expect(translations.review).not.toHaveBeenCalled();
+        expect(preferences.set).not.toHaveBeenCalled();
     });
 });
 

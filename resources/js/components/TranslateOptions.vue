@@ -2,18 +2,23 @@
 import { computed, ref } from 'vue';
 import { Button, Checkbox, Combobox, Description, Field, Heading, Modal, Text } from '@statamic/cms/ui';
 import { offersEnabled } from '../editor/offer.js';
-import { initialModel, modelOptions, options, rememberedModel, stateActions } from '../editor/options.js';
+import { initialModel, modelOptions, options, rememberedModel, REVIEWER_PREFERENCE, stateActions } from '../editor/options.js';
+import { useEditorStore } from '../editor/store.js';
+import { reviewable } from '../editor/translate.js';
 
 const props = defineProps({
     containerName: { type: String, required: true },
     status: { type: Object, default: null },
 });
 
+const store = useEditorStore();
 const open = ref(false);
 const loading = ref(false);
 const failure = ref(null);
 const models = ref(null);
 const model = ref(null);
+const reviewer = ref(null);
+const reviewAfter = ref(false);
 const retranslate = ref(false);
 const overwriteManual = ref(false);
 const offering = ref(true);
@@ -23,20 +28,33 @@ const changingState = ref(false);
 const mayType = Boolean(Statamic.$config.get('tolk.settingsUrl'));
 
 const defaultModel = computed(() => models.value?.defaults?.translator ?? props.status?.defaults?.translator ?? null);
+const defaultReviewer = computed(() => models.value?.defaults?.reviewer ?? null);
 const remembered = computed(() => rememberedModel());
+const rememberedReviewer = computed(() => rememberedModel(Statamic.$preferences, REVIEWER_PREFERENCE));
+const fakeEngine = computed(() => props.status?.defaults?.fake_engine === true);
 const choices = computed(() =>
     modelOptions(models.value?.catalog, {
-        fakeEngine: props.status?.defaults?.fake_engine === true,
+        fakeEngine: fakeEngine.value,
         defaultModel: defaultModel.value,
         extra: mayType ? [defaultModel.value, remembered.value, model.value] : [defaultModel.value],
     }),
 );
+const reviewerChoices = computed(() =>
+    modelOptions(models.value?.catalog, {
+        fakeEngine: fakeEngine.value,
+        defaultModel: defaultReviewer.value,
+        extra: mayType ? [defaultReviewer.value, rememberedReviewer.value, reviewer.value] : [defaultReviewer.value],
+    }),
+);
+// Review has work while the form holds machine output (T7.5).
+const canReview = computed(() => reviewable(store.containers[props.containerName]));
 const actions = computed(() => stateActions(props.status));
 const offerSetting = computed(() => props.status?.offer === true);
 
 async function show() {
     retranslate.value = false;
     overwriteManual.value = false;
+    reviewAfter.value = props.status?.defaults?.review === true;
     failure.value = null;
     offering.value = offersEnabled();
     open.value = true;
@@ -51,6 +69,7 @@ async function show() {
     }
 
     model.value = initialModel(choices.value, { remembered: remembered.value, defaultModel: defaultModel.value });
+    reviewer.value = initialModel(reviewerChoices.value, { remembered: rememberedReviewer.value, defaultModel: defaultReviewer.value });
 }
 
 function translate() {
@@ -59,6 +78,18 @@ function translate() {
         model: model.value,
         defaultModel: defaultModel.value,
         retranslate: retranslate.value,
+        overwriteManual: overwriteManual.value,
+        review: reviewAfter.value,
+        reviewer: reviewer.value,
+        defaultReviewer: defaultReviewer.value,
+    });
+}
+
+function review() {
+    open.value = false;
+    options.review(props.containerName, {
+        reviewer: reviewer.value,
+        defaultReviewer: defaultReviewer.value,
         overwriteManual: overwriteManual.value,
     });
 }
@@ -116,6 +147,25 @@ async function toggleOffers(enabled) {
                 <Checkbox v-model="overwriteManual" :label="__('Overwrite manual edits')" :description="__('Also replaces the text of fields edited by hand.')" />
             </div>
 
+            <div class="space-y-4" data-tolk-options-review>
+                <Checkbox
+                    v-model="reviewAfter"
+                    :label="__('Review after translating')"
+                    :description="__('A second model checks the translation and corrects it. Review checks the translations in the form without translating.')"
+                />
+                <Field id="tolk-options-reviewer" :label="__('Reviewer')">
+                    <Combobox
+                        id="tolk-options-reviewer"
+                        v-model="reviewer"
+                        :options="reviewerChoices"
+                        :taggable="mayType"
+                        :disabled="loading"
+                        :placeholder="loading ? __('Loading…') : __('Choose a model')"
+                        data-tolk-options-reviewer
+                    />
+                </Field>
+            </div>
+
             <div v-if="actions.markCurrent || actions.protect" class="space-y-3" data-tolk-options-state>
                 <Heading size="sm" :text="__('Translation status')" />
                 <div v-if="actions.markCurrent" class="flex items-start justify-between gap-4">
@@ -156,6 +206,7 @@ async function toggleOffers(enabled) {
         <template #footer>
             <div class="flex items-center justify-end gap-3 pt-3 pb-1">
                 <Button variant="ghost" :text="__('Close')" data-tolk-options-action="close" @click="open = false" />
+                <Button v-if="canReview" :text="__('Review')" :disabled="loading || !reviewer" data-tolk-options-action="review" @click="review" />
                 <Button variant="primary" :text="__('Translate')" :disabled="loading || !model" data-tolk-options-action="translate" @click="translate" />
             </div>
         </template>
