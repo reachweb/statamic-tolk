@@ -64,28 +64,30 @@ final class TranslatableFields
 
         foreach ($blueprint->fields()->all() as $field) {
             if (in_array($this->reason($field, []), ['ok', 'not_localizable'], true)) {
-                $this->collectTechnical($field, [$field->handle()], [$field->display()], $found);
+                $this->collectTechnical($this->nestedFields($field) ?? [], [$field->handle()], [$field->display()], $found);
             }
         }
 
         return $found;
     }
 
-    private function collectTechnical(Field $container, array $path, array $labels, array &$found): void
+    /**
+     * @param  list<array{0: list<string>, 1: list<string>, 2: Fields}>  $nested
+     */
+    private function collectTechnical(array $nested, array $path, array $labels, array &$found): void
     {
-        foreach ($this->nestedFields($container) as [$segments, $setLabels, $fields]) {
+        foreach ($nested as [$segments, $setLabels, $fields]) {
             foreach ($fields->all() as $field) {
-                $handle = $field->handle();
-
-                if (! $this->registry->has($field->type()) || $field->fieldtype()->config('tolk_translate') === false) {
+                if (! $this->registry->translates($field)) {
                     continue;
                 }
 
+                $handle = $field->handle();
                 $fieldPath = [...$path, ...$segments, $handle];
                 $fieldLabels = [...$labels, ...$setLabels, $field->display()];
 
-                if ($this->isContainer($field)) {
-                    $this->collectTechnical($field, $fieldPath, $fieldLabels, $found);
+                if (($children = $this->nestedFields($field)) !== null) {
+                    $this->collectTechnical($children, $fieldPath, $fieldLabels, $found);
                 } elseif ($this->looksTechnical($handle) && $this->holdsText($field)) {
                     $found[] = [
                         'path' => implode('.', $fieldPath),
@@ -99,9 +101,12 @@ final class TranslatableFields
     }
 
     /**
-     * @return list<array{0: list<string>, 1: list<string>, 2: Fields}>
+     * The fields of a container by set (Replicator and Bard) or as one group (Grid and Group), or null for a field that
+     * holds no fields.
+     *
+     * @return ?list<array{0: list<string>, 1: list<string>, 2: Fields}>
      */
-    private function nestedFields(Field $field): array
+    private function nestedFields(Field $field): ?array
     {
         $fieldtype = $field->fieldtype();
 
@@ -113,14 +118,7 @@ final class TranslatableFields
                 ->all();
         }
 
-        return $fieldtype instanceof Grid || $fieldtype instanceof Group ? [[[], [], $fieldtype->fields()]] : [];
-    }
-
-    private function isContainer(Field $field): bool
-    {
-        $fieldtype = $field->fieldtype();
-
-        return $fieldtype instanceof Replicator || $fieldtype instanceof Grid || $fieldtype instanceof Group;
+        return $fieldtype instanceof Grid || $fieldtype instanceof Group ? [[[], [], $fieldtype->fields()]] : null;
     }
 
     private function looksTechnical(string $handle): bool

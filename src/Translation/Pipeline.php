@@ -196,11 +196,8 @@ final readonly class Pipeline
             $texts[] = $translation;
             $hashes[] = Fingerprint::ofText($segment['text']);
 
-            // A reused translation counts for the model that made it.
-            $model = $resolved['models'][$id] ?? ($segment['translation'] !== null ? $planned['reused_translator'] ?? null : null);
-
-            if ($model !== null) {
-                $models[] = $model;
+            if (isset($resolved['models'][$id])) {
+                $models[] = $resolved['models'][$id];
             }
         }
 
@@ -396,15 +393,21 @@ final readonly class Pipeline
     /**
      * The state of every segment over all stored outcomes (§A8 step 3).
      *
-     * @return array{translations: array<string, string>, failed: array<string, string>, corrections: array<string, array>, warnings: array<string, list<string>>, models: array<string, string>, pending: array<string, true>}
+     * @return array{translations: array<string, string>, failed: array<string, string>, corrections: array<string, array>, warnings: array<string, list<string>>, models: array<string, ?string>, pending: array<string, true>}
      */
     private function resolve(Plan $plan): array
     {
-        $translations = array_filter(
-            array_map(fn (array $segment) => $segment['translation'] ?? null, $plan->segments),
-            'is_string',
-        );
-        $failed = $corrections = $warnings = $models = $pending = [];
+        $translations = $models = [];
+
+        foreach ($plan->segments as $id => $segment) {
+            if (is_string($segment['translation'] ?? null)) {
+                $translations[$id] = $segment['translation'];
+                // A reused translation counts for the model that made it.
+                $models[$id] = $plan->fields[$segment['field']]['reused_translator'] ?? null;
+            }
+        }
+
+        $failed = $corrections = $warnings = $pending = [];
 
         foreach ($this->store->units($plan) as ['unit' => $unit, 'outcome' => $outcome]) {
             if ($outcome === null) {

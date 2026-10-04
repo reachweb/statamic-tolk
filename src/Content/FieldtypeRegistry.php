@@ -43,6 +43,12 @@ final class FieldtypeRegistry
         return isset($this->handlers[$handle]);
     }
 
+    // Whether a walk translates the field: its fieldtype has a handler and its "Translate automatically" option is on.
+    public function translates(Field $field): bool
+    {
+        return $this->has($field->type()) && $field->fieldtype()->config('tolk_translate') !== false;
+    }
+
     public function for(Field $field): ?FieldHandler
     {
         $handlerClass = $this->handlers[$field->type()] ?? null;

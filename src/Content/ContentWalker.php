@@ -93,11 +93,7 @@ final class ContentWalker
 
     private function maps(Field $field, mixed $value, WalkContext $context): bool
     {
-        if (! $this->registry->has($field->type()) || $field->fieldtype()->config('tolk_translate') === false) {
-            return false;
-        }
-
-        return ! ($context->target && $this->holdsDefault($field, $value));
+        return $this->registry->translates($field) && ! ($context->target && $this->holdsDefault($field, $value));
     }
 
     // Set fields added to a blueprint later get their default filled into existing rows by the CP; on a target that text is not a translation.
