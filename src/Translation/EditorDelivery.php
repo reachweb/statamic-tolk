@@ -1,0 +1,115 @@
+<?php
+
+namespace Reach\StatamicTolk\Translation;
+
+use Carbon\CarbonImmutable;
+use LogicException;
+use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Exceptions\FieldFailed;
+use Reach\StatamicTolk\Exceptions\SourceChanged;
+use Reach\StatamicTolk\State\PendingState;
+use Reach\StatamicTolk\State\StateWriter;
+use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Targets\TargetRef;
+
+/**
+ * Hands assembled fields to the open publish form (§A8 step 5): in the shape the CP's edit page gives values and meta,
+ * with a pending state entry for each, since nothing is saved until the editor saves the form.
+ */
+final readonly class EditorDelivery
+{
+    public function __construct(
+        private Pipeline $pipeline,
+        private StateWriter $stateWriter,
+        private StatusResolver $resolver,
+    ) {}
+
+    /**
+     * A field whose override is removed comes back with `sync` and the value and meta it inherits, so the form can put
+     * it back to "inherited".
+     *
+     * @param  list<string>  $handles
+     * @return array<string, array{value: mixed, meta: mixed, incomplete: bool, warnings: list<string>}|array{value: mixed, meta: mixed, sync: true}>
+     *
+     * @throws SourceChanged when a source value is not the one that was planned
+     * @throws FieldFailed when a part failed for good and the plan is strict
+     */
+    public function deliver(Plan $plan, Target $target, array $handles): array
+    {
+        $ref = $target->ref() ?? throw new LogicException('Translations are delivered only into a target that exists.');
+        $assembled = [];
+
+        foreach ($handles as $handle) {
+            $assembled[$handle] = $this->pipeline->assemble($plan, $target, $handle);
+        }
+
+        $removed = array_filter($assembled, fn (AssembledField $field) => $field->remove);
+        $delivered = $this->translated($ref, $target, array_diff_key($assembled, $removed)) + $this->inherited($target, $removed);
+
+        return array_replace(array_fill_keys(array_keys($assembled), null), $delivered);
+    }
+
+    /**
+     * @param  array<string, AssembledField>  $fields
+     */
+    private function translated(TargetRef $ref, Target $target, array $fields): array
+    {
+        if ($fields === []) {
+            return [];
+        }
+
+        // Values and meta come from one instance: Bard and Replicator meta is computed from the pre-processed value.
+        $form = $target->formFields(array_map(fn (AssembledField $field) => $field->value, $fields))->preProcess();
+        $values = $form->values()->all();
+        $meta = $form->meta()->all();
+
+        // Pre-processing fills set fields the raw value lacks with their defaults, and the CP stores what it receives.
+        $stored = $form->process()->values()->all();
+        $delivered = [];
+
+        foreach ($fields as $handle => $field) {
+            $this->stateWriter->recordPending($ref, $target->sourceSite(), $handle, $this->pending($target, $field, $stored[$handle]));
+
+            $delivered[$handle] = [
+                'value' => $values[$handle],
+                'meta' => $meta[$handle],
+                'incomplete' => $field->incomplete,
+                'warnings' => $field->warnings,
+            ];
+        }
+
+        return $delivered;
+    }
+
+    /**
+     * @param  array<string, AssembledField>  $fields
+     */
+    private function inherited(Target $target, array $fields): array
+    {
+        if ($fields === []) {
+            return [];
+        }
+
+        $form = $target->formFields(array_map(fn (AssembledField $field) => $target->inheritedValue($field->handle), $fields), source: true)->preProcess();
+        $values = $form->values()->all();
+        $meta = $form->meta()->all();
+
+        return array_map(fn (AssembledField $field) => ['value' => $values[$field->handle], 'meta' => $meta[$field->handle], 'sync' => true], $fields);
+    }
+
+    private function pending(Target $target, AssembledField $field, mixed $stored): PendingState
+    {
+        return new PendingState(
+            plan: $field->plan,
+            sourceHash: $field->sourceHash,
+            targetHash: $this->resolver->targetHash($target->fields()->get($field->handle), $stored),
+            targetBefore: $field->targetBefore,
+            segments: $field->segments,
+            identical: $field->identical,
+            incomplete: $field->incomplete,
+            translator: $field->translator,
+            reviewer: null,
+            createdAt: CarbonImmutable::now(),
+        );
+    }
+}

@@ -1,0 +1,196 @@
+<?php
+
+use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Content\Fingerprint;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\ApplyOptions;
+use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Reach\StatamicTolk\Translation\EditorDelivery;
+use Reach\StatamicTolk\Translation\Pipeline;
+use Reach\StatamicTolk\Translation\Plan;
+use Reach\StatamicTolk\Translation\Planner;
+use Reach\StatamicTolk\Translation\PlanOptions;
+use Reach\StatamicTolk\Translation\PlanStore;
+use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\Entry;
+
+beforeEach(function () {
+    $this->useFileCache();
+
+    $this->makeCollection('articles', ['en', 'el', 'de'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+        'intro' => ['type' => 'textarea', 'localizable' => true, 'display' => 'Introduction'],
+        'subtitle' => ['type' => 'text', 'localizable' => true, 'default' => 'Read on'],
+    ]);
+
+    $this->origin = $this->makeEntry('articles', 'en', ['title' => 'Hello', 'intro' => 'A short intro.', 'subtitle' => 'All about it'], 'hello');
+    $this->greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+});
+
+function greekDeliveryTarget(): Target
+{
+    return app(TargetFactory::class)->forEntry(test()->origin, 'el');
+}
+
+/**
+ * Plans the target, runs every unit and returns the plan.
+ */
+function runDeliveryPlan(Target $target, array $options = []): Plan
+{
+    $plan = app(Planner::class)->plan($target, PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), $options));
+    $pipeline = app(Pipeline::class);
+    app(PlanStore::class)->put($plan);
+
+    while (($units = $pipeline->runnable($plan)) !== []) {
+        foreach (array_keys($units) as $unitId) {
+            $pipeline->runUnit($plan, $unitId);
+        }
+    }
+
+    return $plan;
+}
+
+/**
+ * What core's own edit endpoint gives the publish form of the entry.
+ */
+function coreEditPayload(EntryContract $entry): array
+{
+    test()->signInAdmin();
+
+    return test()->getJson(cp_route('collections.entries.edit', [$entry->collectionHandle(), $entry->id()]))->assertOk()->json();
+}
+
+it('delivers a text field as core\'s edit page gives it', function () {
+    $this->fakeTranslations();
+    $plan = runDeliveryPlan(greekDeliveryTarget());
+
+    $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro', 'subtitle']);
+
+    expect(array_keys($delivered))->toBe(['intro', 'subtitle'])
+        ->and($delivered['intro'])->toBe(['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => []])
+        ->and($delivered['subtitle']['value'])->toBe('[T] All about it');
+
+    $entry = Entry::find($this->greek->id());
+    $entry->merge(['intro' => '[T] A short intro.', 'subtitle' => '[T] All about it'])->save();
+    $core = coreEditPayload($entry);
+
+    foreach (['intro', 'subtitle'] as $handle) {
+        expect($delivered[$handle]['value'])->toBe($core['values'][$handle])
+            ->and($delivered[$handle]['meta'])->toBe($core['meta'][$handle]);
+    }
+});
+
+it('records a pending entry and leaves the stored entry unchanged', function () {
+    $this->fakeTranslations();
+    $before = Entry::find($this->greek->id())->data()->all();
+    $plan = runDeliveryPlan(greekDeliveryTarget());
+
+    app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro']);
+
+    $pending = app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('intro')->pending;
+
+    expect(Entry::find($this->greek->id())->data()->all())->toBe($before)
+        ->and($pending)->toHaveCount(1)
+        ->and($pending[0]->plan)->toBe($plan->id)
+        ->and($pending[0]->sourceHash)->toBe(Fingerprint::of('A short intro.'))
+        ->and($pending[0]->targetHash)->toBe(Fingerprint::ofLeaves(['[T] A short intro.']))
+        ->and($pending[0]->targetBefore)->toBeNull()
+        ->and($pending[0]->segments)->toBe([Fingerprint::ofText('A short intro.')])
+        ->and($pending[0]->translator)->toBe('anthropic:claude-sonnet-5-5')
+        ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Untranslated);
+});
+
+it('promotes the pending entry once the form is saved with the delivered value', function () {
+    $this->fakeTranslations();
+    $plan = runDeliveryPlan(greekDeliveryTarget());
+    $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro']);
+
+    Entry::find($this->greek->id())->set('intro', $delivered['intro']['value'])->save();
+
+    expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Current);
+});
+
+it('records the hash of the target that was there when the plan was made', function () {
+    $this->fakeTranslations();
+    $plan = runDeliveryPlan(greekDeliveryTarget(), ['mode' => 'all', 'overwriteManual' => true]);
+
+    app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['title']);
+
+    expect(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('title')->pending[0]->targetBefore)
+        ->toBe(Fingerprint::ofLeaves(['Γεια']));
+});
+
+it('delivers a field whose source lost its value as a sync with what the origin gives', function (?string $emptied) {
+    $this->fakeTranslations();
+    app(TargetTranslator::class)->translate(greekDeliveryTarget(), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+    ($emptied === null ? $this->origin->remove('subtitle') : $this->origin->set('subtitle', $emptied))->save();
+    $state = app(StateRepository::class)->get(StateFixtures::ref($this->greek))->toArray();
+
+    $plan = runDeliveryPlan(greekDeliveryTarget(), ['mode' => 'update']);
+    $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['subtitle']);
+    $core = coreEditPayload(Entry::find($this->greek->id()));
+
+    expect($plan->fields['subtitle']['clear'])->toBeTrue()
+        ->and($delivered['subtitle'])->toBe(['value' => 'Read on', 'meta' => null, 'sync' => true])
+        ->and($delivered['subtitle']['value'])->toBe($core['originValues']['subtitle'])
+        ->and($delivered['subtitle']['meta'])->toBe($core['originMeta']['subtitle'])
+        ->and(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->toArray())->toBe($state);
+})->with([
+    'removed' => [null],
+    'emptied' => [''],
+]);
+
+it('delivers a sync with what a chained source shows for a field it emptied', function () {
+    $this->fakeTranslations();
+    $this->greek->delete();
+    $german = $this->localize($this->origin, 'de', ['title' => 'Hallo', 'subtitle' => 'Alles darüber']);
+    $greek = $this->localize($german, 'el');
+    $target = fn () => app(TargetFactory::class)->forEntry($german, 'el');
+    app(TargetTranslator::class)->translate($target(), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+    $german->set('subtitle', '')->save();
+
+    $delivered = app(EditorDelivery::class)->deliver(runDeliveryPlan($target(), ['mode' => 'update']), $target(), ['subtitle']);
+    $core = coreEditPayload(Entry::find($greek->id()));
+
+    expect($delivered['subtitle'])->toBe(['value' => '', 'meta' => null, 'sync' => true])
+        ->and($delivered['subtitle']['value'])->toBe($core['originValues']['subtitle']);
+});
+
+it('delivers a copy of a source without text', function () {
+    $this->fakeTranslations();
+    app(TargetTranslator::class)->translate(greekDeliveryTarget(), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+    $this->origin->set('subtitle', '2026')->save();
+
+    $plan = runDeliveryPlan(greekDeliveryTarget(), ['mode' => 'update']);
+    $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['subtitle']);
+    $pending = app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('subtitle')->pending;
+
+    expect($delivered['subtitle'])->toBe(['value' => '2026', 'meta' => null, 'incomplete' => false, 'warnings' => []])
+        ->and($pending[0]->identical)->toBeTrue()
+        ->and($pending[0]->targetHash)->toBe(Fingerprint::ofLeaves([]));
+});
+
+it('flags a field with a part left untranslated', function () {
+    $this->fakeTranslations(fn (string $text) => "<b>{$text}");
+    $plan = runDeliveryPlan(greekDeliveryTarget(), ['fields' => ['intro']]);
+
+    $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro']);
+
+    expect($delivered['intro']['value'])->toBe('A short intro.')
+        ->and($delivered['intro']['incomplete'])->toBeTrue()
+        ->and($delivered['intro']['warnings'])->toHaveCount(1)
+        ->and(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('intro')->pending[0]->incomplete)->toBeTrue();
+});
+
+it('refuses a target that does not exist', function () {
+    $this->fakeTranslations();
+    $target = app(TargetFactory::class)->forEntry($this->origin, 'de');
+    $plan = runDeliveryPlan($target);
+
+    app(EditorDelivery::class)->deliver($plan, $target, ['intro']);
+})->throws(LogicException::class);
