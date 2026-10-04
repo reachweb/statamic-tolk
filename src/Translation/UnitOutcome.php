@@ -20,10 +20,16 @@ final readonly class UnitOutcome
     public const string REQUEST_REJECTED = 'request_rejected';
 
     /**
+     * Why a review was skipped after `retry.max_attempts` transient failures.
+     */
+    public const string UNAVAILABLE = 'unavailable';
+
+    /**
      * @param  string  $unit  the unit's id
-     * @param  ?string  $model  the model that was called; null when the unit was split after a timeout
+     * @param  ?string  $model  the model that was called; null when the unit was split after a timeout, and when a review
+     *                          was skipped
      * @param  array<string, string>  $translations  segment id → valid translation
-     * @param  list<array{id: string, before: string, after: string, reason: string}>  $corrections
+     * @param  list<array{id: string, before: string, after: string, reason: string}>  $corrections  a review's accepted corrections
      * @param  array<string, string>  $failed  segment id → why it failed for good
      * @param  array<string, list<string>>  $warnings  segment id → warnings
      * @param  list<Unit>  $spawned

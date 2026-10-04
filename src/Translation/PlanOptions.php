@@ -46,8 +46,8 @@ final readonly class PlanOptions
     }
 
     /**
-     * Models and `strict` come from the settings unless overridden. Overrides use the constructor's parameter names;
-     * a null override means the default, and model references and the mode may be given as strings.
+     * Models, `review` and `strict` come from the settings unless overridden. Overrides use the constructor's parameter
+     * names; a null override means the default, and model references and the mode may be given as strings.
      */
     public static function fromSettings(Settings $settings, ModelCatalog $catalog, array $overrides = []): self
     {
@@ -64,7 +64,7 @@ final readonly class PlanOptions
         }
 
         $translator = $catalog->resolveTranslator($settings, $overrides['translator'] ?? null);
-        $review = (bool) ($overrides['review'] ?? false);
+        $review = (bool) ($overrides['review'] ?? $settings->reviewEnabled());
 
         return new self(...[
             'strict' => $settings->strictFields(),

@@ -19,19 +19,24 @@ final class ScriptedEngine implements Engine
     /** @var list<EngineCall> */
     public array $calls = [];
 
-    /**
-     * @param  Closure(EngineCall, int): EngineResult  $script  receives the call and its number, starting at 1
-     */
-    public function __construct(private readonly Closure $script) {}
+    /** @var list<EngineCall> */
+    public array $reviews = [];
 
     /**
-     * Binds a new engine with the script as the container's Engine.
+     * @param  Closure(EngineCall, int): EngineResult  $script  receives the call and its number, starting at 1
+     * @param  ?Closure(EngineCall, int): EngineResult  $review  the same for review calls, numbered on their own
+     */
+    public function __construct(private readonly Closure $script, private readonly ?Closure $review = null) {}
+
+    /**
+     * Binds a new engine with the scripts as the container's Engine.
      *
      * @param  Closure(EngineCall, int): EngineResult  $script
+     * @param  ?Closure(EngineCall, int): EngineResult  $review
      */
-    public static function bind(Closure $script): self
+    public static function bind(Closure $script, ?Closure $review = null): self
     {
-        $engine = new self($script);
+        $engine = new self($script, $review);
 
         app()->instance(Engine::class, $engine);
 
@@ -63,7 +68,13 @@ final class ScriptedEngine implements Engine
 
     public function review(EngineCall $call): EngineResult
     {
-        throw new LogicException('The scripted engine does not review.');
+        if ($this->review === null) {
+            throw new LogicException('The scripted engine has no review script.');
+        }
+
+        $this->reviews[] = $call;
+
+        return ($this->review)($call, count($this->reviews));
     }
 
     /**
