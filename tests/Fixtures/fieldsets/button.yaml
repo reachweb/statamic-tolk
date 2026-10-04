@@ -1,0 +1,27 @@
+title: Button
+fields:
+  -
+    handle: label
+    field:
+      type: text
+      display: Label
+  -
+    handle: url
+    field:
+      type: text
+      display: URL
+      input_type: url
+  -
+    handle: style
+    field:
+      type: select
+      display: Style
+      options:
+        primary: Primary
+        secondary: Secondary
+        link: 'Text link'
+  -
+    handle: new_tab
+    field:
+      type: toggle
+      display: 'Open in a new tab'

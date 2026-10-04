@@ -1,0 +1,1 @@
+Welcome to {{ site:name }}, {{ current_user:first_name ?? "guest" }}! {{ if offer:active }}Book before {{ offer:ends_at format="j F" }}{{ /if }} and write to {{ site_settings:email }}.{{# Ask Nikos before changing this line. #}} Templates print @{{ title }} literally. {{? $nights = 7; ?}}Stay {{$ $nights $}} nights.
