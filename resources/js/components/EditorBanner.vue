@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount } from 'vue';
 import { Badge, Button, Card, Description, Icon, Text, injectPublishContext } from '@statamic/cms/ui';
 import ProgressBar from './ProgressBar.vue';
+import TranslateOffer from './TranslateOffer.vue';
 import { attachBanner } from '../editor/banner.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
@@ -158,6 +159,8 @@ async function undo() {
                     </li>
                 </ul>
             </div>
+
+            <TranslateOffer v-if="banner.localization" :container-name="name" :status="state.status" :open="phase === 'offer'" />
 
             <Description v-if="banner.setup" data-tolk-setup>
                 {{ __('Translation is not set up yet.') }}

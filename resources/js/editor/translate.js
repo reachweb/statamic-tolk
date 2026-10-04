@@ -1,5 +1,5 @@
 import * as defaultApi from '../api.js';
-import { applyFields, clone, restore, snapshot } from './fill.js';
+import { applyFields, clone, keepOriginSlug, recheckOriginSlug, restore, snapshot } from './fill.js';
 import { equalValues, registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 import { runPlan } from './unitRunner.js';
@@ -40,6 +40,11 @@ export function remainingHandles(summary) {
     const finished = new Set([...(summary?.delivered ?? []), ...Object.keys(summary?.skipped ?? {})]);
 
     return (summary?.planned ?? []).filter((handle) => !finished.has(handle));
+}
+
+// The origin's slug while the open localization was created in this form and its slug has not been kept yet (T5.9).
+export function slugToKeep(container) {
+    return container?.created && !container.slugKept ? (container.status?.localization?.origin_slug ?? null) : null;
 }
 
 // Whether Undo has something to put back: a handle filled since the snapshot was taken.
@@ -104,6 +109,8 @@ export function createTranslations({
     run = runPlan,
     fill = applyFields,
     undoFill = restore,
+    keepSlug = keepOriginSlug,
+    recheckSlug = recheckOriginSlug,
 } = {}) {
     const runs = new Map();
     const undoing = new Set();
@@ -146,6 +153,8 @@ export function createTranslations({
         const mine = () => runs.get(name)?.token === token;
         const current = () => mine() && editor.containers[name] === container && ctx.reference.value === reference;
 
+        const lastChangeAt = () => editor.containers[name]?.lastChangeAt ?? 0;
+        const originSlug = slugToKeep(container);
         const snap = snapshot(ctx, fields ?? Object.keys(ctx.values.value), container.delivered);
         const planValues = clone(ctx.values.value);
         const skip = skipHandles(ctx, container.status, { name, registry, delivered: container.delivered });
@@ -165,11 +174,27 @@ export function createTranslations({
         });
         editor.setPhase(name, 'planning');
 
+        // The slug of a new localization follows its title until the origin's slug is put back; before the first fill.
+        const keeping = originSlug ? keepSlug(ctx, originSlug, { reference, lastChangeAt, active: mine }) : null;
+
+        // Not awaited when the plan request fails; it then stops by itself, since the translation is no longer active.
+        keeping?.catch(() => {});
+
         try {
             const plan = await api.post('editor/plan', { reference, mode, overwrite_manual: overwriteManual, fields, skip, translator });
 
             if (!current()) {
                 return null;
+            }
+
+            if (keeping) {
+                await keeping;
+
+                if (!current()) {
+                    return null;
+                }
+
+                container.slugKept = true;
             }
 
             editor.setPhase(name, 'working');
@@ -178,7 +203,7 @@ export function createTranslations({
             const options = {
                 reference,
                 plan: plan.plan,
-                lastChangeAt: () => editor.containers[name]?.lastChangeAt ?? 0,
+                lastChangeAt,
                 planValues,
                 delivered: container.delivered,
                 active: mine,
@@ -196,6 +221,10 @@ export function createTranslations({
                     }
                 },
             });
+
+            if (keeping && summary.delivered.length && current()) {
+                await recheckSlug(ctx, originSlug, { reference, active: mine });
+            }
 
             if (!current()) {
                 return null;

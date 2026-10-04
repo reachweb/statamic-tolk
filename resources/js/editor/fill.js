@@ -9,7 +9,26 @@ export const SETTLE_MS = 600;
 // Fieldtypes pass changes up through a 150 ms debounce; Bard, lists and arrays re-emit their own value after a fill.
 export const REEMIT_MS = 300;
 
+// Core's slug reset after `localization.created` slugifies asynchronously, about a second later in the sandbox.
+export const SLUG_RESET_TIMEOUT_MS = 2000;
+
+// A slugify request that was still running when the slug was put back answers late and overwrites it (T2.2 check 9).
+export const SLUG_RECHECK_MS = 1000;
+
+const SLUG_POLL_MS = 100;
+
+// Long enough for the slug fieldtype to see a value before the next one, short of its 150 ms update debounce.
+const SLUG_TOGGLE_MS = 50;
+
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function settled(since, now, sleep) {
+    const remaining = () => SETTLE_MS - (now() - since());
+
+    for (let left = remaining(); left > 0; left = remaining()) {
+        await sleep(left);
+    }
+}
 
 // What `restore()` puts back. `delivered` (the container's delivered map) keeps the record an earlier plan left for
 // a handle, so undoing a second translation brings the first one's record back with its value.
@@ -57,12 +76,7 @@ export async function applyFields(
         return stale();
     }
 
-    const since = typeof lastChangeAt === 'function' ? lastChangeAt : () => lastChangeAt;
-    const remaining = () => SETTLE_MS - (now() - since());
-
-    for (let left = remaining(); left > 0; left = remaining()) {
-        await sleep(left);
-    }
+    await settled(typeof lastChangeAt === 'function' ? lastChangeAt : () => lastChangeAt, now, sleep);
 
     if (!current()) {
         return stale();
@@ -200,6 +214,89 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
     settle();
 
     return result;
+}
+
+// Slugs are never translated (D16). On `localization.created` core resets the new localization's slug to follow the
+// title, so filling a translated title would give it a translated slug. Once the reset has finished, which turns
+// `meta.slug.auto` on, setting the origin's slug stops the following. Waits for the 600 ms guard and gives up waiting
+// for the reset 2 seconds after `lastChangeAt`, then sets the slug anyway; `recheckOriginSlug()` catches a reset that
+// answers later. Never call it for a localization that existed before the form opened.
+export async function keepOriginSlug(
+    ctx,
+    originSlug,
+    { reference, lastChangeAt = 0, now = Date.now, sleep = wait, active = () => true } = {},
+) {
+    const since = typeof lastChangeAt === 'function' ? lastChangeAt : () => lastChangeAt;
+    const current = () => ctx.reference.value === reference && active();
+    const left = () => since() + SLUG_RESET_TIMEOUT_MS - now();
+
+    if (!current()) {
+        return { stale: true, kept: false, reset: false };
+    }
+
+    if (!hasSlug(ctx, originSlug)) {
+        return { stale: false, kept: false, reset: false };
+    }
+
+    await settled(since, now, sleep);
+
+    while (current() && !followsTitle(ctx) && left() > 0) {
+        await sleep(Math.min(SLUG_POLL_MS, left()));
+    }
+
+    const reset = followsTitle(ctx);
+
+    if (!current() || !(await putOriginSlug(ctx, originSlug, { sleep, current }))) {
+        return { stale: true, kept: false, reset };
+    }
+
+    return { stale: false, kept: true, reset };
+}
+
+// Run once the title has been filled. Resolves whether the slug had to be set again.
+export async function recheckOriginSlug(ctx, originSlug, { reference, sleep = wait, active = () => true } = {}) {
+    const current = () => ctx.reference.value === reference && active();
+
+    if (!hasSlug(ctx, originSlug)) {
+        return false;
+    }
+
+    await sleep(SLUG_RECHECK_MS);
+
+    if (!current() || (ctx.values.value.slug === originSlug && !followsTitle(ctx))) {
+        return false;
+    }
+
+    return putOriginSlug(ctx, originSlug, { sleep, current });
+}
+
+function hasSlug(ctx, originSlug) {
+    return typeof originSlug === 'string' && originSlug !== '' && Object.hasOwn(ctx.values.value ?? {}, 'slug');
+}
+
+function followsTitle(ctx) {
+    return ctx.meta.value?.slug?.auto === true;
+}
+
+// Core's slug stops following the title when its value changes to one it did not generate. Setting the origin's slug
+// changes nothing while the form still shows it: when the title gave that slug again, and for the 150 ms after the
+// reset turned `auto` on, before the fieldtype's debounced update brings the new slug into the form. So another value
+// comes first; the debounced update then carries the origin's slug as the last value.
+async function putOriginSlug(ctx, originSlug, { sleep, current }) {
+    if (followsTitle(ctx) && ctx.values.value.slug === originSlug) {
+        ctx.setFieldValue('slug', '');
+        await sleep(SLUG_TOGGLE_MS);
+
+        if (!current()) {
+            return false;
+        }
+    }
+
+    if (ctx.values.value.slug !== originSlug) {
+        ctx.setFieldValue('slug', originSlug);
+    }
+
+    return true;
 }
 
 function setLocalized(ctx, handle, localized) {

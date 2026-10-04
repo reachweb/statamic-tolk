@@ -32,6 +32,14 @@ test.beforeEach(async ({ page }) => {
 
     await openEntry(page, 'pages', 'home', 'de');
     await expect(action(page, 'translate')).toBeVisible();
+    // The banner takes the form's clean values again 600 ms after it mounted (T5.6); text typed before then counts as
+    // loaded. The status can arrive well inside that window.
+    await page.waitForTimeout(700);
+});
+
+// Leave the sandbox as it was: other specs read the German home page's counts without resetting.
+test.afterAll(() => {
+    reset();
 });
 
 test('text typed before Translate is kept and listed as skipped', async ({ page, browserErrors }) => {

@@ -17,6 +17,10 @@ export function initialState() {
         request: null,
         // Delivered handles the last save did not store, from `editor/confirm`.
         notSaved: [],
+        // The localization was created in this form (`localization.created`), so its slug is put back to the origin's
+        // before the first translation fills it (T5.9).
+        created: false,
+        slugKept: false,
     };
 }
 

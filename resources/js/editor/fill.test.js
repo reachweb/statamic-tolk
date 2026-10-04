@@ -1,6 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
-import { applyFields, clone, REEMIT_MS, restore, SETTLE_MS, snapshot } from './fill.js';
+import {
+    applyFields,
+    clone,
+    keepOriginSlug,
+    recheckOriginSlug,
+    REEMIT_MS,
+    restore,
+    SETTLE_MS,
+    SLUG_RECHECK_MS,
+    SLUG_RESET_TIMEOUT_MS,
+    snapshot,
+} from './fill.js';
 import { createRegistry } from './registry.js';
 
 let dirty;
@@ -517,5 +528,264 @@ describe('restore', () => {
         expect(ctx.syncField).not.toHaveBeenCalled();
         expect(ctx.values.value.intro).toBe('Intro');
         expect(ctx.localizedFields.value).toEqual(['intro']);
+    });
+});
+
+// The form of a localization just created, with core's slug fieldtype imitated. `localization.created` resets the slug
+// to follow the title: it slugifies the title asynchronously and turns `meta.slug.auto` on `resetMs` later. A value the
+// fieldtype did not generate stops the following. While it follows, a new title is slugified 200 ms later, and a
+// slugify response sets the slug even when the following stopped in between (T2.2 check 9). With `debounceMs` the
+// reset's slug reaches the form that much after `auto` turned on, unless a slug is set in between, as core's fieldtype
+// passes its value up through a debounce.
+function createdForm({ originSlug = 'about', title = 'About us', resetMs = 1000, debounceMs = 0 } = {}) {
+    const ctx = container({ values: { title, slug: originSlug }, meta: { slug: { generate: true } } });
+    const slug = { follows: false, generated: originSlug };
+    const slugify = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const generate = (text) => {
+        slug.generated = slugify(text);
+        ctx.values.value.slug = slug.generated;
+    };
+    const follow = (auto) => {
+        slug.follows = auto;
+        ctx.meta.value.slug = { ...ctx.meta.value.slug, auto };
+    };
+    const set = ctx.setFieldValue;
+    let pending = null;
+
+    ctx.setFieldValue = vi.fn((handle, value) => {
+        set(handle, value);
+
+        if (handle === 'slug') {
+            clearTimeout(pending);
+        }
+
+        if (handle === 'slug' && value !== slug.generated) {
+            follow(false);
+        }
+
+        if (handle === 'title' && slug.follows) {
+            setTimeout(() => generate(value), 200);
+        }
+    });
+
+    setTimeout(() => {
+        if (debounceMs === 0) {
+            generate(ctx.values.value.title);
+        } else {
+            slug.generated = slugify(ctx.values.value.title);
+            pending = setTimeout(() => (ctx.values.value.slug = slug.generated), debounceMs);
+        }
+
+        follow(true);
+    }, resetMs);
+
+    ctx.slugValues = () => ctx.setFieldValue.mock.calls.filter(([handle]) => handle === 'slug').map(([, value]) => value);
+    ctx.fillTitle = async (value) => {
+        ctx.setFieldValue('title', value);
+        await vi.advanceTimersByTimeAsync(1_000);
+    };
+
+    return ctx;
+}
+
+const keep = (ctx, originSlug = 'about', options = {}) =>
+    keepOriginSlug(ctx, originSlug, { reference: 'entry::de', lastChangeAt: Date.now(), ...options });
+
+describe('keepOriginSlug', () => {
+    it('puts the origin slug back once core has reset the slug, so it no longer follows the title', async () => {
+        const ctx = createdForm();
+        const promise = keep(ctx);
+
+        await vi.advanceTimersByTimeAsync(999);
+        expect(ctx.slugValues()).toEqual([]);
+        expect(ctx.values.value.slug).toBe('about');
+
+        expect(await settled(promise)).toEqual({ stale: false, kept: true, reset: true });
+        expect(ctx.slugValues()).toEqual(['about']);
+        expect(ctx.meta.value.slug.auto).toBe(false);
+
+        await ctx.fillTitle('[de] About us');
+        expect(ctx.values.value.slug).toBe('about');
+    });
+
+    it('stops the following when the reset gave the origin slug again', async () => {
+        const ctx = createdForm({ originSlug: 'dining', title: 'Dining' });
+
+        expect(await settled(keep(ctx, 'dining'))).toEqual({ stale: false, kept: true, reset: true });
+        expect(ctx.slugValues()).toEqual(['', 'dining']);
+        expect(ctx.meta.value.slug.auto).toBe(false);
+
+        await ctx.fillTitle('[de] Dining');
+        expect(ctx.values.value.slug).toBe('dining');
+    });
+
+    it('stops the following when the reset turned it on before its slug reached the form', async () => {
+        const ctx = createdForm({ resetMs: 950, debounceMs: 150 });
+        const promise = keep(ctx);
+
+        await vi.advanceTimersByTimeAsync(960);
+        expect(ctx.meta.value.slug.auto).toBe(true);
+        expect(ctx.values.value.slug).toBe('about');
+
+        expect(await settled(promise)).toEqual({ stale: false, kept: true, reset: true });
+        expect(ctx.values.value.slug).toBe('about');
+        expect(ctx.meta.value.slug.auto).toBe(false);
+
+        await ctx.fillTitle('[de] About us');
+        expect(ctx.values.value.slug).toBe('about');
+    });
+
+    it('waits for the 600 ms guard even when the reset has finished', async () => {
+        const ctx = createdForm({ resetMs: 100 });
+        const promise = keep(ctx);
+
+        await vi.advanceTimersByTimeAsync(SETTLE_MS - 1);
+        expect(ctx.slugValues()).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(ctx.slugValues()).toEqual(['about']);
+        await settled(promise);
+    });
+
+    it('does not wait when the localization was created long enough ago', async () => {
+        const ctx = createdForm();
+        const createdAt = Date.now();
+
+        await vi.advanceTimersByTimeAsync(3_000);
+        keep(ctx, 'about', { lastChangeAt: createdAt });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(ctx.slugValues()).toEqual(['about']);
+    });
+
+    it('gives up waiting for the reset 2 seconds after the last change', async () => {
+        const ctx = createdForm({ resetMs: 5_000 });
+        let resolved = null;
+        keep(ctx).then((result) => (resolved = result));
+
+        await vi.advanceTimersByTimeAsync(SLUG_RESET_TIMEOUT_MS - 1);
+        expect(resolved).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(resolved).toEqual({ stale: false, kept: true, reset: false });
+        // The slug still holds the origin's, so there was nothing to set.
+        expect(ctx.slugValues()).toEqual([]);
+    });
+
+    it('leaves the form alone when it shows another item', async () => {
+        const ctx = createdForm();
+
+        expect(await settled(keep(ctx, 'about', { reference: 'entry::el' }))).toEqual({ stale: true, kept: false, reset: false });
+        expect(ctx.slugValues()).toEqual([]);
+    });
+
+    it('stops when the editor switches while it waits', async () => {
+        const ctx = createdForm();
+        const promise = keep(ctx);
+
+        await vi.advanceTimersByTimeAsync(300);
+        ctx.reference.value = 'entry::el';
+
+        expect((await settled(promise)).stale).toBe(true);
+        expect(ctx.slugValues()).toEqual([]);
+    });
+
+    it('stops when the translation is no longer active', async () => {
+        const ctx = createdForm();
+        let active = true;
+        const promise = keep(ctx, 'about', { active: () => active });
+
+        await vi.advanceTimersByTimeAsync(700);
+        active = false;
+
+        expect((await settled(promise)).stale).toBe(true);
+        expect(ctx.slugValues()).toEqual([]);
+    });
+
+    it('does not set the second value after a switch between the two', async () => {
+        const ctx = createdForm({ originSlug: 'dining', title: 'Dining' });
+        const promise = keep(ctx, 'dining');
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(ctx.slugValues()).toEqual(['']);
+        ctx.reference.value = 'entry::el';
+
+        expect((await settled(promise)).stale).toBe(true);
+        expect(ctx.slugValues()).toEqual(['']);
+    });
+
+    it('does nothing without a slug field or an origin slug', async () => {
+        const ctx = container({ values: { title: 'About us' } });
+
+        expect(await keep(ctx)).toEqual({ stale: false, kept: false, reset: false });
+        expect(await keep(createdForm(), null)).toEqual({ stale: false, kept: false, reset: false });
+        expect(ctx.setFieldValue).not.toHaveBeenCalled();
+    });
+});
+
+const recheck = (ctx, originSlug = 'about', options = {}) => recheckOriginSlug(ctx, originSlug, { reference: 'entry::de', ...options });
+
+describe('recheckOriginSlug', () => {
+    it('sets the slug again when a late reset made it follow the translated title', async () => {
+        const ctx = createdForm({ resetMs: 5_000 });
+
+        await settled(keep(ctx));
+        ctx.setFieldValue('title', '[de] About us');
+        await vi.advanceTimersByTimeAsync(2_500);
+        expect(ctx.values.value.slug).toBe('de-about-us');
+
+        expect(await settled(recheck(ctx))).toBe(true);
+        expect(ctx.values.value.slug).toBe('about');
+        expect(ctx.meta.value.slug.auto).toBe(false);
+
+        await ctx.fillTitle('[de] Über uns');
+        expect(ctx.values.value.slug).toBe('about');
+    });
+
+    it('waits a second before it checks', async () => {
+        const ctx = createdForm();
+        await settled(keep(ctx));
+        ctx.values.value.slug = 'de-about-us';
+        const promise = recheck(ctx);
+
+        await vi.advanceTimersByTimeAsync(SLUG_RECHECK_MS - 1);
+        expect(ctx.values.value.slug).toBe('de-about-us');
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(ctx.values.value.slug).toBe('about');
+        await settled(promise);
+    });
+
+    it('leaves a kept slug alone', async () => {
+        const ctx = createdForm();
+        await settled(keep(ctx));
+        await ctx.fillTitle('[de] About us');
+
+        expect(await settled(recheck(ctx))).toBe(false);
+        expect(ctx.slugValues()).toEqual(['about']);
+    });
+
+    it('stops the following again when the slug holds the origin slug but follows the title', async () => {
+        const ctx = createdForm({ originSlug: 'dining', title: 'Dining', resetMs: 5_000 });
+        await settled(keep(ctx, 'dining'));
+
+        expect(ctx.meta.value.slug.auto).toBe(true);
+        expect(await settled(recheck(ctx, 'dining'))).toBe(true);
+        expect(ctx.slugValues()).toEqual(['', 'dining']);
+
+        await ctx.fillTitle('[de] Dining');
+        expect(ctx.values.value.slug).toBe('dining');
+    });
+
+    it('does nothing after a switch', async () => {
+        const ctx = createdForm();
+        await settled(keep(ctx));
+        ctx.values.value.slug = 'de-about-us';
+        const promise = recheck(ctx);
+
+        ctx.reference.value = 'entry::el';
+
+        expect(await settled(promise)).toBe(false);
+        expect(ctx.values.value.slug).toBe('de-about-us');
     });
 });

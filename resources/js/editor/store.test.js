@@ -31,6 +31,8 @@ it('starts a container idle', () => {
         error: null,
         request: null,
         notSaved: [],
+        created: false,
+        slugKept: false,
     });
     expect(store.phaseOf('base')).toBe('idle');
     expect(store.phaseOf('unknown')).toBe('idle');
@@ -53,7 +55,15 @@ it('is shared by every caller', () => {
 describe('switched', () => {
     it('resets the container to the new item and records the time', () => {
         const base = store.container('base');
-        Object.assign(base, { status: { translatable: true }, phase: 'done', delivered: { title: {} }, snapshot: {}, planReference: 'entry::a' });
+        Object.assign(base, {
+            status: { translatable: true },
+            phase: 'done',
+            delivered: { title: {} },
+            snapshot: {},
+            planReference: 'entry::a',
+            created: true,
+            slugKept: true,
+        });
 
         store.switched('base', 'entry::b', 1_000);
 
@@ -74,11 +84,14 @@ describe('saved', () => {
     it('returns and clears the delivered handles and records the time', () => {
         store.switched('base', 'entry::a', 1_000);
         store.container('base').delivered = { title: { value: 'Τίτλος' }, intro: { value: 'Εισαγωγή' } };
+        store.container('base').created = true;
 
         expect(store.saved('base', 2_000)).toEqual(['title', 'intro']);
         expect(store.container('base').delivered).toEqual({});
         expect(store.container('base').lastChangeAt).toBe(2_000);
         expect(store.container('base').reference).toBe('entry::a');
+        // The localization is still the one created in this form; its slug is kept before a later first translation.
+        expect(store.container('base').created).toBe(true);
     });
 
     it('keeps a later switch as the last change', () => {
