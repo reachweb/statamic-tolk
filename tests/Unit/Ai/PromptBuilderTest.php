@@ -64,6 +64,28 @@ it('leaves every empty section out of the minimal prompt', function () {
         ->and($blank)->toBe($minimal);
 });
 
+it('builds the full review system prompt', function () {
+    $prompt = (new PromptBuilder)->reviewSystem(englishLanguage(), greekLanguage(), fullPromptContext(fullGlossaryRows()));
+
+    expect($prompt)->toMatchSnapshot();
+});
+
+it('gives the review prompt the context sections of the translation prompt', function (PromptContext $context) {
+    $builder = new PromptBuilder;
+    $sections = fn (string $prompt) => str($prompt)->after("\n\n")->after("\n\n")->before('<rules>')->toString();
+
+    $translation = $builder->system(englishLanguage(), greekLanguage(), $context);
+    $review = $builder->reviewSystem(englishLanguage(), greekLanguage(), $context);
+
+    expect($review)->toStartWith('You are a senior translation reviewer.')
+        ->and($review)->toContain('Review translations from English (United States), locale en_US into Greek (Greece), locale el_GR.')
+        ->and($sections($review))->toBe($sections($translation))
+        ->and($review)->toEndWith("5. When a segment has `max_length`, a correction must not exceed that many characters.\n</rules>");
+})->with([
+    'full' => fn () => fullPromptContext(fullGlossaryRows()),
+    'minimal' => fn () => new PromptContext,
+]);
+
 it('writes the formality line alone when there are no language instructions', function (Formality $formality, string $line) {
     $prompt = (new PromptBuilder)->system(englishLanguage(), greekLanguage(), new PromptContext(formality: $formality));
 
