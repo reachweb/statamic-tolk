@@ -34,6 +34,31 @@ class ModelCatalog
         return array_values(array_filter(Arr::wrap(config("tolk.models.{$provider}")), 'is_array'));
     }
 
+    /**
+     * The catalog as model selects show it, keyed by provider.
+     *
+     * @return array<string, list<array{value: string, label: string, tier: ?string, configured: bool}>>
+     */
+    public function grouped(): array
+    {
+        return collect($this->all())
+            ->map(fn (array $entries, string $provider) => collect($entries)
+                ->filter(fn (array $entry) => is_string($entry['id'] ?? null))
+                ->map(function (array $entry) use ($provider) {
+                    $model = new ModelRef($provider, $entry['id']);
+
+                    return [
+                        'value' => (string) $model,
+                        'label' => $this->label($model),
+                        'tier' => $entry['tier'] ?? null,
+                        'configured' => $this->providers->isConfigured($provider),
+                    ];
+                })
+                ->values()
+                ->all())
+            ->all();
+    }
+
     public function find(ModelRef $model): ?array
     {
         return Arr::first($this->forProvider($model->provider), fn (array $entry) => ($entry['id'] ?? null) === $model->model);

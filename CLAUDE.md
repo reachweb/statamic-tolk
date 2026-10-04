@@ -59,7 +59,7 @@ A line marked *(Tn.n)* describes something that task builds; until then it does 
 
 The permanent cross-cutting rules of `TASKS.md`, numbered as there:
 
-3. **Built assets are committed.** Whenever `resources/js` or `resources/css` change, run `npm run cp:build` and commit `resources/dist/build` in the same commit.
+3. **Built assets are committed.** Whenever `resources/js` or `resources/css` change, run `npm run cp:build` and commit `resources/dist/build` in the same commit. Tailwind also scans `src/**/*.php` (`resources/css/cp.css`), so a PHP change can change the CSS too: run the build after PHP changes as well and commit what changes.
 4. **Service provider:** use `bootAddon()`, never `boot()`; call `parent::register()` in `register()`.
 5. **No real API calls in the default test suite.** `Http::preventStrayRequests()` is on in the base TestCase. Live tests live in the Pest group `live` and run only on request.
 6. **Driver-agnostic content access.** Use Statamic facades and object methods only. Never read or write content files directly, never use file modification times, query with `where('site', …)` not `locale`.

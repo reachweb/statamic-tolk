@@ -11,7 +11,9 @@ use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Permission;
+use Statamic\Facades\Site;
 use Statamic\Providers\AddonServiceProvider;
+use Statamic\Statamic;
 
 class ServiceProvider extends AddonServiceProvider
 {
@@ -44,6 +46,7 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->registerPermissions();
         $this->registerFieldtypes();
+        $this->provideScriptData();
     }
 
     private function registerPermissions(): void
@@ -69,5 +72,15 @@ class ServiceProvider extends AddonServiceProvider
         foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
             $registry->register($handle, $handlerClass);
         }
+    }
+
+    private function provideScriptData(): void
+    {
+        Statamic::provideToScript(['tolk' => fn () => [
+            'fieldtypes' => app(FieldtypeRegistry::class)->handles(),
+            'concurrency' => max(1, (int) config('tolk.concurrency.editor')),
+            'multisite' => Site::multiEnabled() && Site::hasMultiple(),
+            'fakeEngine' => FakeEngine::enabled(),
+        ]]);
     }
 }
