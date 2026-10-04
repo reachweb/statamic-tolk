@@ -5,7 +5,7 @@ import { ApiError } from '../api.js';
 import { SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
-import { createTranslations, remainingHandles, skipHandles, slugToKeep, undoable } from './translate.js';
+import { createTranslations, keptMessage, remainingHandles, skipHandles, slugToKeep, undoable } from './translate.js';
 
 let store;
 let registry;
@@ -213,6 +213,15 @@ describe('undoable', () => {
         expect(undoable({ snapshot: snap, delivered: { seo_title: { plan: 'p0', pending: false } } })).toBe(false);
         expect(undoable({ snapshot: null, delivered: { intro: { plan: 'p1' } } })).toBe(false);
         expect(undoable(null)).toBe(false);
+    });
+});
+
+describe('keptMessage', () => {
+    it('names the kept fields by their labels', () => {
+        vi.stubGlobal('__n', (key, count, { fields }) => key.split('|')[count === 1 ? 0 : 1].replace(':fields', fields));
+
+        expect(keptMessage(['intro'], status({ intro: field('current', 'Intro') }))).toBe('Intro was changed after the translation and was kept.');
+        expect(keptMessage(['intro', 'body'], null)).toBe('intro, body were changed after the translation and were kept.');
     });
 });
 

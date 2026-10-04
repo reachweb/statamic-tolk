@@ -1,11 +1,9 @@
 import * as defaultApi from '../api.js';
 import { SETTLE_MS } from './fill.js';
-import { registry as sharedRegistry } from './registry.js';
+import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
 import { useEditorStore } from './store.js';
 import { BUSY } from './translate.js';
-
-const BASE = 'base';
 
 export function notSavedMessage(handles, status) {
     return __n(
@@ -92,8 +90,7 @@ export function createSaveHooks({
 
         // What was filled is saved now; the summary and Undo no longer apply.
         if (container.phase === 'done' || container.phase === 'error') {
-            Object.assign(container, { summary: null, snapshot: null, request: null });
-            editor.setPhase(BASE, 'idle');
+            editor.clearResult(BASE);
         }
 
         try {

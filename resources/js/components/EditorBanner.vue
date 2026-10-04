@@ -6,9 +6,9 @@ import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
 import { attachBanner } from '../editor/banner.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
-import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
+import { describe, describeSummary } from '../editor/statuses.js';
 import { useEditorStore } from '../editor/store.js';
-import { RESTART, translations, undoable } from '../editor/translate.js';
+import { keptMessage, RESTART, translations, undoable } from '../editor/translate.js';
 
 const props = defineProps({
     containerName: { type: String, required: true },
@@ -17,7 +17,7 @@ const props = defineProps({
 const ctx = injectPublishContext();
 const store = useEditorStore();
 const name = props.containerName;
-const { failure, stop } = attachBanner({ name, ctx, store, onSwitch: translations.abort });
+const { failure, stop } = attachBanner({ name, ctx, store });
 
 onBeforeUnmount(stop);
 
@@ -51,13 +51,7 @@ async function undo() {
     const result = await translations.undo(name);
 
     if (result?.kept.length) {
-        Statamic.$toast.info(
-            __n(
-                ':fields was changed after the translation and was kept.|:fields were changed after the translation and were kept.',
-                result.kept.length,
-                { fields: fieldLabels(result.kept, state.value?.status) },
-            ),
-        );
+        Statamic.$toast.info(keptMessage(result.kept, state.value?.status));
     }
 }
 </script>
