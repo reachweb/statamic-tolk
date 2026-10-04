@@ -131,6 +131,26 @@ describe('translating a target', function () {
             ->and(StateFixtures::statuses($this->origin)['body'])->toBe(FieldStatus::Current);
     });
 
+    it('translates a markdown field block by block, keeps its code and links, and reads it current afterwards', function () {
+        $sent = [];
+        $this->fakeTranslations(function (string $text, array $segment) use (&$sent) {
+            $sent[] = [$segment['kind'], $text];
+
+            return '[T] '.$text;
+        });
+        $this->makeCollection('guides', ['en', 'el'], ['body' => ['type' => 'markdown', 'localizable' => true]]);
+        $origin = $this->makeEntry('guides', 'en', ['body' => "# Walk\n\nSee [the map](statamic://asset::assets::map.pdf \"Map\") and [our story].\n\n```\nbook --walk\n```\n\n[our story]: /about"], 'walk');
+
+        $result = translateTarget($origin);
+        $again = translateTarget($origin);
+
+        expect($result->status)->toBe(TargetResultStatus::Done)
+            ->and($sent)->toBe([['markdown', '# Walk'], ['markdown', 'See [the map](<x1/> "Map") and [our story]<x2/>.']])
+            ->and($origin->fresh()->in('el')->get('body'))->toBe("[T] # Walk\n\n[T] See [the map](statamic://asset::assets::map.pdf \"Map\") and [our story][our story].\n\n```\nbook --walk\n```\n\n[our story]: /about")
+            ->and(StateFixtures::statuses($origin))->toBe(['body' => FieldStatus::Current])
+            ->and($again->reason)->toBe(TargetResult::NOTHING_TO_DO);
+    });
+
     it('sends nothing when the target is current', function () {
         $this->fakeTranslations();
         $first = translateTarget($this->origin);
