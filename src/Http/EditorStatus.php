@@ -55,9 +55,13 @@ final readonly class EditorStatus
             return $this->payload(self::UNKNOWN_REFERENCE);
         }
 
-        $target = $entry->origin() === null ? null : $this->targets->forEntry($entry->origin(), $entry->locale());
+        $source = $entry->origin();
+        $target = $source === null ? null : $this->targets->forEntry($source, $entry->locale());
+        $allowed = $target === null
+            ? $this->mayAccess($user, $entry->locale()) && $user->can('edit', $entry)
+            : $target->authorize($user);
 
-        if (! ($target?->authorize($user) ?? ($this->mayAccess($user, $entry->locale()) && $user->can('edit', $entry)))) {
+        if (! $allowed) {
             throw new AuthorizationException;
         }
 
@@ -65,7 +69,7 @@ final readonly class EditorStatus
             return $this->payload(self::SINGLE_SITE);
         }
 
-        $localization = $target === null ? null : $this->localization($target, $entry->origin());
+        $localization = $target === null ? null : $this->localization($target, $source);
         $origin = $this->origin($entry, $user);
 
         return $localization === null && $origin === null
@@ -115,11 +119,9 @@ final readonly class EditorStatus
         $localizations = [];
 
         foreach ($entry->collection()->sites() as $site) {
-            if ($site === $entry->locale() || ! $this->mayAccess($user, $site)) {
-                continue;
-            }
+            $listed = $children->has($site) || ($family !== null && ! $family->has($site));
 
-            if (! $children->has($site) && ($family === null || $family->has($site))) {
+            if ($site === $entry->locale() || ! $listed || ! $this->mayAccess($user, $site)) {
                 continue;
             }
 

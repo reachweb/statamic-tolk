@@ -2,6 +2,9 @@
 
 namespace Reach\StatamicTolk\Translation;
 
+use Carbon\CarbonImmutable;
+use Reach\StatamicTolk\State\PendingState;
+
 /**
  * One field of a plan, ready to be delivered or applied (§A8 step 4).
  */
@@ -34,4 +37,23 @@ final readonly class AssembledField
         public array $corrections = [],
         public array $warnings = [],
     ) {}
+
+    /**
+     * @param  string  $targetHash  the text fingerprint of the value as it will be stored
+     */
+    public function pending(string $targetHash): PendingState
+    {
+        return new PendingState(
+            plan: $this->plan,
+            sourceHash: $this->sourceHash,
+            targetHash: $targetHash,
+            targetBefore: $this->targetBefore,
+            segments: $this->segments,
+            identical: $this->identical,
+            incomplete: $this->incomplete,
+            translator: $this->translator,
+            reviewer: null,
+            createdAt: CarbonImmutable::now(),
+        );
+    }
 }

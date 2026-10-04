@@ -80,7 +80,7 @@ export function createRegistry() {
 
         const handles = [...new Set([...Object.keys(values), ...Object.keys(clean)])];
 
-        return handles.filter((handle) => !same(comparable(values[handle]), clean[handle]));
+        return handles.filter((handle) => !equalValues(values[handle], clean[handle]));
     }
 
     return {
@@ -97,11 +97,20 @@ export function createRegistry() {
 
 export const registry = createRegistry();
 
+// Deep copy of form data. Values read from the context are reactive proxies, which `structuredClone` refuses.
+export function clone(value) {
+    return copy(value, null);
+}
+
 // A copy without `_id` keys at any depth. Replicator, Grid and Bard rows that have no stored id get a new random
 // `_id` on every load, so ids must not count as changes.
 export function comparable(value) {
+    return copy(value, '_id');
+}
+
+function copy(value, omit) {
     if (Array.isArray(value)) {
-        return value.map(comparable);
+        return value.map((item) => copy(item, omit));
     }
 
     if (value === null || typeof value !== 'object') {
@@ -110,31 +119,28 @@ export function comparable(value) {
 
     return Object.fromEntries(
         Object.keys(value)
-            .filter((key) => key !== '_id')
-            .map((key) => [key, comparable(value[key])]),
+            .filter((key) => key !== omit)
+            .map((key) => [key, copy(value[key], omit)]),
     );
 }
 
+// Deep equality of plain data in which `_id` keys and key order do not count and a key holding `undefined` counts as
+// absent.
 export function equalValues(a, b) {
-    return same(comparable(a), comparable(b));
-}
-
-// Deep equality of plain data in which key order does not count and a key holding `undefined` counts as absent.
-function same(a, b) {
     if (a === b) {
         return true;
     }
 
     if (Array.isArray(a) || Array.isArray(b)) {
-        return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => same(item, b[i]));
+        return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => equalValues(item, b[i]));
     }
 
     if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') {
         return false;
     }
 
-    const keys = (object) => Object.keys(object).filter((key) => object[key] !== undefined);
+    const keys = (object) => Object.keys(object).filter((key) => key !== '_id' && object[key] !== undefined);
     const aKeys = keys(a);
 
-    return aKeys.length === keys(b).length && aKeys.every((key) => Object.hasOwn(b, key) && same(a[key], b[key]));
+    return aKeys.length === keys(b).length && aKeys.every((key) => Object.hasOwn(b, key) && equalValues(a[key], b[key]));
 }

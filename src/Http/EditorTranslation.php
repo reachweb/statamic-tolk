@@ -98,27 +98,25 @@ final readonly class EditorTranslation
      */
     private function deliver(Plan $plan, Target $target, array $handles): array
     {
-        $failed = $warnings = [];
+        $fields = $failed = $warnings = [];
 
         while ($handles !== []) {
             try {
                 $fields = $this->delivery->deliver($plan, $target, $handles);
+
+                break;
             } catch (FieldFailed $failure) {
                 $failed[$failure->handle] = array_values($failure->reasons)[0];
                 $warnings[] = $failure->getMessage();
                 $handles = array_values(array_diff($handles, [$failure->handle]));
-
-                continue;
             }
-
-            foreach ($fields as $field) {
-                array_push($warnings, ...($field['warnings'] ?? []));
-            }
-
-            return [$fields, $failed, array_values(array_unique($warnings))];
         }
 
-        return [[], $failed, $warnings];
+        foreach ($fields as $field) {
+            array_push($warnings, ...($field['warnings'] ?? []));
+        }
+
+        return [$fields, $failed, array_values(array_unique($warnings))];
     }
 
     /**

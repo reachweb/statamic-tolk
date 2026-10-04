@@ -2,7 +2,6 @@
 
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
-use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Support\Settings;
@@ -92,7 +91,7 @@ it('records a pending entry and leaves the stored entry unchanged', function () 
 
     app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro']);
 
-    $pending = app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('intro')->pending;
+    $pending = StateFixtures::stored($this->greek)->field('intro')->pending;
 
     expect(Entry::find($this->greek->id())->data()->all())->toBe($before)
         ->and($pending)->toHaveCount(1)
@@ -121,7 +120,7 @@ it('records the hash of the target that was there when the plan was made', funct
 
     app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['title']);
 
-    expect(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('title')->pending[0]->targetBefore)
+    expect(StateFixtures::stored($this->greek)->field('title')->pending[0]->targetBefore)
         ->toBe(Fingerprint::ofLeaves(['Γεια']));
 });
 
@@ -129,7 +128,7 @@ it('delivers a field whose source lost its value as a sync with what the origin 
     $this->fakeTranslations();
     app(TargetTranslator::class)->translate(greekDeliveryTarget(), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
     ($emptied === null ? $this->origin->remove('subtitle') : $this->origin->set('subtitle', $emptied))->save();
-    $state = app(StateRepository::class)->get(StateFixtures::ref($this->greek))->toArray();
+    $state = StateFixtures::stored($this->greek)->toArray();
 
     $plan = runDeliveryPlan(greekDeliveryTarget(), ['mode' => 'update']);
     $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['subtitle']);
@@ -139,7 +138,7 @@ it('delivers a field whose source lost its value as a sync with what the origin 
         ->and($delivered['subtitle'])->toBe(['value' => 'Read on', 'meta' => null, 'sync' => true])
         ->and($delivered['subtitle']['value'])->toBe($core['originValues']['subtitle'])
         ->and($delivered['subtitle']['meta'])->toBe($core['originMeta']['subtitle'])
-        ->and(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->toArray())->toBe($state);
+        ->and(StateFixtures::stored($this->greek)->toArray())->toBe($state);
 })->with([
     'removed' => [null],
     'emptied' => [''],
@@ -168,7 +167,7 @@ it('delivers a copy of a source without text', function () {
 
     $plan = runDeliveryPlan(greekDeliveryTarget(), ['mode' => 'update']);
     $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['subtitle']);
-    $pending = app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('subtitle')->pending;
+    $pending = StateFixtures::stored($this->greek)->field('subtitle')->pending;
 
     expect($delivered['subtitle'])->toBe(['value' => '2026', 'meta' => null, 'incomplete' => false, 'warnings' => []])
         ->and($pending[0]->identical)->toBeTrue()
@@ -184,7 +183,7 @@ it('flags a field with a part left untranslated', function () {
     expect($delivered['intro']['value'])->toBe('A short intro.')
         ->and($delivered['intro']['incomplete'])->toBeTrue()
         ->and($delivered['intro']['warnings'])->toHaveCount(1)
-        ->and(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->field('intro')->pending[0]->incomplete)->toBeTrue();
+        ->and(StateFixtures::stored($this->greek)->field('intro')->pending[0]->incomplete)->toBeTrue();
 });
 
 it('refuses a target that does not exist', function () {

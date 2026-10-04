@@ -20,7 +20,6 @@ use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
-use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\UnitBusy;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
@@ -77,7 +76,7 @@ class EditorController extends Controller
         $plan = $store->get($request->validated('plan'))
             ?? $this->fail(410, 'plan_expired', __('This translation has expired. Start it again.'));
 
-        if ($plan->options->userId === null || $plan->options->userId !== (string) $user->id()) {
+        if ($plan->options->userId !== (string) $user->id()) {
             throw new AuthorizationException;
         }
 
@@ -178,9 +177,9 @@ class EditorController extends Controller
         try {
             return response()->json($callback());
         } catch (ProviderPaused $exception) {
-            $this->fail(429, 'provider_paused', $exception->getMessage(), $this->retryAfter($exception));
+            $this->fail(429, 'provider_paused', $exception->getMessage(), $exception->seconds);
         } catch (ProviderUnavailable $exception) {
-            $this->fail(503, 'provider_unavailable', $exception->getMessage(), $this->retryAfter($exception));
+            $this->fail(503, 'provider_unavailable', $exception->getMessage(), $exception->seconds);
         } catch (ProviderRejected $exception) {
             $this->fail(502, 'provider_rejected', $exception->getMessage());
         } catch (UnitBusy $exception) {
@@ -190,11 +189,6 @@ class EditorController extends Controller
         } catch (UnknownUnit $exception) {
             $this->fail(404, 'unknown_unit', $exception->getMessage());
         }
-    }
-
-    private function retryAfter(TransientProviderFailure $exception): array
-    {
-        return ['retry_after' => max(1, $exception->seconds)];
     }
 
     /**
@@ -209,10 +203,16 @@ class EditorController extends Controller
         }
     }
 
-    private function fail(int $status, string $code, string $message, array $data = []): never
+    private function fail(int $status, string $code, string $message, ?int $retryAfter = null): never
     {
-        $headers = isset($data['retry_after']) ? ['Retry-After' => (string) $data['retry_after']] : [];
+        $body = ['message' => Sanitizer::message($message), 'code' => $code];
+        $headers = [];
 
-        throw new HttpResponseException(response()->json(['message' => Sanitizer::message($message), 'code' => $code, ...$data], $status, $headers));
+        if ($retryAfter !== null) {
+            $body['retry_after'] = max(1, $retryAfter);
+            $headers['Retry-After'] = (string) $body['retry_after'];
+        }
+
+        throw new HttpResponseException(response()->json($body, $status, $headers));
     }
 }

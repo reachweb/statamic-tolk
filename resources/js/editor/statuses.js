@@ -1,6 +1,34 @@
 // Turns the payload of `editor/status` into what the banner shows. Pure apart from `__()` and `__n()`.
 
-const PARTS = ['untranslated', 'outdated', 'manual', 'attention', 'untracked', 'current'];
+// In banner order. `attention` and `untracked` are parts of `manual`.
+const PARTS = {
+    untranslated: {
+        text: (count) => __n(':count field untranslated|:count fields untranslated', count),
+        description: () => __('Not translated yet. Translate fills them in.'),
+    },
+    outdated: {
+        text: (count) => __n(':count field outdated|:count fields outdated', count),
+        description: () =>
+            __('The source changed since they were translated, or part of their text is still untranslated. Update translates them again.'),
+    },
+    manual: {
+        text: (count) => __n(':count field edited by hand|:count fields edited by hand', count),
+        description: () => __('Edited by hand. Translate and Update leave them alone.'),
+    },
+    attention: {
+        text: (count) => __n(':count needs attention|:count need attention', count),
+        description: () => __('Edited by hand, and the source changed since. Check them against the source.'),
+    },
+    untracked: {
+        text: (count) => __n(':count untracked|:count untracked', count),
+        description: () =>
+            __('Edited by hand before their translation was tracked, so a change to the source cannot be detected. Mark them as up to date to track them.'),
+    },
+    current: {
+        text: (count) => __n(':count field up to date|:count fields up to date', count),
+        description: () => __('Translated and up to date with the source.'),
+    },
+};
 
 export function itemStatusLabel(status) {
     return {
@@ -12,36 +40,16 @@ export function itemStatusLabel(status) {
     }[status] ?? status;
 }
 
-// The non-zero counts in banner order. `attention` and `untracked` are parts of `manual`.
+// The non-zero counts in banner order.
 export function countParts(counts = {}) {
-    return PARTS.filter((key) => (counts[key] ?? 0) > 0).map((key) => ({
-        key,
-        count: counts[key],
-        text: partText(key, counts[key]),
-        description: partDescription(key),
-    }));
-}
-
-function partText(key, count) {
-    return {
-        untranslated: () => __n(':count field untranslated|:count fields untranslated', count),
-        outdated: () => __n(':count field outdated|:count fields outdated', count),
-        manual: () => __n(':count field edited by hand|:count fields edited by hand', count),
-        attention: () => __n(':count needs attention|:count need attention', count),
-        untracked: () => __n(':count untracked|:count untracked', count),
-        current: () => __n(':count field up to date|:count fields up to date', count),
-    }[key]();
-}
-
-function partDescription(key) {
-    return {
-        untranslated: __('Not translated yet. Translate fills them in.'),
-        outdated: __('The source changed since they were translated, or part of their text is still untranslated. Update translates them again.'),
-        manual: __('Edited by hand. Translate and Update leave them alone.'),
-        attention: __('Edited by hand, and the source changed since. Check them against the source.'),
-        untracked: __('Edited by hand before their translation was tracked, so a change to the source cannot be detected. Mark them as up to date to track them.'),
-        current: __('Translated and up to date with the source.'),
-    }[key];
+    return Object.entries(PARTS)
+        .filter(([key]) => (counts[key] ?? 0) > 0)
+        .map(([key, part]) => ({
+            key,
+            count: counts[key],
+            text: part.text(counts[key]),
+            description: part.description(),
+        }));
 }
 
 // No buttons without a model to translate with: no provider and no fake engine, or no default model.
@@ -71,7 +79,7 @@ export function describe(status) {
 function describeLocalization(block, setup) {
     const counts = block.counts ?? {};
     const parts = countParts(counts);
-    const fields = Object.entries(Array.isArray(block.fields) ? {} : (block.fields ?? {}));
+    const fields = Object.entries(block.fields ?? {});
     const incomplete = fields.filter(([, field]) => field.incomplete).map(([handle, field]) => ({ handle, label: field.label }));
     const notLocalizable = (block.out_of_scope ?? [])
         .filter((field) => field.reason === 'not_localizable')
