@@ -1,13 +1,23 @@
 import { watch } from 'vue';
-import { registry as sharedRegistry } from './registry.js';
+import { BASE, registry as sharedRegistry } from './registry.js';
 import { describe } from './statuses.js';
 import { useEditorStore } from './store.js';
 import { translations as sharedTranslations } from './translate.js';
 
-const BASE = 'base';
-
 // The user preference behind "Don't offer again".
 export const OFFER_PREFERENCE = 'tolk.offer';
+
+// Stores a user preference. Resolves whether it was stored; a failure shows a toast.
+export function savePreference(key, value, { preferences = () => Statamic.$preferences, toast = () => Statamic.$toast } = {}) {
+    return Promise.resolve(preferences().set(key, value)).then(
+        () => true,
+        () => {
+            toast().error(__('Your choice could not be saved.'));
+
+            return false;
+        },
+    );
+}
 
 export function offersEnabled(preferences = Statamic.$preferences) {
     return preferences.get(OFFER_PREFERENCE, true) !== false;
@@ -42,7 +52,7 @@ export function createOffers({
     preferences = () => Statamic.$preferences,
     toast = () => Statamic.$toast,
 } = {}) {
-    const waiting = new Map();
+    let waiter = null;
     let listening = false;
 
     function listen(events = Statamic.$events) {
@@ -63,7 +73,7 @@ export function createOffers({
             return;
         }
 
-        stopWaiting(name);
+        stopWaiting();
 
         const editor = store();
 
@@ -81,14 +91,14 @@ export function createOffers({
                 if (settle(editor, name, reference)) {
                     stop();
 
-                    if (waiting.get(name) === stop) {
-                        waiting.delete(name);
+                    if (waiter === stop) {
+                        waiter = null;
                     }
                 }
             },
         );
 
-        waiting.set(name, stop);
+        waiter = stop;
     }
 
     // True once there is nothing left to wait for.
@@ -113,46 +123,37 @@ export function createOffers({
         return true;
     }
 
-    function stopWaiting(name) {
-        waiting.get(name)?.();
-        waiting.delete(name);
+    function stopWaiting() {
+        waiter?.();
+        waiter = null;
     }
 
-    function remember(dontOfferAgain) {
-        if (!dontOfferAgain) {
-            return;
+    // Closes the offer, false when it was not open.
+    function close(name, dontOfferAgain) {
+        const editor = store();
+
+        if (editor.phaseOf(name) !== 'offer') {
+            return false;
         }
 
-        Promise.resolve(preferences().set(OFFER_PREFERENCE, false)).catch(() => {
-            toast().error(__('Your choice could not be saved.'));
-        });
+        if (dontOfferAgain) {
+            savePreference(OFFER_PREFERENCE, false, { preferences, toast });
+        }
+
+        editor.setPhase(name, 'idle');
+
+        return true;
     }
 
     function accept(name, { dontOfferAgain = false } = {}) {
-        const editor = store();
-
-        if (editor.phaseOf(name) !== 'offer') {
-            return null;
-        }
-
-        remember(dontOfferAgain);
-        editor.setPhase(name, 'idle');
-
-        return translations.translate(name, { mode: 'missing' });
+        return close(name, dontOfferAgain) ? translations.translate(name, { mode: 'missing' }) : null;
     }
 
     function decline(name, { dontOfferAgain = false } = {}) {
-        const editor = store();
-
-        if (editor.phaseOf(name) !== 'offer') {
-            return;
-        }
-
-        remember(dontOfferAgain);
-        editor.setPhase(name, 'idle');
+        close(name, dontOfferAgain);
     }
 
-    return { listen, created, accept, decline, waiting: (name) => waiting.has(name) };
+    return { listen, created, accept, decline, waiting: (name) => name === BASE && waiter !== null };
 }
 
 export const offers = createOffers();

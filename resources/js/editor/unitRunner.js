@@ -1,4 +1,5 @@
 import * as defaultApi from '../api.js';
+import { asMap } from '../api.js';
 
 // How often a unit waits for a paused or unreachable provider (429, 503) before it counts as failed.
 export const MAX_WAITS = 5;
@@ -47,11 +48,14 @@ export function classify(error) {
     return 'fail';
 }
 
-function describeError(error) {
-    return { status: error?.status ?? 0, code: error?.code ?? null, message: error?.message ?? '' };
+// The error the banner shows: the status, the server's code and its message.
+export function describeError(error, fallback = '') {
+    return { status: error?.status ?? 0, code: error?.code ?? null, message: error?.message || fallback };
 }
 
-const entries = (map) => (map && typeof map === 'object' ? Object.entries(map) : []);
+const entries = (map) => Object.entries(asMap(map));
+
+const brief = ({ id, fields }) => ({ id, fields });
 
 // Runs the units of a plan from `editor/plan` in parallel (D24). The queue grows with each response's `spawned`, and
 // each response's `fields` go to `onFields` at once, so the form fills while other units still run. `onFields` may
@@ -143,7 +147,11 @@ export async function runPlan({
 
                 if (!repeat || halted()) {
                     // A unit that was waiting when everything stopped did not fail; it was not run again.
-                    (repeat ? cancelledUnits : failedUnits).push({ ...unit, error: describeError(error) });
+                    if (repeat) {
+                        cancelledUnits.push(brief(unit));
+                    } else {
+                        failedUnits.push({ ...brief(unit), error: describeError(error) });
+                    }
 
                     return;
                 }
@@ -163,7 +171,7 @@ export async function runPlan({
                 report();
 
                 if (halted()) {
-                    cancelledUnits.push({ ...unit, error: null });
+                    cancelledUnits.push(brief(unit));
 
                     return;
                 }
@@ -198,7 +206,7 @@ export async function runPlan({
         pump();
     });
 
-    cancelledUnits.push(...queue.map((unit) => ({ ...unit, error: null })));
+    cancelledUnits.push(...queue.map(brief));
 
     return summarize(await Promise.all(fills), {
         received,
@@ -251,8 +259,8 @@ function summarize(fills, { received, failed, failedUnits, cancelledUnits, warni
         incomplete: delivered.filter((handle) => received.get(handle)?.incomplete === true),
         skipped,
         failed,
-        failedUnits: failedUnits.map(({ id, fields, error }) => ({ id, fields, error })),
-        cancelledUnits: cancelledUnits.map(({ id, fields }) => ({ id, fields })),
+        failedUnits,
+        cancelledUnits,
         warnings,
         usage,
         models: Object.keys(usage),

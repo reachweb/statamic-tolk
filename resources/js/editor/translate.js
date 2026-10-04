@@ -1,8 +1,10 @@
 import * as defaultApi from '../api.js';
-import { applyFields, clone, keepOriginSlug, recheckOriginSlug, restore, snapshot } from './fill.js';
+import { asMap } from '../api.js';
+import { applyFields, clone, filledSince, keepOriginSlug, recheckOriginSlug, restore, snapshot } from './fill.js';
 import { equalValues, registry as sharedRegistry } from './registry.js';
-import { useEditorStore } from './store.js';
-import { runPlan } from './unitRunner.js';
+import { fieldLabels } from './statuses.js';
+import { initialState, useEditorStore } from './store.js';
+import { describeError, runPlan } from './unitRunner.js';
 
 // While a translation is under way, Save is refused and no second translation starts.
 export const BUSY = ['planning', 'working'];
@@ -22,8 +24,7 @@ function untouchedFill(ctx, record, handle) {
 // since then although the status says nothing is stored for them. A field the form localized by itself while it
 // loaded is not one of them: an inherited Bard field can desync itself on load.
 export function skipHandles(ctx, status, { name, registry, delivered = {} }) {
-    const fields = status?.localization?.fields;
-    const inScope = fields && !Array.isArray(fields) ? fields : {};
+    const inScope = asMap(status?.localization?.fields);
     const handles = new Set(registry.dirtyHandles(name));
 
     for (const handle of registry.newlyLocalized(name)) {
@@ -55,19 +56,20 @@ export function undoable(container) {
         return false;
     }
 
-    return Object.entries(fields).some(([handle, before]) => {
-        const record = container.delivered?.[handle];
-
-        return Boolean(record) && !record.pending && record.plan !== before.delivered?.plan;
-    });
+    return Object.entries(fields).some(([handle, before]) => filledSince(before, container.delivered?.[handle]));
 }
 
-function describeError(error) {
-    return { status: error?.status ?? 0, code: error?.code ?? null, message: error?.message || __('Something went wrong.') };
+// The toast after Undo for the fields it left alone.
+export function keptMessage(handles, status) {
+    return __n(
+        ':fields was changed after the translation and was kept.|:fields were changed after the translation and were kept.',
+        handles.length,
+        { fields: fieldLabels(handles, status) },
+    );
 }
 
 function planSkips(skipped) {
-    return Object.entries(skipped && !Array.isArray(skipped) ? skipped : {});
+    return Object.entries(asMap(skipped));
 }
 
 function editedInForm(skipped) {
@@ -93,9 +95,7 @@ function carryOver(snap, container) {
     }
 
     for (const [handle, before] of Object.entries(previous.fields)) {
-        const record = container.delivered[handle];
-
-        if (record && record.plan !== before.delivered?.plan) {
+        if (filledSince(before, container.delivered[handle])) {
             snap.fields[handle] = before;
             carried = true;
         }
@@ -179,7 +179,7 @@ export function createTranslations({
             summary: null,
             notSaved: [],
             planReference: reference,
-            progress: { total: 0, done: 0, waiting: 0, cancelling: false },
+            progress: initialState().progress,
         });
         editor.setPhase(name, 'planning');
 
@@ -207,7 +207,7 @@ export function createTranslations({
             }
 
             editor.setPhase(name, 'working');
-            container.progress = { total: plan.units?.length ?? 0, done: 0, waiting: 0, cancelling: false };
+            container.progress = { ...initialState().progress, total: plan.units?.length ?? 0 };
 
             const options = {
                 reference,
@@ -255,7 +255,7 @@ export function createTranslations({
         } catch (error) {
             // A phase left on `planning` or `working` would refuse every Save.
             if (current()) {
-                editor.setPhase(name, 'error', describeError(error));
+                editor.setPhase(name, 'error', describeError(error, __('Something went wrong.')));
             }
 
             return null;
@@ -300,8 +300,7 @@ export function createTranslations({
             const result = await undoFill(ctx, container.snapshot, container.delivered, { registry });
 
             if (editor.containers[name] === container) {
-                Object.assign(container, { snapshot: null, summary: null, request: null });
-                editor.setPhase(name, 'idle');
+                editor.clearResult(name);
             }
 
             return result;

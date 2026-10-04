@@ -1,5 +1,7 @@
 // Turns the payload of `editor/status` into what the banner shows. Pure apart from `__()` and `__n()`.
 
+import { asMap } from '../api.js';
+
 // In banner order. `attention` and `untracked` are parts of `manual`.
 const PARTS = {
     untranslated: {
@@ -184,9 +186,9 @@ export function modelName(reference) {
 }
 
 export function fieldLabels(handles, status) {
-    const fields = status?.localization?.fields;
+    const fields = asMap(status?.localization?.fields);
 
-    return handles.map((handle) => (fields && !Array.isArray(fields) ? fields[handle]?.label : null) ?? handle).join(', ');
+    return handles.map((handle) => fields[handle]?.label ?? handle).join(', ');
 }
 
 // What the banner says once a translation has finished, was cancelled or stopped. Fields are named by their labels

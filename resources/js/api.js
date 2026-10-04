@@ -8,6 +8,11 @@ export class ApiError extends Error {
     }
 }
 
+// PHP encodes an empty map as `[]`.
+export function asMap(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 export function get(path, params = {}) {
     return send('get', path, { params });
 }

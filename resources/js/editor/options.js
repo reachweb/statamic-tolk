@@ -1,5 +1,6 @@
 import * as defaultApi from '../api.js';
-import { OFFER_PREFERENCE } from './offer.js';
+import { asMap } from '../api.js';
+import { OFFER_PREFERENCE, savePreference } from './offer.js';
 import { registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 import { BUSY, translations as sharedTranslations } from './translate.js';
@@ -18,9 +19,7 @@ export function rememberedModel(preferences = Statamic.$preferences) {
 // who may edit the settings typed, so the select can show them.
 export function modelOptions(catalog, { fakeEngine = false, defaultModel = null, extra = [] } = {}) {
     const options = [];
-    const groups = catalog && !Array.isArray(catalog) ? Object.values(catalog) : [];
-
-    for (const model of groups.flat()) {
+    for (const model of Object.values(asMap(catalog)).flat()) {
         if (model.configured || fakeEngine) {
             options.push({ value: model.value, label: model.value === defaultModel ? __(':model (default)', { model: model.label }) : model.label });
         }
@@ -99,17 +98,6 @@ export function createOptions({
         return models;
     }
 
-    function savePreference(key, value) {
-        return Promise.resolve(preferences().set(key, value)).then(
-            () => true,
-            () => {
-                toast().error(__('Your choice could not be saved.'));
-
-                return false;
-            },
-        );
-    }
-
     function translate(name, choice = {}) {
         const request = optionsRequest(choice);
 
@@ -118,7 +106,7 @@ export function createOptions({
         }
 
         if (request.translator !== rememberedModel(preferences())) {
-            savePreference(TRANSLATOR_PREFERENCE, request.translator);
+            savePreference(TRANSLATOR_PREFERENCE, request.translator, { preferences, toast });
         }
 
         return translations.translate(name, request);
@@ -150,7 +138,7 @@ export function createOptions({
     }
 
     function setOffers(enabled) {
-        return savePreference(OFFER_PREFERENCE, enabled);
+        return savePreference(OFFER_PREFERENCE, enabled, { preferences, toast });
     }
 
     return { loadModels, translate, baseline, setOffers };

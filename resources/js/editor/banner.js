@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue';
 import * as api from '../api.js';
 import { SETTLE_MS } from './fill.js';
-import { registry as sharedRegistry } from './registry.js';
+import { BASE, registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 import { translations } from './translate.js';
 
@@ -13,7 +13,7 @@ export function shouldPush(payload) {
     const reference = payload?.reference?.value;
 
     return (
-        payload?.name === 'base' &&
+        payload?.name === BASE &&
         typeof reference === 'string' &&
         reference.startsWith('entry::') &&
         Statamic.$config.get('tolk.multisite') === true &&
@@ -83,7 +83,7 @@ export function attachBanner({
     loadStatus = (reference) => api.get('editor/status', { reference }),
     now = Date.now,
     settleMs = SETTLE_MS,
-    onSwitch = () => {},
+    onSwitch = (name) => translations.abort(name),
 }) {
     const failure = ref(null);
     const remount = Boolean(ctx.reference.value) && store.container(name).reference === ctx.reference.value;

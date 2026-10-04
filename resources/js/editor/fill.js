@@ -22,12 +22,23 @@ const SLUG_TOGGLE_MS = 50;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// `lastChangeAt` may be a number or a function, read again after each wait.
+const getter = (value) => (typeof value === 'function' ? value : () => value);
+
+// Whether a fill may still land: the form shows the same item and the translation still runs.
+const isCurrent = (ctx, reference, active) => () => ctx.reference.value === reference && active();
+
 async function settled(since, now, sleep) {
     const remaining = () => SETTLE_MS - (now() - since());
 
     for (let left = remaining(); left > 0; left = remaining()) {
         await sleep(left);
     }
+}
+
+// Whether `restore()` puts a handle back: it holds a fill delivered since the snapshot was taken.
+export function filledSince(before, record) {
+    return Boolean(record) && !record.pending && record.plan !== before.delivered?.plan;
 }
 
 // What `restore()` puts back. `delivered` (the container's delivered map) keeps the record an earlier plan left for
@@ -69,14 +80,14 @@ export async function applyFields(
 
         return result;
     };
-    const current = () => ctx.reference.value === reference && active();
+    const current = isCurrent(ctx, reference, active);
 
     // A translation for the Greek form must never land in the German one.
     if (!current()) {
         return stale();
     }
 
-    await settled(typeof lastChangeAt === 'function' ? lastChangeAt : () => lastChangeAt, now, sleep);
+    await settled(getter(lastChangeAt), now, sleep);
 
     if (!current()) {
         return stale();
@@ -161,7 +172,7 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
     for (const [handle, before] of Object.entries(snap.fields)) {
         const record = delivered[handle];
 
-        if (!record || record.pending || record.plan === before.delivered?.plan) {
+        if (!filledSince(before, record)) {
             continue;
         }
 
@@ -226,8 +237,8 @@ export async function keepOriginSlug(
     originSlug,
     { reference, lastChangeAt = 0, now = Date.now, sleep = wait, active = () => true } = {},
 ) {
-    const since = typeof lastChangeAt === 'function' ? lastChangeAt : () => lastChangeAt;
-    const current = () => ctx.reference.value === reference && active();
+    const since = getter(lastChangeAt);
+    const current = isCurrent(ctx, reference, active);
     const left = () => since() + SLUG_RESET_TIMEOUT_MS - now();
 
     if (!current()) {
@@ -255,7 +266,7 @@ export async function keepOriginSlug(
 
 // Run once the title has been filled. Resolves whether the slug had to be set again.
 export async function recheckOriginSlug(ctx, originSlug, { reference, sleep = wait, active = () => true } = {}) {
-    const current = () => ctx.reference.value === reference && active();
+    const current = isCurrent(ctx, reference, active);
 
     if (!hasSlug(ctx, originSlug)) {
         return false;

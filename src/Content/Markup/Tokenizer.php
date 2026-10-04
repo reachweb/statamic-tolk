@@ -24,7 +24,7 @@ final class Tokenizer
     // Antlers first, so a tag inside an Antlers tag is never read as HTML. A script or style element that is never
     // closed runs to the end, as in a browser; text that looks like a paired placeholder is carried as an atom.
     private const string HTML_TOKENS = '/'.self::ANTLERS_TAG
-        .'|<\/?\d+>'
+        .'|'.Placeholders::PAIR
         .'|<!--.*?(?:-->|\z)'
         .'|<(?<element>script|style|pre|code)(?=[\s\/>])'.self::ATTRIBUTES.'>.*?<\/\k<element>\s*>'
         .'|<(?:script|style)(?=[\s\/>])'.self::ATTRIBUTES.'>.*'
@@ -35,7 +35,7 @@ final class Tokenizer
 
     private const array BLOCK_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'table', 'figure', 'div', 'pre'];
 
-    private const string PLACEHOLDERS = '/(<\/?\d+>|'.Placeholders::ATOM.')/';
+    private const string PLACEHOLDERS = '/('.Placeholders::PAIR.'|'.Placeholders::ATOM.')/';
 
     public static function tokenize(string $text, SegmentKind $kind): Tokenized
     {
@@ -135,24 +135,20 @@ final class Tokenizer
         $atoms = 0;
 
         foreach (self::htmlTokens($text) as $index => $token) {
-            switch ($token['type']) {
-                case 'text':
-                    $tokenized .= $token['text'];
-                    break;
-                case 'open':
-                    $id = $pairs[$index] = count($pairs) + 1;
-                    $map[$id] = $placeholders[$id] = $token['text'];
-                    $tokenized .= "<{$id}>";
-                    break;
-                case 'close':
-                    $id = $pairs[$token['partner']];
-                    $map["/{$id}"] = $token['text'];
-                    $tokenized .= "</{$id}>";
-                    break;
-                default:
-                    $id = 'x'.++$atoms;
-                    $map[$id] = $placeholders[$id] = $token['text'];
-                    $tokenized .= "<{$id}/>";
+            if ($token['type'] === 'text') {
+                $tokenized .= $token['text'];
+            } elseif ($token['type'] === 'open') {
+                $id = $pairs[$index] = count($pairs) + 1;
+                $map[$id] = $placeholders[$id] = $token['text'];
+                $tokenized .= "<{$id}>";
+            } elseif ($token['type'] === 'close') {
+                $id = $pairs[$token['partner']];
+                $map["/{$id}"] = $token['text'];
+                $tokenized .= "</{$id}>";
+            } else {
+                $id = 'x'.++$atoms;
+                $map[$id] = $placeholders[$id] = $token['text'];
+                $tokenized .= "<{$id}/>";
             }
         }
 
@@ -188,17 +184,20 @@ final class Tokenizer
 
             if ($match['element'][0] !== null) {
                 $tokens[] = ['type' => 'element', 'text' => $text, 'name' => strtolower($match['element'][0])];
-            } elseif ($name === null) {
-                $tokens[] = ['type' => 'atom', 'text' => $text, 'name' => null];
-            } elseif ($match['slash'][0] === '/') {
-                $tokens[] = ['type' => 'atom', 'text' => $text, 'name' => $name];
-                self::close($tokens, $open, array_key_last($tokens));
-            } else {
-                $tokens[] = ['type' => 'atom', 'text' => $text, 'name' => $name];
 
-                if (! in_array($name, self::VOID_ELEMENTS, true) && ! str_ends_with($text, '/>')) {
-                    $open[] = array_key_last($tokens);
-                }
+                continue;
+            }
+
+            $tokens[] = ['type' => 'atom', 'text' => $text, 'name' => $name];
+
+            if ($name === null) {
+                continue;
+            }
+
+            if ($match['slash'][0] === '/') {
+                self::close($tokens, $open, array_key_last($tokens));
+            } elseif (! in_array($name, self::VOID_ELEMENTS, true) && ! str_ends_with($text, '/>')) {
+                $open[] = array_key_last($tokens);
             }
         }
 

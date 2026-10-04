@@ -1,11 +1,11 @@
 <?php
 
+use Illuminate\Support\Arr;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Tests\Support\ContentFixtures;
 use Statamic\Facades\YAML;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fields;
-use Statamic\Support\Arr;
 
 /**
  * Paths in the value that its blueprint does not describe: a set type without a set, a key without a field.

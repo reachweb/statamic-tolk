@@ -8,7 +8,7 @@ use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Tests\Support\ContentFixtures;
 
-function html(string $text): Tokenized
+function tokenizeHtml(string $text): Tokenized
 {
     return Tokenizer::tokenize($text, SegmentKind::Html);
 }
@@ -23,14 +23,14 @@ function htmlSamples(): array
 }
 
 it('restores every HTML sample exactly', function (string $text) {
-    $tokenized = html($text);
+    $tokenized = tokenizeHtml($text);
 
     expect($tokenized->kind)->toBe(SegmentKind::Html)
         ->and(Tokenizer::restore($tokenized->text, $tokenized))->toBe($text);
 })->with(fn () => htmlSamples());
 
 it('restores edge cases exactly', function (string $text) {
-    $tokenized = html($text);
+    $tokenized = tokenizeHtml($text);
 
     expect(Tokenizer::restore($tokenized->text, $tokenized))->toBe($text);
 })->with([
@@ -58,7 +58,7 @@ it('restores edge cases exactly', function (string $text) {
 ]);
 
 it('pairs matched tags in order, with the opening tag as the descriptor', function () {
-    $tokenized = html('<p>Read <a href="/about" title="About us">our story</a> or <b>call</b>.</p>');
+    $tokenized = tokenizeHtml('<p>Read <a href="/about" title="About us">our story</a> or <b>call</b>.</p>');
 
     expect($tokenized->text)->toBe('<1>Read <2>our story</2> or <3>call</3>.</1>')
         ->and($tokenized->placeholders)->toBe([
@@ -77,7 +77,7 @@ it('pairs matched tags in order, with the opening tag as the descriptor', functi
 });
 
 it('keeps nested inline tags properly nested', function () {
-    $tokenized = html(ContentFixtures::markup('html')['nested-inline.html']);
+    $tokenized = tokenizeHtml(ContentFixtures::markup('html')['nested-inline.html']);
 
     expect($tokenized->text)->toBe("<1>Our <2>spa <3>and the <4>heated pool</4></3> are open</2> from 9:00, <5>every day</5>. Kids &lt; 12 &amp; guests over 70 swim free.</1>\n")
         ->and($tokenized->placeholders)->toBe([1 => '<p>', 2 => '<strong>', 3 => '<em>', 4 => '<a href="/pool">', 5 => '<span class="note">'])
@@ -85,7 +85,7 @@ it('keeps nested inline tags properly nested', function () {
 });
 
 it('leaves tags that cross or are closed implicitly unmatched, so the pairs stay nested', function (string $text, string $expected) {
-    $tokenized = html($text);
+    $tokenized = tokenizeHtml($text);
 
     expect($tokenized->text)->toBe($expected)
         ->and(Placeholders::validate($tokenized->text, $tokenized->text, SegmentKind::Html))->toBeNull();
@@ -99,7 +99,7 @@ it('leaves tags that cross or are closed implicitly unmatched, so the pairs stay
 ]);
 
 it('makes void, self-closing and unmatched tags, comments and declarations atoms', function () {
-    $tokenized = html('<!DOCTYPE html><p>Hotel<br>Chania<br />Crete<img src="/a.jpg" alt="Sea"><span/></p><!-- note --></div>');
+    $tokenized = tokenizeHtml('<!DOCTYPE html><p>Hotel<br>Chania<br />Crete<img src="/a.jpg" alt="Sea"><span/></p><!-- note --></div>');
 
     expect($tokenized->text)->toBe('<x1/><1>Hotel<x2/>Chania<x3/>Crete<x4/><x5/></1><x6/><x7/>')
         ->and($tokenized->placeholders)->toBe([
@@ -115,14 +115,14 @@ it('makes void, self-closing and unmatched tags, comments and declarations atoms
 });
 
 it('takes a whole comment as one atom, the tags inside it included', function () {
-    $tokenized = html(ContentFixtures::markup('html')['comment.html']);
+    $tokenized = tokenizeHtml(ContentFixtures::markup('html')['comment.html']);
 
     expect($tokenized->text)->toBe("<x1/><1>Rooms by the sea</1><x2/>\n")
         ->and($tokenized->map['x2'])->toBe("<!--\nChecked with the owners in March 2026.\n<p>Old text</p>\n-->");
 });
 
 it('makes a whole script element one atom', function () {
-    $tokenized = html(ContentFixtures::markup('html')['script.html']);
+    $tokenized = tokenizeHtml(ContentFixtures::markup('html')['script.html']);
 
     expect($tokenized->text)->toBe("<1>Book online:</1><x1/><x2/><2>Or call us.</2>\n")
         ->and($tokenized->map['x1'])->toBe("<script type=\"text/javascript\">document.write('<p>Loading the booking form…</p>'); if (nights < 7 && guests > 2) { offer = '</div>'; }</script>")
@@ -130,7 +130,7 @@ it('makes a whole script element one atom', function () {
 });
 
 it('makes a whole style, pre or code element one atom, and an unclosed script or style runs to the end', function (string $text, string $expected, string $atom) {
-    $tokenized = html($text);
+    $tokenized = tokenizeHtml($text);
 
     expect($tokenized->text)->toBe($expected)
         ->and($tokenized->map['x1'])->toBe($atom);
@@ -143,16 +143,16 @@ it('makes a whole style, pre or code element one atom, and an unclosed script or
 ]);
 
 it('makes an unclosed pre or code tag an atom and still translates what follows', function () {
-    expect(html('<pre>Not closed <b>at all</b>')->text)->toBe('<x1/>Not closed <1>at all</1>')
-        ->and(html('<code>Not closed')->text)->toBe('<x1/>Not closed');
+    expect(tokenizeHtml('<pre>Not closed <b>at all</b>')->text)->toBe('<x1/>Not closed <1>at all</1>')
+        ->and(tokenizeHtml('<code>Not closed')->text)->toBe('<x1/>Not closed');
 });
 
 it('does not take an element whose name only starts like script, style, pre or code whole', function () {
-    expect(html('<code-sample>Sea</code-sample> <preview>view</preview>')->text)->toBe('<1>Sea</1> <2>view</2>');
+    expect(tokenizeHtml('<code-sample>Sea</code-sample> <preview>view</preview>')->text)->toBe('<1>Sea</1> <2>view</2>');
 });
 
 it('turns Antlers tags into atoms first, so the model never sees one', function () {
-    $tokenized = html('<p>Hi {{ name }}, see {{ name | wrap("<b>") }} or {{# a <i>note</i> #}}.</p>');
+    $tokenized = tokenizeHtml('<p>Hi {{ name }}, see {{ name | wrap("<b>") }} or {{# a <i>note</i> #}}.</p>');
 
     expect($tokenized->text)->toBe('<1>Hi <x1/>, see <x2/> or <x3/>.</1>')
         ->and($tokenized->placeholders)->toBe([
@@ -165,7 +165,7 @@ it('turns Antlers tags into atoms first, so the model never sees one', function 
 
 it('swallows Antlers inside a tag into the tag and gives it back on restore', function () {
     $sample = ContentFixtures::markup('html')['antlers.html'];
-    $tokenized = html($sample);
+    $tokenized = tokenizeHtml($sample);
 
     expect($tokenized->text)->toBe("<1>Questions? <2>Contact us</2> or call <x1/>. <x2/></1>\n")
         ->and($tokenized->placeholders[2])->toBe('<a href="{{ link to="contact" }}" title="Write to {{ site:name }}">')
@@ -174,7 +174,7 @@ it('swallows Antlers inside a tag into the tag and gives it back on restore', fu
 });
 
 it('ends a tag at the first > outside Antlers tags and quoted values', function (string $text, string $tag) {
-    expect(html($text)->placeholders[1])->toBe($tag);
+    expect(tokenizeHtml($text)->placeholders[1])->toBe($tag);
 })->with([
     'a quoted attribute holding > and <' => ['<a title="5 > 3 < 4" href=\'/a>b\'>Link</a>', '<a title="5 > 3 < 4" href=\'/a>b\'>'],
     'antlers holding > between attributes' => ['<div {{ if a > b }}class="wide"{{ /if }}>Wide</div>', '<div {{ if a > b }}class="wide"{{ /if }}>'],
@@ -183,21 +183,21 @@ it('ends a tag at the first > outside Antlers tags and quoted values', function 
 ]);
 
 it('carries text that looks like a placeholder as an atom', function () {
-    $tokenized = html('<p>Type <1> or </2> or <x1/> or <br/></p>');
+    $tokenized = tokenizeHtml('<p>Type <1> or </2> or <x1/> or <br/></p>');
 
     expect($tokenized->text)->toBe('<1>Type <x1/> or <x2/> or <x3/> or <x4/></1>')
         ->and($tokenized->placeholders)->toBe([1 => '<p>', 'x1' => '<1>', 'x2' => '</2>', 'x3' => '<x1/>', 'x4' => '<br/>']);
 });
 
 it('does not escape', function () {
-    $tokenized = html('<p>Kids < 12 &amp; seniors > 65 &lt;3</p>');
+    $tokenized = tokenizeHtml('<p>Kids < 12 &amp; seniors > 65 &lt;3</p>');
 
     expect($tokenized->text)->toBe('<1>Kids < 12 &amp; seniors > 65 &lt;3</1>')
         ->and(Tokenizer::restore('<1>Παιδιά < 12 &amp; &lt;3</1>', $tokenized))->toBe('<p>Παιδιά < 12 &amp; &lt;3</p>');
 });
 
 it('restores a translation that reorders pairs and atoms', function () {
-    $tokenized = html('<p><a href="/rooms">Book</a> a <strong>sea view</strong> suite<br>today.</p>');
+    $tokenized = tokenizeHtml('<p><a href="/rooms">Book</a> a <strong>sea view</strong> suite<br>today.</p>');
 
     expect($tokenized->text)->toBe('<1><2>Book</2> a <3>sea view</3> suite<x1/>today.</1>')
         ->and(Tokenizer::restore('<1>Μια σουίτα με <3>θέα στη θάλασσα</3><x1/><2>κλείστε</2> σήμερα.</1>', $tokenized))
@@ -205,13 +205,13 @@ it('restores a translation that reorders pairs and atoms', function () {
 });
 
 it('leaves a placeholder it does not know in place', function () {
-    $tokenized = html('<p>Rooms</p>');
+    $tokenized = tokenizeHtml('<p>Rooms</p>');
 
     expect(Tokenizer::restore('<1>Δωμάτια</1><2>x</2><x9/>', $tokenized))->toBe('<p>Δωμάτια</p><2>x</2><x9/>');
 });
 
 it('rejects a translation that adds a tag', function (string $translation, string $problem) {
-    $source = html('<p>Our <strong>spa</strong> is open.</p>')->text;
+    $source = tokenizeHtml('<p>Our <strong>spa</strong> is open.</p>')->text;
 
     expect(Placeholders::validate($source, $translation, SegmentKind::Html))->toBe($problem);
 })->with([
@@ -225,8 +225,8 @@ it('rejects a translation that adds a tag', function (string $translation, strin
 ]);
 
 it('lets Renumber express a target leaf in the numbering of its source', function () {
-    $source = html('<p><a href="/rooms">Book</a> a <strong>suite</strong>.</p>');
-    $target = html('<p>Μια <strong>σουίτα</strong> <a href="/rooms">κλείστε</a>.</p>');
+    $source = tokenizeHtml('<p><a href="/rooms">Book</a> a <strong>suite</strong>.</p>');
+    $target = tokenizeHtml('<p>Μια <strong>σουίτα</strong> <a href="/rooms">κλείστε</a>.</p>');
     $leaf = fn (Tokenized $tokenized) => new Leaf($tokenized->text, SegmentKind::Html, ['intro'], 'Intro', placeholders: $tokenized->placeholders);
 
     expect($target->text)->toBe('<1>Μια <2>σουίτα</2> <3>κλείστε</3>.</1>')
@@ -237,8 +237,8 @@ it('tokenizes a long document and a tag that never closes without backtracking o
     $document = str_repeat('<p>Rooms <strong>by</strong> the <a href="/sea" title="a > b">sea</a> {{ site:name }}.</p>', 5000);
     $unclosed = '<a '.str_repeat('b="c" ', 20000).'{{ x }}';
 
-    expect(Tokenizer::restore(html($document)->text, html($document)))->toBe($document)
-        ->and(html($unclosed)->text)->toBe('<a '.str_repeat('b="c" ', 20000).'<x1/>');
+    expect(Tokenizer::restore(tokenizeHtml($document)->text, tokenizeHtml($document)))->toBe($document)
+        ->and(tokenizeHtml($unclosed)->text)->toBe('<a '.str_repeat('b="c" ', 20000).'<x1/>');
 });
 
 it('cuts HTML after each top-level block element', function () {

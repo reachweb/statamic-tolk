@@ -69,6 +69,12 @@ export function useEditorStore() {
                 container.error = phase === 'error' ? error : null;
             },
 
+            // The last translation's summary, Undo and Retry no longer apply.
+            clearResult(name) {
+                Object.assign(this.container(name), { summary: null, snapshot: null, request: null });
+                this.setPhase(name, 'idle');
+            },
+
             forget(name) {
                 delete this.containers[name];
             },

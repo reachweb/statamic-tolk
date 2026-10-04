@@ -1,5 +1,8 @@
 import { shallowReactive } from 'vue';
 
+// The page's own publish container; stacked editors have other names.
+export const BASE = 'base';
+
 // Publish containers by name. The map is reactive, so a computed that asks which containers are mounted (field-action
 // visibility) is re-evaluated when a stacked editor opens or closes. Entries are replaced, never mutated, for the same
 // reason; they stay plain objects, because a reactive wrapper would unwrap the payload's refs.
@@ -115,8 +118,8 @@ export function createRegistry() {
         newlyLocalized,
         context: (name) => entries.get(name)?.context ?? null,
         payload: (name) => entries.get(name)?.payload ?? null,
-        base: () => entries.get('base')?.context ?? null,
-        others: () => [...entries.keys()].filter((name) => name !== 'base'),
+        base: () => entries.get(BASE)?.context ?? null,
+        others: () => [...entries.keys()].filter((name) => name !== BASE),
     };
 }
 

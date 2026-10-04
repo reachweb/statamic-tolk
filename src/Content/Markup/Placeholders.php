@@ -9,6 +9,8 @@ final class Placeholders
     // A paired tag's opening or closing half (the slash in group 1, the id in group 2), or an atom (its id in group 3).
     public const string IDS = '<(\/?)(\d+)>|<(x\d+)\/>';
 
+    public const string PAIR = '<\/?\d+>';
+
     public const string ATOM = '<x\d+\/>';
 
     // Paired tags, atoms, hard breaks, then anything a browser would start parsing as a tag (a "<" before a letter, "/", "!" or "?"), closed or not.
