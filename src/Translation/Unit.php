@@ -91,6 +91,16 @@ final readonly class Unit
         return $this->derive('?', $segmentIds, $useFallback, ['missingRetry' => true]);
     }
 
+    /**
+     * `{id}.v`: the review of the translations this unit's answer gave for the segments (§A10).
+     *
+     * @param  list<string>  $segmentIds
+     */
+    public function forReview(array $segmentIds): self
+    {
+        return new self($this->id.'.v', UnitKind::Review, $segmentIds);
+    }
+
     public function toArray(): array
     {
         return [

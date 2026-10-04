@@ -21,6 +21,7 @@ final readonly class AssembledField
      * @param  ?string  $translator  the model that translated most of the field's segments; null when none was called
      * @param  list<array{id: string, before: string, after: string, reason: string}>  $corrections
      * @param  list<string>  $warnings
+     * @param  ?string  $reviewer  the model that reviewed the field's translations; null when none did
      */
     public function __construct(
         public string $handle,
@@ -36,6 +37,7 @@ final readonly class AssembledField
         public ?string $translator,
         public array $corrections = [],
         public array $warnings = [],
+        public ?string $reviewer = null,
     ) {}
 
     /**
@@ -52,7 +54,7 @@ final readonly class AssembledField
             identical: $this->identical,
             incomplete: $this->incomplete,
             translator: $this->translator,
-            reviewer: null,
+            reviewer: $this->reviewer,
             createdAt: CarbonImmutable::now(),
         );
     }

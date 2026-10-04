@@ -89,11 +89,6 @@ final readonly class Pipeline
         }
 
         $unit = $this->units($plan)[$unitId] ?? throw UnknownUnit::in($plan->id, $unitId);
-
-        if ($unit->kind === UnitKind::Review) {
-            throw new LogicException('Review units are not built yet (T7.3).');
-        }
-
         $timeout = (int) config("tolk.http.timeout.{$plan->options->profile}", 45);
 
         $outcome = $this->store->lock($plan->id, $unitId, $timeout + 10)->get(function () use ($plan, $unit, $timeout, $recordUsage) {
@@ -101,7 +96,9 @@ final readonly class Pipeline
                 return $outcome;
             }
 
-            $outcome = $this->call($plan, $unit, $timeout, $recordUsage);
+            $outcome = $unit->kind === UnitKind::Review
+                ? $this->review($plan, $unit, $timeout, $recordUsage)
+                : $this->call($plan, $unit, $timeout, $recordUsage);
             $this->store->putOutcome($plan->id, $outcome);
 
             return $outcome;
@@ -178,7 +175,7 @@ final readonly class Pipeline
             throw SourceChanged::field($handle);
         }
 
-        $texts = $hashes = $failed = $warnings = $models = [];
+        $texts = $hashes = $failed = $warnings = $models = $reviewers = [];
 
         foreach ($segments as $id => $segment) {
             $translation = $resolved['translations'][$id] ?? null;
@@ -198,6 +195,10 @@ final readonly class Pipeline
 
             if (isset($resolved['models'][$id])) {
                 $models[] = $resolved['models'][$id];
+            }
+
+            if (isset($resolved['reviewers'][$id])) {
+                $reviewers[] = $resolved['reviewers'][$id];
             }
         }
 
@@ -221,6 +222,7 @@ final readonly class Pipeline
             translator: collect($models)->mode()[0] ?? null,
             corrections: array_values(array_intersect_key($resolved['corrections'], $segments)),
             warnings: array_values(array_unique($warnings)),
+            reviewer: collect($reviewers)->mode()[0] ?? null,
         );
     }
 
@@ -342,6 +344,10 @@ final readonly class Pipeline
             }
         }
 
+        if ($plan->options->review && $translations !== []) {
+            $spawned[] = $unit->forReview(array_keys($translations));
+        }
+
         return new UnitOutcome(
             unit: $unit->id,
             model: (string) $result->model,
@@ -351,6 +357,104 @@ final readonly class Pipeline
             usage: $usage,
             spawned: $spawned,
         );
+    }
+
+    /**
+     * The reviewer's one call over translations accepted at translation time (D8). A review never fails a segment: when
+     * it cannot be made, the translations stand and their fields get the warning "review skipped". Only ProviderRejected
+     * propagates, because then the reviewer's key or model is wrong.
+     */
+    private function review(Plan $plan, Unit $unit, int $timeout, ?Closure $recordUsage): UnitOutcome
+    {
+        $resolved = $this->resolve($plan)['translations'];
+        $translations = array_filter(array_combine($unit->segmentIds, array_map(fn (string $id) => $resolved[$id] ?? null, $unit->segmentIds)), 'is_string');
+
+        if ($translations === []) {
+            return new UnitOutcome(unit: $unit->id);
+        }
+
+        $failures = $this->store->failures($plan->id, $unit->id);
+
+        try {
+            $result = $this->engine->review(new EngineCall(
+                model: $plan->options->reviewer ?? $plan->options->translator,
+                source: $this->languages->forSite($plan->sourceSite),
+                target: $this->languages->forSite($plan->targetSite),
+                context: PromptContext::fromSettings($this->settings, $plan->targetSite),
+                document: $plan->document,
+                segments: $this->segments($plan, $unit, $translations),
+                timeout: $timeout,
+                attempt: $failures + 1,
+            ));
+        } catch (TransientProviderFailure $exception) {
+            if ($this->store->countFailure($plan->id, $unit->id) < (int) config('tolk.retry.max_attempts', 3)) {
+                throw $exception;
+            }
+
+            return $this->reviewSkipped($plan, $unit, UnitOutcome::UNAVAILABLE);
+        } catch (RequestRejected) {
+            return $this->reviewSkipped($plan, $unit, UnitOutcome::REQUEST_REJECTED);
+        }
+
+        if ($recordUsage !== null) {
+            $recordUsage($result->model, $result->usage);
+        }
+
+        $usage = (new UsageMap)->add($result->model, $result->usage);
+
+        return match ($result->finish) {
+            Finish::Stop => $this->acceptCorrections($plan, $unit, $result, $translations, $usage),
+            Finish::Length, Finish::Empty => $this->reviewSkipped($plan, $unit, UnitOutcome::TOO_LONG, $usage),
+            Finish::Refused => $this->reviewSkipped($plan, $unit, UnitOutcome::REFUSED, $usage),
+        };
+    }
+
+    /**
+     * Keeps the corrections that are valid against the source segment, which shares the translation's numbering. An
+     * invalid correction is discarded with a warning and one equal to the translation silently; accepted ones are
+     * checked against the glossary.
+     *
+     * @param  array<string, string>  $translations  the translations under review
+     */
+    private function acceptCorrections(Plan $plan, Unit $unit, EngineResult $result, array $translations, UsageMap $usage): UnitOutcome
+    {
+        $corrections = $warnings = [];
+        $glossary = Glossary::fromSettings($this->settings, $plan->targetSite);
+
+        foreach ($translations as $id => $translation) {
+            $text = $result->items[$id]['text'] ?? null;
+
+            if (! is_string($text) || $text === $translation) {
+                continue;
+            }
+
+            $segment = $plan->segments[$id];
+
+            if ($this->validator->validate($segment, $text) !== null) {
+                $warnings[$id][] = "{$segment['label']}: the reviewer's correction of \"{$this->excerpt($segment)}\" was not valid and was discarded.";
+
+                continue;
+            }
+
+            $corrections[] = ['id' => $id, 'before' => $translation, 'after' => $text, 'reason' => trim($result->items[$id]['reason'] ?? '')];
+
+            foreach ($glossary->check($segment['text'], $text, SegmentKind::from($segment['kind'])) as $note) {
+                $warnings[$id][] = "{$segment['label']}: {$note['message']}";
+            }
+        }
+
+        return new UnitOutcome(unit: $unit->id, model: (string) $result->model, corrections: $corrections, warnings: $warnings, usage: $usage);
+    }
+
+    private function reviewSkipped(Plan $plan, Unit $unit, string $reason, UsageMap $usage = new UsageMap): UnitOutcome
+    {
+        $warnings = [];
+
+        foreach ($unit->segmentIds as $id) {
+            $warnings[$id] = ["{$plan->segments[$id]['label']}: review skipped ({$reason})."];
+        }
+
+        return new UnitOutcome(unit: $unit->id, warnings: $warnings, usage: $usage);
     }
 
     /**
@@ -368,12 +472,18 @@ final readonly class Pipeline
 
     /**
      * The unit's segments with the keys of §A9. The prompt's `field` is the label path, which says what the text is for.
+     * A review segment carries the source text as `source` and its translation, and only segments with a translation
+     * are reviewed.
      *
+     * @param  array<string, string>  $translations  the translations under review
      * @return list<array>
      */
-    private function segments(Plan $plan, Unit $unit): array
+    private function segments(Plan $plan, Unit $unit, array $translations = []): array
     {
-        return array_map(function (string $id) use ($plan, $unit) {
+        $review = $unit->kind === UnitKind::Review;
+        $ids = $review ? array_keys($translations) : $unit->segmentIds;
+
+        return array_map(function (string $id) use ($plan, $unit, $review, $translations) {
             $segment = $plan->segments[$id];
 
             return [
@@ -384,16 +494,20 @@ final readonly class Pipeline
                 'max_length' => $segment['max_length'] ?? null,
                 'before' => $segment['before'] ?? null,
                 'after' => $segment['after'] ?? null,
-                'text' => $segment['text'],
-                'note' => $unit->notes[$id] ?? null,
+                ...($review
+                    ? ['source' => $segment['text'], 'translation' => $translations[$id]]
+                    : ['text' => $segment['text'], 'note' => $unit->notes[$id] ?? null]),
             ];
-        }, $unit->segmentIds);
+        }, $ids);
     }
 
     /**
      * The state of every segment over all stored outcomes (§A8 step 3).
      *
-     * @return array{translations: array<string, string>, failed: array<string, string>, corrections: array<string, array>, warnings: array<string, list<string>>, models: array<string, ?string>, pending: array<string, true>}
+     * A corrected segment keeps only the warnings of the review that corrected it: the others describe text that no
+     * longer stands.
+     *
+     * @return array{translations: array<string, string>, failed: array<string, string>, corrections: array<string, array>, warnings: array<string, list<string>>, models: array<string, ?string>, reviewers: array<string, string>, pending: array<string, true>}
      */
     private function resolve(Plan $plan): array
     {
@@ -407,7 +521,7 @@ final readonly class Pipeline
             }
         }
 
-        $failed = $corrections = $warnings = $pending = [];
+        $failed = $corrections = $warnings = $correctedWarnings = $reviewers = $pending = [];
 
         foreach ($this->store->units($plan) as ['unit' => $unit, 'outcome' => $outcome]) {
             if ($outcome === null) {
@@ -424,6 +538,11 @@ final readonly class Pipeline
             foreach ($outcome->corrections as $correction) {
                 $corrections[$correction['id']] = $correction;
                 $translations[$correction['id']] = $correction['after'];
+                $correctedWarnings[$correction['id']] = $outcome->warnings[$correction['id']] ?? [];
+            }
+
+            if ($unit->kind === UnitKind::Review && $outcome->model !== null) {
+                $reviewers += array_fill_keys($unit->segmentIds, $outcome->model);
             }
 
             foreach ($outcome->warnings as $id => $messages) {
@@ -437,8 +556,9 @@ final readonly class Pipeline
             'translations' => $translations,
             'failed' => array_diff_key($failed, $translations),
             'corrections' => $corrections,
-            'warnings' => $warnings,
+            'warnings' => array_replace($warnings, $correctedWarnings),
             'models' => $models,
+            'reviewers' => $reviewers,
             'pending' => $pending,
         ];
     }

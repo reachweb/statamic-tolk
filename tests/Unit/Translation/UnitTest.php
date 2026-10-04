@@ -11,7 +11,15 @@ it('names spawned units deterministically', function () {
         ->and($repair->id)->toBe('b3~s7')
         ->and($repair->repairOf('s7', 'Another note.', false)->id)->toBe('b3~s7~2')
         ->and($unit->forMissing(['s8'], false)->id)->toBe('b3?')
-        ->and($unit->withDoubledCap(false)->id)->toBe('b3^');
+        ->and($unit->withDoubledCap(false)->id)->toBe('b3^')
+        ->and($repair->forReview(['s7'])->id)->toBe('b3~s7.v');
+});
+
+it('reviews the given segments in a fresh review unit', function () {
+    $review = (new Unit('b1~s2', UnitKind::Translate, ['s2'], depth: 1, repair: 1, capMultiplier: 2, notes: ['s2' => 'Fix it.'], useFallback: true))
+        ->forReview(['s2']);
+
+    expect($review->toArray())->toBe((new Unit('b1~s2.v', UnitKind::Review, ['s2']))->toArray());
 });
 
 it('splits into halves one level deeper, the first half taking the odd segment', function () {

@@ -97,6 +97,16 @@ it('resolves a reviewer only when review is on', function () {
         ->and((string) optionsFromSettings(['review' => true, 'reviewer' => 'gemini:gemini-3.8-flash'])->reviewer)->toBe('gemini:gemini-3.8-flash');
 });
 
+it('reviews when the settings say so, unless overridden', function () {
+    $settings = $this->withSettings(['review_enabled' => true]);
+
+    expect(optionsFromSettings(settings: $settings)->review)->toBeTrue()
+        ->and((string) optionsFromSettings(settings: $settings)->reviewer)->toBe('openai:gpt-6.1-sol')
+        ->and(optionsFromSettings(['review' => false], $settings)->review)->toBeFalse()
+        ->and(optionsFromSettings(['review' => false], $settings)->reviewer)->toBeNull()
+        ->and(optionsFromSettings(['review' => null], $settings)->review)->toBeTrue();
+});
+
 it('refuses invalid options', function (array $overrides, string $exception) {
     expect(fn () => optionsFromSettings($overrides))->toThrow($exception);
 })->with([
