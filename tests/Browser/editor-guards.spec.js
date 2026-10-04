@@ -50,7 +50,7 @@ test('text typed before Translate is kept and listed as skipped', async ({ page,
     await action(page, 'translate').click();
 
     expect((await planned).postDataJSON().skip).toEqual(['intro']);
-    await expect(translated(page)).toHaveText(/^2 fields translated with /);
+    await expect(translated(page)).toHaveText(/^3 fields translated with /);
     await expect(banner(page).locator('[data-tolk-summary-edited]')).toHaveText('Intro was skipped because you edited it.');
     await expect(page.locator('#field_intro')).toHaveValue('Ein familiengeführtes Hotel am alten Hafen.');
     await expect(page.locator('#field_seo_title')).toHaveValue(`[de] ${origin.seo_title}`);
@@ -76,7 +76,7 @@ test('Save is refused while a translation runs', async ({ page, browserErrors })
     expect(entryFile('pages', 'de', 'home')).toEqual(before);
 
     release();
-    await expect(translated(page)).toHaveText(/^3 fields translated with /);
+    await expect(translated(page)).toHaveText(/^4 fields translated with /);
 
     // Once the translation has finished, Save works again and stores the filled fields.
     const confirmed = page.waitForResponse(isConfirm);
@@ -124,7 +124,7 @@ test('switching site during a translation leaves the other form untouched', asyn
 
 test('a filled field edited before saving counts as edited by hand, with the source unchanged', async ({ page, browserErrors }) => {
     await action(page, 'translate').click();
-    await expect(translated(page)).toHaveText(/^3 fields translated with /);
+    await expect(translated(page)).toHaveText(/^4 fields translated with /);
 
     await page.locator('#field_intro').fill('Ein familiengeführtes Hotel am alten Hafen von Chania.');
     await typed(page);
@@ -141,7 +141,7 @@ test('a filled field edited before saving counts as edited by hand, with the sou
     await expect(banner(page).locator('[data-tolk-part="manual"]')).toHaveText('2 fields edited by hand');
     await expect(banner(page).locator('[data-tolk-part="untracked"]')).toHaveText('1 untracked');
     await expect(banner(page).locator('[data-tolk-part="attention"]')).toHaveCount(0);
-    await expect(banner(page).locator('[data-tolk-part="current"]')).toHaveText('2 fields up to date');
+    await expect(banner(page).locator('[data-tolk-part="current"]')).toHaveText('3 fields up to date');
 
     expect(entryFile('pages', 'de', 'home').intro).toBe('Ein familiengeführtes Hotel am alten Hafen von Chania.');
 
@@ -155,7 +155,7 @@ test('a filled field edited before saving counts as edited by hand, with the sou
 
 test('Undo puts the previous values back', async ({ page, browserErrors }) => {
     await action(page, 'translate').click();
-    await expect(translated(page)).toHaveText(/^3 fields translated with /);
+    await expect(translated(page)).toHaveText(/^4 fields translated with /);
     await expect(page.locator('#field_intro')).toHaveValue(`[de] ${origin.intro}`);
 
     await action(page, 'undo').click();
@@ -193,7 +193,7 @@ test('Cancel stops the translation and keeps what was already on its way', async
     release();
 
     await expect(banner(page).locator('[data-tolk-summary]')).toContainText('The translation was cancelled before it finished.');
-    await expect(translated(page)).toHaveText(/^3 fields translated with /);
+    await expect(translated(page)).toHaveText(/^4 fields translated with /);
     await expect(page.locator('#field_intro')).toHaveValue(`[de] ${origin.intro}`);
     expect(browserErrors()).toEqual([]);
 });

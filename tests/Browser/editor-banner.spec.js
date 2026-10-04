@@ -118,6 +118,6 @@ test('without a provider the banner points to the settings', async ({ page, brow
 
     await expect(setup).toContainText('Translation is not set up yet.');
     await expect(setup.getByRole('link', { name: 'Open the Tolk settings' })).toHaveAttribute('href', new RegExp(`${cpUrl('addons/statamic-tolk/settings')}$`));
-    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('3 fields untranslated');
+    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('4 fields untranslated');
     expect(browserErrors()).toEqual([]);
 });
