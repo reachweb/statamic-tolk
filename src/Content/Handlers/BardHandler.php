@@ -3,8 +3,8 @@
 namespace Reach\StatamicTolk\Content\Handlers;
 
 use Closure;
+use Reach\StatamicTolk\Content\Handlers\Concerns\MakesLeaves;
 use Reach\StatamicTolk\Content\Handlers\Concerns\MapsSets;
-use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\LeafRules;
 use Reach\StatamicTolk\Content\Markup\InlineMarkup;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
@@ -22,6 +22,7 @@ use Statamic\Fields\Fieldtype;
  */
 final class BardHandler implements FieldHandler
 {
+    use MakesLeaves;
     use MapsSets;
 
     private const string WHITESPACE = " \t\r\n";
@@ -34,8 +35,7 @@ final class BardHandler implements FieldHandler
     public function map(Field $field, mixed $value, Closure $translate, WalkContext $context): mixed
     {
         $fieldtype = $field->fieldtype();
-        $hint = $fieldtype->config('tolk_hint');
-        $hint = is_string($hint) && trim($hint) !== '' ? trim($hint) : null;
+        $hint = $this->hint($fieldtype);
 
         if (is_string($value)) {
             return $this->mapHtml($value, $hint, $translate, $context);
@@ -138,31 +138,6 @@ final class BardHandler implements FieldHandler
         }
 
         return $node;
-    }
-
-    private function plain(string $text, string $hint, Closure $translate, WalkContext $context): string
-    {
-        $tokenized = Tokenizer::tokenize($text, SegmentKind::Plain);
-
-        if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, SegmentKind::Plain))) {
-            return $text;
-        }
-
-        $translated = $translate($this->leaf($tokenized->text, SegmentKind::Plain, $tokenized->placeholders, $hint, $context));
-
-        return $translated === $tokenized->text ? $text : Tokenizer::restore($translated, $tokenized);
-    }
-
-    private function leaf(string $text, SegmentKind $kind, array $placeholders, ?string $hint, WalkContext $context): Leaf
-    {
-        return new Leaf(
-            text: $text,
-            kind: $kind,
-            path: $context->path(),
-            label: $context->label(),
-            hint: $hint,
-            placeholders: $placeholders,
-        );
     }
 
     /**

@@ -215,15 +215,15 @@ test('after Mark manual fields as up to date, the Greek article reads edited by 
     browserErrors,
 }) => {
     const greek = await openEntry(page, 'articles', 'what-to-eat-in-chania', 'el');
-    await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
-    await expect(part(page, 'untracked')).toHaveText('4 untracked');
+    await expect(part(page, 'manual')).toHaveText('6 fields edited by hand');
+    await expect(part(page, 'untracked')).toHaveText('6 untracked');
 
     await openOptions(page);
     await expect(dialog(page).locator('[data-tolk-action="protect"]')).toHaveCount(0);
     await dialog(page).locator('[data-tolk-action="mark-current"]').click();
 
-    await expect(page.getByText('4 fields marked as up to date.')).toBeVisible();
-    await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
+    await expect(page.getByText('6 fields marked as up to date.')).toBeVisible();
+    await expect(part(page, 'manual')).toHaveText('6 fields edited by hand');
     await expect(part(page, 'untracked')).toHaveCount(0);
     await expect(part(page, 'attention')).toHaveCount(0);
     expect(entryState(greek.id).fields.title.source_hash).toMatch(/^[0-9a-f]{16}$/);
@@ -246,6 +246,6 @@ test('after Mark manual fields as up to date, the Greek article reads edited by 
     await openOptions(page);
     await dialog(page).locator('[data-tolk-action="mark-current"]').click();
     await expect(part(page, 'attention')).toHaveCount(0);
-    await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
+    await expect(part(page, 'manual')).toHaveText('6 fields edited by hand');
     expect(browserErrors()).toEqual([]);
 });

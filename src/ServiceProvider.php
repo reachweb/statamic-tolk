@@ -5,11 +5,14 @@ namespace Reach\StatamicTolk;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\TranslationEngine;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Handlers\ArrayHandler;
 use Reach\StatamicTolk\Content\Handlers\BardHandler;
 use Reach\StatamicTolk\Content\Handlers\GridHandler;
 use Reach\StatamicTolk\Content\Handlers\GroupHandler;
+use Reach\StatamicTolk\Content\Handlers\ListHandler;
 use Reach\StatamicTolk\Content\Handlers\MarkdownHandler;
 use Reach\StatamicTolk\Content\Handlers\ReplicatorHandler;
+use Reach\StatamicTolk\Content\Handlers\TableHandler;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\StateRepository;
@@ -80,6 +83,9 @@ class ServiceProvider extends AddonServiceProvider
         $registry->register('replicator', ReplicatorHandler::class);
         $registry->register('grid', GridHandler::class);
         $registry->register('group', GroupHandler::class);
+        $registry->register('table', TableHandler::class);
+        $registry->register('list', ListHandler::class);
+        $registry->register('array', ArrayHandler::class);
 
         foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
             $registry->register($handle, $handlerClass);
