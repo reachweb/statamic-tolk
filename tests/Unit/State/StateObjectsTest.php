@@ -147,6 +147,34 @@ it('promotes a pending entry to the confirmed keys and drops the other entries',
         ->and($field->history)->toBe([['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222']]);
 });
 
+it('promotes the pending entry of a reviewed manual field to a baseline that records the reviewer', function () {
+    $pending = pendingState('4444444444444444', ['translator' => null, 'reviewer' => 'openai:gpt-6.1-sol', 'baseline' => true]);
+    $baseline = new FieldState(sourceHash: '1111111111111111', translator: 'gemini:gemini-3.8-flash', history: [
+        ['source_hash' => '0000000000000000', 'target_hash' => '4444444444444444'],
+        ['source_hash' => '0000000000000000', 'target_hash' => '3333333333333333'],
+    ]);
+
+    $field = $baseline->withPending($pending)->promote($pending);
+
+    expect($field->isBaseline())->toBeTrue()
+        ->and($field->sourceHash)->toBe('source-4444444444444444')
+        ->and($field->reviewer)->toBe('openai:gpt-6.1-sol')
+        ->and($field->translator)->toBeNull()
+        ->and($field->segments)->toBe([])
+        ->and($field->pending)->toBe([])
+        ->and($field->history)->toBe([['source_hash' => '0000000000000000', 'target_hash' => '3333333333333333']])
+        ->and($field->reconcile('4444444444444444', CarbonImmutable::now()))->toEqual($field);
+});
+
+it('stores the baseline flag of a pending entry only when it is set', function () {
+    $pending = pendingState('4444444444444444', ['baseline' => true]);
+
+    expect($pending->toArray()['baseline'])->toBeTrue()
+        ->and(PendingState::fromArray($pending->toArray()))->toEqual($pending)
+        ->and(pendingState('4444444444444444')->toArray())->not->toHaveKey('baseline')
+        ->and(PendingState::fromArray(pendingState('4444444444444444')->toArray())->baseline)->toBeFalse();
+});
+
 it('pushes the previous machine pair to the history and keeps three', function () {
     $field = machineState('s1', 't1');
 

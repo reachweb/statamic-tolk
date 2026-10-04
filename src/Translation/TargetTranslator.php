@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
+use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
@@ -47,23 +48,44 @@ final readonly class TargetTranslator
      */
     public function translate(Target $target, PlanOptions $options, ApplyOptions $apply): TargetResult
     {
+        return $this->process($target, $apply, function (Target $target) use ($options) {
+            // Checked before planning, so no tokens are spent on an entry that could not be saved (§A11 "Root page").
+            if ($target instanceof EntryTarget) {
+                $target->ensureRootExists();
+            }
+
+            return $this->planner->plan($target, $options);
+        });
+    }
+
+    /**
+     * Reviews the target's existing translations (T7.4) and saves only the fields the reviewer corrected.
+     *
+     * @throws ProviderRejected when the provider refuses the account or the model, which every other target would meet too
+     */
+    public function review(Target $target, PlanOptions $options, ApplyOptions $apply): TargetResult
+    {
+        return $this->process($target, $apply, fn (Target $target) => $this->planner->planReview($target, $options));
+    }
+
+    /**
+     * @param  Closure(Target): Plan  $plan
+     */
+    private function process(Target $target, ApplyOptions $apply, Closure $plan): TargetResult
+    {
         $usage = new UsageMap;
         $record = function (ModelRef $model, Usage $call) use (&$usage): void {
             $usage = $usage->add($model, $call);
         };
 
         try {
-            // Checked before planning, so no tokens are spent on an entry that could not be saved (§A11 "Root page").
-            if ($target instanceof EntryTarget) {
-                $target->ensureRootExists();
-            }
-
             $this->stateWriter->confirm($target);
 
             try {
-                $result = $this->translatePlan($target, $options, $apply, $record);
+                $result = $this->runPlan($plan($target), $target, $apply, $record);
             } catch (SourceChanged) {
-                $result = $this->translatePlan($target->fresh(), $options, $apply, $record);
+                $target = $target->fresh();
+                $result = $this->runPlan($plan($target), $target, $apply, $record);
             }
         } catch (RootMissing|SourceChanged|TransientProviderFailure|WriterBusy|ApplyFailed|NotSupportedYet $exception) {
             $result = $this->failed($target, $exception);
@@ -78,10 +100,8 @@ final readonly class TargetTranslator
         return $result;
     }
 
-    private function translatePlan(Target $target, PlanOptions $options, ApplyOptions $apply, Closure $record): TargetResult
+    private function runPlan(Plan $plan, Target $target, ApplyOptions $apply, Closure $record): TargetResult
     {
-        $plan = $this->planner->plan($target, $options);
-
         if ($plan->isEmpty()) {
             return new TargetResult(TargetResultStatus::Skipped, $target->ref(), fields: $plan->skipped, reason: TargetResult::NOTHING_TO_DO);
         }
@@ -122,11 +142,11 @@ final readonly class TargetTranslator
 
     /**
      * Assembles every field from a target resolved after the units ran, so a source edited meanwhile raises
-     * SourceChanged, and saves the fields that assembled.
+     * SourceChanged, and saves the fields that assembled. A review saves only the fields it corrected.
      */
     private function apply(Plan $plan, Target $target, ApplyOptions $options): TargetResult
     {
-        $assembled = $failed = $corrections = $warnings = [];
+        $assembled = $failed = $unchanged = $corrections = $warnings = [];
 
         foreach ($plan->fieldHandles() as $handle) {
             try {
@@ -135,6 +155,27 @@ final readonly class TargetTranslator
                 $failed[$handle] = array_values($failure->reasons)[0];
                 $warnings[] = $failure->getMessage();
             }
+        }
+
+        if ($plan->kind === UnitKind::Review) {
+            foreach ($assembled as $handle => $field) {
+                if ($field->corrections === []) {
+                    $unchanged[$handle] = TargetResult::NO_CORRECTIONS;
+                    array_push($warnings, ...$field->warnings);
+                }
+            }
+
+            $assembled = array_diff_key($assembled, $unchanged);
+        }
+
+        if ($assembled === [] && $unchanged !== []) {
+            return new TargetResult(
+                status: TargetResultStatus::Skipped,
+                ref: $target->ref(),
+                fields: $this->ordered($target, $plan->skipped + $unchanged),
+                warnings: $warnings,
+                reason: TargetResult::NO_CORRECTIONS,
+            );
         }
 
         if ($assembled === []) {
@@ -171,7 +212,7 @@ final readonly class TargetTranslator
             status: $status,
             ref: $applied->ref,
             created: $applied->created,
-            fields: $this->ordered($target, $plan->skipped + $applied->skipped + $fields),
+            fields: $this->ordered($target, $plan->skipped + $applied->skipped + $unchanged + $fields),
             corrections: $corrections,
             warnings: [...$warnings, ...$applied->warnings],
             reason: $reason,

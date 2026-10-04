@@ -11,6 +11,7 @@ final readonly class PendingState
 
     /**
      * @param  list<?string>  $segments
+     * @param  bool  $baseline  the output of a review of a manual field, which a save confirms as a baseline (T7.4)
      */
     public function __construct(
         public string $plan,
@@ -23,6 +24,7 @@ final readonly class PendingState
         public ?string $translator,
         public ?string $reviewer,
         public CarbonImmutable $createdAt,
+        public bool $baseline = false,
     ) {}
 
     /**
@@ -50,6 +52,7 @@ final readonly class PendingState
             translator: self::storedString($data, 'translator'),
             reviewer: self::storedString($data, 'reviewer'),
             createdAt: $createdAt,
+            baseline: self::storedBool($data, 'baseline'),
         );
     }
 
@@ -66,6 +69,7 @@ final readonly class PendingState
             'translator' => $this->translator,
             'reviewer' => $this->reviewer,
             'created_at' => self::timeToString($this->createdAt),
+            ...($this->baseline ? ['baseline' => true] : []),
         ];
     }
 }
