@@ -78,6 +78,25 @@ it('reads partial catalog entries leniently', function () {
         ->and(modelCatalog()->label($model))->toBe('claude-custom');
 });
 
+it('groups the catalog by provider for model selects', function () {
+    $this->withProviderKeys(['ai.providers.openai.key' => 'sdk-key']);
+    config(['tolk.models.gemini' => [['tier' => 'fast'], ['id' => 'gemini-custom']]]);
+
+    expect(modelCatalog()->grouped())->toBe([
+        'anthropic' => [
+            ['value' => 'anthropic:claude-sonnet-5-5', 'label' => 'Claude Sonnet 5.5', 'tier' => 'quality', 'configured' => false],
+            ['value' => 'anthropic:claude-haiku-4-5', 'label' => 'Claude Haiku 4.5', 'tier' => 'fast', 'configured' => false],
+        ],
+        'openai' => [
+            ['value' => 'openai:gpt-6.1-sol', 'label' => 'GPT-6.1 Sol', 'tier' => 'quality', 'configured' => true],
+            ['value' => 'openai:gpt-6-luna', 'label' => 'GPT-6 Luna', 'tier' => 'fast', 'configured' => true],
+        ],
+        'gemini' => [
+            ['value' => 'gemini:gemini-custom', 'label' => 'gemini-custom', 'tier' => null, 'configured' => false],
+        ],
+    ]);
+});
+
 it('returns the first model of a tier as the default', function (string $provider, Tier $tier, string $expected) {
     expect(modelCatalog()->default($provider, $tier))->toEqual(modelRef($expected));
 })->with([
