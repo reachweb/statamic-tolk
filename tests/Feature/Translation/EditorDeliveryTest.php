@@ -1,12 +1,15 @@
 <?php
 
+use Facades\Statamic\Fieldtypes\RowId;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Tests\Support\ContentFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\EditorDelivery;
 use Reach\StatamicTolk\Translation\Pipeline;
@@ -16,6 +19,7 @@ use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Entry;
 
 beforeEach(function () {
@@ -193,3 +197,89 @@ it('refuses a target that does not exist', function () {
 
     app(EditorDelivery::class)->deliver($plan, $target, ['intro']);
 })->throws(LogicException::class);
+
+describe('rich content', function () {
+    beforeEach(function () {
+        // Rows and sets stored without an id get a random one on every pre-processing; numbered instead, two
+        // pre-processings of the same value give the same ids.
+        $this->rowIds = 0;
+        RowId::partialMock()->shouldReceive('generate')->andReturnUsing(fn () => 'row'.++$this->rowIds);
+    });
+
+    it('delivers Bard with sets, Replicator and Grid values with the meta core gives them', function () {
+        $this->signInAdmin();
+        $this->fakeTranslations();
+        AssetContainer::make('assets')->disk('local')->save();
+        ContentFixtures::field('replicator-nested');
+        $fixtures = ['content' => 'bard-rich', 'builder' => 'replicator-nested', 'rooms' => 'grid'];
+        $this->makeCollection('pages', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            ...array_map(fn (string $name) => [...ContentFixtures::raw($name)['field'], 'localizable' => true], $fixtures),
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['title' => 'Home', ...array_map(ContentFixtures::value(...), $fixtures)], 'home');
+        $greek = $this->localize($origin, 'el');
+        $target = fn () => app(TargetFactory::class)->forEntry($origin, 'el');
+        $plan = runDeliveryPlan($target());
+        $handles = array_keys($fixtures);
+
+        $this->rowIds = 0;
+        // As the editor's endpoints send it.
+        $delivered = json_decode(json_encode(app(EditorDelivery::class)->deliver($plan, $target(), $handles)), true);
+
+        Entry::find($greek->id())->merge(array_combine($handles, array_map(
+            fn (string $handle) => app(Pipeline::class)->assemble($plan, $target(), $handle)->value,
+            $handles,
+        )))->save();
+        $this->rowIds = 0;
+        $core = coreEditPayload(Entry::find($greek->id()));
+
+        foreach ($handles as $handle) {
+            expect($delivered[$handle]['value'])->toBe($core['values'][$handle])
+                ->and($delivered[$handle]['meta'])->toBe($core['meta'][$handle]);
+        }
+
+        $sets = array_values(array_filter($delivered['content']['value'], fn (array $node) => $node['type'] === 'set'));
+        $blocks = $delivered['builder']['value']['blocks'];
+
+        expect($sets)->toHaveCount(2)
+            ->and(array_keys($delivered['content']['meta']['existing']))->toBe(array_map(fn (array $set) => $set['attrs']['id'], $sets))
+            ->and(array_keys($delivered['builder']['meta']['blocks']['existing']))->toBe(array_column($blocks, '_id'))
+            ->and(array_keys($delivered['rooms']['meta']['existing']))->toBe(array_column($delivered['rooms']['value'], '_id'))
+            ->and($this->rowIds)->toBeGreaterThan(0);
+    });
+
+    it('delivers the default of a set field the source rows lack, and records the hash of the value as it will be stored', function () {
+        $this->fakeTranslations();
+        $this->makeCollection('pages', ['en', 'el'], [
+            'blocks' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+                'text' => ['display' => 'Text', 'fields' => [
+                    ['handle' => 'heading', 'field' => ['type' => 'text']],
+                    ['handle' => 'kicker', 'field' => ['type' => 'text', 'default' => 'Read this']],
+                ]],
+            ]]]],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['blocks' => [
+            ['type' => 'text', 'heading' => 'Rooms'],
+            ['type' => 'text', 'heading' => 'Dining'],
+        ]], 'home');
+        $greek = $this->localize($origin, 'el');
+        $target = app(TargetFactory::class)->forEntry($origin, 'el');
+        $plan = runDeliveryPlan($target);
+        $assembled = app(Pipeline::class)->assemble($plan, $target, 'blocks');
+
+        $delivered = app(EditorDelivery::class)->deliver($plan, $target, ['blocks']);
+        $pending = StateFixtures::stored($greek)->field('blocks')->pending[0];
+
+        expect(array_column($delivered['blocks']['value'], 'kicker'))->toBe(['Read this', 'Read this'])
+            ->and(array_column($delivered['blocks']['value'], 'heading'))->toBe(['[T] Rooms', '[T] Dining'])
+            ->and(array_column($assembled->value, 'kicker'))->toBe([])
+            ->and($pending->targetHash)->toBe($assembled->targetHash)
+            ->and($pending->segments)->toBe($assembled->segments);
+
+        Entry::find($greek->id())->set('blocks', $target->formFields(['blocks' => $delivered['blocks']['value']])->process()->values()['blocks'])->save();
+
+        expect(Entry::find($greek->id())->get('blocks')[0]['kicker'])->toBe('Read this')
+            ->and(StateFixtures::statuses($origin)['blocks'])->toBe(FieldStatus::Current)
+            ->and(app(StatusResolver::class)->targetHash($target->fields()->get('blocks'), Entry::find($greek->id())->get('blocks')))->toBe($assembled->targetHash);
+    });
+});

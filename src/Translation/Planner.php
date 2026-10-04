@@ -62,11 +62,7 @@ final readonly class Planner
             $fields[$handle] = $this->field($handle, $status, $leaves, $known, $segments);
         }
 
-        $batches = $this->batchPlanner->plan(
-            $segments,
-            (int) config("tolk.batch.max_chars.{$options->profile}"),
-            (int) config('tolk.batch.max_segments'),
-        );
+        $batches = $this->batchPlanner->plan($segments, $this->budget($options->profile, $segments), (int) config('tolk.batch.max_segments'));
 
         return new Plan(
             id: (string) Str::ulid(),
@@ -82,6 +78,24 @@ final readonly class Planner
             batches: $batches,
             skipped: $skipped,
         );
+    }
+
+    /**
+     * Source characters per batch. The editor sends its units in parallel, so a small entry is still split over them and
+     * its fields fill one after another (T6.11). Reused segments are never batched and do not count.
+     */
+    private function budget(string $profile, array $segments): int
+    {
+        $max = (int) config("tolk.batch.max_chars.{$profile}");
+
+        if ($profile !== 'web') {
+            return $max;
+        }
+
+        $chars = array_sum(array_map(fn (array $segment) => $segment['translation'] === null ? mb_strlen($segment['text']) : 0, $segments));
+        $share = (int) ceil($chars / max(1, (int) config('tolk.concurrency.editor')));
+
+        return min($max, max((int) config('tolk.batch.min_chars'), $share));
     }
 
     /**

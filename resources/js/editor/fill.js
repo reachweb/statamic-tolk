@@ -1,4 +1,4 @@
-import { registry as sharedRegistry, clone, equalValues } from './registry.js';
+import { registry as sharedRegistry, clone, sameText } from './registry.js';
 
 export { clone };
 
@@ -34,6 +34,16 @@ async function settled(since, now, sleep) {
     for (let left = remaining(); left > 0; left = remaining()) {
         await sleep(left);
     }
+}
+
+// Text alone counts: a Bard field that re-emits its value with attributes of its own, or desyncs itself while the
+// form loads, was not edited. A handle the plan values lack counts as edited unless the form lacks it too.
+function editedSince(ctx, planValues, handle) {
+    if (!Object.hasOwn(planValues, handle)) {
+        return ctx.values.value[handle] !== undefined;
+    }
+
+    return !sameText(ctx.values.value[handle], planValues[handle]);
 }
 
 // Whether `restore()` puts a handle back: it holds a fill delivered since the snapshot was taken.
@@ -105,7 +115,7 @@ export async function applyFields(
         }
 
         // The editor typed into the field while the model worked; their text wins.
-        if (!equalValues(ctx.values.value[handle], planValues[handle])) {
+        if (editedSince(ctx, planValues, handle)) {
             result.skipped[handle] = 'edited';
             continue;
         }
@@ -176,7 +186,7 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
             continue;
         }
 
-        if (!equalValues(ctx.values.value[handle], record.value)) {
+        if (!sameText(ctx.values.value[handle], record.value)) {
             result.kept.push(handle);
             continue;
         }

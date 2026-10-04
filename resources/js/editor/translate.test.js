@@ -44,6 +44,9 @@ function deferred() {
 
 const stored = () => ({ title: 'Startseite', intro: 'A family-run hotel.', seo_title: 'Kyma Bay Hotel', slug: 'home' });
 
+// The English origin, whose `intro` and `seo_title` the German page inherits.
+const origin = () => ({ title: 'Home', intro: 'A family-run hotel.', seo_title: 'Kyma Bay Hotel', slug: 'home' });
+
 const field = (status, label) => ({ status, label, source_changed: null, incomplete: false });
 
 const status = (fields = {}) => ({
@@ -61,12 +64,13 @@ const status = (fields = {}) => ({
 });
 
 // The base container of the German home page, attached as the banner attaches it.
-function mount({ reference = 'entry::de', values = stored(), localized = ['title'], fields = {} } = {}) {
+function mount({ reference = 'entry::de', values = stored(), originValues = origin(), localized = ['title'], fields = {} } = {}) {
     const ctx = {
         name: ref('base'),
         reference: ref(reference),
         site: ref('de'),
         values: ref(values),
+        originValues: ref(originValues),
         meta: ref({ title: null, intro: null, seo_title: null, slug: null }),
         localizedFields: ref(localized),
         readOnly: ref(false),
@@ -149,24 +153,45 @@ describe('skipHandles', () => {
         expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual(['intro']);
     });
 
-    it('adds a field localized since the clean values were taken when nothing is stored for it', () => {
+    it('adds an untranslated field whose text differs from the origin\'s, also once the clean values were taken again', () => {
         const ctx = mount();
+        ctx.values.value.seo_title = 'Typed while the form settled';
         ctx.localizedFields.value.push('seo_title');
+        registry.refreshClean('base');
 
+        expect(registry.dirtyHandles('base')).toEqual([]);
         expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual(['seo_title']);
     });
 
-    it('leaves out a newly localized field that has a stored value', () => {
-        const ctx = mount({ localized: [], fields: { intro: field('current', 'Intro') } });
-        ctx.localizedFields.value.push('intro');
+    it('leaves out a field that desynced itself and re-emitted its value without a text change', () => {
+        const paragraph = { type: 'paragraph', content: [{ type: 'text', text: 'Rooms with a view.' }] };
+        const ctx = mount({ values: { ...stored(), content: [paragraph] }, originValues: { ...origin(), content: [paragraph] }, fields: { content: field('untranslated', 'Content') } });
+
+        // Core's inherited Bard field, after the clean values were taken or before: both orders happen.
+        ctx.values.value.content = [{ ...paragraph, attrs: { textAlign: null } }];
+        ctx.localizedFields.value.push('content');
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
+
+        registry.refreshClean('base');
 
         expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
     });
 
-    it('leaves out a field the form localized before the clean values were taken', () => {
+    it('leaves out an untranslated field the CP stored as a copy of the origin', () => {
         const ctx = mount({ localized: ['title', 'intro'] });
 
         expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
+    });
+
+    it('compares a field with a stored value with the clean values only', () => {
+        const ctx = mount({ values: { ...stored(), intro: 'Ein Familienhotel.' }, localized: ['title', 'intro'], fields: { intro: field('current', 'Intro') } });
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
+
+        ctx.values.value.intro = 'Ein kleines Familienhotel.';
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual(['intro']);
     });
 
     it('leaves out a field filled earlier that the editor has not touched, and keeps one they changed', () => {

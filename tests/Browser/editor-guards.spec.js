@@ -32,8 +32,8 @@ test.beforeEach(async ({ page }) => {
 
     await openEntry(page, 'pages', 'home', 'de');
     await expect(action(page, 'translate')).toBeVisible();
-    // The banner takes the form's clean values again 600 ms after it mounted (T5.6); text typed before then counts as
-    // loaded. The status can arrive well inside that window.
+    // The banner takes the form's clean values again 600 ms after it mounted (T5.6); text typed before then into a
+    // field with a stored value counts as loaded. The status can arrive well inside that window.
     await page.waitForTimeout(700);
 });
 

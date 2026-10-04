@@ -281,6 +281,18 @@ describe('planning reuse', function () {
             ->and($plan->batches)->toBe([['id' => 'b1', 'segment_ids' => ['s2'], 'chars' => 25]]);
     });
 
+    it('splits the editor\'s batches by the characters still to translate, without the reused ones', function () {
+        config(['tolk.batch.min_chars' => 1, 'tolk.concurrency.editor' => 2]);
+
+        $plan = reusePlan($this->origin, ['mode' => Mode::Update, 'fields' => ['title', 'blocks'], 'profile' => 'web']);
+
+        expect($plan->fields['blocks']['reused'])->toBe(3)
+            ->and($plan->batches)->toBe([
+                ['id' => 'b1', 'segment_ids' => ['s1'], 'chars' => 5],
+                ['id' => 'b2', 'segment_ids' => ['s3'], 'chars' => 25],
+            ]);
+    });
+
     it('translates every leaf again in mode all', function () {
         $plan = reusePlan($this->origin, ['mode' => Mode::All, 'fields' => ['blocks']]);
 

@@ -42,26 +42,26 @@ final readonly class StateWriter
             return new ConfirmReport;
         }
 
-        $targetHashes = array_map(fn (FieldStatusInfo $field) => $field->targetHash, $this->resolver->resolve($target)->fields);
+        $statuses = $this->resolver->resolve($target)->fields;
         $now = CarbonImmutable::now();
         $report = new ConfirmReport;
 
-        $this->repository->update($ref, function (ItemState $state) use ($targetHashes, $now, &$report) {
+        $this->repository->update($ref, function (ItemState $state) use ($statuses, $now, &$report) {
             $promoted = $baselined = $unresolved = $expired = [];
 
-            foreach ($targetHashes as $handle => $targetHash) {
+            foreach ($statuses as $handle => $status) {
                 $field = $state->field($handle);
 
                 if ($field->pending === []) {
                     continue;
                 }
 
-                $reconciled = $field->reconcile($targetHash, $now);
+                $reconciled = $field->reconcile($status->targetHash, $now, $status->sourceTextHash);
                 $state = $state->withField($handle, $reconciled);
 
-                if ($field->savedPending($targetHash) !== null) {
+                if ($field->savedPending($status->targetHash) !== null) {
                     $promoted[] = $handle;
-                } elseif ($field->editedPending($targetHash) !== null) {
+                } elseif ($field->editedPending($status->targetHash, $status->sourceTextHash) !== null) {
                     $baselined[] = $handle;
                 } else {
                     if (count($reconciled->pending) < count($field->pending)) {
@@ -119,7 +119,7 @@ final readonly class StateWriter
             $count = 0;
 
             foreach ($fields as $handle => $field) {
-                $current = $state->field($handle)->reconcile($field->targetHash, $now);
+                $current = $state->field($handle)->reconcile($field->targetHash, $now, $field->sourceTextHash);
                 $baseline = $current->baselined($field->sourceHash, $field->targetHash);
 
                 // State written since the status was read can mean that the status no longer holds.
@@ -168,13 +168,14 @@ final readonly class StateWriter
     }
 
     /**
-     * A manual field, or with $includeMachine machine output the target holds. A field the target inherits has no text to own.
+     * A manual field, or with $includeMachine machine output or a copy of the source's text the target holds. A field the
+     * target inherits has no text to own.
      */
     private function ownedByHuman(FieldStatusInfo $field, bool $includeMachine): bool
     {
         return $field->targetHash !== null && match ($field->status) {
             FieldStatus::Manual => true,
-            FieldStatus::Current, FieldStatus::Outdated => $includeMachine,
+            FieldStatus::Current, FieldStatus::Outdated, FieldStatus::Untranslated => $includeMachine,
             default => false,
         };
     }

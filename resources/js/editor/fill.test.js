@@ -293,6 +293,30 @@ describe('applyFields', () => {
         expect(result.applied).toEqual(['body']);
     });
 
+    it('fills a field whose value was only re-emitted since the plan was made', async () => {
+        const ctx = container();
+        const planValues = clone(ctx.values.value);
+        // An inherited Bard field desyncs itself and re-emits its value with attributes of its own while the form loads.
+        ctx.values.value.body = [{ ...ctx.values.value.body[0], attrs: { textAlign: null } }];
+
+        const result = await settled(fill(ctx, { body: { value: [], meta: { existing: {} } } }, { planValues }));
+
+        expect(result.applied).toEqual(['body']);
+    });
+
+    it('counts a field missing from the plan values as edited unless the form lacks it too', async () => {
+        const ctx = container();
+        const planValues = clone(ctx.values.value);
+        delete planValues.intro;
+        delete planValues.body;
+        delete ctx.values.value.body;
+
+        const result = await settled(fill(ctx, { intro: translated('Intro'), body: { value: [], meta: { existing: {} } } }, { planValues }));
+
+        expect(result.applied).toEqual(['body']);
+        expect(result.skipped).toEqual({ intro: 'edited' });
+    });
+
     it('marks the field localized and the form dirty itself when desyncField does nothing', async () => {
         const ctx = container();
         ctx.tracking = false;
@@ -506,6 +530,20 @@ describe('restore', () => {
 
         expect(result.restored).toEqual(['body']);
         expect(ctx.localizedFields.value).toEqual([]);
+        // The re-emitted value has the snapshot's text, so nothing is left to save.
+        expect(ctx.values.value.body).toEqual(normalise(stored().body));
+        expect(dirty.has('base')).toBe(false);
+    });
+
+    it('restores a field its fieldtype re-emitted again after the delivery was recorded', async () => {
+        const ctx = attached();
+        const { snap, delivered } = await translate(ctx, { body: { value: [{ type: 'paragraph', content: [{ type: 'text', text: '[de] Body' }] }], meta: { existing: {} } } });
+        ctx.values.value.body = ctx.values.value.body.map((node) => ({ ...node, attrs: { textAlign: null } }));
+
+        const result = await settled(restore(ctx, snap, delivered, { registry }));
+
+        expect(result).toEqual({ restored: ['body'], kept: [] });
+        expect(ctx.values.value.body).toEqual(stored().body);
     });
 
     it('restores nothing after a switch to another item', async () => {

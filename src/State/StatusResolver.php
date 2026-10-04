@@ -57,7 +57,9 @@ final readonly class StatusResolver
         $sourceValue = $target->sourceValue($handle);
         $sourceHash = Fingerprint::of($sourceValue);
         $targetHash = $this->currentTargetHash($target, $field);
-        $state = $stored->reconcile($targetHash, $now);
+        // A second walk, so only where it decides something: an override without a known source, or a reconcile.
+        $sourceTextHash = $targetHash !== null && ($stored->pending !== [] || $stored->sourceHash === null) ? $this->targetHash($field, $sourceValue) : null;
+        $state = $stored->reconcile($targetHash, $now, $sourceTextHash);
 
         // Machine output the target still holds; without an override only a translation identical to its source counts.
         $machine = $targetHash === null ? $state->identical : $targetHash === $state->targetHash;
@@ -68,6 +70,7 @@ final readonly class StatusResolver
             $machine => ! $state->incomplete && $state->sourceHash === $sourceHash ? FieldStatus::Current : FieldStatus::Outdated,
             $targetHash === null => FieldStatus::Untranslated,
             $state->inHistory($targetHash) => FieldStatus::Outdated,
+            $this->isCopy($state, $targetHash, $sourceTextHash) => FieldStatus::Untranslated,
             default => FieldStatus::Manual,
         };
 
@@ -82,6 +85,16 @@ final readonly class StatusResolver
             state: $state,
             sourceHash: $sourceHash,
             targetHash: $targetHash,
+            sourceTextHash: $sourceTextHash,
         );
+    }
+
+    /**
+     * An override nobody vouched for that holds the source's own text, as the CP saves an inherited Bard field that
+     * desynced itself when the form loaded. No human changed its text (D5), so it is untranslated, not manual (T6.11).
+     */
+    private function isCopy(FieldState $state, string $targetHash, ?string $sourceTextHash): bool
+    {
+        return $state->sourceHash === null && $targetHash === $sourceTextHash && $targetHash !== Fingerprint::ofLeaves([]);
     }
 }

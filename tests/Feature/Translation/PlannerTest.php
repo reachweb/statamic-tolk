@@ -341,6 +341,18 @@ describe('the plan', function () {
             ->and($web->batch('b9'))->toBeNull();
     });
 
+    it('splits a small entry over the editor\'s parallel requests', function (array $config, array $batches) {
+        config($config);
+
+        expect(array_column(planTarget($this->origin)->batches, 'segment_ids'))->toBe($batches)
+            ->and(array_column(planTarget($this->origin, ['profile' => 'background'])->batches, 'segment_ids'))->toBe([['s1', 's2', 's3', 's4']]);
+    })->with([
+        'the defaults' => [[], [['s1', 's2', 's3', 's4']]],
+        'the floor' => [['tolk.batch.min_chars' => 30], [['s1', 's2'], ['s3', 's4']]],
+        'a share of each request' => [['tolk.batch.min_chars' => 10, 'tolk.concurrency.editor' => 2], [['s1', 's2'], ['s3'], ['s4']]],
+        'the most per batch' => [['tolk.batch.min_chars' => 30, 'tolk.batch.max_chars.web' => 16], [['s1'], ['s2'], ['s3'], ['s4']]],
+    ]);
+
     it('caps the segments of a batch', function () {
         config(['tolk.batch.max_segments' => 3]);
 
