@@ -196,8 +196,11 @@ final readonly class Pipeline
             $texts[] = $translation;
             $hashes[] = Fingerprint::ofText($segment['text']);
 
-            if (isset($resolved['models'][$id])) {
-                $models[] = $resolved['models'][$id];
+            // A reused translation counts for the model that made it.
+            $model = $resolved['models'][$id] ?? ($segment['translation'] !== null ? $planned['reused_translator'] ?? null : null);
+
+            if ($model !== null) {
+                $models[] = $model;
             }
         }
 

@@ -32,7 +32,7 @@ final readonly class StatusResolver
             $fields[$handle] = $this->field($target, $field, $state?->field($handle) ?? new FieldState, $now);
         }
 
-        return TargetStatus::of($target->exists(), $fields);
+        return TargetStatus::of($target->exists(), $fields, $state?->version ?? ItemState::VERSION);
     }
 
     /**
