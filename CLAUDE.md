@@ -21,7 +21,7 @@ Stack: PHP `^8.3`, Statamic `^6.35` (Pro, multi-site), Laravel `^12.62 || ^13.15
 
 From the addon repo, `/Volumes/1TB/Sites/autotranslator`:
 
-- `vendor/bin/pest`: the default suite (Unit and Feature). Run it after every change to `src/`, `tests/` or `resources/js/`.
+- `vendor/bin/pest`: the default suite (Unit and Feature). Run it after every change to `src/`, `tests/` or `resources/js/`. Run it serially: with `--parallel` the processes share the test site's files and fail.
 - `composer test:live`: the opt-in live tests against real providers (Pest group `live`). Keys come from the environment or a git-ignored `.env.live`; providers without a key are skipped. The provider probe writes its measurements to `build/live-probe/` (git-ignored).
 - SDK contract tests live in `tests/Feature/Sdk/`; build provider HTTP fakes from `tests/Fixtures/providers/` through `tests/Support/ProviderFixtures.php`. If an SDK update breaks them, read `docs/research/07-spike-findings.md` "SDK" before changing code.
 - Tests fake the translation model with `$this->fakeTranslations()` (`[T] ` + text per segment, or a transform) and count calls with `modelCalls()` / `assertNoModelCalls()` (`tests/Support/FakesTranslation.php`). The sandbox's fake engine is `Ai\FakeEngine` (see Sandbox).

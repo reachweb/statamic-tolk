@@ -176,6 +176,55 @@ describe('dirtyHandles', () => {
     });
 });
 
+describe('newlyLocalized', () => {
+    let base;
+
+    beforeEach(() => {
+        base = container('base', stored());
+        base.context.localizedFields.value = ['title'];
+        events.$emit('publish-container-created', base.payload);
+        registry.attachContext('base', base.context);
+    });
+
+    it('lists handles localized since the clean values were taken', () => {
+        expect(registry.newlyLocalized('base')).toEqual([]);
+
+        base.context.localizedFields.value.push('intro');
+
+        expect(registry.newlyLocalized('base')).toEqual(['intro']);
+    });
+
+    it('leaves out a handle the form localized before a refresh', () => {
+        // An inherited Bard field desyncs itself while the form loads, before the second refresh.
+        base.context.localizedFields.value.push('body');
+        registry.refreshClean('base');
+        base.context.localizedFields.value.push('intro');
+
+        expect(registry.newlyLocalized('base')).toEqual(['intro']);
+    });
+
+    it('keeps what it took when the context is attached again', () => {
+        base.context.localizedFields.value.push('intro');
+        registry.attachContext('base', { ...base.context });
+
+        expect(registry.newlyLocalized('base')).toEqual(['intro']);
+    });
+
+    it('takes a copy, not the form\'s list', () => {
+        base.context.localizedFields.value.splice(0, 1, 'intro');
+
+        expect(registry.newlyLocalized('base')).toEqual(['intro']);
+    });
+
+    it('is empty without clean values or a container', () => {
+        const stack = container('relate-fieldtype-inline-1', stored());
+        events.$emit('publish-container-created', stack.payload);
+
+        expect(registry.newlyLocalized('relate-fieldtype-inline-1')).toEqual([]);
+        expect(registry.newlyLocalized('unknown')).toEqual([]);
+    });
+});
+
 describe('containers', () => {
     it('listens once', () => {
         registry.listen(events);

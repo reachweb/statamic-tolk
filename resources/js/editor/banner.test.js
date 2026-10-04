@@ -94,10 +94,12 @@ describe('shouldPush', () => {
 describe('createBanners', () => {
     let events;
     let banners;
+    let abort;
 
     beforeEach(() => {
         events = bus();
-        banners = createBanners();
+        abort = vi.fn();
+        banners = createBanners({ abort });
         banners.listen(events);
     });
 
@@ -128,6 +130,13 @@ describe('createBanners', () => {
         events.$emit('publish-container-created', container().payload);
 
         expect(store.containers.base).toBeUndefined();
+    });
+
+    it('stops a translation still running for the container a new one replaces', () => {
+        events.$emit('publish-container-created', container('base', '').payload);
+        events.$emit('publish-container-created', container('relate-fieldtype-inline-3').payload);
+
+        expect(abort.mock.calls).toEqual([['base'], ['relate-fieldtype-inline-3']]);
     });
 
     it('destroys the banner with its container', () => {
@@ -267,6 +276,22 @@ describe('attachBanner', () => {
         expect(loadStatus).toHaveBeenLastCalledWith('entry::b');
         expect(store.container('base')).toMatchObject({ reference: 'entry::b', lastChangeAt: 9_000, phase: 'idle', status: status('entry::b') });
         expect(registry.dirtyHandles('base')).toEqual([]);
+    });
+
+    it('stops a running translation on a switch, not on a re-mount', async () => {
+        const onSwitch = vi.fn();
+        const first = attach({ onSwitch });
+        await settled();
+        expect(onSwitch).toHaveBeenCalledExactlyOnceWith('base');
+        first.stop();
+
+        attach({ onSwitch });
+        await settled();
+        expect(onSwitch).toHaveBeenCalledOnce();
+
+        base.context.reference.value = 'entry::b';
+        await settled();
+        expect(onSwitch).toHaveBeenCalledTimes(2);
     });
 
     it('drops a status that arrives after the editor switched away', async () => {

@@ -77,6 +77,13 @@ export function entryFile(collection, site, slug) {
     return file ? parseEntry(readFileSync(join(folder, file), 'utf8')) : null;
 }
 
+// The addon's state of an entry localization (`content/tolk/entries/{id}.yaml`, §A5), or null when there is none.
+export function entryState(id) {
+    const file = join(sandboxPath(), 'content/tolk/entries', `${id.toLowerCase()}.yaml`);
+
+    return existsSync(file) ? parse(readFileSync(file, 'utf8')) : null;
+}
+
 function parseEntry(contents) {
     const lines = contents.split(/\r?\n/);
 

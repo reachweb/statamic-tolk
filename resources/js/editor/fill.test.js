@@ -120,6 +120,34 @@ describe('applyFields', () => {
         expect(ctx.calls).toEqual([]);
     });
 
+    it('applies nothing once the translation is no longer active, even on the same item', async () => {
+        const ctx = container();
+        let active = true;
+        const delivered = {};
+        const promise = fill(ctx, { title: translated('Title') }, { lastChangeAt: Date.now(), delivered, active: () => active });
+
+        await vi.advanceTimersByTimeAsync(100);
+        active = false;
+
+        expect(await settled(promise)).toEqual({ stale: true, applied: [], skipped: { title: 'stale' }, repeated: [] });
+        expect(ctx.calls).toEqual([]);
+        expect(delivered).toEqual({});
+    });
+
+    it('drops its records when the translation stops being active during the read-back', async () => {
+        const ctx = container();
+        let active = true;
+        const delivered = {};
+        const promise = fill(ctx, { title: translated('Title') }, { delivered, active: () => active });
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(delivered.title.pending).toBe(true);
+        active = false;
+
+        expect((await settled(promise)).stale).toBe(true);
+        expect(delivered).toEqual({});
+    });
+
     it('waits until 600 ms have passed since the last switch or save', async () => {
         const ctx = container();
         const promise = fill(ctx, { title: translated('Title') }, { lastChangeAt: Date.now() - 200 });
