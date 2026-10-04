@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
@@ -28,6 +29,7 @@ use Reach\StatamicTolk\Http\EditorTranslation;
 use Reach\StatamicTolk\Http\Requests\EditorBaselineRequest;
 use Reach\StatamicTolk\Http\Requests\EditorConfirmRequest;
 use Reach\StatamicTolk\Http\Requests\EditorPlanRequest;
+use Reach\StatamicTolk\Http\Requests\EditorReviewRequest;
 use Reach\StatamicTolk\Http\Requests\EditorStatusRequest;
 use Reach\StatamicTolk\Http\Requests\EditorUnitRequest;
 use Reach\StatamicTolk\State\StateWriter;
@@ -60,6 +62,8 @@ class EditorController extends Controller
                 'fields' => $request->validated('fields') === null ? null : array_values($request->validated('fields')),
                 'skip' => array_fill_keys(array_values($request->validated('skip', [])), EditorTranslation::EDITED_IN_FORM),
                 'translator' => $request->validated('translator'),
+                'review' => $request->validated('review') === null ? null : $request->boolean('review'),
+                'reviewer' => $request->validated('reviewer'),
                 'profile' => 'web',
                 'userId' => (string) $user->id(),
             ]);
@@ -68,6 +72,30 @@ class EditorController extends Controller
         }
 
         return $this->attempt(fn () => $translation->plan($target, $options));
+    }
+
+    /**
+     * Reviews the open form's values (T7.5). The plan's units run through `unit`, as a translation's do.
+     */
+    public function review(EditorReviewRequest $request, EditorTranslation $translation, Settings $settings, ModelCatalog $catalog): JsonResponse
+    {
+        $user = User::current();
+        $target = $this->authorized($this->localization($request->validated('reference')), $user);
+
+        try {
+            // Only mode review keeps a reviewer override while the review setting is off.
+            $options = PlanOptions::fromSettings($settings, $catalog, [
+                'mode' => Mode::Review,
+                'overwriteManual' => $request->boolean('overwrite_manual'),
+                'reviewer' => $request->validated('reviewer'),
+                'profile' => 'web',
+                'userId' => (string) $user->id(),
+            ]);
+        } catch (NoProviderConfigured|MissingDefaultModel $exception) {
+            $this->fail(422, 'no_translator', $exception->getMessage());
+        }
+
+        return $this->attempt(fn () => $translation->review($target, $options, $request->validated('values')));
     }
 
     public function unit(EditorUnitRequest $request, EditorTranslation $translation, PlanStore $store): JsonResponse

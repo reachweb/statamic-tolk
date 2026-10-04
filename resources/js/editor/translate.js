@@ -37,9 +37,23 @@ export function skipHandles(ctx, status, { name, registry, delivered = {} }) {
     return [...handles].filter((handle) => Object.hasOwn(inScope, handle) && !untouchedFill(ctx, delivered[handle], handle));
 }
 
-// The planned handles a stopped translation did not fill and did not skip.
+// The handles a review sends: the fields in scope that the form holds a value of its own for.
+export function reviewHandles(ctx, status) {
+    const inScope = asMap(status?.localization?.fields);
+
+    return ctx.localizedFields.value.filter((handle) => Object.hasOwn(inScope, handle));
+}
+
+// Review has work while the form holds machine output: fields stored up to date, or fields filled since the last save.
+export function reviewable(container) {
+    const filled = Object.values(container?.delivered ?? {}).some((record) => !record.pending && !record.sync);
+
+    return filled || (container?.status?.localization?.counts?.current ?? 0) > 0;
+}
+
+// The planned handles a stopped translation did not fill and did not skip, and a stopped review did not review.
 export function remainingHandles(summary) {
-    const finished = new Set([...(summary?.delivered ?? []), ...Object.keys(summary?.skipped ?? {})]);
+    const finished = new Set([...(summary?.delivered ?? []), ...Object.keys(summary?.skipped ?? {}), ...(summary?.unchanged ?? [])]);
 
     return (summary?.planned ?? []).filter((handle) => !finished.has(handle));
 }
@@ -84,6 +98,29 @@ function editedInForm(skipped) {
 // The plan's other reasons (`manual`, `current`, `not_requested`, …), for the summary's line about hand-written text.
 function otherPlanSkips(skipped) {
     return Object.fromEntries(planSkips(skipped).filter(([, reason]) => reason !== EDITED_IN_FORM));
+}
+
+function planBody(request, { reference, skip }) {
+    return {
+        reference,
+        mode: request.mode,
+        overwrite_manual: request.overwriteManual,
+        fields: request.fields,
+        skip,
+        translator: request.translator,
+        review: request.review,
+        reviewer: request.reviewer,
+    };
+}
+
+// A review sends the form's values of the fields to review, as they are while it starts.
+function reviewBody(request, { reference, handles, values }) {
+    return {
+        reference,
+        values: Object.fromEntries(handles.map((handle) => [handle, values[handle]])),
+        overwrite_manual: request.overwriteManual,
+        reviewer: request.reviewer,
+    };
 }
 
 // Retry and Start again continue a translation, so Undo puts back what the form held before the first of them.
@@ -148,7 +185,8 @@ export function createTranslations({
         container.progress = { ...container.progress, cancelling: true };
     }
 
-    async function translate(name, { mode = 'missing', fields = null, overwriteManual = false, translator = null } = {}, { continuing = false } = {}) {
+    // A translation (`editor/plan`) or a review of the form's values (`editor/review`), filled into the form the same way.
+    async function start(name, request, { continuing = false } = {}) {
         const editor = store();
         const ctx = registry.context(name);
         const container = editor.container(name);
@@ -165,9 +203,13 @@ export function createTranslations({
 
         const lastChangeAt = () => editor.containers[name]?.lastChangeAt ?? 0;
         const originSlug = slugToKeep(container);
-        const snap = snapshot(ctx, fields ?? Object.keys(ctx.values.value), container.delivered);
+        const reviewing = request.kind === 'review';
+        const handles = reviewing ? (request.fields ?? reviewHandles(ctx, container.status)) : request.fields;
+        const snap = snapshot(ctx, handles ?? Object.keys(ctx.values.value), container.delivered);
         const planValues = clone(ctx.values.value);
-        const skip = skipHandles(ctx, container.status, { name, registry, delivered: container.delivered });
+        const [path, body] = reviewing
+            ? ['editor/review', reviewBody(request, { reference, handles, values: planValues })]
+            : ['editor/plan', planBody(request, { reference, skip: skipHandles(ctx, container.status, { name, registry, delivered: container.delivered }) })];
 
         if (continuing) {
             carryOver(snap, container);
@@ -175,7 +217,7 @@ export function createTranslations({
 
         runs.set(name, { token, controller });
         Object.assign(container, {
-            request: { mode, fields, overwriteManual, translator },
+            request,
             snapshot: snap,
             summary: null,
             notSaved: [],
@@ -191,7 +233,7 @@ export function createTranslations({
         keeping?.catch(() => {});
 
         try {
-            const plan = await api.post('editor/plan', { reference, mode, overwrite_manual: overwriteManual, fields, skip, translator });
+            const plan = await api.post(path, body);
 
             if (!current()) {
                 return null;
@@ -242,6 +284,8 @@ export function createTranslations({
 
             const result = {
                 ...summary,
+                kind: request.kind,
+                reviewer: plan.reviewer ?? null,
                 plan: plan.plan,
                 planned: Array.isArray(plan.fields) ? plan.fields : [],
                 skipped: { ...editedInForm(plan.skipped), ...summary.skipped },
@@ -267,6 +311,16 @@ export function createTranslations({
         }
     }
 
+    // `review` and `reviewer` null follow the review setting, as the banner's buttons do.
+    function translate(name, { mode = 'missing', fields = null, overwriteManual = false, translator = null, review = null, reviewer = null } = {}) {
+        return start(name, { kind: 'translate', mode, fields, overwriteManual, translator, review, reviewer });
+    }
+
+    // Reviews the form's machine output (T7.5); with `overwriteManual` its manual fields too, which stay manual.
+    function review(name, { fields = null, overwriteManual = false, reviewer = null } = {}) {
+        return start(name, { kind: 'review', fields, overwriteManual, reviewer });
+    }
+
     // Retry and Start again: the same request, limited to the fields not filled yet once part of it ran.
     function retry(name) {
         const container = store().containers[name];
@@ -283,7 +337,7 @@ export function createTranslations({
             return null;
         }
 
-        return translate(name, { ...container.request, fields }, { continuing: true });
+        return start(name, { ...container.request, fields }, { continuing: true });
     }
 
     async function undo(name) {
@@ -312,6 +366,7 @@ export function createTranslations({
 
     return {
         translate,
+        review,
         retry,
         cancel,
         abort,

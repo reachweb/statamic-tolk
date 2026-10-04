@@ -166,6 +166,7 @@ final readonly class EditorStatus
                 'translator' => $this->translator(),
                 'providers_configured' => $this->providers->configured() !== [],
                 'fake_engine' => FakeEngine::enabled(),
+                'review' => $this->settings->reviewEnabled(),
             ],
             'offer' => $this->settings->offerOnCreate(),
         ];

@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Badge, Button, Card, Description, Icon, Text, injectPublishContext } from '@statamic/cms/ui';
+import ChangesModal from './ChangesModal.vue';
 import ProgressBar from './ProgressBar.vue';
 import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
@@ -8,7 +9,7 @@ import { attachBanner } from '../editor/banner.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary } from '../editor/statuses.js';
 import { useEditorStore } from '../editor/store.js';
-import { keptMessage, RESTART, translations, undoable } from '../editor/translate.js';
+import { keptMessage, RESTART, reviewable, translations, undoable } from '../editor/translate.js';
 
 const props = defineProps({
     containerName: { type: String, required: true },
@@ -29,8 +30,17 @@ const canUndo = computed(() => undoable(state.value));
 const restart = computed(() => RESTART.includes(state.value?.error?.code));
 const notSaved = computed(() => (state.value?.notSaved?.length ? notSavedMessage(state.value.notSaved, state.value.status) : null));
 // The options are there whenever a model is: "Retranslate everything" and the state actions also have work on an entry that
-// is up to date.
-const actions = computed(() => phase.value === 'idle' && Boolean(banner.value.localization) && !banner.value.setup);
+// is up to date. After a translation the counts are those of the stored entry until Save, so only Review and the options
+// stay, for a review of the filled form with the same reviewer or another one (D8).
+const actions = computed(() => ['idle', 'done'].includes(phase.value) && Boolean(banner.value.localization) && !banner.value.setup);
+const canReview = computed(() => reviewable(state.value));
+const showingChanges = ref(false);
+
+// The list belongs to one result: a new translation or review closes it.
+watch(
+    () => state.value?.summary,
+    () => (showingChanges.value = false),
+);
 const shown = computed(() => !ctx.readOnly.value && (banner.value.visible || failure.value !== null));
 const settingsUrl = Statamic.$config.get('tolk.settingsUrl');
 
@@ -82,11 +92,16 @@ async function undo() {
                 <Description v-if="banner.localization.hint">{{ banner.localization.hint }}</Description>
 
                 <div v-if="actions" class="flex flex-wrap gap-2 pt-1" data-tolk-actions>
-                    <Button v-if="banner.localization.translate" variant="primary" size="sm" data-tolk-action="translate" @click="translate('missing')">
-                        {{ __('Translate') }}
-                    </Button>
-                    <Button v-if="banner.localization.update" size="sm" data-tolk-action="update" @click="translate('update')">
-                        {{ __('Update') }}
+                    <template v-if="phase === 'idle'">
+                        <Button v-if="banner.localization.translate" variant="primary" size="sm" data-tolk-action="translate" @click="translate('missing')">
+                            {{ __('Translate') }}
+                        </Button>
+                        <Button v-if="banner.localization.update" size="sm" data-tolk-action="update" @click="translate('update')">
+                            {{ __('Update') }}
+                        </Button>
+                    </template>
+                    <Button v-if="canReview" size="sm" data-tolk-action="review" @click="translations.review(name)">
+                        {{ __('Review') }}
                     </Button>
                     <TranslateOptions :container-name="name" :status="state.status" />
                 </div>
@@ -99,12 +114,17 @@ async function undo() {
             <div v-if="phase === 'working'" class="space-y-2" data-tolk-phase="working">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <Text v-if="state.progress.cancelling">{{ __('Cancelling. Fields already on their way are still filled in.') }}</Text>
+                    <Text v-else-if="state.request?.kind === 'review'">{{ __('Reviewing the translation…') }}</Text>
                     <Text v-else>{{ __('Translating into :site…', { site: banner.localization?.target?.name ?? '' }) }}</Text>
                     <Button size="sm" variant="ghost" :disabled="state.progress.cancelling" data-tolk-action="cancel" @click="translations.cancel(name)">
                         {{ __('Cancel') }}
                     </Button>
                 </div>
-                <ProgressBar :value="state.progress.done" :max="state.progress.total" :label="__('Translation progress')" />
+                <ProgressBar
+                    :value="state.progress.done"
+                    :max="state.progress.total"
+                    :label="state.request?.kind === 'review' ? __('Review progress') : __('Translation progress')"
+                />
                 <Description v-if="state.progress.waiting">{{ __('The provider asked to wait. Trying again shortly.') }}</Description>
             </div>
 
@@ -116,7 +136,14 @@ async function undo() {
             </div>
 
             <div v-if="summary && (phase === 'done' || phase === 'error')" class="space-y-1" data-tolk-summary>
-                <Text data-tolk-summary-translated>{{ summary.translated }}</Text>
+                <Text v-if="summary.translated" data-tolk-summary-translated>{{ summary.translated }}</Text>
+                <div v-if="summary.reviewed" class="flex flex-wrap items-center gap-2">
+                    <Text data-tolk-summary-reviewed>{{ summary.reviewed }}</Text>
+                    <Button v-if="summary.corrections" size="sm" variant="ghost" data-tolk-action="view-changes" @click="showingChanges = true">
+                        {{ __('View changes') }}
+                    </Button>
+                </div>
+                <Description v-if="summary.reviewSkipped" data-tolk-summary-review-skipped>{{ summary.reviewSkipped }}</Description>
                 <Description v-if="summary.cancelled">{{ summary.cancelled }}</Description>
                 <Description v-if="summary.incomplete" data-tolk-summary-incomplete>{{ summary.incomplete }}</Description>
                 <Description v-if="summary.edited" data-tolk-summary-edited>{{ summary.edited }}</Description>
@@ -160,6 +187,12 @@ async function undo() {
             </div>
 
             <TranslateOffer v-if="banner.localization" :container-name="name" :status="state.status" :open="phase === 'offer'" />
+            <ChangesModal
+                v-if="summary?.corrections"
+                v-model:open="showingChanges"
+                :corrections="state.summary.corrections"
+                :reviewer="state.summary.reviewer"
+            />
 
             <Description v-if="banner.setup" data-tolk-setup>
                 {{ __('Translation is not set up yet.') }}

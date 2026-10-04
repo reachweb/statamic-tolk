@@ -220,17 +220,18 @@ describe('access', function () {
 });
 
 describe('defaults', function () {
-    it('names the translator and the offer setting', function () {
+    it('names the translator and the offer and review settings', function () {
         $this->signInAdmin();
 
         editorStatus($this->origin)
-            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => true, 'fake_engine' => false])
+            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => true, 'fake_engine' => false, 'review' => false])
             ->assertJsonPath('offer', true);
 
-        $this->withSettings(['offer_on_create' => false, 'translator_model' => 'gemini:gemini-3.8-flash']);
+        $this->withSettings(['offer_on_create' => false, 'translator_model' => 'gemini:gemini-3.8-flash', 'review_enabled' => true]);
 
         editorStatus($this->origin)
             ->assertJsonPath('defaults.translator', 'gemini:gemini-3.8-flash')
+            ->assertJsonPath('defaults.review', true)
             ->assertJsonPath('offer', false);
     });
 
@@ -239,17 +240,17 @@ describe('defaults', function () {
         $this->withProviderKeys();
 
         editorStatus($this->origin)
-            ->assertJsonPath('defaults', ['translator' => null, 'providers_configured' => false, 'fake_engine' => false]);
+            ->assertJsonPath('defaults', ['translator' => null, 'providers_configured' => false, 'fake_engine' => false, 'review' => false]);
 
         config(['tolk.fake_engine' => true]);
 
         editorStatus($this->origin)
-            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => false, 'fake_engine' => true]);
+            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => false, 'fake_engine' => true, 'review' => false]);
     });
 
     it('comes with a payload that is not translatable too', function () {
         $this->signInAdmin();
 
-        editorStatus('entry::missing')->assertJsonStructure(['translatable', 'reason', 'localization', 'origin', 'defaults' => ['translator', 'providers_configured', 'fake_engine'], 'offer']);
+        editorStatus('entry::missing')->assertJsonStructure(['translatable', 'reason', 'localization', 'origin', 'defaults' => ['translator', 'providers_configured', 'fake_engine', 'review'], 'offer']);
     });
 });

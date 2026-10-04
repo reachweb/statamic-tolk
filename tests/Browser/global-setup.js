@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { chromium, request } from '@playwright/test';
 import { cpUrl, tinker } from './support/sandbox.js';
@@ -118,8 +118,19 @@ async function fillLoginField(input, value) {
     throw new Error(`The login form's ${await input.getAttribute('name')} field does not keep its value.`);
 }
 
+// A session cookie expires a fixed time after the login (the sandbox's session lifetime), so one that runs out during
+// a run of the suite logs the scenarios after it out.
+const MIN_REMAINING_SECONDS = 30 * 60;
+
 async function stillLoggedIn(file) {
     if (!existsSync(file)) {
+        return false;
+    }
+
+    const { cookies = [] } = JSON.parse(readFileSync(file, 'utf8'));
+    const expiresSoon = cookies.some((cookie) => cookie.expires > 0 && cookie.expires - Date.now() / 1000 < MIN_REMAINING_SECONDS);
+
+    if (expiresSoon) {
         return false;
     }
 

@@ -184,15 +184,17 @@ describe('unit', function () {
 
         expect($response->json())->toBe([
             'fields' => [
-                'title' => ['value' => '[T] Hello', 'meta' => null, 'incomplete' => false, 'warnings' => []],
-                'intro' => ['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => []],
-                'subtitle' => ['value' => '[T] All about it', 'meta' => null, 'incomplete' => false, 'warnings' => []],
+                'title' => ['value' => '[T] Hello', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null],
+                'intro' => ['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null],
+                'subtitle' => ['value' => '[T] All about it', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null],
             ],
+            'unchanged' => [],
             'spawned' => [],
             'failed' => [],
             'warnings' => [],
             'usage' => ['anthropic:claude-sonnet-5-5' => $response->json('usage.anthropic:claude-sonnet-5-5')],
             'remaining' => 0,
+            'review_skipped' => false,
         ])
             ->and($response->json('usage.anthropic:claude-sonnet-5-5.calls'))->toBe(1)
             ->and(Entry::find($this->greek->id())->data()->all())->toBe($before)
@@ -213,7 +215,7 @@ describe('unit', function () {
 
         $repair = editorUnit($plan, 'b1~s2')->assertOk();
 
-        expect($repair->json('fields'))->toBe(['intro' => ['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => []]])
+        expect($repair->json('fields'))->toBe(['intro' => ['value' => '[T] A short intro.', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null]])
             ->and($repair->json('spawned'))->toBe([])
             ->and($repair->json('remaining'))->toBe(0);
     });
@@ -272,7 +274,7 @@ describe('unit', function () {
 
         expect(array_keys($first->json('fields')))->toBe(['title'])
             ->and($first->json('spawned'))->toBe([['id' => 'b1?', 'fields' => ['intro', 'subtitle'], 'chars' => 26]])
-            ->and($retry->json('fields'))->toBe(['subtitle' => ['value' => '[T] All about it', 'meta' => null, 'incomplete' => false, 'warnings' => []]])
+            ->and($retry->json('fields'))->toBe(['subtitle' => ['value' => '[T] All about it', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null]])
             ->and($retry->json('failed'))->toBe(['intro' => 'missing'])
             ->and($retry->json('warnings'))->toBe(['The field [intro] could not be translated completely: s2 (missing).'])
             ->and(greekState('intro')->pending)->toBe([])

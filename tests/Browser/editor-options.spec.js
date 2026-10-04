@@ -35,7 +35,8 @@ async function quickSave(page) {
 const checkbox = (page, name) => dialog(page).getByRole('checkbox', { name });
 // Core's checkbox label covers its box, so the label takes the click.
 const toggle = (page, name) => dialog(page).locator('label', { hasText: name }).click();
-const modelSelect = (page) => dialog(page).getByRole('combobox');
+// The translator's select comes before the reviewer's (T7.5).
+const modelSelect = (page) => dialog(page).getByRole('combobox').first();
 
 const preference = (page, key) => page.evaluate((key) => Statamic.$preferences.get(key, null), key);
 

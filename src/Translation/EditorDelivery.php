@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Translation;
 
 use LogicException;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\StateWriter;
@@ -24,10 +25,11 @@ final readonly class EditorDelivery
 
     /**
      * A field whose override is removed comes back with `sync` and the value and meta it inherits, so the form can put
-     * it back to "inherited".
+     * it back to "inherited". A review delivers only the fields it corrected, as a server-side review saves only those
+     * (T7.4); the others come back `unchanged`, with their warnings, and get no pending entry.
      *
      * @param  list<string>  $handles
-     * @return array<string, array{value: mixed, meta: mixed, incomplete: bool, warnings: list<string>}|array{value: mixed, meta: mixed, sync: true}>
+     * @return array<string, array{value: mixed, meta: mixed, incomplete: bool, warnings: list<string>, corrections: list<array>, reviewer: ?string}|array{value: mixed, meta: mixed, sync: true}|array{unchanged: true, warnings: list<string>}>
      *
      * @throws SourceChanged when a source value is not the one that was planned
      * @throws FieldFailed when a part failed for good and the plan is strict
@@ -41,8 +43,11 @@ final readonly class EditorDelivery
             $assembled[$handle] = $this->pipeline->assemble($plan, $target, $handle);
         }
 
+        $unchanged = $plan->kind === UnitKind::Review ? array_filter($assembled, fn (AssembledField $field) => $field->corrections === []) : [];
         $removed = array_filter($assembled, fn (AssembledField $field) => $field->remove);
-        $delivered = $this->translated($ref, $target, array_diff_key($assembled, $removed)) + $this->inherited($target, $removed);
+        $delivered = $this->translated($plan, $ref, $target, array_diff_key($assembled, $removed, $unchanged))
+            + $this->inherited($target, $removed)
+            + array_map(fn (AssembledField $field) => ['unchanged' => true, 'warnings' => $field->warnings], $unchanged);
 
         return array_replace(array_fill_keys(array_keys($assembled), null), $delivered);
     }
@@ -50,7 +55,7 @@ final readonly class EditorDelivery
     /**
      * @param  array<string, AssembledField>  $fields
      */
-    private function translated(TargetRef $ref, Target $target, array $fields): array
+    private function translated(Plan $plan, TargetRef $ref, Target $target, array $fields): array
     {
         if ($fields === []) {
             return [];
@@ -74,6 +79,14 @@ final readonly class EditorDelivery
                 'meta' => $meta[$handle],
                 'incomplete' => $field->incomplete,
                 'warnings' => $field->warnings,
+                'corrections' => array_map(fn (array $correction) => [
+                    'id' => $correction['id'],
+                    'label' => $plan->segments[$correction['id']]['label'],
+                    'before' => $correction['before'],
+                    'after' => $correction['after'],
+                    'reason' => $correction['reason'],
+                ], $field->corrections),
+                'reviewer' => $field->reviewer,
             ];
         }
 
