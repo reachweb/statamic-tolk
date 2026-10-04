@@ -1,0 +1,17 @@
+[
+    {
+        "path": [
+            "bard_inline"
+        ],
+        "label": "Tagline",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Rooms <1>by the sea</1> in <2>Chania</2><br/><3>since 1987</3>",
+        "placeholders": {
+            "1": "[{\"type\":\"italic\"}]",
+            "2": "[{\"attrs\":{\"href\":\"statamic://entry::7fa871f4-da60-46fe-9053-a94e5eb8e212\"},\"type\":\"link\"}]",
+            "3": "[{\"type\":\"bold\"}]"
+        }
+    }
+]

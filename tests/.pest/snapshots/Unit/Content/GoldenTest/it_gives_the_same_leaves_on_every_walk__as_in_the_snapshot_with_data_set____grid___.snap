@@ -1,0 +1,67 @@
+[
+    {
+        "path": [
+            "grid",
+            0,
+            "name"
+        ],
+        "label": "Rooms › Name",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Garden double",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "grid",
+            0,
+            "description"
+        ],
+        "label": "Rooms › Description",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "A quiet room on the ground floor, with a door to the garden.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "grid",
+            1,
+            "name"
+        ],
+        "label": "Rooms › Name",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Sea view suite",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "grid",
+            1,
+            "description"
+        ],
+        "label": "Rooms › Description",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Two rooms and a balcony over the harbour.\nThe sofa turns into a bed for one child.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "grid",
+            2,
+            "name"
+        ],
+        "label": "Rooms › Name",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Honeymoon suite",
+        "placeholders": []
+    }
+]

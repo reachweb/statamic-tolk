@@ -1,0 +1,241 @@
+[
+    {
+        "path": [
+            "replicator_nested",
+            "kicker"
+        ],
+        "label": "Page builder › Kicker",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Summer 2026",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            0,
+            "heading"
+        ],
+        "label": "Page builder › Blocks › Text › Heading",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Special offers",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            0,
+            "label"
+        ],
+        "label": "Page builder › Blocks › Text › Link label",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Read more",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            0,
+            "body"
+        ],
+        "label": "Page builder › Blocks › Text › Body",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Stay <1>seven nights</1> and the seventh is on us. See the <2>rooms</2>.",
+        "placeholders": {
+            "1": "[{\"type\":\"bold\"}]",
+            "2": "[{\"attrs\":{\"href\":\"statamic://entry::7fa871f4-da60-46fe-9053-a94e5eb8e212\"},\"type\":\"link\"}]"
+        }
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            0,
+            "body"
+        ],
+        "label": "Page builder › Blocks › Text › Body",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Valid from April to June.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            1,
+            "heading"
+        ],
+        "label": "Page builder › Blocks › Text › Heading",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Breakfast like a local",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            1,
+            "body"
+        ],
+        "label": "Page builder › Blocks › Text › Body",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Start with <1>bougatsa</1>, a warm pastry filled with sweet cheese.",
+        "placeholders": {
+            "1": "[{\"type\":\"italic\"}]"
+        }
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            1,
+            "anchor"
+        ],
+        "label": "Page builder › Blocks › Text › Anchor",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "breakfast",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            2,
+            "items",
+            0,
+            "question"
+        ],
+        "label": "Page builder › Blocks › FAQ › Questions › Question",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Is the tap water safe to drink?",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            2,
+            "items",
+            0,
+            "answer"
+        ],
+        "label": "Page builder › Blocks › FAQ › Questions › Answer",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Yes, although most restaurants serve bottled water.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            2,
+            "items",
+            1,
+            "question"
+        ],
+        "label": "Page builder › Blocks › FAQ › Questions › Question",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Do I need to tip?",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            2,
+            "items",
+            1,
+            "answer"
+        ],
+        "label": "Page builder › Blocks › FAQ › Questions › Answer",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Service is included, but leaving 5–10% for good service is common.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            2,
+            "items",
+            2,
+            "question"
+        ],
+        "label": "Page builder › Blocks › FAQ › Questions › Question",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "When do restaurants open for dinner?",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            2,
+            "items",
+            2,
+            "answer"
+        ],
+        "label": "Page builder › Blocks › FAQ › Questions › Answer",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Most open around 19:00, but Cretans rarely eat before 21:00.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            3,
+            "cta_label"
+        ],
+        "label": "Page builder › Blocks › Call to action › Label",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Book your stay",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "replicator_nested",
+            "blocks",
+            4,
+            "text"
+        ],
+        "label": "Page builder › Blocks › Note › Text",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Prices include breakfast and the city tax.",
+        "placeholders": []
+    }
+]

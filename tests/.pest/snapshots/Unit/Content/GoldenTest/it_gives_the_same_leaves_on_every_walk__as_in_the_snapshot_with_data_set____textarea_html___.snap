@@ -1,0 +1,21 @@
+[
+    {
+        "path": [
+            "textarea_html"
+        ],
+        "label": "Intro",
+        "kind": "html",
+        "hint": null,
+        "max_length": null,
+        "text": "<1>Our <2>spa</2> opens at <3>9:00</3> every day.</1>\n<4>Book a treatment at <5>the front desk</5>.<x1/>Kids &lt; 12 swim free.</4>\n<x2/>",
+        "placeholders": {
+            "1": "<p>",
+            "2": "<strong>",
+            "3": "<em>",
+            "4": "<p>",
+            "5": "<a href=\"/spa\" title=\"Spa bookings\">",
+            "x1": "<br>",
+            "x2": "<!-- Opening hours checked in March 2026 -->"
+        }
+    }
+]

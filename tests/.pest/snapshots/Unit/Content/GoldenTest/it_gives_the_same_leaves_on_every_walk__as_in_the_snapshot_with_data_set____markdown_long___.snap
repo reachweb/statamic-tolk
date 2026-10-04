@@ -1,0 +1,196 @@
+[
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "# Hiking the Samaria Gorge",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "The Samaria Gorge is **16 kilometres** long and runs from the Omalos plateau down to the *Libyan Sea* at Agia Roumeli. Most people walk it in five to seven hours.<x1/>\nBring water, a hat and good shoes.",
+        "placeholders": {
+            "x1": "  "
+        }
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "## Before you go",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "The gorge is open from **1 May** to **31 October**, weather permitting. Check the [national park](<x1/> \"Samaria National Park\") on the morning of your walk, or ask at [the front desk](<x2/>).",
+        "placeholders": {
+            "x1": "https://www.samaria.gr/",
+            "x2": "statamic://entry::51c8a58f-8a3d-47fa-90cc-91f543aa618f"
+        }
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "1. Book the early bus to Omalos.\n2. Buy your ticket at the entrance (€10, cash only).\n3. Walk down, never up:\n   - the path drops 1,250 metres;\n   - the last boat from Agia Roumeli leaves at 17:30.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "> Start early. The first two hours are in the shade, and the narrow *Sideroportes* gate is quiet before ten.\n>\n> — Katerina, who has walked it forty times",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "![The Iron Gates of the gorge](<x1/> \"Sideroportes, the narrowest point\")",
+        "placeholders": {
+            "x1": "statamic://asset::assets::samaria-gates.jpg"
+        }
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "## What to pack",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "| Item | Why |\n| --- | --- |\n| Water | There are springs, but carry 1.5 l |\n| Shoes | The riverbed is **loose stone** |\n| Cash | For the boat and the taverna |",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "Our packing list, ready for your notes app:",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "Use the code <x1/> for the hotel's packed lunch, or see the [lunch menu]<x2/>.",
+        "placeholders": {
+            "x1": "`SAMARIA26`",
+            "x2": "[menu]"
+        }
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "<1>\nClosed on days of high wind: <2>call before you leave</2>.\n</1>",
+        "placeholders": {
+            "1": "<div class=\"notice\">",
+            "2": "<strong>"
+        }
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "## After the walk",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "The boat from Agia Roumeli stops in Sougia and Chora Sfakion, where the bus back to Chania waits for it. You will be home in time for dinner; the kitchen keeps a table for walkers until 22:30.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "If your knees disagree, the spa has a *sports massage* for exactly this day. Call <x1/> to book it.",
+        "placeholders": {
+            "x1": "{{ site_settings:phone }}"
+        }
+    },
+    {
+        "path": [
+            "markdown_long"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "Questions? Write to <x1/> or visit <x2/>.",
+        "placeholders": {
+            "x1": "<info@kyma-bay.example>",
+            "x2": "<https://www.kyma-bay.example/contact>"
+        }
+    }
+]

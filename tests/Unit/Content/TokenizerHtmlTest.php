@@ -278,3 +278,27 @@ it('cuts only at the top level, and never inside a comment, script or Antlers ta
     'no blocks' => ['Rooms <b>by</b> the sea', ['Rooms <b>by</b> the sea']],
     'empty' => ['', []],
 ]);
+
+it('unwraps HTML that is exactly one block element', function (string $html, ?array $parts) {
+    expect(Tokenizer::unwrapBlock($html))->toBe($parts);
+
+    if ($parts !== null) {
+        expect(implode('', $parts))->toBe($html);
+    }
+})->with([
+    'a paragraph' => ['<p style="text-align: center;">One <b>two</b></p>', ['<p style="text-align: center;">', 'One <b>two</b>', '</p>']],
+    'a list, whitespace inside kept' => ["<ul>\n<li>One</li>\n</ul>", ['<ul>', "\n<li>One</li>\n", '</ul>']],
+    'an empty paragraph' => ['<p></p>', ['<p>', '', '</p>']],
+    'an attribute holding a tag' => ['<p title="a <p> b">One</p>', ['<p title="a <p> b">', 'One', '</p>']],
+    'antlers in the opening tag' => ['<h2 id="{{ slug }}">Spa</h2>', ['<h2 id="{{ slug }}">', 'Spa', '</h2>']],
+    'two blocks' => ['<p>One</p><p>Two</p>', null],
+    'text before' => ['Loose <p>One</p>', null],
+    'text after' => ['<p>One</p> loose', null],
+    'whitespace around' => [' <p>One</p>', null],
+    'an element that is not a block' => ['<span>One</span>', null],
+    'a pre element' => ['<pre>a</pre>', null],
+    'a void element first' => ['<hr><p>One</p>', null],
+    'an unclosed block' => ['<p>One<p>Two</p>', null],
+    'text' => ['One', null],
+    'empty' => ['', null],
+]);

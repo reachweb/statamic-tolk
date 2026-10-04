@@ -1,0 +1,41 @@
+[
+    {
+        "path": [
+            "array_expanded",
+            0,
+            "value"
+        ],
+        "label": "Opening hours › check-in",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "From 15:00",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_expanded",
+            1,
+            "value"
+        ],
+        "label": "Opening hours › check.out",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Until 11:00",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_expanded",
+            2,
+            "value"
+        ],
+        "label": "Opening hours › parking",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Free for guests",
+        "placeholders": []
+    }
+]

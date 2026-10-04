@@ -1,0 +1,50 @@
+[
+    {
+        "path": [
+            "array_dynamic",
+            "check-in"
+        ],
+        "label": "Facts › check-in",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "From 15:00",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_dynamic",
+            "check.out"
+        ],
+        "label": "Facts › check.out",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Until 11:00",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_dynamic",
+            "wifi"
+        ],
+        "label": "Facts › wifi",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Free in every room",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "array_dynamic",
+            "Pets"
+        ],
+        "label": "Facts › Pets",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Welcome in the garden rooms",
+        "placeholders": []
+    }
+]

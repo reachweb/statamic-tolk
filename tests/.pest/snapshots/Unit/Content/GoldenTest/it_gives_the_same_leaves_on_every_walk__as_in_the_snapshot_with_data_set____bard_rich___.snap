@@ -1,0 +1,335 @@
+[
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Welcome to Kyma Bay",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Since 1987 the Markakis family has welcomed guests to the <1>old harbour</1> of Chania. Breakfast is served until <2>eleven o'clock</2>, <3>always</3> with bread from the oven next door.",
+        "placeholders": {
+            "1": "[{\"type\":\"bold\"}]",
+            "2": "[{\"type\":\"italic\"}]",
+            "3": "[{\"type\":\"bold\"},{\"type\":\"italic\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "plain",
+        "hint": "link title",
+        "max_length": null,
+        "text": "Ferry timetable of the port authority",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Browse our <1>rooms and suites</1>, check the <2>ferry timetable</2> or download the <3>price list</3>.",
+        "placeholders": {
+            "1": "[{\"attrs\":{\"href\":\"statamic://entry::7fa871f4-da60-46fe-9053-a94e5eb8e212\"},\"type\":\"link\"}]",
+            "2": "[{\"attrs\":{\"href\":\"https://www.chania-port.example/ferries\",\"rel\":\"noopener noreferrer\",\"target\":\"_blank\"},\"type\":\"link\"}]",
+            "3": "[{\"type\":\"bold\"},{\"attrs\":{\"href\":\"statamic://asset::assets::price-list.pdf\",\"target\":\"_blank\"},\"type\":\"link\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Kyma Bay Hotel<br/>Akti Koundourioti 12, Chania<br/>Wi-Fi password: <x1/> (kids &lt; 12 &amp; pets stay free)",
+        "placeholders": {
+            "x1": "{\"marks\":[{\"type\":\"code\"}],\"text\":\"kyma-guest-2026\",\"type\":\"text\"}"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Look for this sign at the harbour: <x1/>",
+        "placeholders": {
+            "x1": "{\"attrs\":{\"src\":\"asset::assets::sign.png\"},\"type\":\"image\"}"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "plain",
+        "hint": "image alt text",
+        "max_length": null,
+        "text": "A blue wave on a white sign",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "plain",
+        "hint": "image alt text",
+        "max_length": null,
+        "text": "The saltwater pool and sun terrace, with the harbour lighthouse in the background",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich",
+            6,
+            "attrs",
+            "values",
+            "text"
+        ],
+        "label": "Content › Quote › Text",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "We came for a week and stayed for three. The staff remembered our names from the first morning.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich",
+            6,
+            "attrs",
+            "values",
+            "author"
+        ],
+        "label": "Content › Quote › Author",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Hannah, guest from Hamburg",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Good to know",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Check-in from 15:00, check-out until 11:00",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Getting here from the airport:",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Take the airport bus to the <1>central station</1>",
+        "placeholders": {
+            "1": "[{\"type\":\"underline\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Walk ten minutes down to the harbour",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "<1>Pets on request.</1> Pets are welcome in the garden rooms.",
+        "placeholders": {
+            "1": "[{\"type\":\"strike\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Kyma means wave in Greek.",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Room",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Size",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Price per night",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "Garden double",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "22 m<1>2</1>",
+        "placeholders": {
+            "1": "[{\"type\":\"superscript\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "<1>Sea view suite</1>",
+        "placeholders": {
+            "1": "[{\"type\":\"bold\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "45 m<1>2</1>",
+        "placeholders": {
+            "1": "[{\"type\":\"superscript\"}]"
+        }
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "from €240",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich",
+            13,
+            "attrs",
+            "values",
+            "caption"
+        ],
+        "label": "Content › Gallery › Caption",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "The pool terrace, and the garden at breakfast time",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "bard_rich"
+        ],
+        "label": "Content",
+        "kind": "inline",
+        "hint": null,
+        "max_length": null,
+        "text": "<1>Prices include VAT and the city tax of €1.50 per night.</1>",
+        "placeholders": {
+            "1": "[{\"type\":\"small\"}]"
+        }
+    }
+]
