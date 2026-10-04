@@ -72,9 +72,12 @@ final readonly class FieldState
         return in_array($targetHash, array_column($this->history, 'target_hash'), true);
     }
 
+    /**
+     * An entry of the same plan is replaced: parallel editor requests can deliver the same field of a plan twice.
+     */
     public function withPending(PendingState $pending): self
     {
-        return $this->withPendingEntries([$pending, ...$this->pending]);
+        return $this->withPendingEntries([$pending, ...array_filter($this->pending, fn (PendingState $entry) => $entry->plan !== $pending->plan)]);
     }
 
     /**
