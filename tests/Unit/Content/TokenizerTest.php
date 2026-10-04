@@ -85,4 +85,4 @@ it('leaves an atom it does not know in place', function () {
 
 it('rejects the kinds that arrive later', function (SegmentKind $kind) {
     Tokenizer::tokenize('Text', $kind);
-})->with([SegmentKind::Html, SegmentKind::Markdown, SegmentKind::Inline])->throws(InvalidArgumentException::class);
+})->with([SegmentKind::Markdown, SegmentKind::Inline])->throws(InvalidArgumentException::class);

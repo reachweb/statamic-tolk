@@ -5,6 +5,7 @@ use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Enums\SegmentKind;
+use Reach\StatamicTolk\Tests\Support\ContentFixtures;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeGroupHandler;
 use Statamic\Fields\Field;
 
@@ -153,19 +154,65 @@ it('leaves strings that the leaf rules reject untouched', function (string $valu
         ->and($walker->mapField($field, $value, marked(...)))->toBe($value);
 })->with(['', '   ', '2026', 'https://example.com', '/contact', 'text-center', '{{ partial:hero }}']);
 
-it('leaves a string with HTML untouched and warns, naming the field', function (string $value) {
-    $field = new Field('intro', ['type' => 'textarea', 'display' => 'Introduction']);
+it('builds one html leaf for a string with HTML, without a warning', function () {
+    $field = new Field('intro', ['type' => 'textarea', 'display' => 'Introduction', 'character_limit' => 300]);
     $walker = textWalker();
 
-    expect($walker->leaves($field, $value))->toBe([])
-        ->and($walker->warnings())->toBe(['Introduction (intro) contains HTML and was left untouched.'])
-        ->and($walker->mapField($field, $value, marked(...)))->toBe($value);
-})->with([
+    $leaves = $walker->leaves($field, '<p>Rooms <a href="{{ link to="sea" }}">by the sea</a>.<br>{{ site:name }}</p>');
+
+    expect($leaves)->toHaveCount(1)
+        ->and($walker->warnings())->toBe([])
+        ->and($leaves[0]->text)->toBe('<1>Rooms <2>by the sea</2>.<x1/><x2/></1>')
+        ->and($leaves[0]->kind)->toBe(SegmentKind::Html)
+        ->and($leaves[0]->path)->toBe(['intro'])
+        ->and($leaves[0]->label)->toBe('Introduction')
+        ->and($leaves[0]->maxLength)->toBe(300)
+        ->and($leaves[0]->placeholders)->toBe([1 => '<p>', 2 => '<a href="{{ link to="sea" }}">', 'x1' => '<br>', 'x2' => '{{ site:name }}']);
+});
+
+it('makes an html leaf of every kind of HTML and returns the value identical when it keeps its text', function (string $type, string $value) {
+    $field = new Field('intro', ['type' => $type]);
+    $walker = textWalker();
+    $leaves = $walker->leaves($field, $value);
+
+    expect($leaves)->toHaveCount(1)
+        ->and($leaves[0]->kind)->toBe(SegmentKind::Html)
+        ->and($walker->warnings())->toBe([])
+        ->and($walker->mapField($field, $value, fn (Leaf $leaf) => $leaf->text))->toBe($value)
+        ->and($walker->inject($field, $value, [$leaves[0]->text]))->toBe($value);
+})->with(['text', 'textarea'])->with([
     'an element' => 'Rooms <strong>by the sea</strong>',
     'a void tag' => 'Line one<br>Line two',
     'a self-closing tag' => 'Line one<br />Line two',
     'a tag with attributes' => 'Read <a href="/rooms" class="link">more</a>',
     'a comment' => 'Visible <!-- hidden --> text',
+    'literal characters and entities' => '<p>Kids < 12 &amp; seniors &gt; 65</p>',
+]);
+
+it('restores the tags of a marked translation of the textarea-html fixture', function () {
+    $field = ContentFixtures::field('textarea-html');
+    $value = ContentFixtures::value('textarea-html');
+
+    expect(textWalker()->leaves($field, $value)[0]->text)
+        ->toBe("<1>Our <2>spa</2> opens at <3>9:00</3> every day.</1>\n<4>Book a treatment at <5>the front desk</5>.<x1/>Kids &lt; 12 swim free.</4>\n<x2/>")
+        ->and(textWalker()->inject($field, $value, ["<1>Το <2>σπα</2> μας ανοίγει στις <3>9:00</3> κάθε μέρα.</1>\n<4>Κλείστε μια θεραπεία στη <5>ρεσεψιόν</5>.<x1/>Παιδιά &lt; 12 κολυμπούν δωρεάν.</4>\n<x2/>"]))
+        ->toBe("<p>Το <strong>σπα</strong> μας ανοίγει στις <em>9:00</em> κάθε μέρα.</p>\n<p>Κλείστε μια θεραπεία στη <a href=\"/spa\" title=\"Spa bookings\">ρεσεψιόν</a>.<br>Παιδιά &lt; 12 κολυμπούν δωρεάν.</p>\n<!-- Opening hours checked in March 2026 -->");
+});
+
+it('leaves HTML whose visible text the leaf rules reject untouched, without a warning', function (string $value) {
+    $field = new Field('intro', ['type' => 'textarea']);
+    $walker = textWalker();
+
+    expect($walker->leaves($field, $value))->toBe([])
+        ->and($walker->warnings())->toBe([])
+        ->and($walker->mapField($field, $value, marked(...)))->toBe($value);
+})->with([
+    'only an image' => '<img src="/img/pool.jpg" alt="The pool">',
+    'only a comment' => '<!-- Rooms by the sea -->',
+    'only a script' => '<script>document.write("Rooms")</script>',
+    'a linked URL' => '<a href="https://kyma-bay.example">https://kyma-bay.example</a>',
+    'an entity' => '<p>&amp;</p>',
+    'tags around Antlers' => '<p>{{ partial:hero }}</p>',
 ]);
 
 it('does not mistake comparisons or Antlers for HTML', function (string $value) {

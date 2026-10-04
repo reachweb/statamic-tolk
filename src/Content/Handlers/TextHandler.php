@@ -5,6 +5,7 @@ namespace Reach\StatamicTolk\Content\Handlers;
 use Closure;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\LeafRules;
+use Reach\StatamicTolk\Content\Markup\Placeholders;
 use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Content\WalkContext;
 use Reach\StatamicTolk\Contracts\FieldHandler;
@@ -15,7 +16,7 @@ final class TextHandler implements FieldHandler
 {
     public function map(Field $field, mixed $value, Closure $translate, WalkContext $context): mixed
     {
-        if (! is_string($value) || ! LeafRules::isTranslatable($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 
@@ -26,17 +27,16 @@ final class TextHandler implements FieldHandler
             return $value;
         }
 
-        if (Tokenizer::containsHtml($value)) {
-            $context->warn("{$context->label()} (".implode('.', $context->path()).') contains HTML and was left untouched.');
+        $kind = Tokenizer::containsHtml($value) ? SegmentKind::Html : SegmentKind::Plain;
+        $tokenized = Tokenizer::tokenize($value, $kind);
 
+        if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, $kind))) {
             return $value;
         }
 
-        $tokenized = Tokenizer::tokenize($value, SegmentKind::Plain);
-
         $translated = $translate(new Leaf(
             text: $tokenized->text,
-            kind: SegmentKind::Plain,
+            kind: $kind,
             path: $context->path(),
             label: $context->label(),
             hint: $this->hint($config['tolk_hint'] ?? null),

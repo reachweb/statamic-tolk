@@ -40,13 +40,18 @@ final class Placeholders
     }
 
     /**
-     * What a reader sees of a segment's text: no placeholders, and escaped characters undone in the kinds that escape.
+     * What a reader sees of a segment's text: no placeholders, escaped characters undone in the kinds that escape, and
+     * character references decoded in HTML.
      */
     public static function visible(string $text, SegmentKind $kind): string
     {
         $text = self::strip($text);
 
-        return $kind->escapes() ? Tokenizer::unescape($text) : $text;
+        return match (true) {
+            $kind->escapes() => Tokenizer::unescape($text),
+            $kind === SegmentKind::Html => html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            default => $text,
+        };
     }
 
     public static function validate(string $source, string $translated, SegmentKind $kind): ?string

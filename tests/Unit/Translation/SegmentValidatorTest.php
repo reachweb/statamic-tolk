@@ -33,7 +33,8 @@ it('counts what a reader sees: placeholders do not count and an escaped characte
 
     expect($validator->length(validatorSegment('<1>A</1> &amp; <x1/>B', 5), '<1>Ab</1> &amp; <x1/>'))->toBeNull()
         ->and($validator->length(validatorSegment('<1>A</1> &amp; <x1/>B', 4), '<1>Ab</1> &amp; <x1/>'))->toBe('The translation has 5 characters; it must not exceed 4.')
-        ->and($validator->length(validatorSegment('A &amp; B', 5, 'markdown'), 'A &amp; B'))->toBe('The translation has 9 characters; it must not exceed 5.');
+        ->and($validator->length(validatorSegment('A &amp; B', 5, 'markdown'), 'A &amp; B'))->toBe('The translation has 9 characters; it must not exceed 5.')
+        ->and($validator->length(validatorSegment('<1>A &amp; B</1>', 5, 'html'), '<1>A &amp; B</1><x1/>'))->toBeNull();
 });
 
 it('names both problems in one note', function () {

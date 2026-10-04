@@ -79,3 +79,11 @@ it('measures the length in characters, not bytes', function () {
 it('accepts an empty translation of an empty source', function () {
     expect(Placeholders::validate(' ', '', SegmentKind::Plain))->toBeNull();
 });
+
+it('shows what a reader sees of a segment', function (string $text, SegmentKind $kind, string $visible) {
+    expect(Placeholders::visible($text, $kind))->toBe($visible);
+})->with([
+    'plain unescapes' => ['<x1/> Kids &lt; 12 &amp; teens', SegmentKind::Plain, ' Kids < 12 & teens'],
+    'html decodes character references' => ['<1>Kids &lt; 12 &amp; <2>o&#039;clock</2></1><x1/>&nbsp;€', SegmentKind::Html, "Kids < 12 & o'clock\u{a0}€"],
+    'markdown keeps the text as written' => ['A &amp; B <x1/>', SegmentKind::Markdown, 'A &amp; B '],
+]);
