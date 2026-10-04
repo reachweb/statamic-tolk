@@ -177,11 +177,17 @@ final readonly class TranslationEngine implements Engine
                 continue;
             }
 
-            $values = array_map(fn (string $key) => $item[$key] ?? null, array_combine($keys, $keys));
+            $values = [];
 
-            if (count(array_filter($values, 'is_string')) === count($keys)) {
-                $items[$id] = $values;
+            foreach ($keys as $key) {
+                if (! is_string($item[$key] ?? null)) {
+                    continue 2;
+                }
+
+                $values[$key] = $item[$key];
             }
+
+            $items[$id] = $values;
         }
 
         return $items;

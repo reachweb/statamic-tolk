@@ -31,21 +31,17 @@ const defaultModel = computed(() => models.value?.defaults?.translator ?? props.
 const defaultReviewer = computed(() => models.value?.defaults?.reviewer ?? null);
 const remembered = computed(() => rememberedModel());
 const rememberedReviewer = computed(() => rememberedModel(Statamic.$preferences, REVIEWER_PREFERENCE));
-const fakeEngine = computed(() => props.status?.defaults?.fake_engine === true);
-const choices = computed(() =>
-    modelOptions(models.value?.catalog, {
-        fakeEngine: fakeEngine.value,
-        defaultModel: defaultModel.value,
-        extra: mayType ? [defaultModel.value, remembered.value, model.value] : [defaultModel.value],
-    }),
-);
-const reviewerChoices = computed(() =>
-    modelOptions(models.value?.catalog, {
-        fakeEngine: fakeEngine.value,
-        defaultModel: defaultReviewer.value,
-        extra: mayType ? [defaultReviewer.value, rememberedReviewer.value, reviewer.value] : [defaultReviewer.value],
-    }),
-);
+// The catalog's models, plus the default, the remembered and the chosen model for users who may type one.
+function choicesFor(defaultChoice, rememberedChoice, current) {
+    return modelOptions(models.value?.catalog, {
+        fakeEngine: props.status?.defaults?.fake_engine === true,
+        defaultModel: defaultChoice,
+        extra: mayType ? [defaultChoice, rememberedChoice, current] : [defaultChoice],
+    });
+}
+
+const choices = computed(() => choicesFor(defaultModel.value, remembered.value, model.value));
+const reviewerChoices = computed(() => choicesFor(defaultReviewer.value, rememberedReviewer.value, reviewer.value));
 // Review has work while the form holds machine output (T7.5).
 const canReview = computed(() => reviewable(store.containers[props.containerName]));
 const actions = computed(() => stateActions(props.status));

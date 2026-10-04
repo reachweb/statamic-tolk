@@ -178,7 +178,7 @@ final readonly class Pipeline
             throw SourceChanged::field($handle);
         }
 
-        $texts = $hashes = $failed = $warnings = $models = $reviewers = [];
+        $texts = $hashes = $failed = $warnings = [];
 
         foreach ($segments as $id => $segment) {
             $translation = $resolved['translations'][$id] ?? null;
@@ -195,14 +195,6 @@ final readonly class Pipeline
 
             $texts[] = $translation;
             $hashes[] = Fingerprint::ofText($segment['text']);
-
-            if (isset($resolved['models'][$id])) {
-                $models[] = $resolved['models'][$id];
-            }
-
-            if (isset($resolved['reviewers'][$id])) {
-                $reviewers[] = $resolved['reviewers'][$id];
-            }
         }
 
         if ($failed !== [] && $plan->options->strict) {
@@ -222,10 +214,10 @@ final readonly class Pipeline
             segments: $this->aligned($field, $value, $texts) ? $hashes : [],
             identical: $texts === $sourceTexts,
             incomplete: $failed !== [],
-            translator: collect($models)->mode()[0] ?? null,
+            translator: $this->mostFrequent($resolved['models'], $segments),
             corrections: array_values(array_intersect_key($resolved['corrections'], $segments)),
             warnings: array_values(array_unique($warnings)),
-            reviewer: collect($reviewers)->mode()[0] ?? null,
+            reviewer: $this->mostFrequent($resolved['reviewers'], $segments),
         );
     }
 
@@ -236,17 +228,7 @@ final readonly class Pipeline
         $model = $fallback ? $plan->options->fallback : $plan->options->translator;
 
         try {
-            $result = $this->engine->translate(new EngineCall(
-                model: $model,
-                source: $this->languages->forSite($plan->sourceSite),
-                target: $this->languages->forSite($plan->targetSite),
-                context: PromptContext::fromSettings($this->settings, $plan->targetSite),
-                document: $plan->document,
-                segments: $this->segments($plan, $unit),
-                timeout: $timeout,
-                capMultiplier: $unit->capMultiplier,
-                attempt: $failures + 1,
-            ));
+            $result = $this->engine->translate($this->engineCall($plan, $model, $this->segments($plan, $unit), $timeout, $failures + 1, $unit->capMultiplier));
         } catch (ProviderTimeout $exception) {
             if ($unit->canSplit()) {
                 return new UnitOutcome(unit: $unit->id, spawned: $unit->halves($fallback));
@@ -265,11 +247,7 @@ final readonly class Pipeline
                 : $this->failed($unit, $model, UnitOutcome::REQUEST_REJECTED);
         }
 
-        if ($recordUsage !== null) {
-            $recordUsage($result->model, $result->usage);
-        }
-
-        $usage = (new UsageMap)->add($result->model, $result->usage);
+        $usage = $this->usage($result, $recordUsage);
 
         return match ($result->finish) {
             Finish::Stop => $this->accept($plan, $unit, $result, $usage, $fallback),
@@ -369,26 +347,24 @@ final readonly class Pipeline
      */
     private function review(Plan $plan, Unit $unit, int $timeout, ?Closure $recordUsage): UnitOutcome
     {
-        $resolved = $this->resolve($plan)['translations'];
-        $translations = array_filter(array_combine($unit->segmentIds, array_map(fn (string $id) => $resolved[$id] ?? null, $unit->segmentIds)), 'is_string');
+        $known = $this->resolve($plan)['translations'];
+        $translations = [];
+
+        foreach ($unit->segmentIds as $id) {
+            if (isset($known[$id])) {
+                $translations[$id] = $known[$id];
+            }
+        }
 
         if ($translations === []) {
             return new UnitOutcome(unit: $unit->id);
         }
 
+        $model = $plan->options->reviewer ?? $plan->options->translator;
         $failures = $this->store->failures($plan->id, $unit->id);
 
         try {
-            $result = $this->engine->review(new EngineCall(
-                model: $plan->options->reviewer ?? $plan->options->translator,
-                source: $this->languages->forSite($plan->sourceSite),
-                target: $this->languages->forSite($plan->targetSite),
-                context: PromptContext::fromSettings($this->settings, $plan->targetSite),
-                document: $plan->document,
-                segments: $this->segments($plan, $unit, $translations),
-                timeout: $timeout,
-                attempt: $failures + 1,
-            ));
+            $result = $this->engine->review($this->engineCall($plan, $model, $this->reviewSegments($plan, $translations), $timeout, $failures + 1));
         } catch (TransientProviderFailure $exception) {
             if ($this->store->countFailure($plan->id, $unit->id) < (int) config('tolk.retry.max_attempts', 3)) {
                 throw $exception;
@@ -399,11 +375,7 @@ final readonly class Pipeline
             return $this->reviewSkipped($plan, $unit, UnitOutcome::REQUEST_REJECTED);
         }
 
-        if ($recordUsage !== null) {
-            $recordUsage($result->model, $result->usage);
-        }
-
-        $usage = (new UsageMap)->add($result->model, $result->usage);
+        $usage = $this->usage($result, $recordUsage);
 
         return match ($result->finish) {
             Finish::Stop => $this->acceptCorrections($plan, $unit, $result, $translations, $usage),
@@ -476,34 +448,78 @@ final readonly class Pipeline
     }
 
     /**
-     * The unit's segments with the keys of §A9. The prompt's `field` is the label path, which says what the text is for.
-     * A review segment carries the source text as `source` and its translation, and only segments with a translation
-     * are reviewed.
+     * @param  list<array>  $segments
+     */
+    private function engineCall(Plan $plan, ModelRef $model, array $segments, int $timeout, int $attempt, int $capMultiplier = 1): EngineCall
+    {
+        return new EngineCall(
+            model: $model,
+            source: $this->languages->forSite($plan->sourceSite),
+            target: $this->languages->forSite($plan->targetSite),
+            context: PromptContext::fromSettings($this->settings, $plan->targetSite),
+            document: $plan->document,
+            segments: $segments,
+            timeout: $timeout,
+            capMultiplier: $capMultiplier,
+            attempt: $attempt,
+        );
+    }
+
+    private function usage(EngineResult $result, ?Closure $recordUsage): UsageMap
+    {
+        if ($recordUsage !== null) {
+            $recordUsage($result->model, $result->usage);
+        }
+
+        return (new UsageMap)->add($result->model, $result->usage);
+    }
+
+    /**
+     * The unit's segments to translate.
      *
-     * @param  array<string, string>  $translations  the translations under review
      * @return list<array>
      */
-    private function segments(Plan $plan, Unit $unit, array $translations = []): array
+    private function segments(Plan $plan, Unit $unit): array
     {
-        $review = $unit->kind === UnitKind::Review;
-        $ids = $review ? array_keys($translations) : $unit->segmentIds;
+        return array_map(fn (string $id) => [
+            ...$this->promptSegment($plan, $id),
+            'text' => $plan->segments[$id]['text'],
+            'note' => $unit->notes[$id] ?? null,
+        ], $unit->segmentIds);
+    }
 
-        return array_map(function (string $id) use ($plan, $unit, $review, $translations) {
-            $segment = $plan->segments[$id];
+    /**
+     * The segments to review: the source text as `source`, and the translation under review.
+     *
+     * @param  array<string, string>  $translations
+     * @return list<array>
+     */
+    private function reviewSegments(Plan $plan, array $translations): array
+    {
+        return array_map(fn (string $id, string $translation) => [
+            ...$this->promptSegment($plan, $id),
+            'source' => $plan->segments[$id]['text'],
+            'translation' => $translation,
+        ], array_keys($translations), $translations);
+    }
 
-            return [
-                'id' => $id,
-                'field' => $segment['label'],
-                'kind' => $segment['kind'],
-                'hint' => $segment['hint'] ?? null,
-                'max_length' => $segment['max_length'] ?? null,
-                'before' => $segment['before'] ?? null,
-                'after' => $segment['after'] ?? null,
-                ...($review
-                    ? ['source' => $segment['text'], 'translation' => $translations[$id]]
-                    : ['text' => $segment['text'], 'note' => $unit->notes[$id] ?? null]),
-            ];
-        }, $ids);
+    /**
+     * The keys of §A9 that a translation and a review share. The prompt's `field` is the label path, which says what the
+     * text is for.
+     */
+    private function promptSegment(Plan $plan, string $id): array
+    {
+        $segment = $plan->segments[$id];
+
+        return [
+            'id' => $id,
+            'field' => $segment['label'],
+            'kind' => $segment['kind'],
+            'hint' => $segment['hint'] ?? null,
+            'max_length' => $segment['max_length'] ?? null,
+            'before' => $segment['before'] ?? null,
+            'after' => $segment['after'] ?? null,
+        ];
     }
 
     /**
@@ -587,7 +603,7 @@ final readonly class Pipeline
         }
 
         $texts = array_map(fn (Leaf $leaf) => $leaf->text, $targetLeaves);
-        $corrections = $warnings = $reviewers = [];
+        $corrections = $warnings = [];
 
         foreach ($segments as $id => $segment) {
             $source = $sourceLeaves[$segment['index']];
@@ -598,10 +614,6 @@ final readonly class Pipeline
             }
 
             array_push($warnings, ...($resolved['warnings'][$id] ?? []));
-
-            if (isset($resolved['reviewers'][$id])) {
-                $reviewers[] = $resolved['reviewers'][$id];
-            }
 
             if (isset($resolved['corrections'][$id])) {
                 // A valid correction holds only placeholders of the translation, so it always renumbers back.
@@ -628,8 +640,9 @@ final readonly class Pipeline
             translator: $planned['record']['translator'],
             corrections: $corrections,
             warnings: array_values(array_unique($warnings)),
-            reviewer: collect($reviewers)->mode()[0] ?? null,
+            reviewer: $this->mostFrequent($resolved['reviewers'], $segments),
             baseline: $manual,
+            unchanged: $corrections === [],
         );
     }
 
@@ -678,6 +691,17 @@ final readonly class Pipeline
         }
 
         return true;
+    }
+
+    /**
+     * The model that handled most of the field's segments; a tie goes to the one that handled an earlier segment.
+     *
+     * @param  array<string, ?string>  $models  segment id → model
+     * @param  array<string, array>  $segments  the field's segments
+     */
+    private function mostFrequent(array $models, array $segments): ?string
+    {
+        return collect(array_keys($segments))->map(fn (string $id) => $models[$id] ?? null)->filter()->mode()[0] ?? null;
     }
 
     private function excerpt(array $segment): string

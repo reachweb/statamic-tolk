@@ -23,6 +23,7 @@ final readonly class AssembledField
      * @param  list<string>  $warnings
      * @param  ?string  $reviewer  the model that reviewed the field's translations; null when none did
      * @param  bool  $baseline  a reviewed manual field, whose pending entry a save confirms as a baseline (T7.4)
+     * @param  bool  $unchanged  a reviewed field without corrections, which is neither delivered nor saved (T7.4)
      */
     public function __construct(
         public string $handle,
@@ -40,6 +41,7 @@ final readonly class AssembledField
         public array $warnings = [],
         public ?string $reviewer = null,
         public bool $baseline = false,
+        public bool $unchanged = false,
     ) {}
 
     /**

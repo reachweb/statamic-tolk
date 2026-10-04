@@ -97,10 +97,17 @@ final readonly class Planner
 
             $value = $currentValues === null ? $target->targetValue($handle) : $currentValues[$handle];
             $sourceLeaves = $this->walker->leaves($field, $target->sourceValue($handle));
+
+            if ($sourceLeaves === []) {
+                $skipped[$handle] = FieldStatus::NotApplicable->value;
+
+                continue;
+            }
+
             $translations = $this->pairs($sourceLeaves, $this->walker->leaves($field, $value, target: true));
 
-            if ($sourceLeaves === [] || $translations === []) {
-                $skipped[$handle] = $sourceLeaves === [] ? FieldStatus::NotApplicable->value : self::STRUCTURE_DIFFERS;
+            if ($translations === []) {
+                $skipped[$handle] = self::STRUCTURE_DIFFERS;
 
                 continue;
             }
