@@ -34,6 +34,11 @@ final class StateFixtures
         return new TargetRef(ContentType::Entry, $localization->id());
     }
 
+    public static function stored(EntryContract $localization): ItemState
+    {
+        return app(StateRepository::class)->get(self::ref($localization));
+    }
+
     /**
      * @param  array<string, FieldState>  $fields
      */

@@ -1,4 +1,6 @@
-import { registry as sharedRegistry, equalValues } from './registry.js';
+import { registry as sharedRegistry, clone, equalValues } from './registry.js';
+
+export { clone };
 
 // Core keeps dirty tracking off for 500 ms after a site switch, a localization's creation and a save (R3 §1.3).
 // Inside that window `desyncField` does nothing, and Save drops a filled field silently (T2.2 check 6).
@@ -8,19 +10,6 @@ export const SETTLE_MS = 600;
 export const REEMIT_MS = 300;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Deep copy of form data. Values read from the context are reactive proxies, which `structuredClone` refuses.
-export function clone(value) {
-    if (Array.isArray(value)) {
-        return value.map(clone);
-    }
-
-    if (value === null || typeof value !== 'object') {
-        return value;
-    }
-
-    return Object.fromEntries(Object.keys(value).map((key) => [key, clone(value[key])]));
-}
 
 // What `restore()` puts back. `delivered` (the container's delivered map) keeps the record an earlier plan left for
 // a handle, so undoing a second translation brings the first one's record back with its value.
@@ -67,8 +56,9 @@ export async function applyFields(
     }
 
     const since = typeof lastChangeAt === 'function' ? lastChangeAt : () => lastChangeAt;
+    const remaining = () => SETTLE_MS - (now() - since());
 
-    for (let left = SETTLE_MS - (now() - since()); left > 0; left = SETTLE_MS - (now() - since())) {
+    for (let left = remaining(); left > 0; left = remaining()) {
         await sleep(left);
     }
 

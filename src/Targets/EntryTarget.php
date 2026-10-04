@@ -2,7 +2,6 @@
 
 namespace Reach\StatamicTolk\Targets;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use LogicException;
 use Reach\StatamicTolk\Content\ContentWalker;
@@ -402,18 +401,7 @@ final class EntryTarget implements Target
 
     private function pending(AssembledField $field, mixed $value): PendingState
     {
-        return new PendingState(
-            plan: $field->plan,
-            sourceHash: $field->sourceHash,
-            targetHash: $this->resolver->targetHash($this->fields()->get($field->handle), $value),
-            targetBefore: $field->targetBefore,
-            segments: $field->segments,
-            identical: $field->identical,
-            incomplete: $field->incomplete,
-            translator: $field->translator,
-            reviewer: null,
-            createdAt: CarbonImmutable::now(),
-        );
+        return $field->pending($this->resolver->targetHash($this->fields()->get($field->handle), $value));
     }
 
     /**

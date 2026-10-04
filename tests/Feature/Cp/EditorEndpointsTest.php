@@ -6,7 +6,6 @@ use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\Throttle;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
-use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\State\StateWriter;
@@ -68,7 +67,7 @@ function greekEditor(): void
 
 function greekState(string $handle)
 {
-    return app(StateRepository::class)->get(StateFixtures::ref(test()->greek))->field($handle);
+    return StateFixtures::stored(test()->greek)->field($handle);
 }
 
 describe('plan', function () {
@@ -165,7 +164,7 @@ describe('plan', function () {
         $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'view articles entries']);
 
         editorPlan($this->greek)->assertForbidden();
-        expect(app(StateRepository::class)->get(StateFixtures::ref($this->greek))->isEmpty())->toBeTrue();
+        expect(StateFixtures::stored($this->greek)->isEmpty())->toBeTrue();
     });
 
     it('answers 422 when there is no translator', function () {

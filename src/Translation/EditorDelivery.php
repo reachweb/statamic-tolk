@@ -2,12 +2,10 @@
 
 namespace Reach\StatamicTolk\Translation;
 
-use Carbon\CarbonImmutable;
 use LogicException;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
-use Reach\StatamicTolk\State\PendingState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Targets\TargetRef;
@@ -68,7 +66,8 @@ final readonly class EditorDelivery
         $delivered = [];
 
         foreach ($fields as $handle => $field) {
-            $this->stateWriter->recordPending($ref, $target->sourceSite(), $handle, $this->pending($target, $field, $stored[$handle]));
+            $targetHash = $this->resolver->targetHash($target->fields()->get($handle), $stored[$handle]);
+            $this->stateWriter->recordPending($ref, $target->sourceSite(), $handle, $field->pending($targetHash));
 
             $delivered[$handle] = [
                 'value' => $values[$handle],
@@ -95,21 +94,5 @@ final readonly class EditorDelivery
         $meta = $form->meta()->all();
 
         return array_map(fn (AssembledField $field) => ['value' => $values[$field->handle], 'meta' => $meta[$field->handle], 'sync' => true], $fields);
-    }
-
-    private function pending(Target $target, AssembledField $field, mixed $stored): PendingState
-    {
-        return new PendingState(
-            plan: $field->plan,
-            sourceHash: $field->sourceHash,
-            targetHash: $this->resolver->targetHash($target->fields()->get($field->handle), $stored),
-            targetBefore: $field->targetBefore,
-            segments: $field->segments,
-            identical: $field->identical,
-            incomplete: $field->incomplete,
-            translator: $field->translator,
-            reviewer: null,
-            createdAt: CarbonImmutable::now(),
-        );
     }
 }
