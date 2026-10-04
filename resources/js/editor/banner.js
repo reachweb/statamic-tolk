@@ -1,12 +1,10 @@
 import { ref, watch } from 'vue';
 import * as api from '../api.js';
+import { SETTLE_MS } from './fill.js';
 import { registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 
 export const BANNER = 'tolk-banner';
-
-// Core keeps dirty tracking off for 500 ms after a swap, while fieldtypes make debounced updates (R3 §1.3).
-export const SETTLE_MS = 600;
 
 // Only the full-page form of a saved entry gets a banner. A stacked inline editor is named
 // `relate-fieldtype-inline-{n}` and also shows `entry::` references; the create page has no reference yet.
