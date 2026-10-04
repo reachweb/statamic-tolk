@@ -26,8 +26,7 @@ final class TextHandler implements FieldHandler
         $fieldtype = $field->fieldtype();
         $config = $fieldtype->config();
 
-        // Only the text input type holds prose; email, url, tel, number, color and the like are data.
-        if (! in_array($config['input_type'] ?? null, [null, 'text'], true)) {
+        if (! self::holdsProse($config)) {
             return $value;
         }
 
@@ -49,6 +48,12 @@ final class TextHandler implements FieldHandler
         ));
 
         return $translated === $tokenized->text ? $value : Tokenizer::restore($translated, $tokenized);
+    }
+
+    // Only the text input type holds prose; email, url, tel, number, color and the like are data.
+    public static function holdsProse(array $config): bool
+    {
+        return in_array($config['input_type'] ?? null, [null, 'text'], true);
     }
 
     private function maxLength(mixed $limit): ?int

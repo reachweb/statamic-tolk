@@ -3,11 +3,19 @@
 namespace Reach\StatamicTolk\Content;
 
 use Illuminate\Support\Collection;
+use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Statamic\Fields\Blueprint;
 use Statamic\Fields\Field;
+use Statamic\Fields\Fields;
+use Statamic\Fieldtypes\Grid;
+use Statamic\Fieldtypes\Group;
+use Statamic\Fieldtypes\Replicator;
+use Statamic\Support\Str;
 
 final class TranslatableFields
 {
+    private const array TECHNICAL_WORDS = ['class', 'id', 'anchor', 'url', 'link', 'icon', 'color', 'handle', 'slug', 'key', 'code', 'embed', 'video', 'layout'];
+
     public function __construct(private readonly FieldtypeRegistry $registry) {}
 
     /**
@@ -40,6 +48,90 @@ final class TranslatableFields
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * Nested fields that would be translated although their handle names data rather than text, as suggestions to
+     * switch translation off. Only the handle's last word counts: `css_class` and `anchor` look technical, `link_text`
+     * and `key_points` do not. Containers (Bard, Replicator, Grid, Group) are walked, never listed; set handles are
+     * part of the path, Grid rows are not.
+     *
+     * @return list<array{path: string, handle: string, type: string, label: string}>
+     */
+    public function nestedTechnicalFields(Blueprint $blueprint): array
+    {
+        $found = [];
+
+        foreach ($blueprint->fields()->all() as $field) {
+            if (in_array($this->reason($field, []), ['ok', 'not_localizable'], true)) {
+                $this->collectTechnical($field, [$field->handle()], [$field->display()], $found);
+            }
+        }
+
+        return $found;
+    }
+
+    private function collectTechnical(Field $container, array $path, array $labels, array &$found): void
+    {
+        foreach ($this->nestedFields($container) as [$segments, $setLabels, $fields]) {
+            foreach ($fields->all() as $field) {
+                $handle = $field->handle();
+
+                if (! $this->registry->has($field->type()) || $field->fieldtype()->config('tolk_translate') === false) {
+                    continue;
+                }
+
+                $fieldPath = [...$path, ...$segments, $handle];
+                $fieldLabels = [...$labels, ...$setLabels, $field->display()];
+
+                if ($this->isContainer($field)) {
+                    $this->collectTechnical($field, $fieldPath, $fieldLabels, $found);
+                } elseif ($this->looksTechnical($handle) && $this->holdsText($field)) {
+                    $found[] = [
+                        'path' => implode('.', $fieldPath),
+                        'handle' => $handle,
+                        'type' => $field->type(),
+                        'label' => implode(' › ', $fieldLabels),
+                    ];
+                }
+            }
+        }
+    }
+
+    /**
+     * @return list<array{0: list<string>, 1: list<string>, 2: Fields}>
+     */
+    private function nestedFields(Field $field): array
+    {
+        $fieldtype = $field->fieldtype();
+
+        if ($fieldtype instanceof Replicator) {
+            return $fieldtype->flattenedSetsConfig()
+                ->filter(fn ($config) => is_array($config))
+                ->map(fn (array $config, int|string $set) => [[(string) $set], [$config['display'] ?? __(Str::slugToTitle((string) $set))], $fieldtype->fields($set)])
+                ->values()
+                ->all();
+        }
+
+        return $fieldtype instanceof Grid || $fieldtype instanceof Group ? [[[], [], $fieldtype->fields()]] : [];
+    }
+
+    private function isContainer(Field $field): bool
+    {
+        $fieldtype = $field->fieldtype();
+
+        return $fieldtype instanceof Replicator || $fieldtype instanceof Grid || $fieldtype instanceof Group;
+    }
+
+    private function looksTechnical(string $handle): bool
+    {
+        return in_array(Str::afterLast(strtolower($handle), '_'), self::TECHNICAL_WORDS, true);
+    }
+
+    // A text field with another input type (url, email) is never translated, so there is nothing to switch off.
+    private function holdsText(Field $field): bool
+    {
+        return ! $this->registry->for($field) instanceof TextHandler || TextHandler::holdsProse($field->fieldtype()->config());
     }
 
     // The first reason that applies wins. `not_localizable` comes last, so it means the field would be in scope if it were localizable (the audit relies on that).

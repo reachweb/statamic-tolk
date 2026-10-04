@@ -9,6 +9,22 @@ use Statamic\Fields\Field;
 
 final class FieldtypeRegistry
 {
+    // The CP translates config field displays and instructions itself, so they are English keys, not __() at boot.
+    public const array CONFIG_FIELDS = [
+        'tolk_translate' => [
+            'type' => 'toggle',
+            'display' => 'Translate automatically',
+            'default' => true,
+            'width' => 50,
+        ],
+        'tolk_hint' => [
+            'type' => 'text',
+            'display' => 'Translation hint',
+            'instructions' => 'Guidance for the translator, for example: product name, keep in English',
+            'width' => 50,
+        ],
+    ];
+
     private array $handlers = [];
 
     public function __construct(private readonly Container $container) {}
@@ -37,5 +53,22 @@ final class FieldtypeRegistry
     public function handles(): array
     {
         return array_keys($this->handlers);
+    }
+
+    /**
+     * Appends the per-field options to the fieldtype class of every registered handle. Statamic keys extra config
+     * fields by the exact class (Bard needs its own call although it extends Replicator), and merges them by handle,
+     * so calling this again changes nothing. A handle whose fieldtype is not registered yet is skipped: another
+     * addon may register it after this one boots.
+     */
+    public function appendConfigFields(): void
+    {
+        $classes = $this->container->make('statamic.fieldtypes');
+
+        foreach ($this->handles() as $handle) {
+            if (is_string($class = $classes->get($handle))) {
+                $class::appendConfigFields(self::CONFIG_FIELDS);
+            }
+        }
     }
 }
