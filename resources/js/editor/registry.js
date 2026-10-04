@@ -51,13 +51,7 @@ export function createRegistry() {
     // The context a component injected inside the container. Attaching it again, as a remounted banner does after
     // Live Preview opens or closes, keeps the clean values taken before.
     function attachContext(name, context) {
-        const entry = entries.get(name);
-
-        if (entry?.clean) {
-            update(name, { context });
-        } else {
-            update(name, { context, clean: clone(context.values.value) });
-        }
+        update(name, { context, clean: entries.get(name)?.clean ?? clone(context.values.value) });
     }
 
     // After a site or entry switch and after a save, the values in the form are what is stored.
@@ -69,14 +63,10 @@ export function createRegistry() {
         }
     }
 
-    function sourceOf(name) {
+    function currentValues(name) {
         const entry = entries.get(name);
 
-        return entry?.context ?? entry?.payload ?? null;
-    }
-
-    function currentValues(name) {
-        return sourceOf(name)?.values?.value ?? null;
+        return (entry?.context ?? entry?.payload)?.values?.value ?? null;
     }
 
     // Top-level handles whose text differs from the clean values, in the form's order. A value that only changed its

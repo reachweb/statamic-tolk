@@ -223,7 +223,7 @@ final readonly class Planner
      */
     private function neighbour(array $segment, bool $before): string
     {
-        $text = Str::squish(Placeholders::visible(str_replace('<br/>', ' ', $segment['text']), SegmentKind::from($segment['kind'])));
+        $text = Str::squish(Placeholders::readable($segment['text'], SegmentKind::from($segment['kind'])));
 
         if (mb_strlen($text) <= self::NEIGHBOUR_LENGTH) {
             return $text;

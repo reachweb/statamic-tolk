@@ -31,6 +31,11 @@ final readonly class Glossary
     private array $rows;
 
     /**
+     * @var list<array{term: string, pattern: string, rows: list<array{term: string, translation: string, do_not_translate: bool, usage: ?string}>}> longest term first
+     */
+    private array $terms;
+
+    /**
      * @param  list<array{term: string, site: ?string, translation: string, do_not_translate: bool, note: string}>  $rows  the rows of one site, as `Settings::glossary()` returns them
      */
     public function __construct(array $rows)
@@ -48,6 +53,7 @@ final readonly class Glossary
             $rows,
             fn (array $row) => $row['site'] !== null || ! isset($ownTerms[self::fold($row['term'])]),
         ));
+        $this->terms = self::index($this->rows);
     }
 
     public static function fromSettings(Settings $settings, string $site): self
@@ -71,24 +77,28 @@ final readonly class Glossary
      */
     public function check(string $source, string $translation, SegmentKind $kind = SegmentKind::Plain): array
     {
+        if ($this->terms === []) {
+            return [];
+        }
+
         $source = self::visible($source, $kind);
         $translation = self::visible($translation, $kind);
         $notes = [];
 
-        foreach ($this->byLength() as $term => $rows) {
-            $source = preg_replace(self::pattern((string) $term), self::FOUND, $source, -1, $found) ?? $source;
+        foreach ($this->terms as ['term' => $term, 'pattern' => $pattern, 'rows' => $rows]) {
+            $source = preg_replace($pattern, self::FOUND, $source, -1, $found) ?? $source;
 
             if ($found === 0) {
                 continue;
             }
 
             foreach ($rows as $row) {
-                if ($row['do_not_translate'] && ! str_contains($translation, (string) $term)) {
+                if ($row['do_not_translate'] && ! str_contains($translation, $term)) {
                     $notes[] = [
                         'level' => self::WARNING,
                         'message' => "the glossary keeps \"{$row['term']}\" untranslated, but the translation does not contain it.",
                     ];
-                } elseif (! $row['do_not_translate'] && ! self::uses($translation, self::fold($row['translation']))) {
+                } elseif ($row['usage'] !== null && preg_match($row['usage'], $translation) !== 1) {
                     $notes[] = [
                         'level' => self::INFO,
                         'message' => "the glossary translates \"{$row['term']}\" as \"{$row['translation']}\", but the translation does not seem to use it.",
@@ -101,21 +111,31 @@ final readonly class Glossary
     }
 
     /**
-     * @return array<string, list<array>> folded term → its rows, longest term first
+     * The folded terms, longest first, each with the pattern that finds it in a source and its rows. A row that gives a
+     * translation carries the pattern that finds that translation in the target; the others carry none.
      */
-    private function byLength(): array
+    private static function index(array $rows): array
     {
         $terms = [];
 
-        foreach ($this->rows as $row) {
+        foreach ($rows as $row) {
             if (($term = self::fold($row['term'])) !== '') {
-                $terms[$term][] = $row;
+                $terms[$term][] = [
+                    'term' => $row['term'],
+                    'translation' => $row['translation'],
+                    'do_not_translate' => $row['do_not_translate'],
+                    'usage' => $row['do_not_translate'] ? null : self::usage(self::fold($row['translation'])),
+                ];
             }
         }
 
         uksort($terms, fn (string|int $a, string|int $b) => mb_strlen((string) $b) <=> mb_strlen((string) $a) ?: strcmp((string) $a, (string) $b));
 
-        return $terms;
+        return array_map(
+            fn (string|int $term, array $rows) => ['term' => (string) $term, 'pattern' => self::pattern((string) $term), 'rows' => $rows],
+            array_keys($terms),
+            array_values($terms),
+        );
     }
 
     private static function pattern(string $term): string
@@ -126,10 +146,13 @@ final readonly class Glossary
         return '/'.$before.preg_quote($term, '/').$after.'/u';
     }
 
-    private static function uses(string $translation, string $expected): bool
+    /**
+     * The first 70% of each word of a folded translation, in order, or null when there is nothing to look for.
+     */
+    private static function usage(string $expected): ?string
     {
         if ($expected === '') {
-            return true;
+            return null;
         }
 
         $prefixes = array_map(
@@ -137,12 +160,12 @@ final readonly class Glossary
             explode(' ', $expected),
         );
 
-        return preg_match('/'.implode(self::WORD.'* ', $prefixes).'/u', $translation) === 1;
+        return '/'.implode(self::WORD.'* ', $prefixes).'/u';
     }
 
     private static function visible(string $text, SegmentKind $kind): string
     {
-        return self::fold(Placeholders::visible(str_replace('<br/>', ' ', $text), $kind));
+        return self::fold(Placeholders::readable($text, $kind));
     }
 
     /**

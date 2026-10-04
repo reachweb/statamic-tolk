@@ -17,13 +17,13 @@ final readonly class TargetStatus
         public ItemStatus $itemStatus,
         public array $fields,
         public array $counts,
-        public int $stateVersion = ItemState::VERSION,
+        public int $stateVersion,
     ) {}
 
     /**
      * @param  array<string, FieldStatusInfo>  $fields
      */
-    public static function of(bool $exists, array $fields, int $stateVersion = ItemState::VERSION): self
+    public static function of(bool $exists, array $fields, int $stateVersion): self
     {
         $counts = [];
 

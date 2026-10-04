@@ -56,6 +56,14 @@ final class Placeholders
         };
     }
 
+    /**
+     * What a reader sees, with each hard break read as a space, which `strip()` would delete and so fuse two words.
+     */
+    public static function readable(string $text, SegmentKind $kind): string
+    {
+        return self::visible(str_replace('<br/>', ' ', $text), $kind);
+    }
+
     public static function validate(string $source, string $translated, SegmentKind $kind): ?string
     {
         if (self::blank($translated) && ! self::blank($source)) {

@@ -28,7 +28,7 @@ final readonly class FieldStatusInfo
         public FieldState $state,
         public string $sourceHash,
         public ?string $targetHash,
-        public ?string $sourceTextHash = null,
+        public ?string $sourceTextHash,
     ) {}
 
     public function needsAttention(): bool

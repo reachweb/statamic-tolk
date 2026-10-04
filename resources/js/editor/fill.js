@@ -151,8 +151,8 @@ export async function applyFields(
         return result;
     }
 
-    // Bard adds attributes such as `textAlign: null` when it re-emits, so what the form holds afterwards is what
-    // counts as delivered, not the payload. A re-emit also desyncs the field again, which a synced field must undo.
+    // A fieldtype such as Bard re-emits what was filled, which desyncs the field again; a synced field must undo that.
+    // What the form holds afterwards is recorded as delivered.
     await sleep(REEMIT_MS);
 
     if (!current()) {
