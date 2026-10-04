@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Ai\Prompts;
 
 use Reach\StatamicTolk\Enums\Formality;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Translation\Glossary;
 
 final readonly class PromptContext
 {
@@ -27,7 +28,7 @@ final readonly class PromptContext
             instructions: $settings->instructions(),
             formality: $language['formality'],
             languageInstructions: $language['instructions'],
-            glossaryRows: $settings->glossary($site),
+            glossaryRows: Glossary::fromSettings($settings, $site)->rows(),
         );
     }
 }

@@ -171,3 +171,32 @@ it('builds the context from the settings of the target site', function () {
 
     expect(PromptContext::fromSettings($settings, 'de')->formality)->toBe(Formality::Informal);
 });
+
+it('renders the glossary rows of the target site from settings', function () {
+    $settings = $this->withSettings(['glossary' => [
+        ['id' => 'g1', 'term' => 'suite', 'translation' => 'Suite', 'note' => 'all sites'],
+        ['id' => 'g2', 'term' => ' Suite ', 'site' => ['el'], 'translation' => 'σουίτα', 'note' => "only the two\nsea-view rooms"],
+        ['id' => 'g3', 'term' => 'Kyma Bay', 'do_not_translate' => '1'],
+        ['id' => 'g4', 'term' => 'check-in', 'site' => ['de'], 'translation' => 'Anreise'],
+        ['id' => 'g5', 'term' => 'Booking', 'site' => ['el'], 'translation' => 'Κράτηση', 'do_not_translate' => false],
+        ['id' => 'g6', 'term' => 'breakfast', 'translation' => null, 'do_not_translate' => false],
+        ['id' => 'g7', 'term' => null, 'translation' => 'πρωινό'],
+    ]]);
+
+    $section = fn (string $site) => str((new PromptBuilder)->system(englishLanguage(), greekLanguage(), PromptContext::fromSettings($settings, $site)))
+        ->between("<glossary>\n", "\n</glossary>")
+        ->toString();
+
+    expect($section('el'))->toBe(implode("\n", [
+        'Use these terms exactly.',
+        '- "Booking" → "Κράτηση"',
+        '- "Kyma Bay" → do not translate',
+        '- "Suite" → "σουίτα" (only the two sea-view rooms)',
+    ]))
+        ->and($section('de'))->toBe(implode("\n", [
+            'Use these terms exactly.',
+            '- "check-in" → "Anreise"',
+            '- "Kyma Bay" → do not translate',
+            '- "suite" → "Suite" (all sites)',
+        ]));
+});
