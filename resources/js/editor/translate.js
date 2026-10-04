@@ -1,7 +1,7 @@
 import * as defaultApi from '../api.js';
 import { asMap } from '../api.js';
 import { applyFields, clone, filledSince, keepOriginSlug, recheckOriginSlug, restore, snapshot } from './fill.js';
-import { equalValues, registry as sharedRegistry } from './registry.js';
+import { registry as sharedRegistry, sameText } from './registry.js';
 import { fieldLabels } from './statuses.js';
 import { initialState, useEditorStore } from './store.js';
 import { describeError, runPlan } from './unitRunner.js';
@@ -16,19 +16,20 @@ const EDITED_IN_FORM = 'edited_in_form';
 
 // A field this addon filled and the editor has not touched since is not an edit of theirs.
 function untouchedFill(ctx, record, handle) {
-    return Boolean(record) && !record.pending && equalValues(ctx.values.value[handle], record.value);
+    return Boolean(record) && !record.pending && sameText(ctx.values.value[handle], record.value);
 }
 
-// The handles the editor has unsaved changes in. The server only sees stored content and would otherwise plan them
-// and overwrite what was typed: fields whose value differs from the clean values, and fields localized in the form
-// since then although the status says nothing is stored for them. A field the form localized by itself while it
-// loaded is not one of them: an inherited Bard field can desync itself on load.
+// The handles the editor has unsaved text in. The server only sees stored content and would otherwise plan them and
+// overwrite what was typed: fields whose text differs from the clean values, and untranslated fields whose text
+// differs from the origin's, which also catches text typed before the banner took the clean values again. Text alone
+// decides: an inherited Bard field can desync itself and re-emit its value while the form loads (T6.11).
 export function skipHandles(ctx, status, { name, registry, delivered = {} }) {
     const inScope = asMap(status?.localization?.fields);
+    const origin = ctx.originValues?.value ?? {};
     const handles = new Set(registry.dirtyHandles(name));
 
-    for (const handle of registry.newlyLocalized(name)) {
-        if (inScope[handle]?.status === 'untranslated') {
+    for (const [handle, field] of Object.entries(inScope)) {
+        if (field?.status === 'untranslated' && Object.hasOwn(origin, handle) && !sameText(ctx.values.value[handle], origin[handle])) {
             handles.add(handle);
         }
     }

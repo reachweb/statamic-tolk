@@ -129,6 +129,17 @@ describe('confirm', function () {
             ->and($status->sourceChanged)->toBeFalse();
     });
 
+    it('keeps a delivery pending when the form saved a copy of the source\'s text instead', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Hello']);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
+
+        $report = writer()->confirm(writerTarget($this->origin));
+
+        expect($report)->toEqual(new ConfirmReport(unresolved: ['title']))
+            ->and(storedState($localization)->field('title')->pending)->toHaveCount(1)
+            ->and(writerStatus($this->origin)->fields['title']->status)->toBe(FieldStatus::Untranslated);
+    });
+
     it('keeps pending entries and the previous output while nothing was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
         $title = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
@@ -341,6 +352,20 @@ describe('baseline', function () {
             ->and(storedState($localization)->field('intro')->history)->toBe([
                 ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['Νέα εισαγωγή.'])],
             ]);
+    });
+
+    it('turns a copy of the source\'s text manual only with $includeMachine', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Hello']);
+
+        $without = writer()->baseline(writerTarget($this->origin));
+        $with = writer()->baseline(writerTarget($this->origin), includeMachine: true);
+        $status = writerStatus($this->origin)->fields['title'];
+
+        expect($without)->toBe(0)
+            ->and($with)->toBe(1)
+            ->and(storedState($localization)->field('title')->isBaseline())->toBeTrue()
+            ->and($status->status)->toBe(FieldStatus::Manual)
+            ->and($status->sourceChanged)->toBeFalse();
     });
 
     it('confirms a saved delivery before it turns it manual', function () {

@@ -3,10 +3,6 @@ import { entryFile, entryState, openEntry, reset } from './support/sandbox.js';
 
 const banner = (page) => page.locator('[data-tolk-banner]');
 
-// Core's inherited Bard field desyncs itself while the form loads; a Translate before the banner's 600 ms refresh lists
-// it as edited and skips it, until T6.11 fixes that.
-const settled = (page) => page.waitForTimeout(700);
-
 test.beforeEach(() => {
     reset();
 });
@@ -24,7 +20,6 @@ test('Translate fills the untranslated fields, and Save stores them with their s
 
     await openEntry(page, 'pages', 'home', 'de');
     await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('4 fields untranslated');
-    await settled(page);
 
     await banner(page).locator('[data-tolk-action="translate"]').click();
 
@@ -85,7 +80,6 @@ test('a quick save keeps the form and the banner reads current at once', async (
     const before = entryFile('pages', 'de', 'home');
 
     await openEntry(page, 'pages', 'home', 'de');
-    await settled(page);
     await banner(page).locator('[data-tolk-action="translate"]').click();
     await expect(banner(page).locator('[data-tolk-summary-translated]')).toBeVisible();
 

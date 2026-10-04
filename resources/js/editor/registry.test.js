@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { computed, ref } from 'vue';
-import { comparable, createRegistry, equalValues } from './registry.js';
+import { clone, createRegistry, sameText, textOf } from './registry.js';
 
 function bus() {
     const handlers = {};
@@ -40,40 +40,93 @@ beforeEach(() => {
     registry.listen(events);
 });
 
-describe('comparable', () => {
-    it('drops _id keys at any depth', () => {
-        const value = {
-            _id: 'top',
-            rows: [{ _id: 'a', text: 'A', set: { _id: 'b', grid: [{ _id: 'c', cell: 'C' }] } }],
+describe('clone', () => {
+    it('copies plain data at any depth and leaves the value it copies alone', () => {
+        const value = { rows: [{ _id: 'a', text: 'A', set: { grid: [{ cell: 'C' }] } }], count: 2, empty: null };
+        const copy = clone(value);
+
+        expect(copy).toEqual(value);
+        expect(copy.rows[0]).not.toBe(value.rows[0]);
+        expect([clone('text'), clone(3), clone(null), clone(undefined)]).toEqual(['text', 3, null, undefined]);
+    });
+
+    it('reads through reactive proxies', () => {
+        const values = ref({ body: [{ type: 'text', text: 'A' }] });
+
+        expect(clone(values.value)).toEqual({ body: [{ type: 'text', text: 'A' }] });
+    });
+});
+
+// What the CP's Bard component makes of a stored value when it re-emits it (T2.2 check 5, T6.11).
+const storedBard = () => [
+    { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Welcome' }] },
+    {
+        type: 'paragraph',
+        content: [
+            { type: 'text', text: 'See our ' },
+            { type: 'text', marks: [{ type: 'link', attrs: { href: 'statamic://entry::rooms' } }], text: 'rooms' },
+            { type: 'text', text: '.' },
+        ],
+    },
+    { type: 'image', attrs: { src: 'asset::assets::pool.jpg', alt: 'The pool' } },
+    { type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'One' }] }] }] },
+    { type: 'set', attrs: { id: 'a1', values: { type: 'quote', text: 'Wonderful.' } } },
+];
+
+const reemittedBard = () => [
+    { type: 'heading', attrs: { level: 2, textAlign: null }, content: [{ type: 'text', text: 'Welcome' }] },
+    {
+        type: 'paragraph',
+        attrs: { textAlign: null },
+        content: [
+            { type: 'text', text: 'See our ' },
+            { type: 'text', marks: [{ type: 'link', attrs: { href: 'statamic://entry::rooms', rel: null, target: null, title: null } }], text: 'rooms' },
+            { type: 'text', text: '.' },
+        ],
+    },
+    { type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'image', attrs: { src: 'asset::assets::pool.jpg', alt: 'The pool' } }] },
+    {
+        type: 'orderedList',
+        attrs: { start: 1, type: null },
+        content: [{ type: 'listItem', content: [{ type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'text', text: 'One' }] }] }],
+    },
+    { type: 'set', attrs: { id: 'b2', enabled: true, values: { type: 'quote', text: 'Wonderful.' } } },
+];
+
+describe('textOf and sameText', () => {
+    it('reads the strings of a value in key order', () => {
+        expect(textOf('Hello')).toBe('Hello');
+        expect(textOf(['a', 'b'])).toBe('ab');
+        expect(textOf({ question: 'Q', answer: 'A' })).toBe(textOf({ answer: 'A', question: 'Q' }));
+        expect([textOf(null), textOf(undefined), textOf(3), textOf(true)]).toEqual(['', '', '', '']);
+    });
+
+    it('leaves out types, ids and marks', () => {
+        expect(textOf([{ _id: 'x', id: 'y', type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toBe('A');
+    });
+
+    it('finds the same text in a Bard value Bard re-emitted', () => {
+        expect(sameText(reemittedBard(), storedBard())).toBe(true);
+    });
+
+    it('finds rows that differ only in their ids and flags the same', () => {
+        expect(sameText([{ _id: 'x1', type: 'text', text: 'A' }], [{ type: 'text', text: 'A', _id: 'y9', enabled: true }])).toBe(true);
+    });
+
+    it('tells a changed text, image alt, set value or link title apart', () => {
+        const changed = (edit) => {
+            const value = storedBard();
+            edit(value);
+
+            return value;
         };
 
-        expect(comparable(value)).toEqual({ rows: [{ text: 'A', set: { grid: [{ cell: 'C' }] } }] });
-    });
-
-    it('keeps other ids and leaves the value it copies alone', () => {
-        const value = [{ _id: 'a', id: 'stored', attrs: { id: 'set' } }];
-
-        expect(comparable(value)).toEqual([{ id: 'stored', attrs: { id: 'set' } }]);
-        expect(value[0]._id).toBe('a');
-    });
-
-    it('returns scalars and null as they are', () => {
-        expect([comparable('text'), comparable(3), comparable(null), comparable(undefined)]).toEqual(['text', 3, null, undefined]);
-    });
-
-    it('makes rows that differ only in their random _id equal', () => {
-        const loaded = [{ _id: 'x1', type: 'text', text: 'A' }];
-        const reloaded = [{ type: 'text', text: 'A', _id: 'y9' }];
-
-        expect(equalValues(loaded, reloaded)).toBe(true);
-        expect(equalValues(loaded, [{ _id: 'x1', type: 'text', text: 'B' }])).toBe(false);
-    });
-
-    it('ignores key order and keys holding undefined', () => {
-        expect(equalValues({ a: 1, b: { c: 2, d: 3 } }, { b: { d: 3, c: 2 }, a: 1, e: undefined })).toBe(true);
-        expect(equalValues({ a: 1 }, { a: 1, b: null })).toBe(false);
-        expect(equalValues([1, 2], [2, 1])).toBe(false);
-        expect(equalValues({ 0: 'a' }, ['a'])).toBe(false);
+        expect(sameText(changed((value) => (value[1].content[0].text = 'See all our ')), storedBard())).toBe(false);
+        expect(sameText(changed((value) => (value[2].attrs.alt = 'Our pool')), storedBard())).toBe(false);
+        expect(sameText(changed((value) => (value[4].attrs.values.text = 'Lovely.')), storedBard())).toBe(false);
+        expect(sameText(changed((value) => value.splice(3, 1)), storedBard())).toBe(false);
+        expect(sameText({ rows: [{ cells: ['A', 'B'] }] }, { rows: [{ cells: ['B', 'A'] }] })).toBe(false);
+        expect(sameText('A', undefined)).toBe(false);
     });
 });
 
@@ -108,6 +161,19 @@ describe('dirtyHandles', () => {
         base.context.values.value = { ...stored(), body: stored().body.map((row, i) => ({ ...row, _id: `new${i}` })) };
 
         expect(registry.dirtyHandles('base')).toEqual([]);
+    });
+
+    it('does not count a value Bard re-emitted with attributes of its own', () => {
+        base.context.values.value.content = storedBard();
+        registry.refreshClean('base');
+
+        base.context.values.value.content = reemittedBard();
+
+        expect(registry.dirtyHandles('base')).toEqual([]);
+
+        base.context.values.value.content[0].content[0].text = 'Willkommen';
+
+        expect(registry.dirtyHandles('base')).toEqual(['content']);
     });
 
     it('is empty after a save until the next change', () => {
@@ -173,55 +239,6 @@ describe('dirtyHandles', () => {
         stack.payload.values.value.title = 'Changed';
 
         expect(registry.dirtyHandles('relate-fieldtype-inline-1')).toEqual(['title']);
-    });
-});
-
-describe('newlyLocalized', () => {
-    let base;
-
-    beforeEach(() => {
-        base = container('base', stored());
-        base.context.localizedFields.value = ['title'];
-        events.$emit('publish-container-created', base.payload);
-        registry.attachContext('base', base.context);
-    });
-
-    it('lists handles localized since the clean values were taken', () => {
-        expect(registry.newlyLocalized('base')).toEqual([]);
-
-        base.context.localizedFields.value.push('intro');
-
-        expect(registry.newlyLocalized('base')).toEqual(['intro']);
-    });
-
-    it('leaves out a handle the form localized before a refresh', () => {
-        // An inherited Bard field desyncs itself while the form loads, before the second refresh.
-        base.context.localizedFields.value.push('body');
-        registry.refreshClean('base');
-        base.context.localizedFields.value.push('intro');
-
-        expect(registry.newlyLocalized('base')).toEqual(['intro']);
-    });
-
-    it('keeps what it took when the context is attached again', () => {
-        base.context.localizedFields.value.push('intro');
-        registry.attachContext('base', { ...base.context });
-
-        expect(registry.newlyLocalized('base')).toEqual(['intro']);
-    });
-
-    it('takes a copy, not the form\'s list', () => {
-        base.context.localizedFields.value.splice(0, 1, 'intro');
-
-        expect(registry.newlyLocalized('base')).toEqual(['intro']);
-    });
-
-    it('is empty without clean values or a container', () => {
-        const stack = container('relate-fieldtype-inline-1', stored());
-        events.$emit('publish-container-created', stack.payload);
-
-        expect(registry.newlyLocalized('relate-fieldtype-inline-1')).toEqual([]);
-        expect(registry.newlyLocalized('unknown')).toEqual([]);
     });
 });
 

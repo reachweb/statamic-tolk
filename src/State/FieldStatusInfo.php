@@ -14,6 +14,8 @@ final readonly class FieldStatusInfo
      * @param  FieldState  $state  the state after the in-memory reconcile
      * @param  string  $sourceHash  the source's current fingerprint
      * @param  ?string  $targetHash  the target's current text fingerprint; null when the target has no override
+     * @param  ?string  $sourceTextHash  the source's text fingerprint walked as a target (§A3), which a copy of the source
+     *                                   has; computed only when it can decide the status or a reconcile, else null
      */
     public function __construct(
         public FieldStatus $status,
@@ -26,6 +28,7 @@ final readonly class FieldStatusInfo
         public FieldState $state,
         public string $sourceHash,
         public ?string $targetHash,
+        public ?string $sourceTextHash = null,
     ) {}
 
     public function needsAttention(): bool

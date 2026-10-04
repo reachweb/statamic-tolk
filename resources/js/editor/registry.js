@@ -25,7 +25,7 @@ export function createRegistry() {
     function created(payload) {
         const mounted = (entries.get(payload.name)?.mounted ?? 0) + 1;
 
-        entries.set(payload.name, { payload, context: null, clean: null, localized: null, mounted });
+        entries.set(payload.name, { payload, context: null, clean: null, mounted });
     }
 
     function destroyed({ name }) {
@@ -43,7 +43,7 @@ export function createRegistry() {
     }
 
     function update(name, changes) {
-        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, localized: null, mounted: 0 };
+        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, mounted: 0 };
 
         entries.set(name, { ...entry, ...changes });
     }
@@ -56,18 +56,16 @@ export function createRegistry() {
         if (entry?.clean) {
             update(name, { context });
         } else {
-            update(name, { context, clean: comparable(context.values.value), localized: localizedOf(context) });
+            update(name, { context, clean: clone(context.values.value) });
         }
     }
 
-    // After a site or entry switch and after a save, the values in the form are what is stored. The localized handles
-    // are taken with them: a fieldtype can desync its field by itself while the form loads.
+    // After a site or entry switch and after a save, the values in the form are what is stored.
     function refreshClean(name) {
-        const source = sourceOf(name);
-        const values = source?.values?.value ?? null;
+        const values = currentValues(name);
 
         if (values !== null) {
-            update(name, { clean: comparable(values), localized: localizedOf(source) });
+            update(name, { clean: clone(values) });
         }
     }
 
@@ -81,22 +79,8 @@ export function createRegistry() {
         return sourceOf(name)?.values?.value ?? null;
     }
 
-    function localizedOf(source) {
-        return [...(source?.localizedFields?.value ?? [])];
-    }
-
-    // Handles localized in the form since the clean values were taken: desynced by the editor, not by the form itself.
-    function newlyLocalized(name) {
-        const before = entries.get(name)?.localized;
-
-        if (!before) {
-            return [];
-        }
-
-        return localizedOf(sourceOf(name)).filter((handle) => !before.includes(handle));
-    }
-
-    // Top-level handles whose value differs from the clean values, in the form's order.
+    // Top-level handles whose text differs from the clean values, in the form's order. A value that only changed its
+    // shape is not dirty: Bard re-emits its value with attributes of its own.
     function dirtyHandles(name) {
         const clean = entries.get(name)?.clean;
         const values = currentValues(name);
@@ -107,7 +91,7 @@ export function createRegistry() {
 
         const handles = [...new Set([...Object.keys(values), ...Object.keys(clean)])];
 
-        return handles.filter((handle) => !equalValues(values[handle], clean[handle]));
+        return handles.filter((handle) => !sameText(values[handle], clean[handle]));
     }
 
     return {
@@ -115,7 +99,6 @@ export function createRegistry() {
         attachContext,
         refreshClean,
         dirtyHandles,
-        newlyLocalized,
         context: (name) => entries.get(name)?.context ?? null,
         payload: (name) => entries.get(name)?.payload ?? null,
         base: () => entries.get(BASE)?.context ?? null,
@@ -127,48 +110,45 @@ export const registry = createRegistry();
 
 // Deep copy of form data. Values read from the context are reactive proxies, which `structuredClone` refuses.
 export function clone(value) {
-    return copy(value, null);
-}
-
-// A copy without `_id` keys at any depth. Replicator, Grid and Bard rows that have no stored id get a new random
-// `_id` on every load, so ids must not count as changes.
-export function comparable(value) {
-    return copy(value, '_id');
-}
-
-function copy(value, omit) {
     if (Array.isArray(value)) {
-        return value.map((item) => copy(item, omit));
+        return value.map(clone);
     }
 
     if (value === null || typeof value !== 'object') {
         return value;
     }
 
-    return Object.fromEntries(
-        Object.keys(value)
-            .filter((key) => key !== omit)
-            .map((key) => [key, copy(value[key], omit)]),
-    );
+    return Object.fromEntries(Object.keys(value).map((key) => [key, clone(value[key])]));
 }
 
-// Deep equality of plain data in which `_id` keys and key order do not count and a key holding `undefined` counts as
-// absent.
-export function equalValues(a, b) {
-    if (a === b) {
-        return true;
+// Keys whose values are not text: node, set and mark types, ids, and the marks, which Bard rewrites with attributes of
+// its own.
+const NOT_TEXT = new Set(['type', 'id', '_id', 'marks']);
+
+// The text of a value: its strings in key order, without the keys above. Numbers, booleans and nulls do not count,
+// so what Bard does when it re-emits a value (`textAlign: null`, a list's `start: 1`, a table cell's `colspan: 1`, a
+// block image wrapped in a paragraph, adjacent runs joined) changes nothing. Whether a field holds an edit is decided
+// by its text alone, as the server decides whether a field is machine output (D27).
+export function textOf(value) {
+    if (typeof value === 'string') {
+        return value;
     }
 
-    if (Array.isArray(a) || Array.isArray(b)) {
-        return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => equalValues(item, b[i]));
+    if (Array.isArray(value)) {
+        return value.map(textOf).join('');
     }
 
-    if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') {
-        return false;
+    if (value === null || typeof value !== 'object') {
+        return '';
     }
 
-    const keys = (object) => Object.keys(object).filter((key) => key !== '_id' && object[key] !== undefined);
-    const aKeys = keys(a);
+    return Object.keys(value)
+        .filter((key) => !NOT_TEXT.has(key))
+        .sort()
+        .map((key) => textOf(value[key]))
+        .join('');
+}
 
-    return aKeys.length === keys(b).length && aKeys.every((key) => Object.hasOwn(b, key) && equalValues(a[key], b[key]));
+export function sameText(a, b) {
+    return textOf(a) === textOf(b);
 }

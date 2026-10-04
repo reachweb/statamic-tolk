@@ -63,9 +63,6 @@ for (const slug of ['about', 'dining']) {
         );
         await expect(offer(page).locator('[data-tolk-offer-model]')).toHaveText(/^Model: \S+$/);
 
-        // Core's Bard field desyncs itself while the new localization loads; a Translate before the banner's 600 ms
-        // refresh lists it as edited and skips it, until T6.11 fixes that.
-        await page.waitForTimeout(700);
         const slugs = await recordSlugs(page);
         await offer(page).locator('[data-tolk-offer-action="translate"]').click();
 

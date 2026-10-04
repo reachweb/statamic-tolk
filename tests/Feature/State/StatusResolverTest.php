@@ -126,6 +126,65 @@ describe('field status', function () {
             ->and($status->counts['attention'])->toBe(0);
     });
 
+    it('reads an override without state that holds the source\'s own text as untranslated', function () {
+        editOrigin($this->origin, ['faq' => [['question' => 'Check-in?', 'answer' => 'From 14:00.']]]);
+        // As a CP save stores a field that desynced itself: a row id, a flag and a set default added, no text changed.
+        $this->localize($this->origin, 'el', [
+            'title' => 'Hello',
+            'faq' => [['id' => 'mf3k2a9x', 'question' => 'Check-in?', 'answer' => 'From 14:00.', 'more' => 'Read more', 'enabled' => true]],
+        ]);
+
+        $status = statusOf($this->origin);
+
+        expect($status->fields['title']->status)->toBe(FieldStatus::Untranslated)
+            ->and($status->fields['title']->sourceChanged)->toBeNull()
+            ->and($status->fields['title']->targetHash)->toBe(Fingerprint::ofLeaves(['Hello']))
+            ->and($status->fields['faq']->status)->toBe(FieldStatus::Untranslated)
+            ->and($status->counts)->toBe(['untranslated' => 3, 'current' => 0, 'outdated' => 0, 'manual' => 0, 'attention' => 0, 'untracked' => 0]);
+    });
+
+    it('reads the origin\'s Bard value as the CP stores it after the field desynced itself as untranslated', function () {
+        $this->makeCollection('pages', ['en', 'de'], ['content' => ['type' => 'bard', 'localizable' => true, 'buttons' => ['h2', 'bold', 'anchor', 'image'], 'sets' => ['main' => ['sets' => [
+            'quote' => ['display' => 'Quote', 'fields' => [['handle' => 'text', 'field' => ['type' => 'textarea']]]],
+        ]]]]]);
+        $link = ['type' => 'link', 'attrs' => ['href' => 'statamic://entry::rooms']];
+        $origin = $this->makeEntry('pages', 'en', ['content' => [
+            ['type' => 'heading', 'attrs' => ['level' => 2], 'content' => [['type' => 'text', 'text' => 'Welcome']]],
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'See our '], ['type' => 'text', 'marks' => [$link], 'text' => 'rooms'], ['type' => 'text', 'text' => '.']]],
+            ['type' => 'image', 'attrs' => ['src' => 'asset::assets::pool.jpg', 'alt' => 'The pool']],
+            ['type' => 'set', 'attrs' => ['id' => 'q1w2e3r4', 'values' => ['type' => 'quote', 'text' => 'Simply wonderful.']]],
+        ]], 'home');
+        // Bard's own JSON: null attributes added, the block image wrapped in a paragraph.
+        $this->localize($origin, 'de', ['content' => [
+            ['type' => 'heading', 'attrs' => ['level' => 2, 'textAlign' => null], 'content' => [['type' => 'text', 'text' => 'Welcome']]],
+            ['type' => 'paragraph', 'attrs' => ['textAlign' => null], 'content' => [
+                ['type' => 'text', 'text' => 'See our '],
+                ['type' => 'text', 'marks' => [['type' => 'link', 'attrs' => ['href' => 'statamic://entry::rooms', 'rel' => null, 'target' => null, 'title' => null]]], 'text' => 'rooms'],
+                ['type' => 'text', 'text' => '.'],
+            ]],
+            ['type' => 'paragraph', 'attrs' => ['textAlign' => null], 'content' => [['type' => 'image', 'attrs' => ['src' => 'asset::assets::pool.jpg', 'alt' => 'The pool']]]],
+            ['type' => 'set', 'attrs' => ['id' => 'q1w2e3r4', 'enabled' => true, 'values' => ['type' => 'quote', 'text' => 'Simply wonderful.']]],
+        ]]);
+
+        $field = statusOf($origin, 'de')->fields['content'];
+
+        expect($field->status)->toBe(FieldStatus::Untranslated)
+            ->and($field->targetHash)->toBe($field->sourceTextHash);
+    });
+
+    it('reads a copy of the source\'s text as manual once a human vouched for it, and a copy of a source without text as manual', function () {
+        editOrigin($this->origin, ['body' => '2026']);
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Hello', 'body' => '2026']);
+        StateFixtures::store($localization, ['title' => new FieldState(sourceHash: Fingerprint::of('Hello'))]);
+
+        $status = statusOf($this->origin);
+
+        expect($status->fields['title']->status)->toBe(FieldStatus::Manual)
+            ->and($status->fields['title']->sourceChanged)->toBeFalse()
+            ->and($status->fields['body']->status)->toBe(FieldStatus::Manual)
+            ->and($status->fields['body']->isUntracked())->toBeTrue();
+    });
+
     it('reads a baseline as manual with an unchanged source, then as changed after an origin edit', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
         StateFixtures::store($localization, ['title' => new FieldState(sourceHash: Fingerprint::of('Hello'))]);
@@ -172,6 +231,18 @@ describe('pending entries', function () {
             ->and($field->state->isBaseline())->toBeTrue()
             ->and($field->state->pending)->toBe([])
             ->and($field->translator)->toBe('openai:gpt-6.1-sol');
+    });
+
+    it('keeps a delivery pending when the form saved a copy of the source\'s text instead', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Hello']);
+        $pending = StateFixtures::pending('Hello', 'Γεια');
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
+
+        $field = statusOf($this->origin)->fields['title'];
+
+        expect($field->status)->toBe(FieldStatus::Untranslated)
+            ->and($field->state->isBaseline())->toBeFalse()
+            ->and($field->state->pending)->toEqual([$pending]);
     });
 
     it('keeps the previous status while a pending entry has not been saved', function () {

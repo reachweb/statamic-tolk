@@ -82,8 +82,9 @@ final readonly class FieldState
 
     /**
      * Resolves the pending entries against the target's text fingerprint, null when the target has no override (§A5 "Reconcile").
+     * `$sourceTextHash` is the source's text fingerprint walked as a target: a target holding that text was not edited.
      */
-    public function reconcile(?string $targetHash, CarbonImmutable $now): self
+    public function reconcile(?string $targetHash, CarbonImmutable $now, ?string $sourceTextHash = null): self
     {
         if ($this->pending === []) {
             return $this;
@@ -93,7 +94,7 @@ final readonly class FieldState
             return $this->promote($saved);
         }
 
-        if (($edited = $this->editedPending($targetHash)) !== null) {
+        if (($edited = $this->editedPending($targetHash, $sourceTextHash)) !== null) {
             return $this->toBaseline($edited);
         }
 
@@ -118,11 +119,12 @@ final readonly class FieldState
 
     /**
      * Reconcile rule 2: the newest entry whose output was edited before it was saved. The target holds text that changed
-     * since the entry's plan and is no machine output.
+     * since the entry's plan and is no machine output, nor a copy of the source's text, which the CP saves without an
+     * edit when a Bard field desyncs itself (T6.11).
      */
-    public function editedPending(?string $targetHash): ?PendingState
+    public function editedPending(?string $targetHash, ?string $sourceTextHash = null): ?PendingState
     {
-        if ($targetHash === null || $targetHash === $this->targetHash || $this->inHistory($targetHash)) {
+        if ($targetHash === null || $targetHash === $this->targetHash || $targetHash === $sourceTextHash || $this->inHistory($targetHash)) {
             return null;
         }
 
