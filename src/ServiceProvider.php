@@ -5,6 +5,7 @@ namespace Reach\StatamicTolk;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\TranslationEngine;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Handlers\MarkdownHandler;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\StateRepository;
@@ -70,6 +71,7 @@ class ServiceProvider extends AddonServiceProvider
 
         $registry->register('text', TextHandler::class);
         $registry->register('textarea', TextHandler::class);
+        $registry->register('markdown', MarkdownHandler::class);
 
         foreach (config('tolk.fieldtypes', []) as $handle => $handlerClass) {
             $registry->register($handle, $handlerClass);
