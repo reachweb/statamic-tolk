@@ -59,15 +59,18 @@ for (const slug of ['about', 'dining']) {
         await expect(offer(page)).toBeVisible();
         await expect(offer(page).getByText('Translate this entry?')).toBeVisible();
         await expect(offer(page).locator('[data-tolk-offer-text]')).toHaveText(
-            'Translate 4 fields from English into German. Nothing is saved until you press Save.',
+            'Translate 5 fields from English into German. Nothing is saved until you press Save.',
         );
         await expect(offer(page).locator('[data-tolk-offer-model]')).toHaveText(/^Model: \S+$/);
 
+        // Core's Bard field desyncs itself while the new localization loads; a Translate before the banner's 600 ms
+        // refresh lists it as edited and skips it, until T6.11 fixes that.
+        await page.waitForTimeout(700);
         const slugs = await recordSlugs(page);
         await offer(page).locator('[data-tolk-offer-action="translate"]').click();
 
         await expect(offer(page)).toHaveCount(0);
-        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with \S+\.$/);
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with \S+\.$/);
 
         for (const handle of fields) {
             await expect(page.locator(`#field_${handle}`)).toHaveValue(`[de] ${origin[handle]}`);
@@ -105,7 +108,7 @@ test('Not now leaves the form untouched', async ({ page, browserErrors }) => {
     await offer(page).locator('[data-tolk-offer-action="decline"]').click();
 
     await expect(offer(page)).toHaveCount(0);
-    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('4 fields untranslated');
+    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('5 fields untranslated');
     await expect(banner(page).locator('[data-tolk-action="translate"]')).toBeVisible();
     await page.waitForTimeout(1_500);
 
@@ -131,13 +134,13 @@ test("with Don't offer again the offer no longer appears, and the banner's Trans
 
     const origin = await createGerman(page, 'about');
 
-    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('4 fields untranslated');
+    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('5 fields untranslated');
     await page.waitForTimeout(1_000);
     await expect(offer(page)).toHaveCount(0);
 
     const slugs = await recordSlugs(page);
     await banner(page).locator('[data-tolk-action="translate"]').click();
-    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with \S+\.$/);
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with \S+\.$/);
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await expect(page.locator('#field_slug')).toHaveValue('about');
 

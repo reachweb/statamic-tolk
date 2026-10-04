@@ -68,7 +68,7 @@ test.describe('the German home page, whose title was written by hand', () => {
         await expect(checkbox(page, 'Overwrite manual edits')).not.toBeChecked();
 
         expect(await translateFromOptions(page)).toMatchObject({ mode: 'update', overwrite_manual: false, translator: null });
-        await expect(translated(page)).toHaveText(/^3 fields translated with /);
+        await expect(translated(page)).toHaveText(/^4 fields translated with /);
         await expect(banner(page).locator('[data-tolk-summary-manual]')).toHaveText(
             'Title was skipped because it was edited by hand. Overwrite manual edits in the options replaces it.',
         );
@@ -83,7 +83,7 @@ test.describe('the German home page, whose title was written by hand', () => {
         await expect(checkbox(page, 'Overwrite manual edits')).toBeChecked();
 
         expect(await translateFromOptions(page)).toMatchObject({ mode: 'update', overwrite_manual: true });
-        await expect(translated(page)).toHaveText(/^4 fields translated with /);
+        await expect(translated(page)).toHaveText(/^5 fields translated with /);
         await expect(banner(page).locator('[data-tolk-summary-manual]')).toHaveCount(0);
         await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
 
@@ -96,9 +96,9 @@ test.describe('the German home page, whose title was written by hand', () => {
 
     test('Retranslate everything fills fields that are up to date again', async ({ page, browserErrors }) => {
         await action(page, 'translate').click();
-        await expect(translated(page)).toHaveText(/^3 fields translated with /);
+        await expect(translated(page)).toHaveText(/^4 fields translated with /);
         await quickSave(page);
-        await expect(part(page, 'current')).toHaveText('3 fields up to date');
+        await expect(part(page, 'current')).toHaveText('4 fields up to date');
 
         // Without a flag there is nothing to do.
         await openOptions(page);
@@ -113,9 +113,9 @@ test.describe('the German home page, whose title was written by hand', () => {
 
         const plan = page.waitForResponse((response) => isPlan(response.request()));
         expect(await translateFromOptions(page)).toMatchObject({ mode: 'all', overwrite_manual: false });
-        expect((await (await plan).json()).fields).toEqual(['intro', 'seo_title', 'seo_description']);
+        expect((await (await plan).json()).fields).toEqual(['intro', 'content', 'seo_title', 'seo_description']);
 
-        await expect(translated(page)).toHaveText(/^3 fields translated with /);
+        await expect(translated(page)).toHaveText(/^4 fields translated with /);
         await expect(banner(page).locator('[data-tolk-summary-manual]')).toContainText('Title was skipped');
         await expect(page.locator('#field_seo_title')).toHaveValue(`[de] ${origin.seo_title}`);
         expect(browserErrors()).toEqual([]);
@@ -123,17 +123,17 @@ test.describe('the German home page, whose title was written by hand', () => {
 
     test('Protect this entry from updates turns the translated fields manual', async ({ page, browserErrors }) => {
         await action(page, 'translate').click();
-        await expect(translated(page)).toHaveText(/^3 fields translated with /);
+        await expect(translated(page)).toHaveText(/^4 fields translated with /);
         await quickSave(page);
-        await expect(part(page, 'current')).toHaveText('3 fields up to date');
+        await expect(part(page, 'current')).toHaveText('4 fields up to date');
 
         await openOptions(page);
         await dialog(page).locator('[data-tolk-action="protect"]').click();
 
         // The hand-written title is baselined with them, so it is tracked from now on.
-        await expect(page.getByText('4 fields are now protected from updates.')).toBeVisible();
+        await expect(page.getByText('5 fields are now protected from updates.')).toBeVisible();
         await expect(dialog(page)).toHaveCount(0);
-        await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
+        await expect(part(page, 'manual')).toHaveText('5 fields edited by hand');
         await expect(part(page, 'untracked')).toHaveCount(0);
         await expect(part(page, 'current')).toHaveCount(0);
         await expect(action(page, 'update')).toHaveCount(0);
@@ -155,7 +155,7 @@ test.describe('the German home page, whose title was written by hand', () => {
         await toggle(page, 'Overwrite manual edits');
 
         expect(await translateFromOptions(page)).toMatchObject({ translator: 'openai:gpt-6-luna', overwrite_manual: true });
-        await expect(translated(page)).toHaveText('4 fields translated with gpt-6-luna.');
+        await expect(translated(page)).toHaveText('5 fields translated with gpt-6-luna.');
         await expect.poll(() => preference(page, 'tolk.editor.translator')).toBe('openai:gpt-6-luna');
 
         await page.reload();
@@ -185,7 +185,7 @@ test.describe('the German home page, whose title was written by hand', () => {
         await expect(modelSelect(page)).toHaveAttribute('placeholder', 'openai:gpt-custom');
 
         expect(await translateFromOptions(page)).toMatchObject({ translator: 'openai:gpt-custom' });
-        await expect(translated(page)).toHaveText('3 fields translated with gpt-custom.');
+        await expect(translated(page)).toHaveText('4 fields translated with gpt-custom.');
         expect(browserErrors()).toEqual([]);
     });
 
