@@ -3,13 +3,10 @@
 namespace Reach\StatamicTolk\Content\Handlers;
 
 use Closure;
-use Reach\StatamicTolk\Content\Leaf;
-use Reach\StatamicTolk\Content\LeafRules;
-use Reach\StatamicTolk\Content\Markup\Placeholders;
+use Reach\StatamicTolk\Content\Handlers\Concerns\MakesLeaves;
 use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Content\WalkContext;
 use Reach\StatamicTolk\Contracts\FieldHandler;
-use Reach\StatamicTolk\Enums\SegmentKind;
 use Statamic\Fields\Field;
 
 /**
@@ -17,7 +14,7 @@ use Statamic\Fields\Field;
  */
 final class MarkdownHandler implements FieldHandler
 {
-    private const string WHITESPACE = " \t\r\n";
+    use MakesLeaves;
 
     // A list item's marker at the start of a line, and the spaces between it and the item's content.
     private const string LIST_ITEM = '/^([ \t]*)([-+*]|\d{1,9}[.)])(?:([ \t]+)\S|[ \t]*\r?$)/m';
@@ -30,9 +27,8 @@ final class MarkdownHandler implements FieldHandler
 
         $blocks = Tokenizer::splitMarkdownBlocks($value);
         $labels = Tokenizer::referenceLabels($value);
-        $hint = $field->fieldtype()->config()['tolk_hint'] ?? null;
+        $hint = $this->hint($field->fieldtype());
         $list = null;
-        $changed = false;
 
         foreach ($blocks as $index => $block) {
             if ($index % 2 === 1 || $this->isIndentedCode($block, $list)) {
@@ -40,30 +36,10 @@ final class MarkdownHandler implements FieldHandler
             }
 
             $list = $this->listColumn($block, $list);
-            $core = trim($block, self::WHITESPACE);
-            $tokenized = Tokenizer::markdown($core, $labels);
-
-            if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, SegmentKind::Markdown))) {
-                continue;
-            }
-
-            $translated = $translate(new Leaf(
-                text: $tokenized->text,
-                kind: SegmentKind::Markdown,
-                path: $context->path(),
-                label: $context->label(),
-                hint: is_string($hint) && trim($hint) !== '' ? trim($hint) : null,
-                placeholders: $tokenized->placeholders,
-            ));
-
-            if ($translated !== $tokenized->text) {
-                $lead = substr($block, 0, strspn($block, self::WHITESPACE));
-                $blocks[$index] = $lead.Tokenizer::restore($translated, $tokenized).substr($block, strlen($lead) + strlen($core));
-                $changed = true;
-            }
+            $blocks[$index] = $this->block($block, fn (string $core) => Tokenizer::markdown($core, $labels), $hint, $translate, $context);
         }
 
-        return $changed ? implode('', $blocks) : $value;
+        return implode('', $blocks);
     }
 
     /**

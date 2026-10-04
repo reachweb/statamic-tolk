@@ -30,9 +30,11 @@ final class TableHandler implements FieldHandler
                 continue;
             }
 
+            $cellsContext = $context->with($row)->with('cells');
+
             foreach ($cells as $column => $cell) {
                 if (is_string($cell)) {
-                    $value[$row]['cells'][$column] = $this->plain($cell, $hint, $translate, $context->with($row)->with('cells')->with($column));
+                    $value[$row]['cells'][$column] = $this->plain($cell, $hint, $translate, $cellsContext->with($column));
                 }
             }
         }

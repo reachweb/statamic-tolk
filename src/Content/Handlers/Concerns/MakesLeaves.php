@@ -6,6 +6,7 @@ use Closure;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\LeafRules;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
+use Reach\StatamicTolk\Content\Markup\Tokenized;
 use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Content\WalkContext;
 use Reach\StatamicTolk\Enums\SegmentKind;
@@ -13,21 +14,43 @@ use Statamic\Fields\Fieldtype;
 
 trait MakesLeaves
 {
+    private const string WHITESPACE = " \t\r\n";
+
     /**
      * Offers one string as a `plain` leaf and returns its translation, or the string itself when it is no leaf or its
      * leaf kept its text.
      */
     private function plain(string $text, ?string $hint, Closure $translate, WalkContext $context): string
     {
-        $tokenized = Tokenizer::tokenize($text, SegmentKind::Plain);
+        return $this->offer(Tokenizer::tokenize($text, SegmentKind::Plain), $hint, $translate, $context) ?? $text;
+    }
 
-        if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, SegmentKind::Plain))) {
-            return $text;
+    /**
+     * Offers one block of a field trimmed of its surrounding whitespace, which stays outside the leaf, and returns the
+     * block with its translation, or the block itself when it is no leaf or its leaf kept its text.
+     *
+     * @param  Closure(string): Tokenized  $tokenize
+     */
+    private function block(string $block, Closure $tokenize, ?string $hint, Closure $translate, WalkContext $context): string
+    {
+        $core = trim($block, self::WHITESPACE);
+        $restored = $this->offer($tokenize($core), $hint, $translate, $context);
+
+        return $restored === null ? $block : substr_replace($block, $restored, strspn($block, self::WHITESPACE), strlen($core));
+    }
+
+    /**
+     * The restored translation of a tokenized text, or null when it is no leaf or its leaf kept its text.
+     */
+    private function offer(Tokenized $tokenized, ?string $hint, Closure $translate, WalkContext $context): ?string
+    {
+        if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, $tokenized->kind))) {
+            return null;
         }
 
-        $translated = $translate($this->leaf($tokenized->text, SegmentKind::Plain, $tokenized->placeholders, $hint, $context));
+        $translated = $translate($this->leaf($tokenized->text, $tokenized->kind, $tokenized->placeholders, $hint, $context));
 
-        return $translated === $tokenized->text ? $text : Tokenizer::restore($translated, $tokenized);
+        return $translated === $tokenized->text ? null : Tokenizer::restore($translated, $tokenized);
     }
 
     private function leaf(string $text, SegmentKind $kind, array $placeholders, ?string $hint, WalkContext $context): Leaf
