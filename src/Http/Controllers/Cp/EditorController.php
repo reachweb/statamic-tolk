@@ -54,22 +54,15 @@ class EditorController extends Controller
     {
         $user = User::current();
         $target = $this->authorized($this->localization($request->validated('reference')), $user);
-
-        try {
-            $options = PlanOptions::fromSettings($settings, $catalog, [
-                'mode' => $request->validated('mode'),
-                'overwriteManual' => $request->boolean('overwrite_manual'),
-                'fields' => $request->validated('fields') === null ? null : array_values($request->validated('fields')),
-                'skip' => array_fill_keys(array_values($request->validated('skip', [])), EditorTranslation::EDITED_IN_FORM),
-                'translator' => $request->validated('translator'),
-                'review' => $request->validated('review') === null ? null : $request->boolean('review'),
-                'reviewer' => $request->validated('reviewer'),
-                'profile' => 'web',
-                'userId' => (string) $user->id(),
-            ]);
-        } catch (NoProviderConfigured|MissingDefaultModel $exception) {
-            $this->fail(422, 'no_translator', $exception->getMessage());
-        }
+        $options = $this->options($settings, $catalog, $user, [
+            'mode' => $request->validated('mode'),
+            'overwriteManual' => $request->boolean('overwrite_manual'),
+            'fields' => $request->validated('fields') === null ? null : array_values($request->validated('fields')),
+            'skip' => array_fill_keys(array_values($request->validated('skip', [])), EditorTranslation::EDITED_IN_FORM),
+            'translator' => $request->validated('translator'),
+            'review' => $request->validated('review'),
+            'reviewer' => $request->validated('reviewer'),
+        ]);
 
         return $this->attempt(fn () => $translation->plan($target, $options));
     }
@@ -81,19 +74,12 @@ class EditorController extends Controller
     {
         $user = User::current();
         $target = $this->authorized($this->localization($request->validated('reference')), $user);
-
-        try {
-            // Only mode review keeps a reviewer override while the review setting is off.
-            $options = PlanOptions::fromSettings($settings, $catalog, [
-                'mode' => Mode::Review,
-                'overwriteManual' => $request->boolean('overwrite_manual'),
-                'reviewer' => $request->validated('reviewer'),
-                'profile' => 'web',
-                'userId' => (string) $user->id(),
-            ]);
-        } catch (NoProviderConfigured|MissingDefaultModel $exception) {
-            $this->fail(422, 'no_translator', $exception->getMessage());
-        }
+        // Only mode review keeps a reviewer override while the review setting is off.
+        $options = $this->options($settings, $catalog, $user, [
+            'mode' => Mode::Review,
+            'overwriteManual' => $request->boolean('overwrite_manual'),
+            'reviewer' => $request->validated('reviewer'),
+        ]);
 
         return $this->attempt(fn () => $translation->review($target, $options, $request->validated('values')));
     }
@@ -160,6 +146,15 @@ class EditorController extends Controller
         }
 
         return response()->json([...$status->for($reference, $user), 'baselined' => $count]);
+    }
+
+    private function options(Settings $settings, ModelCatalog $catalog, UserContract $user, array $overrides): PlanOptions
+    {
+        try {
+            return PlanOptions::fromSettings($settings, $catalog, [...$overrides, 'profile' => 'web', 'userId' => (string) $user->id()]);
+        } catch (NoProviderConfigured|MissingDefaultModel $exception) {
+            $this->fail(422, 'no_translator', $exception->getMessage());
+        }
     }
 
     private function localization(string $reference): Target

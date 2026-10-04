@@ -10,7 +10,6 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
-use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
@@ -157,16 +156,14 @@ final readonly class TargetTranslator
             }
         }
 
-        if ($plan->kind === UnitKind::Review) {
-            foreach ($assembled as $handle => $field) {
-                if ($field->corrections === []) {
-                    $unchanged[$handle] = TargetResult::NO_CORRECTIONS;
-                    array_push($warnings, ...$field->warnings);
-                }
+        foreach ($assembled as $handle => $field) {
+            if ($field->unchanged) {
+                $unchanged[$handle] = TargetResult::NO_CORRECTIONS;
+                array_push($warnings, ...$field->warnings);
             }
-
-            $assembled = array_diff_key($assembled, $unchanged);
         }
+
+        $assembled = array_diff_key($assembled, $unchanged);
 
         if ($assembled === [] && $unchanged !== []) {
             return new TargetResult(

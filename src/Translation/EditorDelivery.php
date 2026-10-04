@@ -4,7 +4,6 @@ namespace Reach\StatamicTolk\Translation;
 
 use LogicException;
 use Reach\StatamicTolk\Contracts\Target;
-use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\StateWriter;
@@ -43,7 +42,7 @@ final readonly class EditorDelivery
             $assembled[$handle] = $this->pipeline->assemble($plan, $target, $handle);
         }
 
-        $unchanged = $plan->kind === UnitKind::Review ? array_filter($assembled, fn (AssembledField $field) => $field->corrections === []) : [];
+        $unchanged = array_filter($assembled, fn (AssembledField $field) => $field->unchanged);
         $removed = array_filter($assembled, fn (AssembledField $field) => $field->remove);
         $delivered = $this->translated($plan, $ref, $target, array_diff_key($assembled, $removed, $unchanged))
             + $this->inherited($target, $removed)
