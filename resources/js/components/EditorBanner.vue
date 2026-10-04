@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount } from 'vue';
 import { Badge, Button, Card, Description, Icon, Text, injectPublishContext } from '@statamic/cms/ui';
 import ProgressBar from './ProgressBar.vue';
 import TranslateOffer from './TranslateOffer.vue';
+import TranslateOptions from './TranslateOptions.vue';
 import { attachBanner } from '../editor/banner.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
@@ -27,7 +28,9 @@ const summary = computed(() => describeSummary(state.value?.summary ?? null, sta
 const canUndo = computed(() => undoable(state.value));
 const restart = computed(() => RESTART.includes(state.value?.error?.code));
 const notSaved = computed(() => (state.value?.notSaved?.length ? notSavedMessage(state.value.notSaved, state.value.status) : null));
-const actions = computed(() => phase.value === 'idle' && (banner.value.localization?.translate || banner.value.localization?.update));
+// The options are there whenever a model is: "Retranslate everything" and the state actions also have work on an entry that
+// is up to date.
+const actions = computed(() => phase.value === 'idle' && Boolean(banner.value.localization) && !banner.value.setup);
 const shown = computed(() => !ctx.readOnly.value && (banner.value.visible || failure.value !== null));
 const settingsUrl = Statamic.$config.get('tolk.settingsUrl');
 
@@ -91,6 +94,7 @@ async function undo() {
                     <Button v-if="banner.localization.update" size="sm" data-tolk-action="update" @click="translate('update')">
                         {{ __('Update') }}
                     </Button>
+                    <TranslateOptions :container-name="name" :status="state.status" />
                 </div>
             </div>
 
@@ -122,6 +126,7 @@ async function undo() {
                 <Description v-if="summary.cancelled">{{ summary.cancelled }}</Description>
                 <Description v-if="summary.incomplete" data-tolk-summary-incomplete>{{ summary.incomplete }}</Description>
                 <Description v-if="summary.edited" data-tolk-summary-edited>{{ summary.edited }}</Description>
+                <Description v-if="summary.manual" data-tolk-summary-manual>{{ summary.manual }}</Description>
                 <Description v-if="summary.failed" data-tolk-summary-failed>{{ summary.failed }}</Description>
                 <Description v-if="summary.unsaved" data-tolk-summary-unsaved>{{ summary.unsaved }}</Description>
             </div>

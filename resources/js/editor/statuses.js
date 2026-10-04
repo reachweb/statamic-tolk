@@ -199,6 +199,7 @@ export function describeSummary(summary, status = null) {
     const count = summary.delivered.length;
     const models = summary.models.map(modelName).join(', ');
     const edited = Object.keys(summary.skipped).filter((handle) => summary.skipped[handle] === 'edited');
+    const manual = Object.keys(summary.planSkipped ?? {}).filter((handle) => summary.planSkipped[handle] === 'manual');
     const failed = Object.keys(summary.failed);
 
     return {
@@ -220,6 +221,13 @@ export function describeSummary(summary, status = null) {
                   ':fields was skipped because you edited it.|:fields were skipped because you edited them.',
                   edited.length,
                   { fields: fieldLabels(edited, status) },
+              )
+            : null,
+        manual: manual.length
+            ? __n(
+                  ':fields was skipped because it was edited by hand. Overwrite manual edits in the options replaces it.|:fields were skipped because they were edited by hand. Overwrite manual edits in the options replaces them.',
+                  manual.length,
+                  { fields: fieldLabels(manual, status) },
               )
             : null,
         failed: failed.length

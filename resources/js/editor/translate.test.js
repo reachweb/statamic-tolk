@@ -257,6 +257,7 @@ describe('translate', () => {
         expect(fillOptions.lastChangeAt()).toBe(4_000);
 
         expect(result).toMatchObject({ plan: 'p1', planned: ['intro', 'seo_title'], delivered: ['seo_title'], skipped: { intro: 'edited' }, cancelled: false });
+        expect(result.planSkipped).toEqual({ title: 'manual' });
         expect(base()).toMatchObject({ phase: 'done', summary: result, planReference: 'entry::de', error: null });
         expect(base().request).toEqual({ mode: 'missing', fields: null, overwriteManual: false, translator: null });
         expect(t.running('base')).toBe(false);
@@ -270,6 +271,15 @@ describe('translate', () => {
         await t.translate('base', { mode: 'all', fields: ['intro'], overwriteManual: true, translator: 'openai:gpt-6-luna' });
 
         expect(api.post.mock.calls[0][1]).toMatchObject({ mode: 'all', fields: ['intro'], overwrite_manual: true, translator: 'openai:gpt-6-luna' });
+    });
+
+    it('keeps no plan reasons when the plan skipped nothing', async () => {
+        mount();
+
+        const result = await translations().translate('base');
+
+        expect(result.planSkipped).toEqual({});
+        expect(result.skipped).toEqual({});
     });
 
     it('takes the plan values and the snapshot when it is asked, before the plan returns', async () => {

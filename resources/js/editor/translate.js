@@ -66,12 +66,21 @@ function describeError(error) {
     return { status: error?.status ?? 0, code: error?.code ?? null, message: error?.message || __('Something went wrong.') };
 }
 
+function planSkips(skipped) {
+    return Object.entries(skipped && !Array.isArray(skipped) ? skipped : {});
+}
+
 function editedInForm(skipped) {
     return Object.fromEntries(
-        Object.entries(skipped && !Array.isArray(skipped) ? skipped : {})
+        planSkips(skipped)
             .filter(([, reason]) => reason === EDITED_IN_FORM)
             .map(([handle]) => [handle, 'edited']),
     );
+}
+
+// The plan's other reasons (`manual`, `current`, `not_requested`, …), for the summary's line about hand-written text.
+function otherPlanSkips(skipped) {
+    return Object.fromEntries(planSkips(skipped).filter(([, reason]) => reason !== EDITED_IN_FORM));
 }
 
 // Retry and Start again continue a translation, so Undo puts back what the form held before the first of them.
@@ -235,6 +244,7 @@ export function createTranslations({
                 plan: plan.plan,
                 planned: Array.isArray(plan.fields) ? plan.fields : [],
                 skipped: { ...editedInForm(plan.skipped), ...summary.skipped },
+                planSkipped: otherPlanSkips(plan.skipped),
                 cancelled: controller.signal.aborted,
             };
 
