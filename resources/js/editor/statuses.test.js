@@ -440,6 +440,7 @@ describe('describeSummary', () => {
             translated: '2 fields translated with claude-sonnet-5-5.',
             incomplete: null,
             edited: null,
+            manual: null,
             failed: null,
             cancelled: null,
             unsaved: 'Not saved yet. Check the fields, then save.',
@@ -478,6 +479,17 @@ describe('describeSummary', () => {
         expect(text.incomplete).toBe('Introduction, SEO title are partly untranslated. Update translates the rest after you save.');
         expect(text.edited).toBe('Title, SEO description were skipped because you edited them.');
         expect(text.failed).toBe('body could not be translated.');
+    });
+
+    it('lists fields the plan skipped because they hold hand-written text, and no other plan reason', () => {
+        expect(describeSummary(summary({ planSkipped: { title: 'manual', intro: 'current', seo_title: 'not_requested' } }), status).manual).toBe(
+            'Title was skipped because it was edited by hand. Overwrite manual edits in the options replaces it.',
+        );
+        expect(describeSummary(summary({ planSkipped: { title: 'manual', seo_description: 'manual' } }), status).manual).toBe(
+            'Title, SEO description were skipped because they were edited by hand. Overwrite manual edits in the options replaces them.',
+        );
+        expect(describeSummary(summary({ planSkipped: { intro: 'current' } }), status).manual).toBeNull();
+        expect(describeSummary(summary(), status).manual).toBeNull();
     });
 
     it('says when it was cancelled', () => {
