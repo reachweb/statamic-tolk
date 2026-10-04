@@ -22,13 +22,15 @@ it('starts a container idle', () => {
         reference: null,
         status: null,
         phase: 'idle',
-        progress: { total: 0, done: 0 },
+        progress: { total: 0, done: 0, waiting: 0, cancelling: false },
         summary: null,
         snapshot: null,
         delivered: {},
         lastChangeAt: 0,
         planReference: null,
         error: null,
+        request: null,
+        notSaved: [],
     });
     expect(store.phaseOf('base')).toBe('idle');
     expect(store.phaseOf('unknown')).toBe('idle');

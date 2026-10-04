@@ -3,6 +3,7 @@ import * as api from '../api.js';
 import { SETTLE_MS } from './fill.js';
 import { registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
+import { translations } from './translate.js';
 
 export const BANNER = 'tolk-banner';
 
@@ -20,7 +21,7 @@ export function shouldPush(payload) {
     );
 }
 
-export function createBanners({ store = useEditorStore } = {}) {
+export function createBanners({ store = useEditorStore, abort = (name) => translations.abort(name) } = {}) {
     // Every container of a name, oldest first, with the banner pushed into it or null. A container that replaces
     // another of the same name can be created before the old one is destroyed, and the destroy event only names it.
     const containers = new Map();
@@ -38,6 +39,9 @@ export function createBanners({ store = useEditorStore } = {}) {
 
     function created(payload) {
         let banner = null;
+
+        // A translation still running for the container this one replaces must not fill the new form.
+        abort(payload.name);
 
         if (shouldPush(payload)) {
             // A new container starts afresh; only a banner re-mounted inside the same container keeps the state.
@@ -79,6 +83,7 @@ export function attachBanner({
     loadStatus = (reference) => api.get('editor/status', { reference }),
     now = Date.now,
     settleMs = SETTLE_MS,
+    onSwitch = () => {},
 }) {
     const failure = ref(null);
     const remount = Boolean(ctx.reference.value) && store.container(name).reference === ctx.reference.value;
@@ -111,6 +116,8 @@ export function attachBanner({
     function switched(reference) {
         const at = now();
 
+        // A running translation stops; what it still delivers is discarded.
+        onSwitch(name);
         store.switched(name, reference, at);
         registry.refreshClean(name);
 

@@ -175,3 +175,57 @@ function originSummary(localization, parts) {
 
     return parts.map((part) => part.text).join(', ');
 }
+
+// `anthropic:claude-sonnet-5-5` → `claude-sonnet-5-5`.
+export function modelName(reference) {
+    const separator = reference.indexOf(':');
+
+    return separator === -1 ? reference : reference.slice(separator + 1);
+}
+
+export function fieldLabels(handles, status) {
+    const fields = status?.localization?.fields;
+
+    return handles.map((handle) => (fields && !Array.isArray(fields) ? fields[handle]?.label : null) ?? handle).join(', ');
+}
+
+// What the banner says once a translation has finished, was cancelled or stopped. Fields are named by their labels
+// from the status.
+export function describeSummary(summary, status = null) {
+    if (!summary) {
+        return null;
+    }
+
+    const count = summary.delivered.length;
+    const models = summary.models.map(modelName).join(', ');
+    const edited = Object.keys(summary.skipped).filter((handle) => summary.skipped[handle] === 'edited');
+    const failed = Object.keys(summary.failed);
+
+    return {
+        translated:
+            count === 0
+                ? __('No fields were translated.')
+                : models
+                  ? __n(':count field translated with :model.|:count fields translated with :model.', count, { model: models })
+                  : __n(':count field translated.|:count fields translated.', count),
+        incomplete: summary.incomplete.length
+            ? __n(
+                  ':fields is partly untranslated. Update translates the rest after you save.|:fields are partly untranslated. Update translates the rest after you save.',
+                  summary.incomplete.length,
+                  { fields: fieldLabels(summary.incomplete, status) },
+              )
+            : null,
+        edited: edited.length
+            ? __n(
+                  ':fields was skipped because you edited it.|:fields were skipped because you edited them.',
+                  edited.length,
+                  { fields: fieldLabels(edited, status) },
+              )
+            : null,
+        failed: failed.length
+            ? __n(':fields could not be translated.|:fields could not be translated.', failed.length, { fields: fieldLabels(failed, status) })
+            : null,
+        cancelled: summary.cancelled ? __('The translation was cancelled before it finished.') : null,
+        unsaved: count > 0 ? __('Not saved yet. Check the fields, then save.') : null,
+    };
+}

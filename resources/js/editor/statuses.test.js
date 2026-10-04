@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { countParts, describe as describeStatus, itemStatusLabel, needsSetup } from './statuses.js';
+import { countParts, describe as describeStatus, describeSummary, itemStatusLabel, modelName, needsSetup } from './statuses.js';
 
 // Core's translator, without translation files: replacements in order, then the plural form, `one|other`.
 function translate(key, replacements = {}) {
@@ -406,5 +406,92 @@ describe('helpers', () => {
             'current',
         ]);
         expect(countParts()).toEqual([]);
+    });
+});
+
+describe('describeSummary', () => {
+    const status = {
+        localization: {
+            fields: {
+                title: field('Title', 'manual'),
+                intro: field('Introduction', 'untranslated'),
+                seo_title: field('SEO title', 'untranslated'),
+                seo_description: field('SEO description', 'untranslated'),
+            },
+        },
+    };
+
+    const summary = (extra = {}) => ({
+        delivered: [],
+        incomplete: [],
+        skipped: {},
+        failed: {},
+        models: [],
+        cancelled: false,
+        ...extra,
+    });
+
+    it('is null without a summary', () => {
+        expect(describeSummary(null)).toBeNull();
+    });
+
+    it('names the count and the model', () => {
+        expect(describeSummary(summary({ delivered: ['intro', 'seo_title'], models: ['anthropic:claude-sonnet-5-5'] }), status)).toEqual({
+            translated: '2 fields translated with claude-sonnet-5-5.',
+            incomplete: null,
+            edited: null,
+            failed: null,
+            cancelled: null,
+            unsaved: 'Not saved yet. Check the fields, then save.',
+        });
+    });
+
+    it('names every model used and the singular', () => {
+        const text = describeSummary(summary({ delivered: ['intro'], models: ['anthropic:claude-sonnet-5-5', 'openai:gpt-6-luna'] }), status);
+
+        expect(text.translated).toBe('1 field translated with claude-sonnet-5-5, gpt-6-luna.');
+    });
+
+    it('leaves the model out when no call was made', () => {
+        expect(describeSummary(summary({ delivered: ['intro'] }), status).translated).toBe('1 field translated.');
+    });
+
+    it('says when nothing was filled, without the save hint', () => {
+        const text = describeSummary(summary({ skipped: { intro: 'edited' } }), status);
+
+        expect(text.translated).toBe('No fields were translated.');
+        expect(text.unsaved).toBeNull();
+        expect(text.edited).toBe('Introduction was skipped because you edited it.');
+    });
+
+    it('lists incomplete, edited and failed fields by label', () => {
+        const text = describeSummary(
+            summary({
+                delivered: ['intro', 'seo_title'],
+                incomplete: ['intro', 'seo_title'],
+                skipped: { title: 'edited', seo_description: 'edited', other: 'stale' },
+                failed: { body: 'refused' },
+            }),
+            status,
+        );
+
+        expect(text.incomplete).toBe('Introduction, SEO title are partly untranslated. Update translates the rest after you save.');
+        expect(text.edited).toBe('Title, SEO description were skipped because you edited them.');
+        expect(text.failed).toBe('body could not be translated.');
+    });
+
+    it('says when it was cancelled', () => {
+        expect(describeSummary(summary({ cancelled: true }), status).cancelled).toBe('The translation was cancelled before it finished.');
+    });
+
+    it('falls back to handles when the status has no fields', () => {
+        expect(describeSummary(summary({ failed: { intro: 'refused' } }), { localization: { fields: [] } }).failed).toBe('intro could not be translated.');
+    });
+});
+
+describe('modelName', () => {
+    it('drops the provider', () => {
+        expect(modelName('gemini:gemini-3.8-flash')).toBe('gemini-3.8-flash');
+        expect(modelName('plain')).toBe('plain');
     });
 });

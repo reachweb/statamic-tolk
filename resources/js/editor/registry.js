@@ -22,7 +22,7 @@ export function createRegistry() {
     function created(payload) {
         const mounted = (entries.get(payload.name)?.mounted ?? 0) + 1;
 
-        entries.set(payload.name, { payload, context: null, clean: null, mounted });
+        entries.set(payload.name, { payload, context: null, clean: null, localized: null, mounted });
     }
 
     function destroyed({ name }) {
@@ -40,7 +40,7 @@ export function createRegistry() {
     }
 
     function update(name, changes) {
-        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, mounted: 0 };
+        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, localized: null, mounted: 0 };
 
         entries.set(name, { ...entry, ...changes });
     }
@@ -48,25 +48,49 @@ export function createRegistry() {
     // The context a component injected inside the container. Attaching it again, as a remounted banner does after
     // Live Preview opens or closes, keeps the clean values taken before.
     function attachContext(name, context) {
-        const clean = entries.get(name)?.clean ?? comparable(context.values.value);
+        const entry = entries.get(name);
 
-        update(name, { context, clean });
-    }
-
-    // After a site or entry switch and after a save, the values in the form are what is stored.
-    function refreshClean(name) {
-        const values = currentValues(name);
-
-        if (values !== null) {
-            update(name, { clean: comparable(values) });
+        if (entry?.clean) {
+            update(name, { context });
+        } else {
+            update(name, { context, clean: comparable(context.values.value), localized: localizedOf(context) });
         }
     }
 
-    function currentValues(name) {
-        const entry = entries.get(name);
-        const values = (entry?.context ?? entry?.payload)?.values?.value;
+    // After a site or entry switch and after a save, the values in the form are what is stored. The localized handles
+    // are taken with them: a fieldtype can desync its field by itself while the form loads.
+    function refreshClean(name) {
+        const source = sourceOf(name);
+        const values = source?.values?.value ?? null;
 
-        return values ?? null;
+        if (values !== null) {
+            update(name, { clean: comparable(values), localized: localizedOf(source) });
+        }
+    }
+
+    function sourceOf(name) {
+        const entry = entries.get(name);
+
+        return entry?.context ?? entry?.payload ?? null;
+    }
+
+    function currentValues(name) {
+        return sourceOf(name)?.values?.value ?? null;
+    }
+
+    function localizedOf(source) {
+        return [...(source?.localizedFields?.value ?? [])];
+    }
+
+    // Handles localized in the form since the clean values were taken: desynced by the editor, not by the form itself.
+    function newlyLocalized(name) {
+        const before = entries.get(name)?.localized;
+
+        if (!before) {
+            return [];
+        }
+
+        return localizedOf(sourceOf(name)).filter((handle) => !before.includes(handle));
     }
 
     // Top-level handles whose value differs from the clean values, in the form's order.
@@ -88,6 +112,7 @@ export function createRegistry() {
         attachContext,
         refreshClean,
         dirtyHandles,
+        newlyLocalized,
         context: (name) => entries.get(name)?.context ?? null,
         payload: (name) => entries.get(name)?.payload ?? null,
         base: () => entries.get('base')?.context ?? null,

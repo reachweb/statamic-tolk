@@ -402,3 +402,26 @@ Checked in T3.4 against Statamic 6.35.0 (`tests/Feature/SettingsTest.php`, and t
 - Once an addon has a settings blueprint, `all()` holds every field's default even when nothing is saved, so "nothing saved" is checked with `raw()`.
 - The settings page saves every field of the blueprint, empty ones included (`PublishForm::submit()` returns all values): a text field stores whatever the form sends, an emptied `collections` or `taxonomies` field is stored as `null` (the relationship fieldtype turns `[]` into `null`), and the display-only `info` field as `null`. `Support\Settings` treats a stored `null` as "not set" and uses its default.
 - A `sites` field with `max_items: 1` stores a string. Inside a grid an empty one is left out of the row, because the grid removes null values. Every grid row gains an `id`.
+
+## Editor flow
+
+Seen in T5.8, 2026-10-04, in the sandbox on Statamic 6.35.0 with headless Chromium (Playwright 1.63.0).
+
+### An inherited Bard field desyncs itself when the form loads
+
+- The German home page (`pages/de/home`) stores only `title`; its `content` (Bard) is inherited. When the form loads, the Bard field desyncs itself: `content` is in `localizedFields`, the form is dirty (`Statamic.$dirty.has('base')`) without an edit, and its label shows the "desynced" icon. Measured from navigation start, the form turned dirty at about 690 ms, some 30 ms before the banner's status request, so before the banner's second clean-value refresh (600 ms after its mount).
+- The next Save posts `content` in `_localized` and stores the origin's Bard JSON, with Bard's normalised attributes (`textAlign: null` on paragraphs and headings, `rel`, `target` and `title` on links), as the localization's own value. The texts are the origin's, in English.
+- This is core: the same happens with the addon's CP assets blocked (`page.route('**/vendor/statamic-tolk/**', …)`) and as the restricted editor, who gets no banner. The origin's set already has its `attrs.id`. The Greek articles, which store every localizable field, are not dirty on load and post only their stored keys.
+- Because the form is dirty, an in-place site switch from it opens core's "Unsaved Changes" modal (buttons Cancel and Continue).
+- Consequences:
+  - The editor's `skip` list (T5.8) must not count such a field as an unsaved edit. "Localized in the form although nothing is stored" would; T5.8 counts only fields localized since the clean values were taken (`registry.newlyLocalized()`).
+  - Bard is out of scope until Phase 6, so nothing reads the stored copy yet. Once Bard is in scope, a localization saved in the CP holds an override whose texts equal the origin's and that has no state: §A6 makes it **manual** and untracked, so Translate and Update leave the English text alone. T6.11 has to decide how such a copy is treated (risks table).
+
+### Save hooks
+
+- `Statamic.$hooks.on(name, callback, priority = 10)`; callbacks get `(resolve, reject, payload)` and run highest priority first; a rejection reaches the save pipeline as it is.
+- `entry.saving` gets `{ collection, values }` and `entry.saved` `{ collection, reference, response }`. Neither names the publish container, and a stacked inline editor's save runs the same hooks. `reference` is the form's `initialReference`, which an in-place site switch does not update; `response.data.data.reference` names the entry that was saved.
+- `import { PipelineStopped } from '@statamic/cms/save-pipeline'` works in the addon's build (`__STATAMIC__.savePipeline`). A refused save sends no request, and core shows no toast and logs no error.
+- `Statamic.$hooks` and `Statamic.$events` can be used inside `Statamic.booting()`.
+- `Statamic.$toast` has `success`, `info` and `error` (no `warning`); the second argument takes `{ duration }`.
+- In Playwright, `page.keyboard.press('ControlOrMeta+s')` is core's quick save and stays on the form; the Save & Publish button leaves for the listing (the default "after saving" preference), and `editor/confirm` still completes because the hook resolves only after it.

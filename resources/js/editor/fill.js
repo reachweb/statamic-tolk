@@ -34,11 +34,12 @@ export function snapshot(ctx, handles, delivered = {}) {
 }
 
 // Fills the payloads of `editor/plan` (`ready`) and `editor/unit` (`fields`) into the open form, unsaved. Resolves
-// once the values the form holds have been recorded in `delivered`, keyed by handle with the plan's id.
+// once the values the form holds have been recorded in `delivered`, keyed by handle with the plan's id. `active` says
+// whether the translation still runs: one aborted by a switch must not fill when the editor switches back.
 export async function applyFields(
     ctx,
     fields,
-    { reference, plan, lastChangeAt = 0, planValues = {}, delivered, now = Date.now, sleep = wait },
+    { reference, plan, lastChangeAt = 0, planValues = {}, delivered, now = Date.now, sleep = wait, active = () => true },
 ) {
     const handles = Object.keys(fields ?? {});
     const result = { stale: false, applied: [], skipped: {}, repeated: [] };
@@ -49,9 +50,10 @@ export async function applyFields(
 
         return result;
     };
+    const current = () => ctx.reference.value === reference && active();
 
     // A translation for the Greek form must never land in the German one.
-    if (ctx.reference.value !== reference) {
+    if (!current()) {
         return stale();
     }
 
@@ -62,7 +64,7 @@ export async function applyFields(
         await sleep(left);
     }
 
-    if (ctx.reference.value !== reference) {
+    if (!current()) {
         return stale();
     }
 
@@ -118,7 +120,7 @@ export async function applyFields(
     // counts as delivered, not the payload. A re-emit also desyncs the field again, which a synced field must undo.
     await sleep(REEMIT_MS);
 
-    if (ctx.reference.value !== reference) {
+    if (!current()) {
         result.applied.forEach((handle) => delete delivered[handle]);
 
         return stale();

@@ -6,13 +6,17 @@ export function initialState() {
         reference: null,
         status: null,
         phase: 'idle',
-        progress: { total: 0, done: 0 },
+        progress: { total: 0, done: 0, waiting: 0, cancelling: false },
         summary: null,
         snapshot: null,
         delivered: {},
         lastChangeAt: 0,
         planReference: null,
         error: null,
+        // What the last translation asked for, so Retry and Start again can ask once more.
+        request: null,
+        // Delivered handles the last save did not store, from `editor/confirm`.
+        notSaved: [],
     };
 }
 
