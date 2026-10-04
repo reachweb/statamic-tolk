@@ -25,8 +25,6 @@ final class BardHandler implements FieldHandler
     use MakesLeaves;
     use MapsSets;
 
-    private const string WHITESPACE = " \t\r\n";
-
     private const array BLOCK_TYPES = [
         'blockquote', 'bulletList', 'codeBlock', 'heading', 'horizontalRule', 'listItem', 'orderedList', 'paragraph',
         'set', 'table', 'tableCell', 'tableHeader', 'tableRow',
@@ -56,27 +54,12 @@ final class BardHandler implements FieldHandler
 
     private function mapHtml(string $value, ?string $hint, Closure $translate, WalkContext $context): string
     {
-        $pieces = Tokenizer::splitHtmlBlocks($value);
-        $changed = false;
+        $pieces = array_map(
+            fn (string $piece) => $this->block($piece, fn (string $core) => Tokenizer::tokenize($core, SegmentKind::Html), $hint, $translate, $context),
+            Tokenizer::splitHtmlBlocks($value),
+        );
 
-        foreach ($pieces as $index => $piece) {
-            $core = trim($piece, self::WHITESPACE);
-            $tokenized = Tokenizer::tokenize($core, SegmentKind::Html);
-
-            if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, SegmentKind::Html))) {
-                continue;
-            }
-
-            $translated = $translate($this->leaf($tokenized->text, SegmentKind::Html, $tokenized->placeholders, $hint, $context));
-
-            if ($translated !== $tokenized->text) {
-                $lead = substr($piece, 0, strspn($piece, self::WHITESPACE));
-                $pieces[$index] = $lead.Tokenizer::restore($translated, $tokenized).substr($piece, strlen($lead) + strlen($core));
-                $changed = true;
-            }
-        }
-
-        return $changed ? implode('', $pieces) : $value;
+        return implode('', $pieces);
     }
 
     private function mapNodes(array $nodes, Fieldtype $fieldtype, ?string $hint, Closure $translate, WalkContext $context): array
@@ -173,8 +156,10 @@ final class BardHandler implements FieldHandler
             return false;
         }
 
+        $types[] = 'text';
+
         foreach ($value as $node) {
-            if (! in_array($node['type'] ?? null, [...$types, 'text'], true)) {
+            if (! in_array($node['type'] ?? null, $types, true)) {
                 return false;
             }
         }

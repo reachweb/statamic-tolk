@@ -12,7 +12,7 @@ use Reach\StatamicTolk\Content\Fingerprint;
  */
 final class InlineMarkup
 {
-    private const string TOKENS = '/(<\/?\d+>|<x\d+\/>|<br\/>)/';
+    private const string TOKENS = '/('.Placeholders::PAIR.'|'.Placeholders::ATOM.'|<br\/>)/';
 
     // Human text inside a mark or node that is translated as a leaf of its own (link titles here, image alts in the Bard
     // handler). Descriptors leave it out, so a target's placeholders still match its source's after it is translated.
@@ -40,15 +40,13 @@ final class InlineMarkup
         foreach (self::runs($nodes) as [$marks, $run]) {
             $node = $run[0];
 
-            if ($marks === null && self::isBreak($node)) {
-                $breaks[] = $node;
-                $text .= '<br/>';
-
-                continue;
-            }
-
             if ($marks === null) {
-                $atom($node, self::descriptor($node));
+                if (self::isBreak($node)) {
+                    $breaks[] = $node;
+                    $text .= '<br/>';
+                } else {
+                    $atom($node, self::descriptor($node));
+                }
 
                 continue;
             }
@@ -189,18 +187,20 @@ final class InlineMarkup
     private static function merge(array $nodes): array
     {
         $merged = [];
+        $previous = null;
 
         foreach ($nodes as $node) {
-            if (self::isText($node) && $node['text'] === '') {
+            $key = self::isText($node) ? self::marksKey($node) : null;
+
+            if ($key !== null && $node['text'] === '') {
                 continue;
             }
 
-            $last = array_key_last($merged);
-
-            if ($last !== null && self::isText($node) && self::isText($merged[$last]) && self::marksKey($node) === self::marksKey($merged[$last])) {
-                $merged[$last]['text'] .= $node['text'];
+            if ($key !== null && $key === $previous) {
+                $merged[array_key_last($merged)]['text'] .= $node['text'];
             } else {
                 $merged[] = $node;
+                $previous = $key;
             }
         }
 

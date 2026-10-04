@@ -122,6 +122,10 @@ final class Tokenizer
      */
     public static function referenceLabels(string $markdown): array
     {
+        if (! str_contains($markdown, ']:')) {
+            return [];
+        }
+
         return self::labels(self::lex($markdown, self::MARKDOWN_TOKENS));
     }
 
@@ -157,7 +161,8 @@ final class Tokenizer
 
     public static function restore(string $text, Tokenized $source): string
     {
-        $translated = $text !== $source->text;
+        // Once the text is translated, a Markdown reference's atom writes its label instead (Tokenized::$references).
+        $originals = $text !== $source->text ? $source->references + $source->map : $source->map;
         $restored = '';
 
         foreach (preg_split(self::PLACEHOLDERS, $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $index => $part) {
@@ -168,7 +173,7 @@ final class Tokenizer
             }
 
             $id = rtrim(substr($part, 1, -1), '/');
-            $restored .= ($translated ? $source->references[$id] ?? null : null) ?? $source->map[$id] ?? $part;
+            $restored .= $originals[$id] ?? $part;
         }
 
         return $restored;
@@ -242,8 +247,10 @@ final class Tokenizer
                     $cut($start - 1, "\n");
                 }
 
-                if ($start + strlen($text) < strlen($markdown)) {
-                    $after = $start + strlen($text);
+                $end = $start + strlen($text);
+
+                if ($end < strlen($markdown)) {
+                    $after = $end;
                 }
             }
         }
@@ -352,8 +359,8 @@ final class Tokenizer
 
                     // Only a reference wholly inside this text: one that holds or crosses an atom is left alone.
                     if ($at >= $start && $end <= $offset && isset($labels[self::normalize($label)])) {
-                        $result[] = ['type' => 'text', 'text' => substr($token['text'], $cut, $end - $start - $cut), 'name' => null];
-                        $result[] = ['type' => 'atom', 'text' => '', 'name' => null, 'label' => "[{$label}]"];
+                        $result[] = ['type' => 'text', 'text' => substr($token['text'], $cut, $end - $start - $cut)];
+                        $result[] = ['type' => 'atom', 'text' => '', 'label' => "[{$label}]"];
                         $cut = $end - $start;
                     }
                 }
@@ -413,7 +420,7 @@ final class Tokenizer
      * closing tag closes the nearest open tag of its name, and the tags opened after that one stay unmatched, so the
      * pairs are always properly nested. A pair's two tokens share the key `pair`.
      *
-     * @return list<array{type: 'text'|'atom'|'element'|'open'|'close', text: string, name: ?string, pair?: int, reference?: true, definition?: string}>
+     * @return list<array{type: 'text'|'atom'|'element'|'open'|'close', text: string, name?: ?string, pair?: int, reference?: true, definition?: string}>
      */
     private static function lex(string $text, string $pattern): array
     {
@@ -489,7 +496,7 @@ final class Tokenizer
         if ($last !== null && $tokens[$last]['type'] === 'text') {
             $tokens[$last]['text'] .= $text;
         } else {
-            $tokens[] = ['type' => 'text', 'text' => $text, 'name' => null];
+            $tokens[] = ['type' => 'text', 'text' => $text];
         }
     }
 
