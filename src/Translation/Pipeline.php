@@ -15,9 +15,12 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\Fingerprint;
+use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
+use Reach\StatamicTolk\Content\Markup\Renumber;
 use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Enums\UnitKind;
@@ -137,18 +140,14 @@ final readonly class Pipeline
     }
 
     /**
-     * Builds the field's target value from its current source value. Pass a target resolved after the units ran, so a
-     * source edited meanwhile is noticed.
+     * Builds the field's target value from its current source value, or for a review plan from the value under review.
+     * Pass a target resolved after the units ran, so a source edited meanwhile is noticed.
      *
      * @throws SourceChanged when the source value is not the one that was planned
      * @throws FieldFailed when a part failed for good and the plan is strict
      */
     public function assemble(Plan $plan, Target $target, string $handle): AssembledField
     {
-        if ($plan->kind === UnitKind::Review) {
-            throw new LogicException('Review plans are not built yet (T7.4).');
-        }
-
         $planned = $plan->fields[$handle] ?? throw new InvalidArgumentException("The plan [{$plan->id}] has no field [{$handle}].");
         $field = $target->fields()->get($handle);
         $sourceValue = $target->sourceValue($handle);
@@ -162,6 +161,10 @@ final readonly class Pipeline
 
         if (array_intersect_key($segments, $resolved['pending']) !== []) {
             throw new LogicException("The field [{$handle}] still has segments to translate.");
+        }
+
+        if ($plan->kind === UnitKind::Review) {
+            return $this->reviewed($plan->id, $planned, $field, $sourceValue, $segments, $resolved);
         }
 
         if ($planned['clear']) {
@@ -410,9 +413,9 @@ final readonly class Pipeline
     }
 
     /**
-     * Keeps the corrections that are valid against the source segment, which shares the translation's numbering. An
-     * invalid correction is discarded with a warning and one equal to the translation silently; accepted ones are
-     * checked against the glossary.
+     * Keeps the corrections that are valid against the translation they correct, which at translation time is valid
+     * against its source segment. An invalid correction is discarded with a warning and one equal to the translation
+     * silently; accepted ones are checked against the glossary.
      *
      * @param  array<string, string>  $translations  the translations under review
      */
@@ -429,8 +432,10 @@ final readonly class Pipeline
             }
 
             $segment = $plan->segments[$id];
+            // A review plan's translation is the target's text, whose placeholders can be fewer than its source's (T7.4).
+            $corrected = $plan->kind === UnitKind::Review ? [...$segment, 'text' => $translation] : $segment;
 
-            if ($this->validator->validate($segment, $text) !== null) {
+            if ($this->validator->validate($corrected, $text) !== null) {
                 $warnings[$id][] = "{$segment['label']}: the reviewer's correction of \"{$this->excerpt($segment)}\" was not valid and was discarded.";
 
                 continue;
@@ -561,6 +566,71 @@ final readonly class Pipeline
             'reviewers' => $reviewers,
             'pending' => $pending,
         ];
+    }
+
+    /**
+     * A reviewed field (T7.4): the value under review with only its corrected leaves replaced, each correction taken back
+     * into the target's own numbering. A machine field keeps the source fingerprint, `segments` and translator of the
+     * state record its text matched; a manual field stays manual, so its pending entry becomes a baseline.
+     *
+     * @param  array<string, array>  $segments  the field's segments
+     *
+     * @throws SourceChanged when the walks no longer give the planned leaves, because the blueprint changed
+     */
+    private function reviewed(string $planId, array $planned, Field $field, mixed $sourceValue, array $segments, array $resolved): AssembledField
+    {
+        $sourceLeaves = $this->walker->leaves($field, $sourceValue);
+        $targetLeaves = $this->walker->leaves($field, $planned['value'], target: true);
+
+        if (count($sourceLeaves) !== $planned['leaf_count'] || count($targetLeaves) !== $planned['leaf_count']) {
+            throw SourceChanged::field($field->handle());
+        }
+
+        $texts = array_map(fn (Leaf $leaf) => $leaf->text, $targetLeaves);
+        $corrections = $warnings = $reviewers = [];
+
+        foreach ($segments as $id => $segment) {
+            $source = $sourceLeaves[$segment['index']];
+            $target = $targetLeaves[$segment['index']];
+
+            if ($source->text !== $segment['text'] || Renumber::like($target, $source) !== $segment['translation']) {
+                throw SourceChanged::field($field->handle());
+            }
+
+            array_push($warnings, ...($resolved['warnings'][$id] ?? []));
+
+            if (isset($resolved['reviewers'][$id])) {
+                $reviewers[] = $resolved['reviewers'][$id];
+            }
+
+            if (isset($resolved['corrections'][$id])) {
+                // A valid correction holds only placeholders of the translation, so it always renumbers back.
+                $texts[$segment['index']] = Renumber::back($resolved['corrections'][$id]['after'], $target, $source);
+                $corrections[] = $resolved['corrections'][$id];
+            }
+        }
+
+        $value = $corrections === [] ? $planned['value'] : $this->walker->inject($field, $planned['value'], $texts, target: true);
+        $targetHash = $this->resolver->targetHash($field, $value);
+        $manual = $planned['status_before'] === FieldStatus::Manual->value;
+
+        return new AssembledField(
+            handle: $field->handle(),
+            plan: $planId,
+            value: $value,
+            remove: false,
+            sourceHash: $planned['source_hash'],
+            targetHash: $targetHash,
+            targetBefore: $planned['target_before'],
+            segments: ! $manual && $this->aligned($field, $value, $texts) ? $planned['record']['segments'] : [],
+            identical: ! $manual && $targetHash === $this->resolver->targetHash($field, $sourceValue),
+            incomplete: false,
+            translator: $planned['record']['translator'],
+            corrections: $corrections,
+            warnings: array_values(array_unique($warnings)),
+            reviewer: collect($reviewers)->mode()[0] ?? null,
+            baseline: $manual,
+        );
     }
 
     /**

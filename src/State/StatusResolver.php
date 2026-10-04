@@ -21,7 +21,11 @@ final readonly class StatusResolver
         private ContentWalker $walker,
     ) {}
 
-    public function resolve(Target $target): TargetStatus
+    /**
+     * @param  ?array<string, mixed>  $values  raw values that replace the target's own values of the handles they hold,
+     *                                         such as the open form's; reconciled as if they were saved
+     */
+    public function resolve(Target $target, ?array $values = null): TargetStatus
     {
         $ref = $target->ref();
         $state = $ref === null ? null : $this->repository->get($ref);
@@ -29,7 +33,11 @@ final readonly class StatusResolver
         $fields = [];
 
         foreach ($target->fields() as $handle => $field) {
-            $fields[$handle] = $this->field($target, $field, $state?->field($handle) ?? new FieldState, $now);
+            $targetHash = $values !== null && array_key_exists($handle, $values)
+                ? $this->targetHash($field, $values[$handle])
+                : $this->currentTargetHash($target, $field);
+
+            $fields[$handle] = $this->field($target, $field, $targetHash, $state?->field($handle) ?? new FieldState, $now);
         }
 
         return TargetStatus::of($target->exists(), $fields, $state?->version ?? ItemState::VERSION);
@@ -51,12 +59,10 @@ final readonly class StatusResolver
         return $target->hasOverride($field->handle()) ? $this->targetHash($field, $target->targetValue($field->handle())) : null;
     }
 
-    private function field(Target $target, Field $field, FieldState $stored, CarbonImmutable $now): FieldStatusInfo
+    private function field(Target $target, Field $field, ?string $targetHash, FieldState $stored, CarbonImmutable $now): FieldStatusInfo
     {
-        $handle = $field->handle();
-        $sourceValue = $target->sourceValue($handle);
+        $sourceValue = $target->sourceValue($field->handle());
         $sourceHash = Fingerprint::of($sourceValue);
-        $targetHash = $this->currentTargetHash($target, $field);
         // A second walk, so only where it decides something: an override without a known source, or a reconcile.
         $sourceTextHash = $targetHash !== null && ($stored->pending !== [] || $stored->sourceHash === null) ? $this->targetHash($field, $sourceValue) : null;
         $state = $stored->reconcile($targetHash, $now, $sourceTextHash);

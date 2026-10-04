@@ -22,6 +22,7 @@ final readonly class AssembledField
      * @param  list<array{id: string, before: string, after: string, reason: string}>  $corrections
      * @param  list<string>  $warnings
      * @param  ?string  $reviewer  the model that reviewed the field's translations; null when none did
+     * @param  bool  $baseline  a reviewed manual field, whose pending entry a save confirms as a baseline (T7.4)
      */
     public function __construct(
         public string $handle,
@@ -38,6 +39,7 @@ final readonly class AssembledField
         public array $corrections = [],
         public array $warnings = [],
         public ?string $reviewer = null,
+        public bool $baseline = false,
     ) {}
 
     /**
@@ -56,6 +58,7 @@ final readonly class AssembledField
             translator: $this->translator,
             reviewer: $this->reviewer,
             createdAt: CarbonImmutable::now(),
+            baseline: $this->baseline,
         );
     }
 }

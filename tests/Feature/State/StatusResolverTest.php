@@ -262,6 +262,28 @@ describe('pending entries', function () {
             ->and($status->fields['intro']->state->pending)->toHaveCount(1);
     });
 
+    it('reads given values in place of the target\'s own, as if they were saved', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        $pending = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια')->withPending($pending),
+            'intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Μια σύντομη εισαγωγή.')),
+        ]);
+        $target = app(TargetFactory::class)->forEntry($this->origin, 'el');
+
+        $delivered = app(StatusResolver::class)->resolve($target, ['title' => 'Χαίρετε', 'intro' => 'Μια σύντομη εισαγωγή.'])->fields;
+        $edited = app(StatusResolver::class)->resolve($target, ['intro' => 'Μια εισαγωγή.'])->fields;
+
+        expect($delivered['title']->status)->toBe(FieldStatus::Current)
+            ->and($delivered['title']->targetHash)->toBe(Fingerprint::ofLeaves(['Χαίρετε']))
+            ->and($delivered['title']->state->targetHash)->toBe($pending->targetHash)
+            ->and($delivered['intro']->status)->toBe(FieldStatus::Current)
+            ->and($edited['intro']->status)->toBe(FieldStatus::Manual)
+            ->and($edited['title']->status)->toBe(FieldStatus::Current)
+            ->and($edited['title']->targetHash)->toBe(Fingerprint::ofLeaves(['Γεια']))
+            ->and(app(StatusResolver::class)->resolve($target, ['body' => null])->fields['body']->status)->toBe(FieldStatus::Manual);
+    });
+
     it('keeps a hand-written field manual while a delivery planned from its text is not saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο']);
         $pending = StateFixtures::pending('Hello', 'Γεια', ['targetBefore' => Fingerprint::ofLeaves(['Χειροποίητο'])]);

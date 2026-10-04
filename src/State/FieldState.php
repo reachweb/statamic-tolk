@@ -137,8 +137,20 @@ final readonly class FieldState
         return null;
     }
 
+    /**
+     * A reviewed manual field stays manual: its entry becomes a baseline that records the reviewer (T7.4).
+     */
     public function promote(PendingState $pending): self
     {
+        if ($pending->baseline) {
+            return new self(
+                sourceHash: $pending->sourceHash,
+                translator: $pending->translator,
+                reviewer: $pending->reviewer,
+                history: $this->historyReplacedBy($pending->targetHash),
+            );
+        }
+
         return new self(
             sourceHash: $pending->sourceHash,
             targetHash: $pending->targetHash,

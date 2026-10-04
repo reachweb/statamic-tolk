@@ -7,7 +7,7 @@ use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Targets\TargetRef;
 
 /**
- * What TargetTranslator::translate() did to one target.
+ * What TargetTranslator::translate() or review() did to one target.
  */
 final readonly class TargetResult
 {
@@ -16,6 +16,11 @@ final readonly class TargetResult
     public const string INCOMPLETE = 'incomplete';
 
     public const string NOTHING_TO_DO = 'nothing_to_do';
+
+    /**
+     * A reviewed field the reviewer accepted, and a review that saved nothing for that reason.
+     */
+    public const string NO_CORRECTIONS = 'no_corrections';
 
     public const string TARGET_CHANGED = 'target_changed';
 
@@ -35,7 +40,8 @@ final readonly class TargetResult
 
     /**
      * @param  ?TargetRef  $ref  null while the target does not exist
-     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, or why it was skipped or failed
+     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`, or why it was
+     *                                         skipped or failed
      * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
      * @param  list<string>  $warnings
      * @param  ?string  $reason  why the target was skipped or failed
