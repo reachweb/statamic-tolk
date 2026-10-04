@@ -135,9 +135,24 @@ final class Tokenizer
         return preg_match(self::HTML_TAG, self::withoutAntlers($text)) === 1;
     }
 
+    public static function escape(string $text): string
+    {
+        return strtr($text, self::ESCAPES);
+    }
+
     public static function unescape(string $text): string
     {
         return strtr($text, array_flip(self::ESCAPES));
+    }
+
+    /**
+     * The text cut around its Antlers tags, which are at the odd indexes.
+     *
+     * @return list<string>
+     */
+    public static function splitAntlers(string $text): array
+    {
+        return preg_split(self::ANTLERS, $text, -1, PREG_SPLIT_DELIM_CAPTURE);
     }
 
     public static function restore(string $text, Tokenized $source): string
@@ -247,13 +262,13 @@ final class Tokenizer
         $tokenized = '';
         $map = [];
 
-        foreach (preg_split(self::ANTLERS, $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $index => $part) {
+        foreach (self::splitAntlers($text) as $index => $part) {
             if ($index % 2 === 1) {
                 $id = 'x'.(count($map) + 1);
                 $map[$id] = $part;
                 $tokenized .= "<{$id}/>";
             } else {
-                $tokenized .= strtr($part, self::ESCAPES);
+                $tokenized .= self::escape($part);
             }
         }
 
