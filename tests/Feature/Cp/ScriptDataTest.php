@@ -16,6 +16,7 @@ it('provides the addon\'s data to the CP script', function () {
         'concurrency' => 4,
         'multisite' => true,
         'fakeEngine' => false,
+        'settingsUrl' => null,
     ]);
 });
 
@@ -28,6 +29,7 @@ it('reads the values when the CP page renders, not at boot', function () {
         'concurrency' => 2,
         'multisite' => true,
         'fakeEngine' => true,
+        'settingsUrl' => null,
     ]);
 });
 
@@ -48,10 +50,20 @@ it('reports multi-site as off when it is disabled or there is one site', functio
     expect(tolkScriptData()['multisite'])->toBeFalse();
 });
 
+it('links the settings only for users who may edit them', function (array $permissions, bool $linked) {
+    $this->signInWithPermissions(['access cp', 'translate content', ...$permissions]);
+
+    expect(tolkScriptData()['settingsUrl'])->toBe($linked ? cp_route('addons.settings.edit', 'statamic-tolk') : null);
+})->with([
+    'an editor' => [[], false],
+    'the addon\'s settings permission' => [['edit reachweb/statamic-tolk settings'], true],
+    'configure addons' => [['configure addons'], true],
+]);
+
 it('includes the data in the CP page', function () {
     $this->signInAdmin();
 
     $this->get(cp_route('dashboard'))
         ->assertOk()
-        ->assertSee('"tolk":{"fieldtypes":["text","textarea"],"concurrency":4,"multisite":true,"fakeEngine":false}', false);
+        ->assertSee('"tolk":{"fieldtypes":["text","textarea"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).'}', false);
 });

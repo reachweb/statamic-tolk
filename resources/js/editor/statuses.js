@@ -76,6 +76,7 @@ function describeLocalization(block, setup) {
     const notLocalizable = (block.out_of_scope ?? [])
         .filter((field) => field.reason === 'not_localizable')
         .map(({ handle, label }) => ({ handle, label }));
+    const summary = localizationSummary(block, parts);
 
     return {
         source: block.source,
@@ -83,7 +84,8 @@ function describeLocalization(block, setup) {
         status: block.status,
         label: itemStatusLabel(block.status),
         parts,
-        summary: localizationSummary(block, parts),
+        summary,
+        lead: parts.some((part) => part.key !== 'current') ? __('From :source:', { source: block.source?.name ?? '' }) : summary,
         incomplete,
         incompleteNote: incomplete.length ? incompleteNote(incomplete) : null,
         notLocalizable,

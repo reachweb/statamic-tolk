@@ -70,6 +70,7 @@ describe('a localization', () => {
             status: 'current',
             label: 'Up to date',
             summary: 'Up to date with English.',
+            lead: 'Up to date with English.',
             incomplete: [],
             incompleteNote: null,
             notLocalizable: [],
@@ -94,6 +95,7 @@ describe('a localization', () => {
         expect(banner.localization).toMatchObject({
             label: 'Untranslated',
             summary: 'From English: 3 fields untranslated.',
+            lead: 'From English:',
             translate: true,
             update: false,
         });
@@ -124,6 +126,7 @@ describe('a localization', () => {
         expect(banner.localization.summary).toBe(
             'From English: 2 fields outdated, 2 fields edited by hand, 1 needs attention, 1 field up to date.',
         );
+        expect(banner.localization.lead).toBe('From English:');
     });
 
     it('with untranslated and outdated fields offers both buttons', () => {
@@ -230,7 +233,13 @@ describe('a localization', () => {
     it('has nothing to translate when no field is in scope', () => {
         const banner = describeStatus(payload({ localization: localization([], {}) }));
 
-        expect(banner.localization).toMatchObject({ parts: [], summary: 'Nothing to translate from English.', translate: false, update: false });
+        expect(banner.localization).toMatchObject({
+            parts: [],
+            summary: 'Nothing to translate from English.',
+            lead: 'Nothing to translate from English.',
+            translate: false,
+            update: false,
+        });
     });
 });
 
