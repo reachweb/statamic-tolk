@@ -211,6 +211,7 @@ describe('fields and segments', function () {
                 'status_before' => 'untranslated',
                 'segment_ids' => ['s5', 's6', 's7'],
                 'reused' => 0,
+                'reused_translator' => null,
                 'clear' => false,
             ])
             ->and(array_column($plan->segmentsOfField('faq'), 'index'))->toBe([0, 1, 2])
@@ -260,6 +261,7 @@ describe('fields and segments', function () {
             'status_before' => 'outdated',
             'segment_ids' => [],
             'reused' => 0,
+            'reused_translator' => null,
             'clear' => true,
         ])
             ->and($plan->segments)->toBe([])

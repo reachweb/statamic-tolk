@@ -10,18 +10,20 @@ final readonly class TargetStatus
     /**
      * @param  array<string, FieldStatusInfo>  $fields  by handle, in blueprint order
      * @param  array<string, int>  $counts  per field status but `not_applicable`, then `attention` and `untracked`, which count manual fields
+     * @param  int  $stateVersion  the format version of the stored state; translations of another version are not reused
      */
     public function __construct(
         public bool $exists,
         public ItemStatus $itemStatus,
         public array $fields,
         public array $counts,
+        public int $stateVersion = ItemState::VERSION,
     ) {}
 
     /**
      * @param  array<string, FieldStatusInfo>  $fields
      */
-    public static function of(bool $exists, array $fields): self
+    public static function of(bool $exists, array $fields, int $stateVersion = ItemState::VERSION): self
     {
         $counts = [];
 
@@ -45,6 +47,6 @@ final readonly class TargetStatus
             $counts['untracked'] += (int) $field->isUntracked();
         }
 
-        return new self($exists, $exists ? ItemStatus::worst(...$statuses) : ItemStatus::Missing, $fields, $counts);
+        return new self($exists, $exists ? ItemStatus::worst(...$statuses) : ItemStatus::Missing, $fields, $counts, $stateVersion);
     }
 }
