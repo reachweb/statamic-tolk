@@ -12,7 +12,7 @@ function tolkScriptData(): array
 
 it('provides the addon\'s data to the CP script', function () {
     expect(tolkScriptData())->toBe([
-        'fieldtypes' => ['text', 'textarea', 'markdown', 'bard'],
+        'fieldtypes' => ['text', 'textarea', 'markdown', 'bard', 'replicator', 'grid', 'group'],
         'concurrency' => 4,
         'multisite' => true,
         'fakeEngine' => false,
@@ -25,7 +25,7 @@ it('reads the values when the CP page renders, not at boot', function () {
     config(['tolk.concurrency.editor' => 2, 'tolk.fake_engine' => true]);
 
     expect(tolkScriptData())->toBe([
-        'fieldtypes' => ['text', 'textarea', 'markdown', 'bard', 'custom_text'],
+        'fieldtypes' => ['text', 'textarea', 'markdown', 'bard', 'replicator', 'grid', 'group', 'custom_text'],
         'concurrency' => 2,
         'multisite' => true,
         'fakeEngine' => true,
@@ -65,5 +65,5 @@ it('includes the data in the CP page', function () {
 
     $this->get(cp_route('dashboard'))
         ->assertOk()
-        ->assertSee('"tolk":{"fieldtypes":["text","textarea","markdown","bard"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).'}', false);
+        ->assertSee('"tolk":{"fieldtypes":["text","textarea","markdown","bard","replicator","grid","group"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).'}', false);
 });

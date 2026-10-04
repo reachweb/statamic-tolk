@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Content\Handlers;
 
 use Closure;
+use Reach\StatamicTolk\Content\Handlers\Concerns\MapsSets;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\LeafRules;
 use Reach\StatamicTolk\Content\Markup\InlineMarkup;
@@ -13,7 +14,6 @@ use Reach\StatamicTolk\Contracts\FieldHandler;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fieldtype;
-use Statamic\Support\Str;
 
 /**
  * Walks Bard's ProseMirror nodes block by block (D25): the inline content of each block is one `inline` leaf, link
@@ -22,6 +22,8 @@ use Statamic\Support\Str;
  */
 final class BardHandler implements FieldHandler
 {
+    use MapsSets;
+
     private const string WHITESPACE = " \t\r\n";
 
     private const array BLOCK_TYPES = [
@@ -88,7 +90,9 @@ final class BardHandler implements FieldHandler
             $content = $node['content'] ?? null;
 
             if ($type === 'set') {
-                $nodes[$index] = $this->mapSet($node, $index, $fieldtype, $translate, $context);
+                if (is_array($node['attrs']['values'] ?? null)) {
+                    $nodes[$index]['attrs']['values'] = $this->mapSet($fieldtype, $node['attrs']['values'], $index, $translate, $context, 'attrs', 'values');
+                }
             } elseif ($type === 'image') {
                 $nodes[$index] = $this->mapAlt($node, $translate, $context);
             } elseif ($type !== 'codeBlock' && is_array($content) && array_is_list($content)) {
@@ -123,22 +127,6 @@ final class BardHandler implements FieldHandler
 
         // Alts and titles are in neither the text nor the descriptors, so a second serialization only carries them into the map.
         return InlineMarkup::parse($translated, $altered ? InlineMarkup::serialize($nodes) : $serialized);
-    }
-
-    private function mapSet(array $node, int $index, Fieldtype $fieldtype, Closure $translate, WalkContext $context): array
-    {
-        $values = $node['attrs']['values'] ?? null;
-        $handle = is_array($values) ? $values['type'] ?? null : null;
-        $config = is_string($handle) ? $fieldtype->flattenedSetsConfig()->get($handle) : null;
-
-        if (! is_array($config)) {
-            return $node;
-        }
-
-        $context = $context->with($index, $config['display'] ?? __(Str::slugToTitle($handle)))->with('attrs')->with('values');
-        $node['attrs']['values'] = $context->walker->mapFields($fieldtype->fields($handle, $index), $values, $translate, $context);
-
-        return $node;
     }
 
     private function mapAlt(array $node, Closure $translate, WalkContext $context): array

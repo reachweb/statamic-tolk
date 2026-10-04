@@ -2,7 +2,6 @@
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
-use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
@@ -16,7 +15,6 @@ use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Git;
@@ -24,7 +22,6 @@ use Statamic\Git\CommitJob;
 
 beforeEach(function () {
     $this->useFileCache();
-    app(FieldtypeRegistry::class)->register('grid', FakeGridHandler::class);
 
     $this->makeCollection('articles', ['en', 'el', 'de'], [
         'title' => ['type' => 'text', 'localizable' => true],

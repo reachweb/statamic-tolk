@@ -4,12 +4,10 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\Throttle;
-use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\State\StateWriter;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
@@ -221,7 +219,6 @@ describe('unit', function () {
     });
 
     it('delivers a field that spans two units once both ran', function () {
-        app(FieldtypeRegistry::class)->register('grid', FakeGridHandler::class);
         $this->makeCollection('guides', ['en', 'el'], [
             'title' => ['type' => 'text', 'localizable' => true],
             'faq' => ['type' => 'grid', 'localizable' => true, 'fields' => [

@@ -3,7 +3,6 @@
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Ai\ModelCatalog;
-use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -20,7 +19,6 @@ use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeReplicatorHandler;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\Pipeline;
@@ -384,7 +382,6 @@ describe('existing localizations', function () {
 });
 
 it('stores a normalised value that keeps its status after a CP round trip', function () {
-    app(FieldtypeRegistry::class)->register('replicator', FakeReplicatorHandler::class);
     $this->makeCollection('stories', ['en', 'el'], [
         'title' => ['type' => 'text', 'localizable' => true],
         'body' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [

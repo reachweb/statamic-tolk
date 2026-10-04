@@ -215,36 +215,37 @@ test('after Mark manual fields as up to date, the Greek article reads edited by 
     browserErrors,
 }) => {
     const greek = await openEntry(page, 'articles', 'what-to-eat-in-chania', 'el');
-    await expect(part(page, 'manual')).toHaveText('2 fields edited by hand');
-    await expect(part(page, 'untracked')).toHaveText('2 untracked');
+    await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
+    await expect(part(page, 'untracked')).toHaveText('4 untracked');
 
     await openOptions(page);
     await expect(dialog(page).locator('[data-tolk-action="protect"]')).toHaveCount(0);
     await dialog(page).locator('[data-tolk-action="mark-current"]').click();
 
-    await expect(page.getByText('2 fields marked as up to date.')).toBeVisible();
-    await expect(part(page, 'manual')).toHaveText('2 fields edited by hand');
+    await expect(page.getByText('4 fields marked as up to date.')).toBeVisible();
+    await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
     await expect(part(page, 'untracked')).toHaveCount(0);
     await expect(part(page, 'attention')).toHaveCount(0);
     expect(entryState(greek.id).fields.title.source_hash).toMatch(/^[0-9a-f]{16}$/);
 
-    // An editor changes the English title.
+    // An editor changes the English title. The same save gives the body's seeded sets their ids and `enabled` flags,
+    // which changes the body's source too (§A4), so two fields need attention.
     await page.getByRole('button', { name: /^English Origin/ }).click();
     await expect(banner(page).locator('[data-tolk-origin]')).toBeVisible();
     await page.locator('#field_title').fill('What to eat in the old town of Chania');
     await page.waitForTimeout(400);
     await quickSave(page);
-    await expect(banner(page).locator('[data-tolk-origin] [data-tolk-site="el"]')).toContainText('1 needs attention');
+    await expect(banner(page).locator('[data-tolk-origin] [data-tolk-site="el"]')).toContainText('2 need attention');
 
     await page.getByRole('button', { name: /^Greek/ }).click();
     await expect(page.locator('#field_title')).toHaveValue(greek.title);
-    await expect(part(page, 'attention')).toHaveText('1 needs attention');
+    await expect(part(page, 'attention')).toHaveText('2 need attention');
     await expect(part(page, 'untracked')).toHaveCount(0);
 
     // Marking it again clears the attention.
     await openOptions(page);
     await dialog(page).locator('[data-tolk-action="mark-current"]').click();
     await expect(part(page, 'attention')).toHaveCount(0);
-    await expect(part(page, 'manual')).toHaveText('2 fields edited by hand');
+    await expect(part(page, 'manual')).toHaveText('4 fields edited by hand');
     expect(browserErrors()).toEqual([]);
 });

@@ -18,8 +18,8 @@ test('the banner shows the counts of a Greek article', async ({ page, browserErr
     const localization = banner(page).locator('[data-tolk-localization]');
 
     await expect(localization).toContainText('From English:');
-    await expect(localization.locator('[data-tolk-part="manual"]')).toHaveText('2 fields edited by hand');
-    await expect(localization.locator('[data-tolk-part="untracked"]')).toHaveText('2 untracked');
+    await expect(localization.locator('[data-tolk-part="manual"]')).toHaveText('4 fields edited by hand');
+    await expect(localization.locator('[data-tolk-part="untracked"]')).toHaveText('4 untracked');
     await expect(localization.locator('[data-tolk-part]')).toHaveCount(2);
     await expect(localization).toContainText('Internal note is not translated because it is not localizable. Run php please tolk:doctor for details.');
     await expect(banner(page).locator('[data-tolk-setup]')).toHaveCount(0);
@@ -76,7 +76,7 @@ test('switching site in place updates the banner', async ({ page, browserErrors 
     const german = banner(page).locator('[data-tolk-origin] [data-tolk-site="de"]');
 
     await expect(greek).toContainText('Greek');
-    await expect(greek).toContainText('2 fields edited by hand, 2 untracked');
+    await expect(greek).toContainText('4 fields edited by hand, 4 untracked');
     await expect(german).toContainText('German');
     await expect(german).toContainText('Missing');
 
@@ -85,7 +85,7 @@ test('switching site in place updates the banner', async ({ page, browserErrors 
     await status;
 
     await expect(banner(page).locator('[data-tolk-origin]')).toHaveCount(0);
-    await expect(banner(page).locator('[data-tolk-localization] [data-tolk-part="manual"]')).toHaveText('2 fields edited by hand');
+    await expect(banner(page).locator('[data-tolk-localization] [data-tolk-part="manual"]')).toHaveText('4 fields edited by hand');
     expect(browserErrors()).toEqual([]);
 });
 

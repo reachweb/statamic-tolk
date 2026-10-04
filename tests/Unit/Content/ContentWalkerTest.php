@@ -2,12 +2,12 @@
 
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
+use Reach\StatamicTolk\Content\Handlers\GridHandler;
+use Reach\StatamicTolk\Content\Handlers\GroupHandler;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\WalkContext;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Exceptions\LeafCountMismatch;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGridHandler;
-use Reach\StatamicTolk\Tests\Support\Handlers\FakeGroupHandler;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeTextHandler;
 use Statamic\Facades\Field as FieldFacade;
 use Statamic\Fields\Field;
@@ -18,8 +18,8 @@ function walkerWithFakes(): ContentWalker
     $registry = new FieldtypeRegistry(app());
     $registry->register('text', FakeTextHandler::class);
     $registry->register('textarea', FakeTextHandler::class);
-    $registry->register('group', FakeGroupHandler::class);
-    $registry->register('grid', FakeGridHandler::class);
+    $registry->register('group', GroupHandler::class);
+    $registry->register('grid', GridHandler::class);
 
     return new ContentWalker($registry);
 }
