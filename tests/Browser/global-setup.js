@@ -75,9 +75,9 @@ async function storeSession(browser, file, email, password) {
     const page = await context.newPage();
 
     try {
-        await page.goto(cpUrl('auth/login'));
-        await page.locator('input[name="email"]').fill(email);
-        await page.locator('input[name="password"]').fill(password);
+        await page.goto(cpUrl('auth/login'), { waitUntil: 'networkidle' });
+        await fillLoginField(page.locator('input[name="email"]'), email);
+        await fillLoginField(page.locator('input[name="password"]'), password);
         await page.getByRole('button', { name: 'Continue' }).click();
 
         try {
@@ -93,6 +93,21 @@ async function storeSession(browser, file, email, password) {
     } finally {
         await context.close();
     }
+}
+
+// The login form can still re-render after the page loads, which empties a field filled too early. Checked by hand
+// rather than with `toHaveValue`, which would print the password in its failure message.
+async function fillLoginField(input, value) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        await input.fill(value);
+        await input.page().waitForTimeout(200);
+
+        if ((await input.inputValue()) === value) {
+            return;
+        }
+    }
+
+    throw new Error(`The login form's ${await input.getAttribute('name')} field does not keep its value.`);
 }
 
 async function stillLoggedIn(file) {
