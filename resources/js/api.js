@@ -27,9 +27,10 @@ function coreAxios() {
     return Statamic.$app.config.globalProperties.$axios;
 }
 
+// A path names one of the addon's routes; a full URL, such as the run URLs the server sends, is used as it is.
 async function send(method, path, payload) {
     const axios = coreAxios();
-    const url = cp_url(`tolk/${path.replace(/^\/+/, '')}`);
+    const url = /^https?:\/\//i.test(path) ? path : cp_url(`tolk/${path.replace(/^\/+/, '')}`);
 
     try {
         const response = await axios[method](url, payload);

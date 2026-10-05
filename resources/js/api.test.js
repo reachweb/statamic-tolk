@@ -45,6 +45,16 @@ describe('post', () => {
         await expect(post('editor/plan', { mode: 'missing' })).resolves.toEqual({ plan: 'p1' });
         expect(axios.post).toHaveBeenCalledWith('/admin/tolk/editor/plan', { mode: 'missing' });
     });
+
+    it('sends a full URL as it is', async () => {
+        axios.post.mockResolvedValue({ status: 200, data: {} });
+
+        await post('https://example.test/cp/tolk/runs/01J/tick', { lane: 1 });
+        await post('HTTP://example.test/cp/tolk/runs/01J/apply');
+
+        expect(axios.post).toHaveBeenNthCalledWith(1, 'https://example.test/cp/tolk/runs/01J/tick', { lane: 1 });
+        expect(axios.post).toHaveBeenNthCalledWith(2, 'HTTP://example.test/cp/tolk/runs/01J/apply', {});
+    });
 });
 
 it('looks up core axios on every call, not when the module is loaded', async () => {
