@@ -63,6 +63,27 @@ final readonly class Plan
     }
 
     /**
+     * The keys of §A9 that a translation and a review share. The prompt's `field` is the label path, which says what the
+     * text is for.
+     *
+     * @return array{id: string, field: string, kind: string, hint: ?string, max_length: ?int, before: ?string, after: ?string}
+     */
+    public function promptSegment(string $id): array
+    {
+        $segment = $this->segments[$id];
+
+        return [
+            'id' => $id,
+            'field' => $segment['label'],
+            'kind' => $segment['kind'],
+            'hint' => $segment['hint'] ?? null,
+            'max_length' => $segment['max_length'] ?? null,
+            'before' => $segment['before'] ?? null,
+            'after' => $segment['after'] ?? null,
+        ];
+    }
+
+    /**
      * @return ?array{id: string, segment_ids: list<string>, chars: int}
      */
     public function batch(string $id): ?array

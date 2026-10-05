@@ -482,7 +482,7 @@ final readonly class Pipeline
     private function segments(Plan $plan, Unit $unit): array
     {
         return array_map(fn (string $id) => [
-            ...$this->promptSegment($plan, $id),
+            ...$plan->promptSegment($id),
             'text' => $plan->segments[$id]['text'],
             'note' => $unit->notes[$id] ?? null,
         ], $unit->segmentIds);
@@ -497,29 +497,10 @@ final readonly class Pipeline
     private function reviewSegments(Plan $plan, array $translations): array
     {
         return array_map(fn (string $id, string $translation) => [
-            ...$this->promptSegment($plan, $id),
+            ...$plan->promptSegment($id),
             'source' => $plan->segments[$id]['text'],
             'translation' => $translation,
         ], array_keys($translations), $translations);
-    }
-
-    /**
-     * The keys of §A9 that a translation and a review share. The prompt's `field` is the label path, which says what the
-     * text is for.
-     */
-    private function promptSegment(Plan $plan, string $id): array
-    {
-        $segment = $plan->segments[$id];
-
-        return [
-            'id' => $id,
-            'field' => $segment['label'],
-            'kind' => $segment['kind'],
-            'hint' => $segment['hint'] ?? null,
-            'max_length' => $segment['max_length'] ?? null,
-            'before' => $segment['before'] ?? null,
-            'after' => $segment['after'] ?? null,
-        ];
     }
 
     /**

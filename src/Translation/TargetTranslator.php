@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
+use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
@@ -19,6 +20,7 @@ use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\WriterBusy;
+use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\ApplyOptions;
@@ -40,6 +42,7 @@ final readonly class TargetTranslator
         private PlanStore $store,
         private Pipeline $pipeline,
         private StateWriter $stateWriter,
+        private UsageRecorder $recorder,
     ) {}
 
     /**
@@ -75,6 +78,7 @@ final readonly class TargetTranslator
         $usage = new UsageMap;
         $record = function (ModelRef $model, Usage $call) use (&$usage): void {
             $usage = $usage->add($model, $call);
+            $this->recorder->record($model, $call, UsageSource::Cli);
         };
 
         try {
