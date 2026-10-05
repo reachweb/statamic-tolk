@@ -55,6 +55,8 @@ it('round-trips a run through its array', function () {
         generation: 3,
         error: 'One item failed.',
         warnings: [['item' => 2, 'code' => 'parent_not_localized']],
+        saves: 4,
+        committedSaves: 3,
     );
 
     $data = $run->toArray();
@@ -76,11 +78,13 @@ it('round-trips a run through its array', function () {
         'generation' => 3,
         'error' => 'One item failed.',
         'warnings' => [['item' => 2, 'code' => 'parent_not_localized']],
+        'saves' => 4,
+        'committed_saves' => 3,
     ])
         ->and(Run::fromArray(json_decode(json_encode($data, JSON_PRESERVE_ZERO_FRACTION), true))->toArray())->toBe($data)
         ->and($run->lastActivityAt()->toIso8601ZuluString())->toBe('2026-10-05T08:05:01Z')
         ->and(Run::fromArray(['id' => 'x', 'driver' => 'cli', 'status' => 'pending', 'created_by' => ['name' => 'nobody'], 'estimate' => 'none'])->toArray())
-        ->toMatchArray(['created_by' => null, 'estimate' => null, 'usage' => [], 'generation' => 0])
+        ->toMatchArray(['created_by' => null, 'estimate' => null, 'usage' => [], 'generation' => 0, 'saves' => 0, 'committed_saves' => 0])
         ->and(fn () => Run::fromArray(['id' => 'x', 'driver' => 'cli']))->toThrow(ValueError::class);
 });
 
@@ -137,6 +141,7 @@ it('round-trips a run item through its array', function () {
         availableAt: CarbonImmutable::parse('2026-10-05T08:01:00Z'),
         fields: ['title' => ['status' => 'applied']],
         warnings: ['parent_not_localized'],
+        corrections: ['title' => [['id' => 's1', 'before' => 'Startseit', 'after' => 'Startseite', 'reason' => 'Typo.']]],
         error: 'Failed once.',
         usage: (new UsageMap)->add(new ModelRef('openai', 'gpt-6-luna'), new Usage(input: 3, calls: 1)),
         reference: 'entry::home-de',
@@ -156,6 +161,7 @@ it('round-trips a run item through its array', function () {
         'claim' => ['by' => 'lane-1', 'token' => 'token', 'expires_at' => '2026-10-05T08:00:00Z', 'ttl' => 60],
         'available_at' => '2026-10-05T08:01:00Z',
         'plan_id' => 'plan-9',
+        'corrections' => ['title' => [['id' => 's1', 'before' => 'Startseit', 'after' => 'Startseite', 'reason' => 'Typo.']]],
         'edit_url' => 'http://localhost/cp/collections/pages/entries/home-de',
     ])
         ->and(RunItem::fromArray(json_decode(json_encode($data), true))->toArray())->toBe($data)
