@@ -10,7 +10,6 @@ use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
-use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
@@ -23,6 +22,7 @@ use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Revisions\Revision;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
 use Statamic\Facades\Stache;
@@ -40,6 +40,8 @@ final class EntryTarget implements Target
     private ?EntryContract $localization = null;
 
     private bool $localizationResolved = false;
+
+    private ?EntryContract $working = null;
 
     private ?Collection $fields = null;
 
@@ -131,12 +133,12 @@ final class EntryTarget implements Target
 
     public function hasOverride(string $handle): bool
     {
-        return $this->localization()?->has($handle) ?? false;
+        return $this->working()?->has($handle) ?? false;
     }
 
     public function targetValue(string $handle): mixed
     {
-        return $this->localization()?->get($handle);
+        return $this->working()?->get($handle);
     }
 
     // The source's own data merged over its origins', as the CP's edit page reads it; value() would add the collection's
@@ -238,17 +240,13 @@ final class EntryTarget implements Target
      */
     private function applyFresh(array $fields, ApplyOptions $options): ApplyResult
     {
-        $source = $this->source();
-
-        if ($source->revisionsEnabled()) {
-            throw NotSupportedYet::revisions($source->collectionHandle());
-        }
-
         $this->stateWriter->confirm($this);
         $fields = $this->keyByHandle($fields);
         $created = ! $this->exists();
         $warnings = $created ? $this->createLocalization($options) : [];
         $localization = $this->localization();
+        $item = $this->working();
+        $hadWorkingCopy = $localization->revisionsEnabled() && $localization->hasWorkingCopy();
         $ref = $this->ref();
 
         $writes = $skipped = [];
@@ -261,7 +259,7 @@ final class EntryTarget implements Target
             }
         }
 
-        $values = $this->normalise($localization, array_map(
+        $values = $this->normalise($item, array_map(
             fn (AssembledField $field) => $field->value,
             array_filter($writes, fn (AssembledField $field) => ! $field->remove),
         ));
@@ -270,18 +268,14 @@ final class EntryTarget implements Target
             $this->stateWriter->recordPending($ref, $this->sourceSite(), $handle, $this->pending($writes[$handle], $value));
         }
 
-        $publish = $created && $this->publishesAsOrigin($localization, $writes, $options);
+        $mirror = $created && $this->publishesAsOrigin($localization, $writes, $options);
 
-        if ($writes !== [] || $publish) {
+        if ($writes !== [] || $mirror) {
             foreach ($writes as $handle => $field) {
-                $field->remove ? $localization->remove($handle) : $localization->set($handle, $values[$handle]);
+                $field->remove ? $item->remove($handle) : $item->set($handle, $values[$handle]);
             }
 
-            if ($publish) {
-                $localization->published($source->published());
-            }
-
-            $this->save($localization, $options);
+            array_push($warnings, ...$this->saveChanges($item, $mirror, $hadWorkingCopy, $options));
 
             $removed = array_keys(array_filter($writes, fn (AssembledField $field) => $field->remove));
 
@@ -323,7 +317,8 @@ final class EntryTarget implements Target
 
     /**
      * Saves the new localization once, with no data of its own and as a draft, as the CP's localize action does, so it
-     * has a reference and its place in the tree before any field is written. Returns the warnings.
+     * has a reference and its place in the tree before any field is written; with revisions on, it gets a revision, as
+     * store() gives it. Returns the warnings.
      *
      * @return list<string>
      */
@@ -349,6 +344,11 @@ final class EntryTarget implements Target
 
         $this->save($localization, $options);
 
+        // As store() does, which returns the revision's result and so hides a save that a listener cancelled.
+        if ($localization->revisionsEnabled()) {
+            $this->saveRevision($localization->makeRevision(), $localization, $options);
+        }
+
         $this->localization = $localization;
         $this->localizationResolved = true;
         $this->fields = null;
@@ -365,6 +365,55 @@ final class EntryTarget implements Target
             ->count() > 0;
     }
 
+    /**
+     * Saves the written fields as the CP would (D26, §A11 "Revisions"). Returns the warnings.
+     *
+     * @return list<string>
+     */
+    private function saveChanges(EntryContract $item, bool $mirror, bool $hadWorkingCopy, ApplyOptions $options): array
+    {
+        if (! $item->revisionsEnabled()) {
+            if ($mirror) {
+                $item->published($this->source()->published());
+            }
+
+            $this->save($item, $options);
+
+            return [];
+        }
+
+        if ($mirror && $this->source()->published()) {
+            $this->publish($item, $options);
+
+            return [];
+        }
+
+        if (! $item->published()) {
+            $this->save($item, $options);
+
+            return [];
+        }
+
+        $this->saveRevision($item->makeWorkingCopy(), $item, $options, $this->revisionMessage());
+
+        if (! $options->publishChanges) {
+            return [];
+        }
+
+        // publish() publishes the whole working copy, which may hold somebody else's changes that nobody approved.
+        if ($hadWorkingCopy) {
+            return ["The {$this->siteName()} localization already had unpublished changes, so the translation was added to them and not published."];
+        }
+
+        if ($options->user !== null && ! $options->user->can('publish', $item)) {
+            return ['The translation was saved as unpublished changes: the user who started it may not publish this entry.'];
+        }
+
+        $this->publish($item, $options);
+
+        return [];
+    }
+
     private function save(EntryContract $localization, ApplyOptions $options): void
     {
         if ($options->user !== null) {
@@ -374,6 +423,26 @@ final class EntryTarget implements Target
         if ($localization->save() === false) {
             throw ApplyFailed::vetoed('entry::'.$localization->id());
         }
+    }
+
+    private function saveRevision(Revision $revision, EntryContract $item, ApplyOptions $options, ?string $message = null): void
+    {
+        if ($revision->user($options->user)->message($message)->save() === false) {
+            throw ApplyFailed::vetoed('entry::'.$item->id());
+        }
+    }
+
+    // Publishes the working copy, or the item itself when it has none, with a revision (Revisable::publishWorkingCopy()).
+    private function publish(EntryContract $item, ApplyOptions $options): void
+    {
+        if ($item->publish(['user' => $options->user, 'message' => $this->revisionMessage()]) === false) {
+            throw ApplyFailed::vetoed('entry::'.$item->id());
+        }
+    }
+
+    private function revisionMessage(): string
+    {
+        return 'Translated from '.(Site::get($this->sourceSite())?->name() ?? $this->sourceSite()).' with Tolk';
     }
 
     /**
@@ -453,6 +522,12 @@ final class EntryTarget implements Target
         }
 
         return $this->localization;
+    }
+
+    // What the CP's edit page shows and saves: with revisions on, the localization as its working copy has it (§A6).
+    private function working(): ?EntryContract
+    {
+        return $this->working ??= $this->localization()?->fromWorkingCopy();
     }
 
     // D3: an existing localization is translated from its own origin, which in a chain need not be the entry this target was built from.

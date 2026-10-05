@@ -88,6 +88,7 @@ abstract class TestCase extends AddonTestCase
             'statamic.forms.forms' => $this->temporaryPath('forms'),
             'statamic.users.repositories.file.paths.roles' => $this->temporaryPath('users/roles.yaml'),
             'statamic.users.repositories.file.paths.groups' => $this->temporaryPath('users/groups.yaml'),
+            'statamic.stache.stores.revisions.directory' => $this->temporaryPath('revisions'),
             'tolk.providers.anthropic.key' => null,
             'tolk.providers.openai.key' => null,
             'tolk.providers.gemini.key' => null,
