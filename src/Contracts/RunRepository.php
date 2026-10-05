@@ -63,6 +63,13 @@ interface RunRepository
     public function counts(Run $run): array;
 
     /**
+     * @return list<array{type: string, site: string, counts: array<string, int>}> the number of items per status, every
+     *                                                                             status included, for each content type
+     *                                                                             and target site, in item order
+     */
+    public function breakdown(Run $run): array;
+
+    /**
      * Hands out, atomically, the item this worker already holds, else the lowest eligible `pending` item that is
      * available, else a `translating` item whose claim expired (an attempt; the third fails it). Null while the run is
      * pending, cancelled or aborted, or when nothing can be claimed now.

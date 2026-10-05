@@ -22,6 +22,7 @@ use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Addon;
+use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Facades\Site;
 use Statamic\Facades\User;
@@ -73,6 +74,7 @@ class ServiceProvider extends AddonServiceProvider
         ], 'tolk-config');
 
         $this->registerPermissions();
+        $this->registerNavigation();
         $this->registerFieldtypes();
         $this->provideScriptData();
     }
@@ -88,6 +90,15 @@ class ServiceProvider extends AddonServiceProvider
                 ->label(__('Run bulk translations'))
                 ->description(__('Start and manage bulk translation runs from listings, the overview and the runs page.')));
         }));
+    }
+
+    // The runs index is the landing page until the overview exists (T10.5). Like core's own items, the name is not translated here.
+    private function registerNavigation(): void
+    {
+        Nav::extend(fn ($nav) => $nav->tools('Translations')
+            ->route('tolk.runs.index')
+            ->icon('dictionary-language-book')
+            ->can('run bulk translations'));
     }
 
     // The built-in handlers come with the registry, so an addon that boots before this one (Tolk::registerFieldtype()) can replace them.

@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Prompts\PromptContext;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -38,6 +39,9 @@ final readonly class RunPlanner
 
     public const string SITE_NOT_IN_COLLECTION = 'site_not_in_collection';
 
+    // Out-of-scope reasons that say nothing about text: a fieldtype without a handler, and the slug, never translated (D16).
+    private const array NOT_TEXT = ['unsupported_fieldtype', 'slug'];
+
     public function __construct(
         private EntryFamilies $families,
         private TargetFactory $factory,
@@ -50,7 +54,8 @@ final readonly class RunPlanner
 
     /**
      * The unsaved pending run, with the models and defaults resolved from the settings now, so a run keeps the options
-     * it was started with. The run's `scope` holds the request and the `skipped` counts.
+     * it was started with. The run's `scope` holds the request, the `skipped` counts and, as `out_of_scope`, the
+     * text-bearing top-level fields of its targets that are never translated, with the reason (§A2).
      */
     public function build(RunRequest $request): PlannedRun
     {
@@ -61,11 +66,12 @@ final readonly class RunPlanner
         }
 
         $options = $this->runOptions($request);
-        $skipped = [];
-        $items = $this->entryItems($this->entryTargets($request, $skipped), Mode::from($options['mode']) !== Mode::Review);
+        $skipped = $outOfScope = [];
+        $items = $this->entryItems($this->entryTargets($request, $skipped, $outOfScope), Mode::from($options['mode']) !== Mode::Review);
+        $scope = [...$request->scope(), 'skipped' => $skipped, 'out_of_scope' => array_values($outOfScope)];
 
         return new PlannedRun(
-            Run::make($request->driver, [...$request->scope(), 'skipped' => $skipped], $options, $request->user),
+            Run::make($request->driver, $scope, $options, $request->user),
             $items,
             $skipped,
         );
@@ -149,9 +155,10 @@ final readonly class RunPlanner
      * $skipped; a root's own site is not a target at all.
      *
      * @param  array<string, int>  $skipped
+     * @param  array<string, array>  $outOfScope  see noteOutOfScope()
      * @return list<array<string, array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}>>
      */
-    private function entryTargets(RunRequest $request, array &$skipped): array
+    private function entryTargets(RunRequest $request, array &$skipped, array &$outOfScope): array
     {
         $collections = $this->collections($request->collections);
 
@@ -160,7 +167,7 @@ final readonly class RunPlanner
         }
 
         $excluded = $this->settings->excludedCollections();
-        $families = [];
+        $families = $explained = [];
 
         foreach ($this->families->roots($collections, $request->entryIds) as $root) {
             $collection = $root->collection();
@@ -192,6 +199,13 @@ final readonly class RunPlanner
                     continue;
                 }
 
+                $blueprint = $collection->handle().'.'.$source->blueprint()->handle();
+
+                if (! isset($explained[$blueprint])) {
+                    $explained[$blueprint] = true;
+                    $this->noteOutOfScope($target, $outOfScope);
+                }
+
                 $family[$site] = compact('root', 'site', 'source', 'target');
             }
 
@@ -201,6 +215,28 @@ final readonly class RunPlanner
         }
 
         return $families;
+    }
+
+    /**
+     * Notes the target's text-bearing top-level fields that are out of scope, once per container, field and reason.
+     *
+     * @param  array<string, array{container: string, handle: string, label: string, type: string, reason: string}>  $outOfScope
+     */
+    private function noteOutOfScope(Target $target, array &$outOfScope): void
+    {
+        foreach ($target->explainFields() as $field) {
+            if ($field['in_scope'] || in_array($field['reason'], self::NOT_TEXT, true)) {
+                continue;
+            }
+
+            $outOfScope[$target->container().'.'.$field['handle'].':'.$field['reason']] ??= [
+                'container' => $target->container(),
+                'handle' => $field['handle'],
+                'label' => (string) $field['display'],
+                'type' => $field['type'],
+                'reason' => $field['reason'],
+            ];
+        }
     }
 
     /**

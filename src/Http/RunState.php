@@ -4,17 +4,21 @@ namespace Reach\StatamicTolk\Http;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
+use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Pricing;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
+use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 
 /**
  * The state of a run as the run page and the editor's push follow it (T8.7): the run with its usage, cost and estimate,
- * its counts per item status, one page of its items, and whether a queue run looks stalled.
+ * its counts per item status, overall and for each content type and target site, one page of its items, and whether a
+ * queue run looks stalled.
  */
 final readonly class RunState
 {
@@ -28,6 +32,7 @@ final readonly class RunState
     public function __construct(
         private RunRepository $runs,
         private Pricing $pricing,
+        private ModelCatalog $catalog,
     ) {}
 
     /**
@@ -41,6 +46,7 @@ final readonly class RunState
         return [
             'run' => $this->run($run),
             'counts' => $counts,
+            'breakdown' => $this->runs->breakdown($run),
             'items' => array_map($this->item(...), $this->runs->items($run, $status, $page, $perPage)),
             'pagination' => [
                 'page' => $page,
@@ -77,6 +83,28 @@ final readonly class RunState
         }
 
         return $run->lastActivityAt()->lessThan($now->subSeconds(max(1, (int) config('tolk.runs.claim_ttl'))));
+    }
+
+    /**
+     * @return array<string, string> the label of each model the run names or has called, by reference
+     */
+    public function models(Run $run): array
+    {
+        $labels = [];
+
+        foreach ([$run->options['translator'] ?? null, $run->options['reviewer'] ?? null, ...array_keys($run->usage->usages)] as $reference) {
+            if (! is_string($reference) || isset($labels[$reference])) {
+                continue;
+            }
+
+            try {
+                $labels[$reference] = $this->catalog->label(ModelRef::fromString($reference));
+            } catch (InvalidModelRef) {
+                $labels[$reference] = $reference;
+            }
+        }
+
+        return $labels;
     }
 
     /**

@@ -90,6 +90,24 @@ describe('build', function () {
             ->and($planned->skipped)->toBe([]);
     });
 
+    it('records the text fields of its targets that are out of scope, once per collection, field and reason', function () {
+        $this->makeCollection('notes', ['en', 'el', 'de'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'internal_note' => ['type' => 'textarea', 'display' => 'Internal note'],
+            'summary' => ['type' => 'text', 'localizable' => true, 'tolk_translate' => false],
+            'published_on' => ['type' => 'date'],
+        ]);
+        $this->makeEntry('notes', 'en', ['title' => 'One'], 'one');
+        $this->makeEntry('notes', 'en', ['title' => 'Two'], 'two');
+
+        $planned = planRun(['sites' => ['el', 'de'], 'collections' => ['articles', 'notes']]);
+
+        expect($planned->run->scope['out_of_scope'])->toBe([
+            ['container' => 'notes', 'handle' => 'internal_note', 'label' => 'Internal note', 'type' => 'textarea', 'reason' => 'not_localizable'],
+            ['container' => 'notes', 'handle' => 'summary', 'label' => 'Summary', 'type' => 'text', 'reason' => 'disabled'],
+        ]);
+    });
+
     it('returns an unsaved pending run with the request as its scope and the options resolved from the settings', function () {
         $this->withSettings(['translator_model' => 'openai:gpt-6.1-sol', 'new_localization_status' => 'mirror']);
 
@@ -109,6 +127,7 @@ describe('build', function () {
                 'entry_ids' => [],
                 'term_ids' => [],
                 'skipped' => [],
+                'out_of_scope' => [],
             ])
             ->and($planned->run->options)->toBe([
                 'mode' => 'update',
