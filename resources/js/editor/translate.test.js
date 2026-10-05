@@ -324,7 +324,7 @@ describe('translate', () => {
         expect(result).toMatchObject({ plan: 'p1', planned: ['intro', 'seo_title'], delivered: ['seo_title'], skipped: { intro: 'edited' }, cancelled: false });
         expect(result.planSkipped).toEqual({ title: 'manual' });
         expect(base()).toMatchObject({ phase: 'done', summary: result, planReference: 'entry::de', error: null });
-        expect(base().request).toEqual({ kind: 'translate', mode: 'missing', fields: null, overwriteManual: false, translator: null, review: null, reviewer: null });
+        expect(base().request).toEqual({ kind: 'translate', mode: 'missing', fields: null, overwriteManual: false, translator: null, review: null, reviewer: null, replace: false });
         expect(t.running('base')).toBe(false);
     });
 
@@ -343,6 +343,54 @@ describe('translate', () => {
             review: true,
             reviewer: 'gemini:gemini-3.8-flash',
         });
+    });
+
+    it('plans a field it replaces although the form holds unsaved text of it, and still skips the other edits', async () => {
+        const ctx = mount();
+        ctx.values.value.intro = 'Mein eigener Text';
+        ctx.values.value.seo_title = 'Mein SEO-Titel';
+        const api = fakeApi();
+        const fill = vi.fn(async () => ({ stale: false, applied: [], skipped: {}, repeated: [] }));
+        const run = vi.fn(async ({ onFields }) => {
+            await onFields({ intro: { value: '[de] A family-run hotel.', meta: null } });
+
+            return summary();
+        });
+        const t = translations({ api, run, fill });
+
+        await t.translate('base', { mode: 'all', fields: ['intro'], overwriteManual: true, replace: true });
+
+        expect(api.post.mock.calls[0][1]).toMatchObject({ fields: ['intro'], skip: ['seo_title'] });
+        expect(fill.mock.calls[0][2].planValues.intro).toBe('Mein eigener Text');
+        expect(base().request.replace).toBe(true);
+
+        await t.translate('base', { mode: 'all', fields: ['intro'], overwriteManual: true });
+
+        expect(api.post.mock.calls[1][1]).toMatchObject({ fields: ['intro'], skip: ['intro', 'seo_title'] });
+    });
+
+    it('replaces the requested fields only, and nothing without fields', async () => {
+        const ctx = mount();
+        ctx.values.value.intro = 'Mein eigener Text';
+        const api = fakeApi();
+        const t = translations({ api });
+
+        await t.translate('base', { mode: 'all', replace: true });
+
+        expect(api.post.mock.calls[0][1]).toMatchObject({ fields: null, skip: ['intro'] });
+    });
+
+    it('keeps the replacement on retry', async () => {
+        const ctx = mount();
+        const stopped = { status: 410, code: 'plan_expired', message: 'Expired.' };
+        const api = fakeApi(planResponse({ fields: ['intro'] }), planResponse({ plan: 'p2' }));
+        const t = translations({ api, run: vi.fn(async () => summary({ stopped })) });
+
+        await t.translate('base', { mode: 'all', fields: ['intro'], overwriteManual: true, replace: true });
+        ctx.values.value.intro = 'Mein eigener Text';
+        await t.retry('base');
+
+        expect(api.post.mock.calls[1][1]).toMatchObject({ fields: ['intro'], skip: [] });
     });
 
     it('keeps the plan\'s reviewer and the corrections in the result', async () => {

@@ -1,0 +1,183 @@
+import { expect, test } from './support/test.js';
+import { entryFile, openEntry, reset, tinker } from './support/sandbox.js';
+
+const TITLE = 'Translate from origin';
+const banner = (page) => page.locator('[data-tolk-banner]');
+
+// A dated article whose Replicator body has a text set with a heading and a Bard field.
+const ARTICLE = 'family-days-out-in-western-crete';
+const ARTICLE_ID = '03863bc8-db48-4483-8169-cd7cb518d369';
+
+// Text fieldtypes pass a change up to the form after a short debounce.
+const typed = (page) => page.waitForTimeout(400);
+
+test.beforeEach(() => {
+    reset();
+});
+
+// Leave the sandbox as it was: other specs read the German home page's counts without resetting.
+test.afterAll(() => {
+    reset();
+});
+
+// The header of a field: its label and its actions. `scope` is the page's own form (`main`) or a stack.
+const header = (scope, selector) => scope.locator(`[data-ui-field-header]:has(label${selector})`);
+const dropdown = (scope, selector) => header(scope, selector).getByRole('button', { name: 'Open dropdown menu' });
+
+// The titles in a field's action dropdown; none when the field has no dropdown.
+async function actionTitles(page, scope, selector) {
+    await expect(header(scope, selector)).toBeVisible();
+
+    if ((await dropdown(scope, selector).count()) === 0) {
+        return [];
+    }
+
+    await dropdown(scope, selector).click();
+
+    const menu = page.getByRole('menu');
+
+    await expect(menu).toBeVisible();
+
+    const titles = await menu.getByRole('menuitem').allTextContents();
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+
+    return titles;
+}
+
+async function expectAction(page, scope, selector) {
+    await expect(dropdown(scope, selector)).toBeVisible();
+    expect(await actionTitles(page, scope, selector)).toContain(TITLE);
+}
+
+async function expectNoAction(page, scope, selector) {
+    expect(await actionTitles(page, scope, selector)).not.toContain(TITLE);
+}
+
+async function runAction(page, selector) {
+    await dropdown(page.locator('main'), selector).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: TITLE }).click();
+
+    const modal = page.getByRole('dialog');
+
+    await expect(modal).toContainText('The current content of this field will be replaced.');
+    await modal.getByRole('button', { name: 'Translate' }).click();
+}
+
+test('shows on the localizable text, Bard and Replicator fields of a localization only', async ({ page, browserErrors }) => {
+    const main = page.locator('main');
+
+    // The German home page: a text, a textarea and a Bard field; the Bard field's quote set; a field that is not localizable.
+    await openEntry(page, 'pages', 'home', 'de');
+    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toBeVisible();
+
+    await expectAction(page, main, '[for="field_title"]');
+    await expectAction(page, main, '[for="field_intro"]');
+    await expectAction(page, main, '[for="field_content"]');
+    await expectNoAction(page, main, '[for^="field_content_"][for$="_attrs_values_text"]');
+    await expectNoAction(page, main, '[for^="field_content_"][for$="_attrs_values_author"]');
+    await expectNoAction(page, main, '[for="field_css_class"]');
+
+    // A Greek article: the Replicator body, the heading of its text set, the set's Bard field, whose handle `body` is also
+    // the Replicator's, and a text field that is not localizable.
+    tinker(`\\Statamic\\Facades\\Entry::find('${ARTICLE_ID}')->makeLocalization('el')->save();`);
+    await openEntry(page, 'articles', ARTICLE, 'el');
+    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toBeVisible();
+
+    await expectAction(page, main, '[for="field_title"]');
+    await expectAction(page, main, '[for="field_body"]');
+    await expectNoAction(page, main, '[for="field_body_0_heading"]');
+    await expectNoAction(page, main, '[for="field_body_0_body"]');
+    await expectNoAction(page, main, '[for="field_internal_note"]');
+
+    // The English origin of the home page.
+    await openEntry(page, 'pages', 'home', 'en');
+    await expect(banner(page).locator('[data-tolk-origin]')).toBeVisible();
+
+    await expectNoAction(page, main, '[for="field_title"]');
+    await expectNoAction(page, main, '[for="field_intro"]');
+    await expectNoAction(page, main, '[for="field_content"]');
+    expect(browserErrors()).toEqual([]);
+});
+
+test('running it replaces only that field, typed text included, and leaves the form unsaved', async ({ page, browserErrors }) => {
+    const origin = entryFile('pages', 'en', 'home');
+    const before = entryFile('pages', 'de', 'home');
+
+    await openEntry(page, 'pages', 'home', 'de');
+    await expect(banner(page).locator('[data-tolk-action="translate"]')).toBeVisible();
+    // The banner takes the form's clean values again 600 ms after it mounted (T5.6).
+    await page.waitForTimeout(700);
+
+    await page.locator('#field_title').fill('Mein Titel');
+    await typed(page);
+
+    // Units wait until the progress line was seen.
+    let release;
+    const held = new Promise((resolve) => (release = resolve));
+    await page.route('**/tolk/editor/unit', async (route) => {
+        await held;
+        await route.continue();
+    });
+
+    const planned = page.waitForRequest((request) => request.url().includes('/tolk/editor/plan'));
+    await runAction(page, '[for="field_title"]');
+    const plan = (await planned).postDataJSON();
+
+    expect(plan).toMatchObject({ mode: 'all', fields: ['title'], overwrite_manual: true });
+    expect(plan.skip).not.toContain('title');
+    await expect(banner(page).locator('[data-tolk-working-field]')).toHaveText('Translating Title into German…');
+    release();
+
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with \S+\.$/);
+    await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
+    await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
+    await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('Welcome to Kyma Bay');
+
+    // The Bard field next: the title keeps its translation.
+    await runAction(page, '[for="field_content"]');
+
+    await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('[de] Welcome to Kyma Bay');
+    await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
+    await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
+
+    expect(entryFile('pages', 'de', 'home')).toEqual(before);
+    expect(await page.evaluate(() => Statamic.$dirty.has('base'))).toBe(true);
+    expect(browserErrors()).toEqual([]);
+});
+
+test('with a related entry open in a stack, the stacked form\'s fields have no action', async ({ page, browserErrors }) => {
+    const about = entryFile('pages', 'en', 'about');
+    const home = entryFile('pages', 'de', 'home');
+    const main = page.locator('main');
+    const stack = page.locator('[data-ui-stack-content]');
+
+    // An `entries` field on the pages, and the German home page related to a German localization of `about`.
+    tinker(
+        `$blueprint = \\Statamic\\Facades\\Blueprint::find('collections.pages.page'); ` +
+            `$contents = $blueprint->contents(); ` +
+            `$contents['tabs']['main']['sections'][0]['fields'][] = ['handle' => 'related', 'field' => ['type' => 'entries', 'display' => 'Related', 'collections' => ['pages'], 'localizable' => true]]; ` +
+            `$blueprint->setContents($contents)->save(); ` +
+            `$about = \\Statamic\\Facades\\Entry::find('${about.id}')->makeLocalization('de'); ` +
+            `$about->save(); ` +
+            `\\Statamic\\Facades\\Entry::find('${home.id}')->set('related', [$about->id()])->save();`,
+    );
+
+    await openEntry(page, 'pages', 'home', 'de');
+    await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toBeVisible();
+    await expectAction(page, main, '[for="field_title"]');
+
+    await main.locator('.entries-fieldtype').getByRole('link', { name: about.title }).click();
+    await expect(stack.locator('#field_title')).toHaveValue(about.title);
+
+    await expectNoAction(page, stack, '[for="field_title"]');
+    await expectNoAction(page, stack, '[for="field_intro"]');
+    await expectNoAction(page, stack, '[for="field_content"]');
+
+    // Closing the stack brings the action back to the page's own form.
+    await page.keyboard.press('Escape');
+    await expect(stack).toHaveCount(0);
+    await expectAction(page, main, '[for="field_title"]');
+    expect(browserErrors()).toEqual([]);
+});
