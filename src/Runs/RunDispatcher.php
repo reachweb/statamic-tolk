@@ -44,6 +44,14 @@ final readonly class RunDispatcher
     }
 
     /**
+     * How many lanes a page keeps driving a browser run with: `concurrency.browser`, at least one.
+     */
+    public static function browserLanes(): int
+    {
+        return max(1, (int) config('tolk.concurrency.browser'));
+    }
+
+    /**
      * The queue connection of the lane jobs: `runs.queue.connection`, else the app's default.
      */
     public static function connection(): string

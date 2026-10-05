@@ -3,7 +3,6 @@
 namespace Reach\StatamicTolk\Targets;
 
 use Illuminate\Support\Collection;
-use LogicException;
 use Reach\StatamicTolk\Content\SourceSummary;
 use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Contracts\Target;
@@ -12,7 +11,6 @@ use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
-use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\Concerns\AppliesFields;
 use Reach\StatamicTolk\Translation\AssembledField;
@@ -40,6 +38,7 @@ final class TermTarget implements Target
 
     /**
      * @param  string  $termId  `{taxonomy}::{default slug}`
+     * @param  ?TermContract  $source  the term in the default site when the caller has it; Term::find() scans every term
      */
     public function __construct(
         private readonly string $termId,
@@ -49,7 +48,10 @@ final class TermTarget implements Target
         private readonly Settings $settings,
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
-    ) {}
+        ?TermContract $source = null,
+    ) {
+        $this->term = $source;
+    }
 
     public function ref(): TargetRef
     {
@@ -182,21 +184,8 @@ final class TermTarget implements Target
     /**
      * @param  list<AssembledField>  $fields
      */
-    public function apply(array $fields, ApplyOptions $options): ApplyResult
-    {
-        if (! ContentWriter::active()) {
-            throw new LogicException('Translations are applied only inside ContentWriter::write().');
-        }
-
-        return $this->fresh()->applyFresh($fields, $options);
-    }
-
-    /**
-     * @param  list<AssembledField>  $fields
-     */
     private function applyFresh(array $fields, ApplyOptions $options): ApplyResult
     {
-        $this->stateWriter->confirm($this);
         [$writes, $skipped] = $this->writable($this->keyByHandle($fields), $options);
         $localized = $this->localized();
         $ref = $this->ref();

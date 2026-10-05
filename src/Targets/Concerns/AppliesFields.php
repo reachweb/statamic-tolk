@@ -2,9 +2,12 @@
 
 namespace Reach\StatamicTolk\Targets\Concerns;
 
+use LogicException;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\PendingState;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\ApplyOptions;
+use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\TargetResult;
@@ -12,11 +15,33 @@ use Reach\StatamicTolk\Translation\TargetResult;
 /**
  * The steps of Target::apply() that every target with a blueprint shares (§A11): the check of the fields against the
  * plan, the target_changed check, the normalisation, the pending entries before the save and the confirm after it.
- * Writing the values and saving are each target's own. The using class holds the StatusResolver in `$resolver` and the
- * StateWriter in `$stateWriter`.
+ * Writing the values and saving are each target's own, in applyFresh(). The using class holds the StatusResolver in
+ * `$resolver` and the StateWriter in `$stateWriter`.
  */
 trait AppliesFields
 {
+    /**
+     * Resolves the target fresh and confirms it (§A11 step 1), then applies on that fresh copy.
+     *
+     * @param  list<AssembledField>  $fields
+     */
+    public function apply(array $fields, ApplyOptions $options): ApplyResult
+    {
+        if (! ContentWriter::active()) {
+            throw new LogicException('Translations are applied only inside ContentWriter::write().');
+        }
+
+        $target = $this->fresh();
+        $this->stateWriter->confirm($target);
+
+        return $target->applyFresh($fields, $options);
+    }
+
+    /**
+     * @param  list<AssembledField>  $fields
+     */
+    abstract private function applyFresh(array $fields, ApplyOptions $options): ApplyResult;
+
     /**
      * @param  list<AssembledField>  $fields
      * @return array<string, AssembledField>

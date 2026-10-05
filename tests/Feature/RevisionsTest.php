@@ -1,6 +1,5 @@
 <?php
 
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Ai\ModelCatalog;
@@ -8,8 +7,6 @@ use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
-use Reach\StatamicTolk\Runs\Run;
-use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
@@ -90,23 +87,6 @@ function recordSaves(): ArrayObject
     return $saves;
 }
 
-/**
- * Translates and applies the run until nothing is left to do, as a driver would; at most ten rounds.
- */
-function finishRevisedRun(Run $run): void
-{
-    for ($round = 0; $round < 10; $round++) {
-        $translated = RunFixtures::translate($run);
-        $applied = app(RunProcessor::class)->applyReady($run, 'apply-1', CarbonImmutable::now()->addSeconds(30));
-
-        if (! $translated->remains && ! $applied->remains) {
-            return;
-        }
-    }
-
-    throw new RuntimeException('The run did not finish in ten rounds.');
-}
-
 describe('a new localization', function () {
     it('is created as a draft with a revision', function () {
         $saves = recordSaves();
@@ -184,7 +164,7 @@ describe('a published localization', function () {
         $commits = RunFixtures::commits();
 
         $run = RunFixtures::started(['entryIds' => [$this->origin->id()], 'options' => ['mode' => 'update']]);
-        finishRevisedRun($run);
+        RunFixtures::finish($run);
         $live = greekOf($this->origin);
         $working = $live->fromWorkingCopy();
 
@@ -205,7 +185,7 @@ describe('a published localization', function () {
 
         $calls = $this->modelCalls();
         $second = RunFixtures::started(['entryIds' => [$this->origin->id()], 'options' => ['mode' => 'update']]);
-        finishRevisedRun($second);
+        RunFixtures::finish($second);
 
         expect(RunFixtures::statuses($second))->toBe(['skipped'])
             ->and(RunFixtures::items($second)[0]->reason)->toBe(TargetResult::NOTHING_TO_DO)

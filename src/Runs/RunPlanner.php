@@ -170,7 +170,7 @@ final readonly class RunPlanner
      */
     private function entryTargets(RunRequest $request, array &$skipped, array &$outOfScope): array
     {
-        $collections = $this->collections($request->collections);
+        $collections = $this->containers($request->collections, Collection::class, 'Collection');
 
         if ($collections === [] && $request->entryIds === []) {
             return [];
@@ -238,7 +238,7 @@ final readonly class RunPlanner
      */
     private function termItems(RunRequest $request, int $offset, array &$skipped, array &$outOfScope): array
     {
-        $taxonomies = $this->taxonomies($request->taxonomies);
+        $taxonomies = $this->containers($request->taxonomies, Taxonomy::class, 'Taxonomy');
 
         if ($taxonomies === [] && $request->termIds === []) {
             return [];
@@ -314,7 +314,7 @@ final readonly class RunPlanner
             $terms[(string) $term->id()] ??= $term;
         }
 
-        return collect($terms)->groupBy(fn (TermContract $term) => $term->taxonomyHandle())->flatten(1)->values()->all();
+        return collect($terms)->groupBy(fn (TermContract $term) => $term->taxonomyHandle())->flatten(1)->all();
     }
 
     /**
@@ -466,45 +466,26 @@ final readonly class RunPlanner
     }
 
     /**
+     * The named containers, or with [ALL] every one that has more than one site.
+     *
      * @param  list<string>  $handles
+     * @param  class-string<Collection|Taxonomy>  $facade
+     * @param  string  $label  what an unknown handle is called in the error
      * @return list<string>
      */
-    private function collections(array $handles): array
+    private function containers(array $handles, string $facade, string $label): array
     {
         if (RunRequest::all($handles)) {
-            return Collection::all()
-                ->filter(fn ($collection) => $collection->sites()->count() > 1)
+            return $facade::all()
+                ->filter(fn ($container) => $container->sites()->count() > 1)
                 ->map->handle()
                 ->values()
                 ->all();
         }
 
         foreach ($handles as $handle) {
-            if (Collection::find($handle) === null) {
-                throw new InvalidArgumentException("Collection [{$handle}] not found.");
-            }
-        }
-
-        return array_values(array_unique($handles));
-    }
-
-    /**
-     * @param  list<string>  $handles
-     * @return list<string>
-     */
-    private function taxonomies(array $handles): array
-    {
-        if (RunRequest::all($handles)) {
-            return Taxonomy::all()
-                ->filter(fn ($taxonomy) => $taxonomy->sites()->count() > 1)
-                ->map->handle()
-                ->values()
-                ->all();
-        }
-
-        foreach ($handles as $handle) {
-            if (Taxonomy::find($handle) === null) {
-                throw new InvalidArgumentException("Taxonomy [{$handle}] not found.");
+            if ($facade::find($handle) === null) {
+                throw new InvalidArgumentException("{$label} [{$handle}] not found.");
             }
         }
 

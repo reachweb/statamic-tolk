@@ -48,23 +48,6 @@ function applyRun(Run $run, string $worker = 'apply-1', int $seconds = 30): Appl
     return app(RunProcessor::class)->applyReady($run, $worker, CarbonImmutable::now()->addSeconds($seconds));
 }
 
-/**
- * Translates and applies until nothing is left to do, as a driver would; at most ten rounds.
- */
-function finishRun(Run $run): void
-{
-    for ($round = 0; $round < 10; $round++) {
-        $translated = RunFixtures::translate($run);
-        $applied = applyRun($run);
-
-        if (! $translated->remains && ! $applied->remains) {
-            return;
-        }
-    }
-
-    throw new RuntimeException('The run did not finish in ten rounds.');
-}
-
 function greekStatus(Statamic\Contracts\Entries\Entry $origin): ItemStatus
 {
     return app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry((string) $origin->id(), 'el'))->itemStatus;
@@ -150,7 +133,7 @@ describe('applyReady', function () {
         $this->makePages(['home', 'rooms' => ['suites'], 'dining']);
         $run = RunFixtures::started(['collections' => ['pages']]);
 
-        finishRun($run);
+        RunFixtures::finish($run);
 
         expect(RunFixtures::statuses($run))->toBe(['done', 'done', 'done', 'done'])
             ->and($this->treeOfSlugs('el'))->toBe($this->treeOfSlugs('en'))
@@ -164,7 +147,7 @@ describe('applyReady', function () {
         $this->makeEntry('pages', 'el', ['title' => 'Άλλη'], 'suites');
         $run = RunFixtures::started(['entryIds' => [$pages['suites']->id()]]);
 
-        finishRun($run);
+        RunFixtures::finish($run);
 
         expect(RunFixtures::statuses($run))->toBe(['done'])
             ->and(RunFixtures::items($run)[0]->warnings)->toBe([
@@ -192,7 +175,7 @@ describe('applyReady', function () {
             ->and($this->hello->fresh()->existsIn('el'))->toBeFalse()
             ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Running);
 
-        finishRun($run);
+        RunFixtures::finish($run);
 
         expect(RunFixtures::statuses($run))->toBe(['done', 'done', 'done'])
             ->and(RunFixtures::items($run)[0]->reason)->toBeNull()
@@ -233,7 +216,7 @@ describe('applyReady', function () {
             ->and(RunFixtures::items($run)[0]->reason)->toBeNull()
             ->and($this->modelCalls())->toBe(1);
 
-        finishRun($run);
+        RunFixtures::finish($run);
 
         expect(RunFixtures::statuses($run))->toBe(['done'])
             ->and($this->modelCalls())->toBe(2)
@@ -242,7 +225,7 @@ describe('applyReady', function () {
 
     it('keeps a field a human edited meanwhile and reports target_changed', function () {
         $this->fakeTranslations();
-        finishRun(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
+        RunFixtures::finish(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
         $this->hello->merge(['title' => 'Hello there', 'intro' => 'A longer intro.'])->save();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]);
         RunFixtures::translate($run);
@@ -260,7 +243,7 @@ describe('applyReady', function () {
 
     it('overwrites a field a human edited meanwhile when the run overwrites manual edits', function () {
         $this->fakeTranslations();
-        finishRun(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
+        RunFixtures::finish(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
         $this->hello->set('title', 'Hello there')->save();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update', 'overwrite_manual' => true]]);
         RunFixtures::translate($run);
@@ -274,7 +257,7 @@ describe('applyReady', function () {
 
     it('skips an item whose every field a human edited meanwhile', function () {
         $this->fakeTranslations();
-        finishRun(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
+        RunFixtures::finish(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
         $this->hello->set('title', 'Hello there')->save();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]);
         RunFixtures::translate($run);
@@ -316,7 +299,7 @@ describe('applyReady', function () {
         $user = $this->signInWithPermissions(['access en site', 'access el site', 'edit articles entries', 'publish articles entries']);
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'user' => $user, 'options' => ['new_status' => 'mirror']]);
 
-        finishRun($run);
+        RunFixtures::finish($run);
         $greek = $this->hello->fresh()->in('el');
 
         expect(RunFixtures::statuses($run))->toBe(['done'])
@@ -329,7 +312,7 @@ describe('applyReady', function () {
         $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? null : '[T] '.$text);
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
 
-        finishRun($run);
+        RunFixtures::finish($run);
         $item = RunFixtures::items($run)[0];
         $greek = $this->hello->fresh()->in('el');
 
@@ -345,7 +328,7 @@ describe('applyReady', function () {
         $this->fakeTranslations(fn () => null);
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
 
-        finishRun($run);
+        RunFixtures::finish($run);
         $item = RunFixtures::items($run)[0];
 
         expect($item->status)->toBe(RunItemStatus::Failed)
@@ -358,11 +341,11 @@ describe('applyReady', function () {
 
     it('saves only the corrected fields of a review and keeps the corrections on the item', function () {
         $this->fakeTranslations();
-        finishRun(RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id()]]));
+        RunFixtures::finish(RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id()]]));
         $this->fakeReview(fn (string $source) => $source === 'Hello' ? 'Γεια' : null);
         $run = RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id()], 'options' => ['mode' => 'review']]);
 
-        finishRun($run);
+        RunFixtures::finish($run);
         [$corrected, $accepted] = RunFixtures::items($run);
 
         expect(RunFixtures::statuses($run))->toBe(['done', 'done'])
@@ -510,7 +493,7 @@ describe('finalize', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started();
 
-        finishRun($run);
+        RunFixtures::finish($run);
         app(RunProcessor::class)->finalize($run);
         app(RunProcessor::class)->finalize(RunFixtures::stored($run));
 
@@ -606,7 +589,7 @@ describe('finalize', function () {
         $run->status = RunStatus::Running;
         $run->finishedAt = $run->finalizedAt = null;
         $this->runs->save($run);
-        finishRun($run);
+        RunFixtures::finish($run);
 
         Event::assertDispatchedTimes(RunFinished::class, 2);
         Event::assertDispatched(RunFinished::class, fn (RunFinished $event) => $event->status === RunStatus::Completed);

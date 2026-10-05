@@ -1,5 +1,5 @@
 import * as defaultApi from '../api.js';
-import { describeItem, describeProgress, describeResult } from '../runs/describe.js';
+import { describeCounts, describeItem, describeProgress, describeResult } from '../runs/describe.js';
 import { createFollower as defaultCreateFollower } from '../runs/follow.js';
 import { isFinal } from '../runs/ticker.js';
 import { useEditorStore } from './store.js';
@@ -32,16 +32,14 @@ export function describePush(push, status) {
         return null;
     }
 
-    const localizations = status?.origin?.localizations ?? [];
-    const name = (site) => localizations.find((localization) => localization.site === site)?.name ?? site;
+    const localizations = new Map((status?.origin?.localizations ?? []).map((localization) => [localization.site, localization]));
+    const name = (site) => localizations.get(site)?.name ?? site;
     const state = push.state;
     const sites = (push.sites?.length ? push.sites : (state?.run?.scope?.sites ?? [])).map(name);
     const progress = describeProgress(state);
     const final = state ? isFinal(state) : false;
     const result = final ? describeResult(state) : null;
-    const created = final
-        ? (push.missing ?? []).filter((site) => localizations.some((localization) => localization.site === site && localization.exists))
-        : [];
+    const created = final ? (push.missing ?? []).filter((site) => localizations.get(site)?.exists) : [];
 
     return {
         phase: push.phase,
@@ -55,9 +53,8 @@ export function describePush(push, status) {
             text: pushResultText(result.status, progress.counts),
             items: (state.items ?? []).map((item) => {
                 const row = describeItem(item, name);
-                const localization = localizations.find((entry) => entry.site === item.target_site);
 
-                return { ...row, handle: item.target_site, editUrl: localization?.edit_url ?? row.editUrl };
+                return { ...row, handle: item.target_site, editUrl: localizations.get(item.target_site)?.edit_url ?? row.editUrl };
             }),
         },
         reload: created.length > 0,
@@ -65,17 +62,7 @@ export function describePush(push, status) {
 }
 
 function pushResultText(status, counts) {
-    const parts = [__n(':count saved|:count saved', counts.done)];
-
-    if (counts.skipped > 0) {
-        parts.push(__n(':count skipped|:count skipped', counts.skipped));
-    }
-
-    if (counts.failed > 0) {
-        parts.push(__n(':count failed|:count failed', counts.failed));
-    }
-
-    const items = parts.join(', ');
+    const items = describeCounts(counts, __n(':count saved|:count saved', counts.done));
 
     return {
         completed: __('The translations are done: :items.', { items }),
@@ -138,18 +125,17 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
         }
     }
 
-    function show(name, run, missing) {
-        store().container(name).push = {
-            phase: 'running',
-            run: run.run,
-            driver: run.driver,
-            sites: null,
-            state: null,
-            failures: [],
-            missing,
-            cancelling: false,
-            error: null,
-        };
+    // The store's `push` of a container (`initialState()` in store.js).
+    function pushState(phase, { run = null, driver = null, sites = null, missing = [] }) {
+        return { phase, run, driver, sites, state: null, failures: [], missing, cancelling: false, error: null };
+    }
+
+    function show(name, run, missing, sites = null) {
+        store().container(name).push = pushState('running', { run: run.run, driver: run.driver, sites, missing });
+    }
+
+    function followerOf(container) {
+        return container?.push?.run ? (followers.get(container.push.run) ?? null) : null;
     }
 
     // Follows the run from `state`. A follower already driving it starts its loops again from there, which also
@@ -179,7 +165,7 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
 
         const missing = missingSites(container.status).filter((site) => sites.includes(site));
 
-        container.push = { phase: 'starting', run: null, sites, state: null, failures: [], missing, cancelling: false, error: null };
+        container.push = pushState('starting', { sites, missing });
 
         try {
             const answer = await api.post('editor/push', {
@@ -192,8 +178,7 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
             });
 
             if (store().containers[name]?.reference === reference) {
-                show(name, answer, missing);
-                store().containers[name].push.sites = sites;
+                show(name, answer, missing, sites);
             }
 
             follow(answer, answer.state);
@@ -250,8 +235,7 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
     // Starts the loops again after they gave up, from a fresh state.
     async function resume(name) {
         const container = store().containers[name];
-        const runId = container?.push?.run;
-        const follower = runId ? followers.get(runId) : null;
+        const follower = followerOf(container);
 
         if (!follower) {
             return;
@@ -268,7 +252,7 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
 
     async function cancel(name) {
         const container = store().containers[name];
-        const follower = container?.push?.run ? followers.get(container.push.run) : null;
+        const follower = followerOf(container);
 
         if (!follower) {
             return;

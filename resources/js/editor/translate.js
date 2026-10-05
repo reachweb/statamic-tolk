@@ -213,11 +213,12 @@ export function createTranslations({
         const handles = reviewing ? (request.fields ?? reviewHandles(ctx, container.status)) : request.fields;
         const snap = snapshot(ctx, handles ?? Object.keys(ctx.values.value), container.delivered);
         const planValues = clone(ctx.values.value);
-        const skip = () =>
-            skipHandles(ctx, container.status, { name, registry, delivered: container.delivered }).filter((handle) => !replaces(request, handle));
+        const skip = reviewing
+            ? []
+            : skipHandles(ctx, container.status, { name, registry, delivered: container.delivered }).filter((handle) => !replaces(request, handle));
         const [path, body] = reviewing
             ? ['editor/review', reviewBody(request, { reference, handles, values: planValues })]
-            : ['editor/plan', planBody(request, { reference, skip: skip() })];
+            : ['editor/plan', planBody(request, { reference, skip })];
 
         if (continuing) {
             carryOver(snap, container);

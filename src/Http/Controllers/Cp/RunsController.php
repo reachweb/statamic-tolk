@@ -67,7 +67,7 @@ class RunsController extends Controller
             'state' => $this->stateOf($stored, $request),
             'urls' => $this->state->urls($stored),
             'models' => $this->state->models($stored),
-            'lanes' => max(1, (int) config('tolk.concurrency.browser')),
+            'lanes' => RunDispatcher::browserLanes(),
         ]);
     }
 

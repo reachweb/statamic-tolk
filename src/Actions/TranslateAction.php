@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Actions;
 
+use Illuminate\Support\Collection;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Runs\RunDispatcher;
@@ -159,12 +160,24 @@ class TranslateAction extends Action
     {
         $settings = app(Settings::class);
 
-        return match (true) {
-            $item instanceof Entry => $item->collection()->sites()->count() > 1
-                && ! in_array($item->collectionHandle(), $settings->excludedCollections(), true),
-            $item instanceof Term => $item->taxonomy()->sites()->count() > 1
-                && ! in_array($item->taxonomyHandle(), $settings->excludedTaxonomies(), true),
+        return $this->sitesOf($item)->count() > 1 && match (true) {
+            $item instanceof Entry => ! in_array($item->collectionHandle(), $settings->excludedCollections(), true),
+            $item instanceof Term => ! in_array($item->taxonomyHandle(), $settings->excludedTaxonomies(), true),
             default => false,
+        };
+    }
+
+    /**
+     * The sites of the item's collection or taxonomy; none for anything else.
+     *
+     * @return Collection<int, string>
+     */
+    private function sitesOf(mixed $item): Collection
+    {
+        return match (true) {
+            $item instanceof Entry => $item->collection()->sites(),
+            $item instanceof Term => $item->taxonomy()->sites(),
+            default => collect(),
         };
     }
 
@@ -182,11 +195,7 @@ class TranslateAction extends Action
     private function siteOptions(): array
     {
         $handles = $this->items
-            ->flatMap(fn ($item) => match (true) {
-                $item instanceof Entry => $item->collection()->sites()->all(),
-                $item instanceof Term => $item->taxonomy()->sites()->all(),
-                default => [],
-            })
+            ->flatMap(fn ($item) => $this->sitesOf($item))
             ->unique()
             ->all();
         $user = User::current();

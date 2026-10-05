@@ -48,12 +48,9 @@ use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
-use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
-use Statamic\Facades\Entry;
-use Statamic\Facades\Term;
 use Statamic\Facades\User;
 
 class EditorController extends Controller
@@ -212,8 +209,7 @@ class EditorController extends Controller
             ], 409));
         }
 
-        $ref = TargetRef::parse($reference);
-        $item = $term ? Term::find($ref->id)->in($ref->site) : Entry::find($ref->id);
+        $item = $status->item($reference);
 
         try {
             $planned = $planner->build(new RunRequest(

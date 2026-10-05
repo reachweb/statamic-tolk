@@ -6,6 +6,7 @@ use Illuminate\Support\Arr;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Runs\Run;
+use Reach\StatamicTolk\Runs\RunDispatcher;
 use Statamic\Contracts\Auth\User;
 
 /**
@@ -57,7 +58,7 @@ final readonly class EditorPush
         return [
             'run' => $run->id,
             'driver' => $run->driver->value,
-            'lanes' => max(1, (int) config('tolk.concurrency.browser')),
+            'lanes' => RunDispatcher::browserLanes(),
             'urls' => Arr::only($this->state->urls($run), self::URLS),
         ];
     }
