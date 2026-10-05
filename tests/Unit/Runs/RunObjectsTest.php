@@ -146,6 +146,7 @@ it('round-trips a run item through its array', function () {
         usage: (new UsageMap)->add(new ModelRef('openai', 'gpt-6-luna'), new Usage(input: 3, calls: 1)),
         reference: 'entry::home-de',
         editUrl: 'http://localhost/cp/collections/pages/entries/home-de',
+        created: true,
     );
 
     $data = $item->toArray();
@@ -163,6 +164,7 @@ it('round-trips a run item through its array', function () {
         'plan_id' => 'plan-9',
         'corrections' => ['title' => [['id' => 's1', 'before' => 'Startseit', 'after' => 'Startseite', 'reason' => 'Typo.']]],
         'edit_url' => 'http://localhost/cp/collections/pages/entries/home-de',
+        'created' => true,
     ])
         ->and(RunItem::fromArray(json_decode(json_encode($data), true))->toArray())->toBe($data)
         ->and(RunItem::fromArray(['index' => 1, 'type' => 'entry', 'source_id' => 'a', 'target_site' => 'el', 'status' => 'pending', 'claim' => ['by' => 'x']])->claim)->toBeNull()

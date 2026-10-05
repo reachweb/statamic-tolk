@@ -18,6 +18,7 @@ use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Facades\Entry;
@@ -395,6 +396,24 @@ describe('estimate', function () {
         }
 
         expect($this->modelCalls())->toBe($this->callsBefore);
+    });
+
+    it('passes each item it plans with its plan, and keeps the reasons of the fields on an item it skips', function () {
+        $run = storedRun(planRun(['sites' => ['el', 'de'], 'collections' => ['articles']]));
+        $planned = [];
+
+        app(RunPlanner::class)->estimate($run, 0, 60_000, function (RunItem $item, Plan $plan) use (&$planned) {
+            $planned[$item->index] = [$item->sourceId, $item->targetSite, $plan->fieldHandles()];
+        });
+
+        expect($planned)->toBe([
+            0 => [$this->hello->id(), 'el', []],
+            1 => [$this->hello->id(), 'de', ['title', 'intro']],
+            2 => [$this->world->id(), 'el', ['title', 'intro']],
+            3 => [$this->world->id(), 'de', ['title', 'intro']],
+        ])
+            ->and(app(RunRepository::class)->item($run, 0)->fields)->toBe(['title' => 'current', 'intro' => 'current'])
+            ->and(app(RunRepository::class)->item($run, 1)->fields)->toBe([]);
     });
 
     it('starts over from index 0 and adds nothing for a call that does not continue where the last one stopped', function () {

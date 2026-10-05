@@ -13,6 +13,7 @@ use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunDispatcher;
+use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Statamic\Events\EntrySaving;
@@ -142,16 +143,34 @@ describe('start', function () {
             ->and(array_map(fn (WorkRun $job) => [$job->lane, $job->generation], pushedLanes()))->toBe([[1, 1], [2, 1], [1, 2], [2, 2]]);
     });
 
-    it('pushes nothing for a browser or a CLI run, which their page or command drives', function (RunDriver $driver) {
+    it('pushes nothing for a browser run, which its page drives', function () {
         Queue::fake();
-        $run = queueRun(['driver' => $driver]);
+        $run = queueRun(['driver' => RunDriver::Browser]);
 
         $this->dispatcher->start($run);
 
         expect(RunFixtures::stored($run)->status)->toBe(RunStatus::Running)
             ->and(RunFixtures::stored($run)->generation)->toBe(0);
         Queue::assertNotPushed(WorkRun::class);
-    })->with([RunDriver::Browser, RunDriver::Cli]);
+    });
+
+    it('hands a CLI run started here, whose command has ended, to the driver the CP uses', function (string $connection, RunDriver $driver, int $lanes) {
+        Queue::fake();
+        config(['queue.default' => $connection, 'tolk.concurrency.queue' => 2]);
+        $run = queueRun(['driver' => RunDriver::Cli]);
+        app(RunProcessor::class)->cancel($run);
+        app(RunProcessor::class)->resume($run);
+
+        $this->dispatcher->start($run);
+
+        expect($run->driver)->toBe($driver)
+            ->and(RunFixtures::stored($run)->driver)->toBe($driver)
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Running);
+        Queue::assertPushed(WorkRun::class, $lanes);
+    })->with([
+        'no worker' => ['sync', RunDriver::Browser, 0],
+        'a worker' => ['database', RunDriver::Queue, 2],
+    ]);
 
     it('leaves a finished run alone', function () {
         Queue::fake();

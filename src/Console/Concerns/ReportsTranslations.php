@@ -5,15 +5,17 @@ namespace Reach\StatamicTolk\Console\Concerns;
 use Illuminate\Support\Str;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
+use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Facades\Site;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
- * The output of commands that translate targets one by one: a line per target, then a summary and the fields that were
- * not translated, with the reason.
+ * The output of commands that translate targets: a line per target, then a summary and the fields that were not
+ * translated, with the reason. Targets come as TargetResults, or as the finished items of a run.
  */
 trait ReportsTranslations
 {
@@ -49,7 +51,12 @@ trait ReportsTranslations
 
     protected function targetLabel(Target $target): string
     {
-        return $target->title().' → '.(Site::get($target->targetSite())?->name() ?? $target->targetSite());
+        return $target->title().' → '.$this->siteName($target->targetSite());
+    }
+
+    protected function itemLabel(RunItem $item): string
+    {
+        return $item->title.' → '.$this->siteName($item->targetSite);
     }
 
     /**
@@ -60,13 +67,20 @@ trait ReportsTranslations
     {
         foreach ($target->explainFields() as $field) {
             if (! $field['in_scope'] && $field['reason'] !== 'slug') {
-                $name = $target->container().'.'.$field['handle'];
-                $this->outOfScope[$name.':'.$field['reason']] ??= [
-                    'field' => $name,
-                    'type' => $field['type'],
-                    'reason' => $field['reason'],
-                ];
+                $this->noteOutOfScopeField($target->container(), $field['handle'], $field['type'], $field['reason']);
             }
+        }
+    }
+
+    /**
+     * Notes the fields a run left out of scope (`run.scope.out_of_scope`, RunPlanner::build()).
+     *
+     * @param  list<array{container: string, handle: string, type: string, reason: string}>  $fields
+     */
+    protected function noteRunOutOfScope(array $fields): void
+    {
+        foreach ($fields as $field) {
+            $this->noteOutOfScopeField((string) $field['container'], (string) $field['handle'], (string) $field['type'], (string) $field['reason']);
         }
     }
 
@@ -81,7 +95,7 @@ trait ReportsTranslations
         $this->output->writeln($this->describeResult($result));
 
         foreach ($result->warnings as $warning) {
-            $this->output->writeln("    <comment>{$warning}</comment>");
+            $this->output->writeln('    <comment>'.OutputFormatter::escape($warning).'</comment>');
         }
 
         if ($this->output->isVerbose()) {
@@ -99,19 +113,27 @@ trait ReportsTranslations
         }
     }
 
-    protected function reportPlan(Plan $plan): void
+    /**
+     * Reports a finished item of a run as reportResult() reports a target.
+     */
+    protected function reportItem(RunItem $item): void
+    {
+        $label = $this->itemLabel($item);
+        $this->startTarget($label);
+        $this->reportResult($label, $this->itemResult($item));
+    }
+
+    protected function describePlan(Plan $plan): string
     {
         if ($plan->isEmpty()) {
-            $this->output->writeln('<comment>nothing to do</comment>');
-
-            return;
+            return '<comment>nothing to do</comment>';
         }
 
         $size = $this->planSize($plan);
 
-        $this->output->writeln(implode(', ', $plan->fieldHandles())
+        return implode(', ', $plan->fieldHandles())
             .' ('.$this->count($size['segments'], 'segment').', '.$this->count($size['characters'], 'character')
-            .($size['reused'] > 0 ? ', '.$this->count($size['reused'], 'segment').' reused' : '').')');
+            .($size['reused'] > 0 ? ', '.$this->count($size['reused'], 'segment').' reused' : '').')';
     }
 
     /**
@@ -140,23 +162,19 @@ trait ReportsTranslations
         return $counts;
     }
 
-    /**
-     * @return int the number of targets that were saved
-     */
-    protected function savedCount(): int
-    {
-        return count(array_filter($this->results, fn (array $row) => $row['result']->status === TargetResultStatus::Done));
-    }
-
     protected function summarize(): void
     {
-        $incomplete = [];
+        $incomplete = $failed = [];
         $incompleteFields = 0;
 
         foreach ($this->results as ['label' => $label, 'result' => $result]) {
             if ($fields = $this->fieldsWith($result, TargetResult::INCOMPLETE)) {
                 $incomplete[] = [$label, implode(', ', $fields)];
                 $incompleteFields += count($fields);
+            }
+
+            if ($result->status === TargetResultStatus::Failed) {
+                $failed[] = [$label, $result->error ?? str_replace('_', ' ', (string) $result->reason)];
             }
         }
 
@@ -170,6 +188,11 @@ trait ReportsTranslations
 
         if ($corrections > 0 && ! $this->output->isVerbose()) {
             $this->line('Run the command with -v to see each correction and its reason.');
+        }
+
+        if ($failed !== []) {
+            $this->line('These targets failed:');
+            $this->table(['Target', 'Error'], $failed);
         }
 
         if ($incomplete !== []) {
@@ -195,8 +218,34 @@ trait ReportsTranslations
         ], array_values($this->outOfScope)));
 
         if (in_array('not_localizable', array_column($this->outOfScope, 'reason'), true)) {
-            $this->line('A field that is not localizable is shared by every site. Make it localizable in its blueprint to translate it.');
+            $this->line('A field that is not localizable is shared by every site. Make it localizable in its blueprint to translate it. Run php please tolk:doctor for details.');
         }
+    }
+
+    private function noteOutOfScopeField(string $container, string $handle, string $type, string $reason): void
+    {
+        $name = $container.'.'.$handle;
+
+        $this->outOfScope[$name.':'.$reason] ??= ['field' => $name, 'type' => $type, 'reason' => $reason];
+    }
+
+    /**
+     * The item as the TargetResult of TargetTranslator: a review that accepted every field is `skipped` there.
+     */
+    private function itemResult(RunItem $item): TargetResult
+    {
+        $accepted = $item->status === RunItemStatus::Done && $item->reason === TargetResult::NO_CORRECTIONS;
+
+        return new TargetResult(
+            status: $accepted ? TargetResultStatus::Skipped : TargetResultStatus::from($item->status->value),
+            created: $item->created,
+            fields: $item->fields,
+            corrections: $item->corrections,
+            warnings: $item->warnings,
+            usage: $item->usage,
+            reason: $item->reason,
+            error: $item->error,
+        );
     }
 
     private function describeResult(TargetResult $result): string
@@ -206,12 +255,14 @@ trait ReportsTranslations
         $description = match (true) {
             $result->status === TargetResultStatus::Done => '<info>done</info>, '.($result->created ? 'created, ' : '').$this->count(count($applied), 'field').$this->correctionsNote($result),
             $result->reason === TargetResult::NO_CORRECTIONS => '<info>reviewed</info>, nothing to correct',
-            $result->status === TargetResultStatus::Skipped => '<comment>skipped</comment>, '.match ($result->reason) {
-                TargetResult::NOTHING_TO_DO => 'nothing to do',
-                TargetResult::TARGET_CHANGED => 'edited by someone while it was being translated',
+            $result->status === TargetResultStatus::Skipped => '<comment>skipped</comment>, '.match (true) {
+                $result->reason === TargetResult::NOTHING_TO_DO => 'nothing to do',
+                $result->reason === TargetResult::TARGET_CHANGED => 'edited by someone while it was being translated',
+                $result->reason === RunItem::DEPENDENCY_FAILED => 'an item it depends on failed',
+                $result->error !== null => OutputFormatter::escape($result->error),
                 default => str_replace('_', ' ', (string) $result->reason),
             },
-            default => '<fg=red>failed</>, '.$result->error,
+            default => '<fg=red>failed</>, '.OutputFormatter::escape((string) $result->error),
         };
 
         $details = array_filter([
@@ -249,6 +300,11 @@ trait ReportsTranslations
     private function fieldsWith(TargetResult $result, string $outcome): array
     {
         return array_keys($result->fields, $outcome, true);
+    }
+
+    private function siteName(string $site): string
+    {
+        return Site::get($site)?->name() ?? $site;
     }
 
     private function count(int $count, string $noun): string

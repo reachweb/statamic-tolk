@@ -197,6 +197,20 @@ describe('translate', function () {
             ->and($engine->segmentIds())->toBe([['s1'], ['s2']]);
     });
 
+    it('ends the call once the given number of items finished translating', function () {
+        $this->fakeTranslations();
+        $run = RunFixtures::started();
+
+        $first = app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300, 1);
+        $statuses = RunFixtures::statuses($run);
+        $rest = app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300, 2);
+
+        expect($first->toArray())->toBe(['units' => 1, 'items' => 1, 'remains' => true, 'wait' => 0])
+            ->and($statuses)->toBe(['translated', 'pending', 'pending'])
+            ->and($rest->toArray())->toBe(['units' => 2, 'items' => 2, 'remains' => false, 'wait' => null])
+            ->and(RunFixtures::statuses($run))->toBe(['translated', 'translated', 'translated']);
+    });
+
     it('starts no unit once the deadline has passed', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started();

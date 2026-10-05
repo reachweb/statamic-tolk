@@ -202,9 +202,10 @@ final readonly class RunProcessor
     /**
      * Claims items and works on them until the deadline, starting units only before it, so the call returns at most one
      * provider timeout after the deadline. An item whose plan is finished is `translated`. The loop stops when nothing
-     * can be claimed, after a transient provider failure, and when the run stops running.
+     * can be claimed, after a transient provider failure, when the run stops running, and once $maxItems items finished
+     * translating, so a caller that also applies can save each item before it translates the next.
      */
-    public function translate(Run $run, string $workerId, CarbonInterface $deadline, int $claimTtl): WorkReport
+    public function translate(Run $run, string $workerId, CarbonInterface $deadline, int $claimTtl, ?int $maxItems = null): WorkReport
     {
         $units = $items = 0;
         $wait = null;
@@ -221,7 +222,7 @@ final readonly class RunProcessor
             $options ??= $this->runPlanner->planOptions($run);
             $wait = $this->work($run, $item, $options, $deadline, $claimTtl, $units, $items);
 
-            if ($wait !== null || $run->status !== RunStatus::Running) {
+            if ($wait !== null || $run->status !== RunStatus::Running || ($maxItems !== null && $items >= $maxItems)) {
                 break;
             }
         }
@@ -557,6 +558,7 @@ final readonly class RunProcessor
         };
 
         $item->fields = $result->fields;
+        $item->created = $result->created;
         $item->corrections = $result->corrections;
         // The planner's own warnings, such as a parent page without a localization, stay.
         $item->warnings = array_values(array_unique([...$item->warnings, ...$result->warnings]));

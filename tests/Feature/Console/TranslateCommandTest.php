@@ -1,16 +1,29 @@
 <?php
 
+use Carbon\CarbonInterval as Duration;
+use Illuminate\Console\Signals;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\ProviderError;
+use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
+use Reach\StatamicTolk\Enums\RunDriver;
+use Reach\StatamicTolk\Enums\RunStatus;
+use Reach\StatamicTolk\Events\RunStarted;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
+use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Facades\Git;
@@ -30,13 +43,13 @@ beforeEach(function () {
 });
 
 /**
- * Runs the command without prompts and returns its exit code and output.
+ * Runs the command without prompts, in this process, and returns its exit code and output.
  *
  * @return array{0: int, 1: string}
  */
 function translateCommand(array $options): array
 {
-    $exitCode = Artisan::call('tolk:translate', ['--yes' => true, ...$options]);
+    $exitCode = Artisan::call('tolk:translate', ['--yes' => true, '--concurrency' => 1, ...$options]);
 
     return [$exitCode, Artisan::output()];
 }
@@ -64,12 +77,18 @@ describe('validation', function () {
 
         expect($exitCode)->toBe(1)
             ->and($output)->toContain($message)
-            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse();
+            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse()
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
         $this->assertNoModelCalls();
     })->with([
         'unknown site' => [['--collection' => ['articles'], '--site' => ['fr']], 'Unknown site [fr].'],
         'no site' => [['--collection' => ['articles']], 'Name the sites to translate into with --site.'],
-        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection or --entry.'],
+        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry or --all.'],
+        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection or --entry.'],
+        'unknown source site' => [['--collection' => ['articles'], '--site' => ['el'], '--from' => 'fr'], 'Unknown site [fr].'],
+        '--queue with --concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true], '--concurrency cannot be combined with --queue'],
+        'invalid concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => '0'], 'Invalid concurrency [0]. Use a whole number of at least 1.'],
+        '--queue on a connection without a worker' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true, '--concurrency' => null], 'The queue connection [sync] has no worker, so --queue would run the whole run inside this command.'],
         'unknown collection' => [['--collection' => ['blog'], '--site' => ['el']], 'Collection [blog] not found.'],
         'unknown entry' => [['--entry' => ['missing-id'], '--site' => ['el']], 'Entry [missing-id] not found.'],
         'invalid mode' => [['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'everything'], 'Invalid mode [everything]. Use missing, update, all or review.'],
@@ -321,15 +340,17 @@ describe('enumeration', function () {
             ->and($this->treeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]], 'dining' => []]);
     });
 
-    it('warns about a collection that is not available in a site', function () {
+    it('reports the targets in a site that their collection does not have, and creates no run without targets', function () {
         $this->makeCollection('notes', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
         $this->makeEntry('notes', 'en', ['title' => 'A note']);
+        $this->makeEntry('notes', 'en', ['title' => 'Another note']);
 
         [$exitCode, $output] = translateCommand(['--collection' => ['notes'], '--site' => ['el']]);
 
         expect($exitCode)->toBe(0)
-            ->and($output)->toContain('The collection [notes] is not available in the site [el].')
-            ->and($output)->toContain('Nothing to translate.');
+            ->and($output)->toContain('2 targets are in sites their collection does not have.')
+            ->and($output)->toContain('Nothing to translate.')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
     });
 
     it('skips a collection that the settings exclude', function () {
@@ -339,7 +360,7 @@ describe('enumeration', function () {
         [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--entry' => [$this->hello->id()], '--site' => ['el']]);
 
         expect($exitCode)->toBe(0)
-            ->and($output)->toContain('The collection [articles] is excluded from translation in the settings.')
+            ->and($output)->toContain('2 targets are in collections excluded in the settings.')
             ->and($output)->toContain('Nothing to translate.')
             ->and($this->hello->fresh()->existsIn('el'))->toBeFalse();
     });
@@ -527,11 +548,24 @@ describe('review', function () {
     });
 
     it('asks before it reviews, and reviews nothing when declined', function () {
+        $this->fakeTranslations();
+        translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
         $this->fakeReview();
+        $calls = $this->modelCalls();
 
-        $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review'])
+        $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review', '--concurrency' => 1])
             ->expectsConfirmation('Review them and save the corrections?', 'no')
             ->expectsOutputToContain('Nothing was reviewed.')
+            ->assertExitCode(0);
+
+        expect($this->modelCalls())->toBe($calls);
+    });
+
+    it('does not ask when the estimate finds nothing to review', function () {
+        $this->fakeReview();
+
+        $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review', '--concurrency' => 1])
+            ->expectsOutputToContain('nothing to do')
             ->assertExitCode(0);
 
         $this->assertNoModelCalls();
@@ -539,15 +573,15 @@ describe('review', function () {
 });
 
 describe('failures', function () {
-    it('fails a target whose root page is missing before calling the model, and exits 1', function () {
+    it('skips a target whose root page is missing before calling the model, with the reason', function () {
         $this->fakeTranslations();
         $pages = $this->makePages(['home', 'rooms']);
 
         [$exitCode, $output] = translateCommand(['--entry' => [$pages['rooms']->id()], '--site' => ['el']]);
 
-        expect($exitCode)->toBe(1)
-            ->and($output)->toContain('Rooms → Greek: failed, Translate Home into Greek first.')
-            ->and($output)->toMatch('/\| 0 +\| 0 +\| 1 +\| 0 +\|/')
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Rooms → Greek: skipped, Translate Home into Greek first.')
+            ->and($output)->toMatch('/\| 0 +\| 1 +\| 0 +\| 0 +\|/')
             ->and($pages['rooms']->fresh()->existsIn('el'))->toBeFalse();
         $this->assertNoModelCalls();
     });
@@ -583,17 +617,17 @@ describe('failures', function () {
 });
 
 describe('summary and git', function () {
-    it('lists the fields that are not translated, with the reason, and leaves the slug out', function () {
+    it('lists the text fields that are not translated, with the reason and the doctor hint', function () {
         $this->fakeTranslations();
 
         [, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
 
         expect($output)->toContain('These fields are not translated:')
             ->and($output)->toMatch('/\| articles\.note +\| text +\| not localizable +\|/')
-            ->and($output)->toMatch('/\| articles\.tags +\| taggable +\| unsupported fieldtype +\|/')
             ->and(substr_count($output, 'articles.note'))->toBe(1)
+            ->and($output)->not->toContain('articles.tags')
             ->and($output)->not->toContain('articles.slug')
-            ->and($output)->toContain('Make it localizable in its blueprint to translate it.');
+            ->and($output)->toContain('Make it localizable in its blueprint to translate it. Run php please tolk:doctor for details.');
     });
 
     it('commits once after the loop when a target was saved, and not when nothing was', function () {
@@ -621,15 +655,400 @@ describe('summary and git', function () {
             ->and($commits->getArrayCopy())->toBe([]);
     });
 
-    it('commits what was saved before ProviderRejected stopped the loop', function () {
+    it('commits what was saved before ProviderRejected aborted the run', function () {
         $commits = commandCommits();
         ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? ScriptedEngine::translated($call)
             : throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
 
-        [$exitCode] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
 
+        $run = app(RunRepository::class)->recent(1)[0];
         expect($exitCode)->toBe(1)
-            ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+            ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE])
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello')
+            ->and($run->status)->toBe(RunStatus::Aborted)
+            ->and($run->error)->toContain('Invalid API key.')
+            ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
+            ->and($output)->toContain('1 target was not finished. Run the command again to translate it, or resume the run in the Control Panel:')
+            ->and($output)->toContain("\n  ".cp_route('tolk.runs.show', $run->id)."\n");
     });
 });
+
+describe('the run engine', function () {
+    it('translates through a CLI run, which stays as completed with its items', function () {
+        $this->fakeTranslations();
+        $started = [];
+        Event::listen(RunStarted::class, function (RunStarted $event) use (&$started) {
+            $started[] = $event->driver;
+        });
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el', 'de']]);
+
+        $runs = app(RunRepository::class)->recent(10);
+        expect($exitCode)->toBe(0)
+            ->and($runs)->toHaveCount(1)
+            ->and($runs[0]->driver)->toBe(RunDriver::Cli)
+            ->and($runs[0]->status)->toBe(RunStatus::Completed)
+            ->and($runs[0]->options['mode'])->toBe('missing')
+            ->and($started)->toBe([RunDriver::Cli])
+            ->and(RunFixtures::statuses($runs[0]))->toBe(['done', 'done', 'done', 'done'])
+            ->and($output)->toContain('Scanning 4/4')
+            ->and($output)->toMatch('/Entries → Greek \.+ 2 to translate/')
+            ->and($output)->toMatch('/Entries → German \.+ 2 to translate/')
+            ->and($output)->toMatch('/Segments \.+ 8 \(76 characters\)/')
+            ->and($output)->toMatch('/Estimated tokens \.+ [\d,]+ input, [\d,]+ output/')
+            ->and($output)->toMatch('/Estimated cost \.+ \$0\.\d+/')
+            ->and($output)->not->toContain('No worker process could be started')
+            ->and($this->world->fresh()->in('de')->get('title'))->toBe('[T] World');
+    });
+
+    it('leaves no run behind after a dry run, and prints the estimate', function () {
+        $this->fakeTranslations();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--dry-run' => true]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toMatch('/Segments \.+ 4 \(38 characters\)/')
+            ->and($output)->toMatch('/Estimated cost \.+ \$0\.00[1-9]\d  \n/')
+            ->and($output)->toContain('Dry run: 2 of 2 targets would be translated (4 segments, 38 characters).')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
+        $this->assertNoModelCalls();
+    });
+
+    it('says that the cost is unknown when a model has no price', function () {
+        [, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--translator' => 'anthropic:claude-unpriced', '--dry-run' => true]);
+
+        expect($output)->toMatch('/Estimated cost \.+ unknown, a model has no price/');
+    });
+
+    it('reports a run with nothing to do without keeping it, and asks nothing', function () {
+        $this->fakeTranslations();
+        translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+
+        $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 1])
+            ->expectsOutputToContain('nothing to do')
+            ->assertExitCode(0);
+
+        expect(app(RunRepository::class)->recent(10))->toHaveCount(1);
+    });
+
+    it('leaves no run behind when the confirmation is declined', function () {
+        $this->fakeTranslations();
+
+        $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 1])
+            ->expectsConfirmation('Translate and save them?', 'no')
+            ->assertExitCode(0);
+
+        expect(app(RunRepository::class)->recent(10))->toBe([]);
+    });
+
+    it('starts without an estimate with --no-estimate', function () {
+        $this->fakeTranslations();
+
+        [, $dryRun] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--no-estimate' => true, '--dry-run' => true]);
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--no-estimate' => true]);
+
+        expect($dryRun)->toContain('Dry run: 2 targets, not estimated. Nothing was sent or saved.')
+            ->and($dryRun)->not->toContain('Scanning')
+            ->and($exitCode)->toBe(0)
+            ->and($output)->not->toContain('Scanning')
+            ->and($output)->not->toContain('Estimated')
+            ->and($output)->toMatch('/Entries → Greek \.+ 2 to translate/')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello');
+    });
+
+    it('hands the run to the queue with --queue and prints its address', function () {
+        config(['queue.default' => 'database', 'tolk.runs.execution' => 'browser']);
+        Queue::fake();
+        $this->fakeTranslations();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--queue' => true, '--concurrency' => null]);
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($exitCode)->toBe(0)
+            ->and($run->driver)->toBe(RunDriver::Queue)
+            ->and($run->status)->toBe(RunStatus::Running)
+            ->and($output)->toContain("The run {$run->id} is on the queue [database].")
+            ->and($output)->toContain('Follow it in the Control Panel: '.cp_route('tolk.runs.show', $run->id))
+            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse();
+        Queue::assertPushed(WorkRun::class, config('tolk.concurrency.queue'));
+        $this->assertNoModelCalls();
+    });
+
+    it('translates every collection with more than one site with --all', function () {
+        $this->fakeTranslations();
+        $this->makeCollection('news', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $news = $this->makeEntry('news', 'en', ['title' => 'News']);
+        $this->makeCollection('notes', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $note = $this->makeEntry('notes', 'en', ['title' => 'A note']);
+
+        [$exitCode, $output] = translateCommand(['--all' => true, '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Targets: 3 (Greek).')
+            ->and($news->fresh()->in('el')->get('title'))->toBe('[T] News')
+            ->and($this->world->fresh()->in('el')->get('title'))->toBe('[T] World')
+            ->and($note->fresh()->existsIn('el'))->toBeFalse()
+            ->and(app(RunRepository::class)->recent(1)[0]->scope['collections'])->toBe(['*']);
+    });
+
+    it('translates a missing localization from the site of --from where the entry has one there', function () {
+        $sent = [];
+        $this->fakeTranslations(function (string $text) use (&$sent) {
+            $sent[] = $text;
+
+            return '[T] '.$text;
+        });
+        $this->localize($this->hello, 'de', ['title' => 'Hallo']);
+
+        translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--from' => 'de']);
+
+        expect($sent)->toContain('Hallo')
+            ->and($sent)->toContain('World')
+            ->and($sent)->not->toContain('Hello')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hallo');
+    });
+
+    it('keeps --publish-changes and --publish in the run\'s options', function () {
+        $this->fakeTranslations();
+
+        translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el'], '--publish-changes' => true, '--publish' => true]);
+        translateCommand(['--entry' => [$this->world->id()], '--site' => ['el']]);
+
+        [$second, $first] = app(RunRepository::class)->recent(2);
+        expect($first->options)->toMatchArray(['publish_changes' => true, 'new_status' => 'mirror'])
+            ->and($second->options)->toMatchArray(['publish_changes' => false, 'new_status' => 'draft']);
+    });
+
+    it('starts worker processes through the site\'s please file, and translates itself once they have ended', function () {
+        Process::fake(['*' => Process::describe()->runsFor(iterations: 2)]);
+        Sleep::fake();
+        $this->fakeTranslations();
+        $please = base_path('please');
+        file_put_contents($please, '<?php');
+
+        try {
+            [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 3]);
+        } finally {
+            unlink($please);
+        }
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($exitCode)->toBe(0)
+            ->and($run->status)->toBe(RunStatus::Completed)
+            ->and($output)->not->toContain('No worker process could be started')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello');
+
+        foreach ([1, 2, 3] as $lane) {
+            Process::assertRan(fn (PendingProcess $process) => $process->command === [PHP_BINARY, $please, 'tolk:work', $run->id, "--lane={$lane}"]
+                && $process->path === base_path()
+                && $process->timeout === null);
+        }
+
+        Process::assertRanTimes(fn (PendingProcess $process) => true, 3);
+        Sleep::assertSlept(fn (Duration $duration) => $duration->totalSeconds === 1.0, 2);
+    });
+
+    it('translates in this process when no worker can be started, and says so', function () {
+        $this->fakeTranslations();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 2]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('No worker process could be started, so this process translates on its own.')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello');
+    });
+
+    it('reports a worker that stopped with an error', function () {
+        Process::fake(['*' => Process::result(exitCode: 255)]);
+        $this->fakeTranslations();
+        $please = base_path('please');
+        file_put_contents($please, '<?php');
+
+        try {
+            [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 2]);
+        } finally {
+            unlink($please);
+        }
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Worker process 1 stopped with exit code 255. Its error is in the log.')
+            ->and($output)->toContain('Worker process 2 stopped with exit code 255.')
+            ->and($this->world->fresh()->in('el')->get('title'))->toBe('[T] World');
+    });
+
+    it('cancels the run when this process fails, so it can be resumed', function () {
+        $this->fakeTranslations();
+        Event::listen(TargetTranslated::class, fn () => throw new RuntimeException('The disk is full.'));
+
+        expect(fn () => translateCommand(['--collection' => ['articles'], '--site' => ['el']]))->toThrow(RuntimeException::class, 'The disk is full.');
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($run->status)->toBe(RunStatus::Cancelled)
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'pending']);
+    });
+
+    it('stops when the run is deleted while it translates', function () {
+        ScriptedEngine::bind(function (EngineCall $call) {
+            app(RunRepository::class)->delete(app(RunRepository::class)->recent(1)[0]);
+
+            return ScriptedEngine::translated($call);
+        });
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('The run was deleted while it was translated.')
+            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse();
+    });
+
+    it('lists the failed targets with their errors and exits 1', function () {
+        Sleep::fake(syncWithCarbon: true);
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('World', array_column($call->segments, 'text'), true)
+            ? throw new RuntimeException('The model broke down.')
+            : ScriptedEngine::translated($call));
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
+            ->and($output)->toContain('World → Greek: failed, The model broke down.')
+            ->and($output)->toMatch('/\| 1 +\| 0 +\| 1 +\| 0 +\|/')
+            ->and($output)->toContain('These targets failed:')
+            ->and($output)->toMatch('/\| World → Greek +\| The model broke down\. +\|/')
+            ->and(app(RunRepository::class)->recent(1)[0]->status)->toBe(RunStatus::CompletedWithErrors);
+    });
+
+    it('cancels the run on Ctrl-C after the current step, commits what was saved and reports the rest', function () {
+        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the pcntl and posix extensions.');
+        }
+
+        $commits = commandCommits();
+        ScriptedEngine::bind(function (EngineCall $call, int $number) {
+            if ($number === 1) {
+                posix_kill(getmypid(), SIGINT);
+            }
+
+            return ScriptedEngine::translated($call);
+        });
+
+        [$exitCode, $output] = withSignals(fn () => translateCommand(['--collection' => ['articles'], '--site' => ['el']]));
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($exitCode)->toBe(1)
+            ->and($run->status)->toBe(RunStatus::Cancelled)
+            ->and($output)->toContain('Cancelling the run.')
+            ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
+            ->and($output)->toContain('1 target was not finished.')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello')
+            ->and($this->world->fresh()->existsIn('el'))->toBeFalse()
+            ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE])
+            ->and(pcntl_signal_get_handler(SIGINT))->toBe(SIG_DFL);
+    });
+
+    it('deletes the run and stops when Ctrl-C comes during the scan', function () {
+        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the pcntl and posix extensions.');
+        }
+
+        pcntl_signal(SIGINT, fn () => null);
+        $this->fakeTranslations();
+        // The scan reads the site profile for the prompt it estimates.
+        $settings = Mockery::mock(Settings::class)->makePartial();
+        $settings->shouldReceive('siteProfile')->andReturnUsing(function () {
+            posix_kill(getmypid(), SIGINT);
+
+            return '';
+        });
+        app()->instance(Settings::class, $settings);
+
+        try {
+            [$exitCode, $output] = withSignals(fn () => translateCommand(['--collection' => ['articles'], '--site' => ['el']]));
+        } finally {
+            pcntl_signal(SIGINT, SIG_DFL);
+        }
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('Nothing was translated.')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
+        $this->assertNoModelCalls();
+    });
+
+    it('traps Ctrl-C again after asking for confirmation', function () {
+        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the pcntl and posix extensions.');
+        }
+
+        // Without the command's own trap the signal would end the test run; this handler only keeps it alive.
+        pcntl_signal(SIGINT, fn () => null);
+        ScriptedEngine::bind(function (EngineCall $call, int $number) {
+            if ($number === 1) {
+                posix_kill(getmypid(), SIGINT);
+            }
+
+            return ScriptedEngine::translated($call);
+        });
+
+        try {
+            withSignals(fn () => $this->artisan('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 1])
+                ->expectsConfirmation('Translate and save them?', 'yes')
+                ->assertExitCode(1)
+                ->run());
+        } finally {
+            pcntl_signal(SIGINT, SIG_DFL);
+        }
+
+        expect(app(RunRepository::class)->recent(1)[0]->status)->toBe(RunStatus::Cancelled)
+            ->and($this->world->fresh()->existsIn('el'))->toBeFalse();
+    });
+
+    it('waits for the workers after Ctrl-C, and stops them at once on a second one', function () {
+        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the pcntl and posix extensions.');
+        }
+
+        Process::fake(['*' => Process::describe()->runsFor(iterations: 1000)]);
+        $this->fakeTranslations();
+        $sleeps = [];
+        Sleep::fake();
+        Sleep::whenFakingSleep(function (Duration $duration) use (&$sleeps) {
+            $sleeps[] = $duration->totalMilliseconds;
+
+            // The first pause of the parent, then the first wait for the workers.
+            if (count($sleeps) <= 2) {
+                posix_kill(getmypid(), SIGINT);
+            }
+        });
+        $please = base_path('please');
+        file_put_contents($please, '<?php');
+
+        try {
+            [$exitCode, $output] = withSignals(fn () => translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 2]));
+        } finally {
+            unlink($please);
+        }
+
+        expect($exitCode)->toBe(1)
+            ->and(app(RunRepository::class)->recent(1)[0]->status)->toBe(RunStatus::Cancelled)
+            ->and($output)->toContain('The worker processes finish their current request first; press Ctrl-C again to stop them at once.')
+            ->and($output)->toContain('2 targets were not finished.')
+            ->and($sleeps)->toBe([1000.0, 200.0, 200.0]);
+        $this->assertNoModelCalls();
+    });
+});
+
+/**
+ * Runs the callback with Laravel's signal traps on, which it turns off under tests, so the test can send itself one.
+ */
+function withSignals(Closure $callback): mixed
+{
+    Signals::resolveAvailabilityUsing(fn () => true);
+
+    try {
+        return $callback();
+    } finally {
+        Signals::resolveAvailabilityUsing(fn () => false);
+    }
+}
