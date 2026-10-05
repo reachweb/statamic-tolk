@@ -194,7 +194,9 @@ return [
     | or `browser`; `queue.connection` and `.name` default to the app's.
     | `tick_seconds` is the window in which one web request may start new
     | units; `claim_ttl` is how long a queue or CLI worker holds an item.
-    | Monthly usage logs are kept under `usage.path`.
+    | Monthly usage logs are kept under `usage.path`. The `file` driver
+    | rewrites a run's index on every step, so it suits runs of up to a few
+    | thousand items.
     |
     */
 
