@@ -85,9 +85,9 @@ final readonly class EditorStatus
     }
 
     /**
-     * The entry, or the term in the site the reference names.
+     * The entry, or the term in the site the reference names; null for any other reference.
      */
-    private function item(string $reference): EntryContract|TermContract|null
+    public function item(string $reference): EntryContract|TermContract|null
     {
         try {
             $ref = TargetRef::parse($reference);

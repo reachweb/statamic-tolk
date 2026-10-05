@@ -125,16 +125,9 @@ export function runActions(state) {
     };
 }
 
-// What a finished or interrupted run did, in one sentence.
-export function describeResult(state) {
-    const run = state?.run ?? {};
-
-    if (!isFinal(state)) {
-        return null;
-    }
-
-    const { counts } = describeProgress(state);
-    const parts = [__n(':count done|:count done', counts.done)];
+// The counts of a final run as one list: `done`, the text for the done items, then the skipped and failed ones.
+export function describeCounts(counts, done) {
+    const parts = [done];
 
     if (counts.skipped > 0) {
         parts.push(__n(':count skipped|:count skipped', counts.skipped));
@@ -144,7 +137,19 @@ export function describeResult(state) {
         parts.push(__n(':count failed|:count failed', counts.failed));
     }
 
-    const items = parts.join(', ');
+    return parts.join(', ');
+}
+
+// What a finished or interrupted run did, in one sentence.
+export function describeResult(state) {
+    const run = state?.run ?? {};
+
+    if (!isFinal(state)) {
+        return null;
+    }
+
+    const { counts } = describeProgress(state);
+    const items = describeCounts(counts, __n(':count done|:count done', counts.done));
 
     return {
         status: run.status,
@@ -242,7 +247,7 @@ export function describeScope(scope, siteName = (handle) => handle) {
 
     return {
         what: parts.join(', ') || __('Nothing selected'),
-        sites: (Array.isArray(scope?.sites) ? scope.sites : []).map(siteName).join(', '),
+        sites: list('sites').map(siteName).join(', '),
     };
 }
 

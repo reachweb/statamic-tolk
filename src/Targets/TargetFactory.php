@@ -88,7 +88,7 @@ final class TargetFactory
             throw InvalidTarget::siteNotInTaxonomy($source->taxonomyHandle(), $site);
         }
 
-        return new TermTarget((string) $source->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter);
+        return new TermTarget((string) $source->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter, $source);
     }
 
     public function fromDescription(array $describe): Target

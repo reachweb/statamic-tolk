@@ -3,7 +3,6 @@
 namespace Reach\StatamicTolk\Targets;
 
 use Illuminate\Support\Collection;
-use LogicException;
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\SourceSummary;
 use Reach\StatamicTolk\Content\TranslatableFields;
@@ -14,7 +13,6 @@ use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
-use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\Concerns\AppliesFields;
 use Reach\StatamicTolk\Translation\AssembledField;
@@ -193,18 +191,6 @@ final class EntryTarget implements Target
     }
 
     /**
-     * @param  list<AssembledField>  $fields
-     */
-    public function apply(array $fields, ApplyOptions $options): ApplyResult
-    {
-        if (! ContentWriter::active()) {
-            throw new LogicException('Translations are applied only inside ContentWriter::write().');
-        }
-
-        return $this->fresh()->applyFresh($fields, $options);
-    }
-
-    /**
      * True when creating the localization would make it the home page of the target site in place of the origin tree's
      * root (§A11 "Root page").
      */
@@ -240,7 +226,6 @@ final class EntryTarget implements Target
      */
     private function applyFresh(array $fields, ApplyOptions $options): ApplyResult
     {
-        $this->stateWriter->confirm($this);
         $fields = $this->keyByHandle($fields);
         $created = ! $this->exists();
         $warnings = $created ? $this->createLocalization($options) : [];

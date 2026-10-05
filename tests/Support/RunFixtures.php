@@ -13,6 +13,7 @@ use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Runs\WorkReport;
+use RuntimeException;
 use Statamic\Facades\Git;
 
 /**
@@ -50,6 +51,23 @@ final class RunFixtures
     public static function translate(Run $run, string $worker = 'lane-1', int $seconds = 30, int $ttl = 300): WorkReport
     {
         return app(RunProcessor::class)->translate($run, $worker, CarbonImmutable::now()->addSeconds($seconds), $ttl);
+    }
+
+    /**
+     * Translates and applies until nothing is left to do, as a driver would; at most ten rounds.
+     */
+    public static function finish(Run $run): void
+    {
+        for ($round = 0; $round < 10; $round++) {
+            $translated = self::translate($run);
+            $applied = app(RunProcessor::class)->applyReady($run, 'apply-1', CarbonImmutable::now()->addSeconds(30));
+
+            if (! $translated->remains && ! $applied->remains) {
+                return;
+            }
+        }
+
+        throw new RuntimeException('The run did not finish in ten rounds.');
     }
 
     /**
