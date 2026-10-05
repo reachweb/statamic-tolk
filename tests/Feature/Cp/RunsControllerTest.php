@@ -84,14 +84,6 @@ function driveRun(Run $run): array
 }
 
 /**
- * Every item status with the given counts, the others 0.
- */
-function runCounts(array $counts): array
-{
-    return [...array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0), ...$counts];
-}
-
-/**
  * A user who may translate articles into Greek in the editor, but not run bulk translations.
  */
 function greekTranslator(): UserContract
@@ -635,8 +627,8 @@ describe('pages', function () {
                 ->where('state.run.estimate', null)
                 ->where('state.counts.pending', 6)
                 ->where('state.breakdown', [
-                    ['type' => 'entry', 'site' => 'el', 'counts' => runCounts(['pending' => 3])],
-                    ['type' => 'entry', 'site' => 'de', 'counts' => runCounts(['pending' => 3])],
+                    ['type' => 'entry', 'site' => 'el', 'counts' => RunFixtures::counts(['pending' => 3])],
+                    ['type' => 'entry', 'site' => 'de', 'counts' => RunFixtures::counts(['pending' => 3])],
                 ])
                 ->has('state.items', 6)
                 ->where('state.pagination.total', 6)

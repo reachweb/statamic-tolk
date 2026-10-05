@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Exceptions\RunNotFound;
 use Reach\StatamicTolk\Runs\FileRunRepository;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
+use Reach\StatamicTolk\Tests\Support\RunFixtures;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -46,11 +47,6 @@ function runRepoRun(?array $items = null, RunStatus $status = RunStatus::Running
     $run->status = $status;
 
     return app(RunRepository::class)->create($run, $items ?? array_map(runRepoItem(...), range(0, 5)));
-}
-
-function runRepoCounts(array $counts): array
-{
-    return [...array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0), ...$counts];
 }
 
 function runRepoClaimAll(Run $run, string $worker): array
@@ -95,7 +91,7 @@ it('creates a run with six items in its own files', function () {
         ->and($this->runs->find($run->id)->toArray())->toBe($run->toArray())
         ->and($this->runs->item($run, 3)->toArray())->toBe(runRepoItem(3)->toArray())
         ->and($this->runs->item($run, 6))->toBeNull()
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['pending' => 6]));
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['pending' => 6]));
 });
 
 it('creates the items of a lazy iterable and refuses a run that exists or has two items with one index', function () {
@@ -137,9 +133,9 @@ it('counts the items per status for each content type and target site, in item o
     $this->runs->claimNext($run, 'lane-1', 60);
 
     expect($this->runs->breakdown($run))->toBe([
-        ['type' => 'entry', 'site' => 'de', 'counts' => runRepoCounts(['translating' => 1, 'skipped' => 1])],
-        ['type' => 'entry', 'site' => 'el', 'counts' => runRepoCounts(['pending' => 1])],
-        ['type' => 'term', 'site' => 'el', 'counts' => runRepoCounts(['pending' => 1])],
+        ['type' => 'entry', 'site' => 'de', 'counts' => RunFixtures::counts(['translating' => 1, 'skipped' => 1])],
+        ['type' => 'entry', 'site' => 'el', 'counts' => RunFixtures::counts(['pending' => 1])],
+        ['type' => 'term', 'site' => 'el', 'counts' => RunFixtures::counts(['pending' => 1])],
     ])
         ->and($this->runs->breakdown(Run::make(RunDriver::Cli)))->toBe([]);
 });
@@ -160,7 +156,7 @@ it('gives a worker its own item back', function () {
         ->and($again->attempts)->toBe(0)
         ->and($again->claim->token)->not->toBe($first->claim->token)
         ->and($this->runs->item($run, 0)->claim)->toEqual($again->claim)
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['pending' => 4, 'translating' => 2]));
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['pending' => 4, 'translating' => 2]));
 });
 
 it('never gives two workers the same item', function () {
@@ -171,7 +167,7 @@ it('never gives two workers the same item', function () {
     expect($claimed)->toBe([0, 1, 2, 3, 4, 5])
         ->and($this->runs->claimNext($run, 'late', 60))->toBeNull()
         ->and(collect($this->runs->items($run))->map(fn (RunItem $item) => $item->claim->by)->unique())->toHaveCount(6)
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['translating' => 6]));
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['translating' => 6]));
 });
 
 it('hands nothing out while the run is pending, cancelled or aborted', function (RunStatus $status) {
@@ -180,7 +176,7 @@ it('hands nothing out while the run is pending, cancelled or aborted', function 
     expect($this->runs->claimNext($run, 'lane-1', 60))->toBeNull()
         ->and($this->runs->claimTranslated($run, 'apply', 60))->toBeNull()
         ->and($this->runs->nextAvailableIn($run))->toBeNull()
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['pending' => 6]))
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['pending' => 6]))
         ->and($this->runs->find($run->id)->startedAt)->toBeNull();
 })->with([RunStatus::Pending, RunStatus::Cancelled, RunStatus::Aborted]);
 
@@ -245,7 +241,7 @@ it('hands an expired claim over, counts an attempt and fails the item on the thi
         ->and($failed->error)->toBe('No worker finished this item in 3 attempts.')
         ->and($this->runs->item($run, 1)->status)->toBe(RunItemStatus::Skipped)
         ->and($this->runs->item($run, 1)->reason)->toBe(RunItem::DEPENDENCY_FAILED)
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['skipped' => 1, 'failed' => 1]))
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['skipped' => 1, 'failed' => 1]))
         ->and($this->runs->nextAvailableIn($run))->toBeNull();
 });
 
@@ -368,7 +364,7 @@ it('applies the lowest translated item, the worker\'s own first, and takes over 
     expect($first->index)->toBe(0)
         ->and($second->index)->toBe(1)
         ->and($this->runs->claimTranslated($run, 'apply-1', 60)->index)->toBe(0)
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['translated' => 1, 'applying' => 2]));
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['translated' => 1, 'applying' => 2]));
 
     $this->travel(61)->seconds();
     $third = $this->runs->claimTranslated($run, 'apply-3', 60);
@@ -429,7 +425,7 @@ it('lets a skipped parent through and skips the descendants of a failed one', fu
     $failing->error = 'The provider refused.';
     $this->runs->saveItem($run, $failing);
 
-    expect($this->runs->counts($run))->toBe(runRepoCounts(['translating' => 1, 'pending' => 1, 'skipped' => 3, 'failed' => 1]))
+    expect($this->runs->counts($run))->toBe(RunFixtures::counts(['translating' => 1, 'pending' => 1, 'skipped' => 3, 'failed' => 1]))
         ->and(collect([1, 2, 3])->map(fn (int $index) => $this->runs->item($run, $index))->every(
             fn (RunItem $item) => $item->status === RunItemStatus::Skipped && $item->reason === RunItem::DEPENDENCY_FAILED,
         ))->toBeTrue()
@@ -450,13 +446,13 @@ it('marks a child skipped on the next claim when its parent failed', function ()
         runRepoItem(3, ['dependsOn' => [2]]),
     ]);
 
-    expect($this->runs->counts($run))->toBe(runRepoCounts(['pending' => 2, 'skipped' => 1, 'failed' => 1]))
+    expect($this->runs->counts($run))->toBe(RunFixtures::counts(['pending' => 2, 'skipped' => 1, 'failed' => 1]))
         ->and($this->runs->nextAvailableIn($run))->toBeNull()
         ->and($this->runs->claimNext($run, 'lane-1', 60))->toBeNull()
         ->and($this->runs->item($run, 1)->status)->toBe(RunItemStatus::Skipped)
         ->and($this->runs->item($run, 1)->reason)->toBe(RunItem::DEPENDENCY_FAILED)
         ->and($this->runs->item($run, 3)->reason)->toBe(RunItem::DEPENDENCY_FAILED)
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['skipped' => 3, 'failed' => 1]));
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['skipped' => 3, 'failed' => 1]));
 });
 
 it('puts failed items and the items their failure skipped back to pending, all at once', function () {
@@ -473,7 +469,7 @@ it('puts failed items and the items their failure skipped back to pending, all a
     $this->travel(5)->seconds();
 
     expect($this->runs->retryFailed($run))->toBe(4)
-        ->and($this->runs->counts($run))->toBe(runRepoCounts(['done' => 1, 'skipped' => 1, 'pending' => 4]))
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['done' => 1, 'skipped' => 1, 'pending' => 4]))
         ->and($this->runs->item($run, 4))->toMatchObject([
             'status' => RunItemStatus::Pending, 'reason' => null, 'error' => null, 'attempts' => 0, 'waits' => 0,
             'availableAt' => null, 'claim' => null, 'planId' => 'plan-4', 'warnings' => ['Kept.'],
@@ -550,35 +546,35 @@ it('counts the items after every transition', function () {
     $run = runRepoRun([runRepoItem(0), runRepoItem(1), runRepoItem(2)]);
     $counts = fn () => $this->runs->counts($run);
 
-    expect($counts())->toBe(runRepoCounts(['pending' => 3]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 3]));
 
     $item = $this->runs->claimNext($run, 'lane-1', 60);
-    expect($counts())->toBe(runRepoCounts(['pending' => 2, 'translating' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 2, 'translating' => 1]));
 
     $item->status = RunItemStatus::Translated;
     $this->runs->saveItem($run, $item);
-    expect($counts())->toBe(runRepoCounts(['pending' => 2, 'translated' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 2, 'translated' => 1]));
 
     $item = $this->runs->claimTranslated($run, 'apply', 60);
-    expect($counts())->toBe(runRepoCounts(['pending' => 2, 'applying' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 2, 'applying' => 1]));
 
     $item->status = RunItemStatus::Done;
     $this->runs->saveItem($run, $item);
-    expect($counts())->toBe(runRepoCounts(['pending' => 2, 'done' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 2, 'done' => 1]));
 
     $item = $this->runs->claimNext($run, 'lane-1', 60);
     $this->runs->release($run, $item);
-    expect($counts())->toBe(runRepoCounts(['pending' => 2, 'done' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 2, 'done' => 1]));
 
     $item = $this->runs->claimNext($run, 'lane-1', 60);
     $item->status = RunItemStatus::Skipped;
     $this->runs->saveItem($run, $item);
-    expect($counts())->toBe(runRepoCounts(['pending' => 1, 'done' => 1, 'skipped' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['pending' => 1, 'done' => 1, 'skipped' => 1]));
 
     $item = $this->runs->claimNext($run, 'lane-1', 60);
     $item->status = RunItemStatus::Failed;
     $this->runs->saveItem($run, $item);
-    expect($counts())->toBe(runRepoCounts(['done' => 1, 'skipped' => 1, 'failed' => 1]));
+    expect($counts())->toBe(RunFixtures::counts(['done' => 1, 'skipped' => 1, 'failed' => 1]));
 });
 
 it('saves only what changed, so a stale copy does not undo another process\'s change', function () {
@@ -711,7 +707,7 @@ it('deletes a run with its files', function () {
 
     expect("{$this->root}/{$run->id}")->not->toBeDirectory()
         ->and($this->runs->find($run->id))->toBeNull()
-        ->and($this->runs->counts($run))->toBe(runRepoCounts([]))
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts([]))
         ->and($this->runs->claimNext($run, 'lane-1', 60))->toBeNull()
         ->and(fn () => $this->runs->addUsage($run, new ModelRef('openai', 'gpt-6-luna'), new Usage))->toThrow(RunNotFound::class)
         ->and(fn () => $this->runs->saveItem($run, runRepoItem(0)))->toThrow(RunNotFound::class);

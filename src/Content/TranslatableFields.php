@@ -16,6 +16,9 @@ final class TranslatableFields
 {
     private const array TECHNICAL_WORDS = ['class', 'id', 'anchor', 'url', 'link', 'icon', 'color', 'handle', 'slug', 'key', 'code', 'embed', 'video', 'layout'];
 
+    // Out-of-scope reasons that say nothing about text: a fieldtype without a handler, and the slug, never translated (D16).
+    private const array NOT_TEXT = ['unsupported_fieldtype', 'slug'];
+
     public function __construct(private readonly FieldtypeRegistry $registry) {}
 
     /**
@@ -48,6 +51,24 @@ final class TranslatableFields
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * The text-bearing fields of an explain() result that are out of scope, with the reason (§A2).
+     *
+     * @param  list<array{handle: string, display: mixed, type: string, in_scope: bool, reason: string}>  $explained
+     * @return list<array{handle: string, label: string, type: string, reason: string}>
+     */
+    public static function textOutOfScope(array $explained): array
+    {
+        $fields = array_filter($explained, fn (array $field) => ! $field['in_scope'] && ! in_array($field['reason'], self::NOT_TEXT, true));
+
+        return array_values(array_map(fn (array $field) => [
+            'handle' => $field['handle'],
+            'label' => (string) $field['display'],
+            'type' => $field['type'],
+            'reason' => $field['reason'],
+        ], $fields));
     }
 
     /**

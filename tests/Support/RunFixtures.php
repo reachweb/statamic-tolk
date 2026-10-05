@@ -6,6 +6,7 @@ use ArrayObject;
 use Carbon\CarbonImmutable;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
+use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Runs\RunPlanner;
@@ -70,6 +71,17 @@ final class RunFixtures
     public static function stored(Run $run): Run
     {
         return app(RunRepository::class)->find($run->id);
+    }
+
+    /**
+     * The counts of RunRepository::counts(): every status, 0 unless given.
+     *
+     * @param  array<string, int>  $counts
+     * @return array<string, int>
+     */
+    public static function counts(array $counts): array
+    {
+        return [...array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0), ...$counts];
     }
 
     /**

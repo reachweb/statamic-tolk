@@ -74,9 +74,9 @@ class TranslateCommand extends Command
     private const array TYPES = ['entry' => 'Entries', 'term' => 'Terms', 'globals' => 'Global sets', 'nav' => 'Navigation'];
 
     private const array LEFT_OUT = [
-        'excluded_collection' => ['target is in a collection excluded in the settings', 'targets are in collections excluded in the settings'],
-        'site_not_in_collection' => ['target is in a site its collection does not have', 'targets are in sites their collection does not have'],
-        'unauthorized' => ['target is one you may not edit', 'targets are ones you may not edit'],
+        RunPlanner::EXCLUDED_COLLECTION => ['target is in a collection excluded in the settings', 'targets are in collections excluded in the settings'],
+        RunPlanner::SITE_NOT_IN_COLLECTION => ['target is in a site its collection does not have', 'targets are in sites their collection does not have'],
+        RunItem::UNAUTHORIZED => ['target is one you may not edit', 'targets are ones you may not edit'],
     ];
 
     protected $signature = 'tolk:translate
@@ -105,15 +105,18 @@ class TranslateCommand extends Command
 
     private RunProcessor $processor;
 
+    private Settings $settings;
+
     private int $interrupts = 0;
 
     /** @var array<int, int> lane → exit code of the workers that stopped with an error */
     private array $failedWorkers = [];
 
-    public function handle(Settings $settings, ModelCatalog $catalog, Providers $providers, RunPlanner $planner, RunRepository $runs, RunProcessor $processor): int
+    public function handle(Settings $settings, ModelCatalog $catalog, Providers $providers, RunPlanner $planner, RunRepository $runs, RunProcessor $processor, RunDispatcher $dispatcher): int
     {
         $this->runs = $runs;
         $this->processor = $processor;
+        $this->settings = $settings;
         $this->interrupts = 0;
         $this->failedWorkers = [];
 
@@ -180,8 +183,8 @@ class TranslateCommand extends Command
         $this->trapInterrupts();
 
         $lines = [];
-        $totals = ['targets' => 0, 'segments' => 0, 'characters' => 0];
-        $estimate = $this->option('no-estimate') ? null : $this->scan($planner, $run, $lines, $totals);
+        $targets = 0;
+        $estimate = $this->option('no-estimate') ? null : $this->scan($planner, $run, $lines, $targets);
 
         if ($this->interrupts > 0) {
             $runs->delete($run);
@@ -193,7 +196,7 @@ class TranslateCommand extends Command
         $this->printPlan($run, $estimate, $reviewOnly);
 
         if ($this->option('dry-run')) {
-            $this->dryRun($run, $lines, $totals, $estimate !== null, $options);
+            $this->dryRun($run, $lines, $targets, $estimate, $options);
             $runs->delete($run);
 
             return self::SUCCESS;
@@ -215,7 +218,7 @@ class TranslateCommand extends Command
         }
 
         if ($this->option('queue')) {
-            app(RunDispatcher::class)->start($run);
+            $dispatcher->start($run);
             $this->newLine();
             $this->components->info("The run {$run->id} is on the queue [".RunDispatcher::connection().'].');
             $this->line('Follow it in the Control Panel: '.cp_route('tolk.runs.show', $run->id));
@@ -246,7 +249,6 @@ class TranslateCommand extends Command
     private function drive(Run $run, int $concurrency): Run
     {
         $workers = $concurrency > 1 ? $this->startWorkers($run, $concurrency) : [];
-        $settings = app(Settings::class);
         $ttl = max(1, (int) config('tolk.runs.claim_ttl'));
 
         if ($concurrency > 1 && $workers === []) {
@@ -260,7 +262,7 @@ class TranslateCommand extends Command
 
         try {
             while ($this->interrupts === 0) {
-                $settings->fresh();
+                $this->settings->fresh();
                 $workers = $this->reap($workers);
                 $work = $workers === []
                     ? $this->processor->translate($run, self::WORKER, CarbonImmutable::now()->addSeconds(self::TRANSLATE_SECONDS), $ttl, 1)
@@ -426,19 +428,16 @@ class TranslateCommand extends Command
      * Estimates the run item by item behind a progress bar and collects, per item, the line a dry run prints.
      *
      * @param  array<int, string>  $lines  item index → what its plan does
-     * @param  array{targets: int, segments: int, characters: int}  $totals  of the plans that have something to do
+     * @param  int  $targets  the plans that have something to do
      */
-    private function scan(RunPlanner $planner, Run $run, array &$lines, array &$totals): Estimate
+    private function scan(RunPlanner $planner, Run $run, array &$lines, int &$targets): Estimate
     {
         $total = array_sum($this->runs->counts($run));
-        $collect = function (RunItem $item, Plan $plan) use (&$lines, &$totals) {
+        $collect = function (RunItem $item, Plan $plan) use (&$lines, &$targets) {
             $lines[$item->index] = $this->describePlan($plan);
 
             if (! $plan->isEmpty()) {
-                $size = $this->planSize($plan);
-                $totals['targets']++;
-                $totals['segments'] += $size['segments'];
-                $totals['characters'] += $size['characters'];
+                $targets++;
             }
         };
 
@@ -471,7 +470,7 @@ class TranslateCommand extends Command
             $skipped = $counts[RunItemStatus::Skipped->value];
 
             $this->components->twoColumnDetail(
-                (self::TYPES[$type] ?? $type).' → '.(Site::get($site)?->name() ?? $site),
+                (self::TYPES[$type] ?? $type).' → '.$this->siteName($site),
                 implode(', ', array_filter([
                     $pending > 0 ? number_format($pending).' to '.($reviewOnly ? 'review' : 'translate') : null,
                     $skipped > 0 ? number_format($skipped).' skipped' : null,
@@ -492,9 +491,9 @@ class TranslateCommand extends Command
      * A line per item: what its plan does, or why it would fail; then the totals of the plans.
      *
      * @param  array<int, string>  $lines
-     * @param  array{targets: int, segments: int, characters: int}  $totals
+     * @param  int  $targets  the plans that have something to do
      */
-    private function dryRun(Run $run, array $lines, array $totals, bool $estimated, PlanOptions $options): void
+    private function dryRun(Run $run, array $lines, int $targets, ?Estimate $estimate, PlanOptions $options): void
     {
         $items = $this->items($run);
         $this->newLine();
@@ -512,18 +511,18 @@ class TranslateCommand extends Command
         }
 
         $this->newLine();
-        $this->line($estimated
+        $this->line($estimate !== null
             ? sprintf(
                 'Dry run: %s of %s would be %s (%s, %s). Nothing was sent or saved.',
-                number_format($totals['targets']),
+                number_format($targets),
                 $this->count(count($items), 'target'),
                 match (true) {
                     $options->mode === Mode::Review => 'reviewed',
                     $options->review => 'translated and reviewed',
                     default => 'translated',
                 },
-                $this->count($totals['segments'], 'segment'),
-                $this->count($totals['characters'], 'character'),
+                $this->count($estimate->segments, 'segment'),
+                $this->count($estimate->chars, 'character'),
             )
             : sprintf('Dry run: %s, not estimated. Nothing was sent or saved.', $this->count(count($items), 'target')));
 
@@ -586,7 +585,7 @@ class TranslateCommand extends Command
         $this->line(sprintf(
             'Targets: %s (%s). %sMode: %s.',
             number_format($targets),
-            implode(', ', array_map(fn (string $site) => Site::get($site)->name(), $sites)),
+            implode(', ', array_map($this->siteName(...), $sites)),
             $models,
             $options->mode->value,
         ));
@@ -601,13 +600,7 @@ class TranslateCommand extends Command
      */
     private function items(Run $run): array
     {
-        $items = [];
-
-        for ($page = 1; ($batch = $this->runs->items($run, null, $page, 500)) !== []; $page++) {
-            array_push($items, ...$batch);
-        }
-
-        return $items;
+        return $this->runs->items($run, null, 1, PHP_INT_MAX);
     }
 
     /**
@@ -724,9 +717,7 @@ class TranslateCommand extends Command
      */
     private function checkQueue(): void
     {
-        $driver = RunDispatcher::connectionConfig()['driver'] ?? null;
-
-        if ($this->option('queue') && (! is_string($driver) || in_array($driver, RunDispatcher::WITHOUT_WORKER, true))) {
+        if ($this->option('queue') && ! RunDispatcher::hasWorker()) {
             throw new InvalidArgumentException(sprintf(
                 'The queue connection [%s] has no worker, so --queue would run the whole run inside this command. Leave out --queue to translate with worker processes (--concurrency).',
                 RunDispatcher::connection(),

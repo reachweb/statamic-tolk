@@ -6,6 +6,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Providers;
+use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
@@ -32,9 +33,6 @@ final readonly class EditorStatus
     public const string UNKNOWN_REFERENCE = 'unknown_reference';
 
     public const string NO_ACCESS = 'no_access';
-
-    // Out-of-scope reasons that say nothing about text: a fieldtype without a handler, and the slug, never translated (D16).
-    private const array NOT_TEXT = ['unsupported_fieldtype', 'slug'];
 
     public function __construct(
         private TargetFactory $targets,
@@ -145,14 +143,7 @@ final readonly class EditorStatus
      */
     private function outOfScope(Target $target): array
     {
-        $fields = array_filter($target->explainFields(), fn (array $field) => ! $field['in_scope'] && ! in_array($field['reason'], self::NOT_TEXT, true));
-
-        return array_values(array_map(fn (array $field) => [
-            'handle' => $field['handle'],
-            'label' => (string) $field['display'],
-            'type' => $field['type'],
-            'reason' => $field['reason'],
-        ], $fields));
+        return TranslatableFields::textOutOfScope($target->explainFields());
     }
 
     private function payload(?string $reason, ?array $localization = null, ?array $origin = null): array
