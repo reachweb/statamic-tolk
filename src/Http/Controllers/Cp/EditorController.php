@@ -4,7 +4,6 @@ namespace Reach\StatamicTolk\Http\Controllers\Cp;
 
 use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Reach\StatamicTolk\Ai\ModelCatalog;
@@ -24,6 +23,8 @@ use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnitBusy;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
+use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
+use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\RaisesTimeLimit;
 use Reach\StatamicTolk\Http\EditorStatus;
 use Reach\StatamicTolk\Http\EditorTranslation;
 use Reach\StatamicTolk\Http\Requests\EditorBaselineRequest;
@@ -33,7 +34,6 @@ use Reach\StatamicTolk\Http\Requests\EditorReviewRequest;
 use Reach\StatamicTolk\Http\Requests\EditorStatusRequest;
 use Reach\StatamicTolk\Http\Requests\EditorUnitRequest;
 use Reach\StatamicTolk\State\StateWriter;
-use Reach\StatamicTolk\Support\Sanitizer;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Translation\PlanOptions;
@@ -43,6 +43,9 @@ use Statamic\Facades\User;
 
 class EditorController extends Controller
 {
+    use FailsWithJson;
+    use RaisesTimeLimit;
+
     public function __construct(private readonly TargetFactory $targets) {}
 
     public function status(EditorStatusRequest $request, EditorStatus $status): JsonResponse
@@ -105,7 +108,8 @@ class EditorController extends Controller
         }
 
         $this->authorized($target, $user);
-        $this->raiseTimeLimit();
+        // Time for the unit's one provider call.
+        $this->raiseTimeLimit((int) config('tolk.http.timeout.web', 45) + 15);
 
         return $this->attempt(fn () => $translation->unit($plan, $target, $request->validated('unit')));
     }
@@ -212,30 +216,5 @@ class EditorController extends Controller
         } catch (UnknownUnit $exception) {
             $this->fail(404, 'unknown_unit', $exception->getMessage());
         }
-    }
-
-    /**
-     * Gives a unit time for its one provider call, without lowering a limit that is higher or off.
-     */
-    private function raiseTimeLimit(): void
-    {
-        $limit = (int) ini_get('max_execution_time');
-
-        if ($limit > 0 && function_exists('set_time_limit')) {
-            set_time_limit(max($limit, (int) config('tolk.http.timeout.web', 45) + 15));
-        }
-    }
-
-    private function fail(int $status, string $code, string $message, ?int $retryAfter = null): never
-    {
-        $body = ['message' => Sanitizer::message($message), 'code' => $code];
-        $headers = [];
-
-        if ($retryAfter !== null) {
-            $body['retry_after'] = max(1, $retryAfter);
-            $headers['Retry-After'] = (string) $body['retry_after'];
-        }
-
-        throw new HttpResponseException(response()->json($body, $status, $headers));
     }
 }

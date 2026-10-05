@@ -128,6 +128,78 @@ final readonly class RunProcessor
     }
 
     /**
+     * Cancels a pending or running run and finalizes it, which commits the content saved so far. Workers stop at their
+     * next step; an item they release mid-plan keeps its plan for a resume.
+     *
+     * @return bool whether the run was cancelled now
+     */
+    public function cancel(Run $run): bool
+    {
+        $cancelled = $this->locked($run, function () use ($run) {
+            $this->runs->save($run);
+
+            if (! in_array($run->status, [RunStatus::Pending, RunStatus::Running], true)) {
+                return false;
+            }
+
+            $run->status = RunStatus::Cancelled;
+            $this->runs->save($run);
+
+            return true;
+        });
+
+        if ($cancelled) {
+            $this->finalize($run);
+        }
+
+        return $cancelled;
+    }
+
+    /**
+     * Sets a cancelled or aborted run running again, so its unfinished items are worked on; RunDispatcher::start()
+     * starts it. A running run is left as it is.
+     *
+     * @return bool whether the run is running now
+     */
+    public function resume(Run $run): bool
+    {
+        return $this->locked($run, function () use ($run) {
+            $this->runs->save($run);
+
+            if (in_array($run->status, [RunStatus::Cancelled, RunStatus::Aborted], true)) {
+                $this->reopen($run);
+            }
+
+            return $run->status === RunStatus::Running;
+        });
+    }
+
+    /**
+     * Puts the failed items, and those skipped because a dependency failed, back to `pending`, and sets a run that ended
+     * running again when it put any back; RunDispatcher::start() starts it. A pending run is left alone.
+     *
+     * @return int the items put back
+     */
+    public function retry(Run $run): int
+    {
+        return $this->locked($run, function () use ($run) {
+            $this->runs->save($run);
+
+            if ($run->status === RunStatus::Pending) {
+                return 0;
+            }
+
+            $retried = $this->runs->retryFailed($run);
+
+            if ($retried > 0 && $run->status !== RunStatus::Running) {
+                $this->reopen($run);
+            }
+
+            return $retried;
+        });
+    }
+
+    /**
      * Claims items and works on them until the deadline, starting units only before it, so the call returns at most one
      * provider timeout after the deadline. An item whose plan is finished is `translated`. The loop stops when nothing
      * can be claimed, after a transient provider failure, and when the run stops running.
@@ -658,6 +730,18 @@ final readonly class RunProcessor
         });
 
         $this->finalize($run);
+    }
+
+    /**
+     * Runs an ended run again. Its end is cleared, so finalize() fires RunFinished at the next one.
+     */
+    private function reopen(Run $run): void
+    {
+        $run->status = RunStatus::Running;
+        $run->error = null;
+        $run->finishedAt = null;
+        $run->finalizedAt = null;
+        $this->runs->save($run);
     }
 
     /**

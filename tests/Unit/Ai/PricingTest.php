@@ -3,6 +3,7 @@
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Pricing;
 use Reach\StatamicTolk\Ai\Usage;
+use Reach\StatamicTolk\Ai\UsageMap;
 
 it('bills uncached input, cache reads at 10%, cache writes at 125% and output at the catalog prices', function () {
     $usage = new Usage(input: 2520, output: 48, cacheRead: 1800, cacheWrite: 600, calls: 1);
@@ -30,4 +31,16 @@ it('has no cost for a model without a price', function () {
 
     expect(app(Pricing::class)->cost(new ModelRef('openai', 'gpt-6-luna'), new Usage(1000, 100)))->toBeNull()
         ->and(app(Pricing::class)->cost(new ModelRef('anthropic', 'claude-custom'), new Usage(1000, 100)))->toBeNull();
+});
+
+it('totals a usage map, and has no total when one of its models has no price', function () {
+    $pricing = app(Pricing::class);
+    $usages = (new UsageMap)
+        ->add(new ModelRef('openai', 'gpt-6.1-sol'), new Usage(input: 1000, output: 500))
+        ->add(new ModelRef('gemini', 'gemini-3.5-flash-lite'), new Usage(input: 100, cacheRead: 150));
+
+    expect($pricing->total($usages))->toEqualWithDelta(0.0070045, 1e-12)
+        ->and($pricing->total(new UsageMap))->toBe(0.0)
+        ->and($pricing->total($usages->add(new ModelRef('anthropic', 'claude-custom'), new Usage(1000, 100))))->toBeNull()
+        ->and($pricing->total(new UsageMap(['not a model' => new Usage(1000, 100)])))->toBeNull();
 });
