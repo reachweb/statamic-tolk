@@ -190,8 +190,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | Bulk translations. `execution` is `auto` (queue jobs when the queue
-    | connection is not `sync`, otherwise the browser drives the run), `queue`
-    | or `browser`; `queue.connection` and `.name` default to the app's.
+    | connection has a worker, so not `sync`, `deferred`, `background` or
+    | `null`; otherwise the browser drives the run), `queue` or `browser`;
+    | `queue.connection` and `.name` default to the app's. Each queue lane job
+    | ends before the connection's `retry_after` (90 seconds when it sets
+    | none; for SQS, set it to the queue's visibility timeout), which should
+    | stay above `http.timeout.web` plus 40 seconds.
     | `tick_seconds` is the window in which one web request may start new
     | units; `claim_ttl` is how long a queue or CLI worker holds an item.
     | Monthly usage logs are kept under `usage.path`. The `file` driver
