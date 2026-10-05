@@ -33,6 +33,7 @@ it('starts a container idle', () => {
         notSaved: [],
         created: false,
         slugKept: false,
+        push: null,
     });
     expect(store.phaseOf('base')).toBe('idle');
     expect(store.phaseOf('unknown')).toBe('idle');

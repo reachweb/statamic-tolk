@@ -13,6 +13,7 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
         Route::post('unit', [EditorController::class, 'unit'])->name('unit');
         Route::post('confirm', [EditorController::class, 'confirm'])->name('confirm');
         Route::post('baseline', [EditorController::class, 'baseline'])->name('baseline');
+        Route::post('push', [EditorController::class, 'push'])->name('push');
     });
 
     Route::name('runs.')->prefix('runs')->group(function () {

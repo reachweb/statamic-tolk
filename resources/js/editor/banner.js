@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue';
 import * as api from '../api.js';
 import { SETTLE_MS } from './fill.js';
+import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 import { translations } from './translate.js';
@@ -84,6 +85,7 @@ export function attachBanner({
     now = Date.now,
     settleMs = SETTLE_MS,
     onSwitch = (name) => translations.abort(name),
+    onStatus = (name, status) => pushes.adopt(name, status),
 }) {
     const failure = ref(null);
     const remount = Boolean(ctx.reference.value) && store.container(name).reference === ctx.reference.value;
@@ -104,6 +106,8 @@ export function attachBanner({
 
             if (current(reference)) {
                 store.container(name).status = status;
+                // A push from this item that still runs is followed again (T8.13).
+                onStatus(name, status);
             }
         } catch (error) {
             // A user who may not edit the item gets 403; the banner then shows nothing.

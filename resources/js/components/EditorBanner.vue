@@ -2,10 +2,12 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Badge, Button, Card, Description, Icon, Text, injectPublishContext } from '@statamic/cms/ui';
 import ChangesModal from './ChangesModal.vue';
+import OriginPush from './OriginPush.vue';
 import ProgressBar from './ProgressBar.vue';
 import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
 import { attachBanner } from '../editor/banner.js';
+import { registry } from '../editor/registry.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
 import { useEditorStore } from '../editor/store.js';
@@ -48,6 +50,9 @@ watch(
     () => (showingChanges.value = false),
 );
 const shown = computed(() => !ctx.readOnly.value && (banner.value.visible || failure.value !== null));
+// Text the editor typed and has not saved, as the translations decide it (D27). Core's dirty flag is no guide: fieldtypes
+// re-emit normalised values after its 500 ms window, so it flags most forms right after they load.
+const dirty = computed(() => registry.dirtyHandles(name).length > 0);
 const settingsUrl = Statamic.$config.get('tolk.settingsUrl');
 
 const colors = {
@@ -193,6 +198,13 @@ async function undo() {
                         <Text v-if="localization.exists" variant="subtle">{{ localization.summary }}</Text>
                     </li>
                 </ul>
+                <OriginPush
+                    :container-name="name"
+                    :reference="state.reference"
+                    :origin="banner.origin"
+                    :status="state.status"
+                    :dirty="dirty"
+                />
             </div>
 
             <TranslateOffer v-if="banner.localization" :container-name="name" :status="state.status" :open="phase === 'offer'" />

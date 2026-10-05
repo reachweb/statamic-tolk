@@ -13,6 +13,7 @@ it('requires the identifying fields of each editor request', function (string $r
     'unit' => ['tolk.editor.unit', 'POST', ['plan', 'unit']],
     'confirm' => ['tolk.editor.confirm', 'POST', ['reference']],
     'baseline' => ['tolk.editor.baseline', 'POST', ['reference']],
+    'push' => ['tolk.editor.push', 'POST', ['reference', 'sites', 'mode']],
 ]);
 
 it('accepts the translation modes of the editor for a plan', function (string $mode) {
@@ -95,4 +96,29 @@ it('refuses a malformed confirm or baseline request', function (string $route, a
     'delivered handle that is not a string' => ['tolk.editor.confirm', ['delivered' => [['title']]], 'delivered.0'],
     'baseline field that is not a string' => ['tolk.editor.baseline', ['fields' => ['title', ['intro']]], 'fields.1'],
     'protect flag that is not a boolean' => ['tolk.editor.baseline', ['protect' => 'yes'], 'protect'],
+]);
+
+it('accepts the modes and options of a push', function (array $body) {
+    $this->postJson(cp_route('tolk.editor.push'), ['reference' => 'entry::a', 'sites' => ['el'], 'mode' => 'missing', ...$body])
+        ->assertJsonMissingValidationErrors();
+})->with([
+    'update' => [['mode' => 'update']],
+    'all, overwriting manual edits' => [['mode' => 'all', 'overwrite_manual' => true]],
+    'review and drafts' => [['review' => true, 'new_status' => 'draft']],
+    'no review, mirrored, two sites' => [['review' => false, 'new_status' => 'mirror', 'sites' => ['el', 'de']]],
+]);
+
+it('refuses an invalid push request', function (array $body, string|array $errors) {
+    $this->postJson(cp_route('tolk.editor.push'), ['reference' => 'entry::a', 'sites' => ['el'], 'mode' => 'missing', ...$body])
+        ->assertUnprocessable()
+        ->assertOnlyJsonValidationErrors((array) $errors);
+})->with([
+    'review mode, which the banner does not push' => [['mode' => 'review'], 'mode'],
+    'no site' => [['sites' => []], 'sites'],
+    'sites that are not a list' => [['sites' => ['greek' => 'el']], 'sites'],
+    'a site twice' => [['sites' => ['el', 'de', 'el']], ['sites.0', 'sites.2']],
+    'a site that is not a string' => [['sites' => [['el']]], 'sites.0'],
+    'overwrite flag that is not a boolean' => [['overwrite_manual' => 'sometimes'], 'overwrite_manual'],
+    'review flag that is not a boolean' => [['review' => 'sometimes'], 'review'],
+    'unknown status for new localizations' => [['new_status' => 'published'], 'new_status'],
 ]);

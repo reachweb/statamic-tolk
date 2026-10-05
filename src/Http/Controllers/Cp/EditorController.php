@@ -4,11 +4,15 @@ namespace Reach\StatamicTolk\Http\Controllers\Cp;
 
 use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
@@ -25,20 +29,29 @@ use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\RaisesTimeLimit;
+use Reach\StatamicTolk\Http\EditorPush;
 use Reach\StatamicTolk\Http\EditorStatus;
 use Reach\StatamicTolk\Http\EditorTranslation;
 use Reach\StatamicTolk\Http\Requests\EditorBaselineRequest;
 use Reach\StatamicTolk\Http\Requests\EditorConfirmRequest;
 use Reach\StatamicTolk\Http\Requests\EditorPlanRequest;
+use Reach\StatamicTolk\Http\Requests\EditorPushRequest;
 use Reach\StatamicTolk\Http\Requests\EditorReviewRequest;
 use Reach\StatamicTolk\Http\Requests\EditorStatusRequest;
 use Reach\StatamicTolk\Http\Requests\EditorUnitRequest;
+use Reach\StatamicTolk\Http\RunState;
+use Reach\StatamicTolk\Runs\RunDispatcher;
+use Reach\StatamicTolk\Runs\RunItem;
+use Reach\StatamicTolk\Runs\RunPlanner;
+use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
+use Statamic\Facades\Entry;
 use Statamic\Facades\User;
 
 class EditorController extends Controller
@@ -150,6 +163,82 @@ class EditorController extends Controller
         }
 
         return response()->json([...$status->for($reference, $user), 'baselined' => $count]);
+    }
+
+    /**
+     * Translates the saved origin open in the editor into some of the sites its banner lists, as a run that starts at
+     * once (T8.13). Its creator follows it through the run routes §A14 allows them; the open form is not touched (D4).
+     */
+    public function push(
+        EditorPushRequest $request,
+        EditorStatus $status,
+        EditorPush $push,
+        RunPlanner $planner,
+        RunRepository $runs,
+        RunDispatcher $dispatcher,
+        RunState $state,
+    ): JsonResponse {
+        $user = User::current();
+        $payload = $status->for($request->validated('reference'), $user);
+        $listed = array_column($payload['origin']['localizations'] ?? [], 'site');
+
+        if ($payload['reason'] === EditorStatus::UNKNOWN_REFERENCE) {
+            $this->fail(404, 'unknown_reference', __('The entry to translate was not found.'));
+        }
+
+        if ($listed === []) {
+            $this->fail(422, 'not_an_origin', __('This entry has no translations to update from here.'));
+        }
+
+        if ($unlisted = array_diff($request->validated('sites'), $listed)) {
+            $this->fail(422, 'invalid_sites', __('This entry cannot be translated into :sites from here.', ['sites' => implode(', ', $unlisted)]));
+        }
+
+        if ($payload['active_run'] !== null) {
+            throw new HttpResponseException(response()->json([
+                'message' => __('A translation of this entry is already in progress.'),
+                'code' => 'run_active',
+                'active_run' => $payload['active_run'],
+            ], 409));
+        }
+
+        $entry = Entry::find(TargetRef::parse($request->validated('reference'))->id);
+
+        try {
+            $planned = $planner->build(new RunRequest(
+                sites: array_values($request->validated('sites')),
+                driver: RunDispatcher::resolveDriver(),
+                sourceSite: $entry->locale(),
+                entryIds: [(string) $entry->id()],
+                options: [
+                    'mode' => $request->validated('mode'),
+                    'overwrite_manual' => $request->boolean('overwrite_manual'),
+                    'review' => $request->validated('review'),
+                    'new_status' => $request->validated('new_status'),
+                ],
+                user: $user,
+                reference: $entry->reference(),
+            ));
+        } catch (NoProviderConfigured|MissingDefaultModel $exception) {
+            $this->fail(422, 'no_translator', $exception->getMessage());
+        } catch (UnknownSite|TargetNotFound|InvalidArgumentException|InvalidModelRef $exception) {
+            $this->fail(422, 'invalid_run', $exception->getMessage());
+        }
+
+        if ($planned->items === [] && ($planned->skipped[RunItem::UNAUTHORIZED] ?? 0) > 0) {
+            throw new AuthorizationException;
+        }
+
+        if ($planned->items === []) {
+            $this->fail(422, 'nothing_to_translate', isset($planned->skipped[RunPlanner::EXCLUDED_COLLECTION])
+                ? __('Entries of this collection are excluded from translation in the settings.')
+                : __('There is nothing to translate into these sites.'));
+        }
+
+        $run = $runs->create($planned->run, $planned->items);
+        $dispatcher->start($run);
+
+        return response()->json([...$push->payload($run), 'state' => $state->for($run)], 201);
     }
 
     private function options(Settings $settings, ModelCatalog $catalog, UserContract $user, array $overrides): PlanOptions
