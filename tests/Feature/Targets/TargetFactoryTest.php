@@ -66,7 +66,6 @@ describe('fromReference', function () {
     it('does not support the other content types yet', function (string $reference) {
         targets()->fromReference($reference);
     })->throws(NotSupportedYet::class)->with([
-        'term::topics::food::el',
         'globals::footer::el',
         'nav::main::el',
     ]);

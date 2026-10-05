@@ -26,6 +26,7 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Statamic\Facades\Term;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -67,8 +68,10 @@ describe('validation', function () {
     })->with([
         'unknown site' => [['--collection' => ['articles'], '--site' => ['fr']], 'Unknown site [fr].'],
         'no site' => [['--collection' => ['articles']], 'Name the sites to translate into with --site.'],
-        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry or --all.'],
-        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection or --entry.'],
+        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry, --taxonomy or --all.'],
+        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection, --entry or --taxonomy.'],
+        '--all with --taxonomy' => [['--all' => true, '--taxonomy' => ['topics'], '--site' => ['el']], '--all cannot be combined with --collection, --entry or --taxonomy.'],
+        'unknown taxonomy' => [['--taxonomy' => ['colours'], '--site' => ['el']], 'Taxonomy [colours] not found.'],
         'unknown source site' => [['--collection' => ['articles'], '--site' => ['el'], '--from' => 'fr'], 'Unknown site [fr].'],
         '--queue with --concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true], '--concurrency cannot be combined with --queue'],
         'invalid concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => '0'], 'Invalid concurrency [0]. Use a whole number of at least 1.'],
@@ -347,6 +350,53 @@ describe('enumeration', function () {
             ->and($output)->toContain('2 targets are in collections excluded in the settings.')
             ->and($output)->toContain('Nothing to translate.')
             ->and($this->hello->fresh()->existsIn('el'))->toBeFalse();
+    });
+});
+
+describe('terms', function () {
+    beforeEach(function () {
+        $this->makeTaxonomy('topics', ['en', 'el', 'de'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'description' => ['type' => 'textarea', 'localizable' => true],
+        ]);
+        $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food', 'description' => 'Eat well.']]);
+        $this->makeTerm('topics', 'wellness', ['en' => ['title' => 'Wellness']]);
+    });
+
+    it('translates every term of a taxonomy with --taxonomy, after the entries, under each site', function () {
+        $this->fakeTranslations();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--taxonomy' => ['topics'], '--site' => ['el', 'de']]);
+        $food = Term::find('topics::food');
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Targets: 8 (Greek, German).')
+            ->and($output)->toContain('Terms → Greek')
+            ->and($output)->toMatch('/World → German.*\n(.*\n)*.*Food → Greek/')
+            ->and($output)->not->toContain('failed')
+            ->and($food->in('el')->data()->all())->toBe(['title' => '[T] Food', 'description' => '[T] Eat well.'])
+            ->and($food->in('de')->get('title'))->toBe('[T] Food')
+            ->and($food->in('en')->data()->all())->toBe(['title' => 'Food', 'description' => 'Eat well.'])
+            ->and(Term::find('topics::wellness')->in('el')->data()->all())->toBe(['title' => '[T] Wellness']);
+
+        $calls = $this->modelCalls();
+        [$exitCode, $output] = translateCommand(['--taxonomy' => ['topics'], '--site' => ['el', 'de']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Food → Greek: skipped, nothing to do')
+            ->and($this->modelCalls())->toBe($calls);
+    });
+
+    it('skips a taxonomy that the settings exclude', function () {
+        $this->fakeTranslations();
+        $this->withSettings(['excluded_taxonomies' => ['topics']]);
+
+        [$exitCode, $output] = translateCommand(['--taxonomy' => ['topics'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('2 targets are in taxonomies excluded in the settings.')
+            ->and($output)->toContain('Nothing to translate.')
+            ->and(Term::find('topics::food')->in('el')->data()->all())->toBe([]);
     });
 });
 

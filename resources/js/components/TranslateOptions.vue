@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { Button, Checkbox, Combobox, Description, Field, Heading, Modal, Text } from '@statamic/cms/ui';
+import { isTermReference } from '../editor/banner.js';
 import { offersEnabled } from '../editor/offer.js';
 import { initialModel, modelOptions, options, rememberedModel, REVIEWER_PREFERENCE, stateActions } from '../editor/options.js';
 import { useEditorStore } from '../editor/store.js';
@@ -12,6 +13,7 @@ const props = defineProps({
 });
 
 const store = useEditorStore();
+const term = computed(() => isTermReference(store.containers[props.containerName]?.reference));
 const open = ref(false);
 const loading = ref(false);
 const failure = ref(null);
@@ -182,7 +184,7 @@ async function toggleOffers(enabled) {
                     <Button
                         size="sm"
                         class="shrink-0"
-                        :text="__('Protect this entry from updates')"
+                        :text="term ? __('Protect this term from updates') : __('Protect this entry from updates')"
                         :disabled="changingState"
                         data-tolk-action="protect"
                         @click="changeState(true)"
@@ -191,7 +193,7 @@ async function toggleOffers(enabled) {
             </div>
 
             <Checkbox
-                v-if="offerSetting"
+                v-if="offerSetting && !term"
                 :model-value="offering"
                 :label="__('Offer to translate new localizations')"
                 :description="__('Asks whether to translate a localization you create in the editor. This applies to your account only.')"

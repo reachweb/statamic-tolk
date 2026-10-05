@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { Badge, Button, Checkbox, Description, Field, Icon, Modal, Radio, RadioGroup, Text } from '@statamic/cms/ui';
 import ProgressBar from './ProgressBar.vue';
+import { isTermReference } from '../editor/banner.js';
 import { describePush, PUSHING, pushChoices, pushes, updateSites } from '../editor/push.js';
 import { useEditorStore } from '../editor/store.js';
 
@@ -26,6 +27,7 @@ const selected = ref([]);
 const newStatus = ref('draft');
 const review = ref(false);
 const creates = computed(() => choices.value.some((choice) => choice.missing && selected.value.includes(choice.site)));
+const term = computed(() => isTermReference(props.reference));
 
 function choose() {
     selected.value = choices.value.map((choice) => choice.site);
@@ -68,7 +70,9 @@ function reload() {
             <Button v-if="origin.update" size="sm" :disabled="dirty" data-tolk-action="update-translations" @click="update">
                 {{ __('Update translations') }}
             </Button>
-            <Description v-if="dirty" data-tolk-save-first>{{ __('Save first: the translations are made from the saved entry.') }}</Description>
+            <Description v-if="dirty" data-tolk-save-first>
+                {{ term ? __('Save first: the translations are made from the saved term.') : __('Save first: the translations are made from the saved entry.') }}
+            </Description>
         </div>
 
         <Text v-if="push?.phase === 'starting'" data-tolk-push-phase="starting">{{ __('Starting the translation…') }}</Text>
@@ -86,7 +90,11 @@ function reload() {
                 {{ __(':finished of :total translations finished.', { finished: shown.progress.finished, total: shown.progress.total }) }}
             </Description>
             <Description v-if="shown.keepOpen">
-                {{ __('Keep this page open until the translations are saved. If you leave, they continue when you open this entry again.') }}
+                {{
+                    term
+                        ? __('Keep this page open until the translations are saved. If you leave, they continue when you open this term again.')
+                        : __('Keep this page open until the translations are saved. If you leave, they continue when you open this entry again.')
+                }}
             </Description>
             <div v-if="shown.failure" class="flex flex-wrap items-center gap-2" data-tolk-push-failure>
                 <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" />
@@ -127,7 +135,13 @@ function reload() {
 
         <Modal v-model:open="open" :title="__('Translate into other languages')" icon="dictionary-language-book" data-tolk-push-modal>
             <div class="space-y-6">
-                <Text>{{ __('The saved entry is translated and saved in each language you choose. This form stays as it is.') }}</Text>
+                <Text>
+                    {{
+                        term
+                            ? __('The saved term is translated and saved in each language you choose. This form stays as it is.')
+                            : __('The saved entry is translated and saved in each language you choose. This form stays as it is.')
+                    }}
+                </Text>
                 <div class="space-y-3">
                     <div v-for="choice in choices" :key="choice.site" :data-tolk-push-site="choice.site">
                         <Checkbox

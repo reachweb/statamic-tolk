@@ -10,4 +10,9 @@ final class TargetNotFound extends RuntimeException
     {
         return new self("Entry [{$id}] not found.");
     }
+
+    public static function term(string $id, ?string $site = null): self
+    {
+        return new self($site === null ? "Term [{$id}] not found." : "Term [{$id}] not found in the site [{$site}].");
+    }
 }

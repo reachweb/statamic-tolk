@@ -13,9 +13,10 @@ export function notSavedMessage(handles, status) {
     );
 }
 
-// The entry form's save hooks. `entry.saving` refuses a save while a translation fills the form: the save response
-// replaces the form's values, and a field filled in between would stay localized and be stored in the origin's
-// language on the next save (T2.2 check 12). `entry.saved` tells the server which fields were saved (`editor/confirm`).
+// The save hooks of the entry and term forms. `entry.saving` and `term.saving` refuse a save while a translation fills
+// the form: the entry form's save response replaces the form's values, and a field filled in between would stay
+// localized and be stored in the origin's language on the next save (T2.2 check 12); in either form it would be left
+// out of the save. `entry.saved` and `term.saved` tell the server which fields were saved (`editor/confirm`).
 // `PipelineStopped` comes from `@statamic/cms/save-pipeline`; core stays silent for a save stopped with it.
 export function createSaveHooks({
     PipelineStopped,
@@ -33,8 +34,11 @@ export function createSaveHooks({
         }
 
         listening = true;
-        hooks.on('entry.saving', saving);
-        hooks.on('entry.saved', saved);
+
+        for (const type of ['entry', 'term']) {
+            hooks.on(`${type}.saving`, saving);
+            hooks.on(`${type}.saved`, saved);
+        }
     }
 
     // Hook callbacks get `(resolve, reject, payload)`. A stacked editor saves through the same hook; it is refused too
@@ -65,9 +69,7 @@ export function createSaveHooks({
     async function afterSave(payload) {
         const editor = store();
         const container = editor.containers[BASE];
-        // The response names the saved entry. The hook's own `reference` is the one the form was opened with, also after
-        // an in-place site switch.
-        const reference = payload?.response?.data?.data?.reference ?? payload?.reference ?? null;
+        const reference = savedReference(payload, container);
 
         // A form without a banner, or a stacked editor saving another entry.
         if (!container?.reference || reference !== container.reference) {
@@ -113,4 +115,21 @@ export function createSaveHooks({
     }
 
     return { listen, saving, saved };
+}
+
+// The response names the saved entry. A term's response has only its id, which is the same in every site, so the term
+// open in the form is the one saved when its reference has that id. The hook's own `reference` is the one the form was
+// opened with, also after an in-place site switch.
+function savedReference(payload, container) {
+    const saved = payload?.response?.data?.data;
+
+    if (typeof saved?.reference === 'string') {
+        return saved.reference;
+    }
+
+    if (typeof saved?.id === 'string' && container?.reference?.startsWith(`term::${saved.id}::`)) {
+        return container.reference;
+    }
+
+    return payload?.reference ?? null;
 }

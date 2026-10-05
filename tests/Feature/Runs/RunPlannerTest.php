@@ -254,6 +254,100 @@ describe('build', function () {
     ]);
 });
 
+describe('terms', function () {
+    beforeEach(function () {
+        $this->makeTaxonomy('topics', ['en', 'el', 'de'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'description' => ['type' => 'textarea', 'localizable' => true],
+            'internal' => ['type' => 'textarea', 'display' => 'Internal'],
+        ]);
+        $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food', 'description' => 'Eat well.']]);
+        $this->makeTerm('topics', 'wellness', ['en' => ['title' => 'Wellness']]);
+    });
+
+    it('adds one item per term and site after the entry items, with the next indexes', function () {
+        $planned = planRun(['sites' => ['el', 'de'], 'collections' => ['articles'], 'taxonomies' => ['topics']]);
+        $terms = array_slice($planned->items, 4);
+
+        expect(array_map(fn (RunItem $item) => [$item->index, $item->type, $item->sourceId, $item->targetSite, $item->title], $terms))->toBe([
+            [4, ContentType::Term, 'topics::food', 'el', 'Food'],
+            [5, ContentType::Term, 'topics::food', 'de', 'Food'],
+            [6, ContentType::Term, 'topics::wellness', 'el', 'Wellness'],
+            [7, ContentType::Term, 'topics::wellness', 'de', 'Wellness'],
+        ])
+            ->and($terms[0])->toMatchObject(['stage' => 0, 'dependsOn' => [], 'status' => RunItemStatus::Pending])
+            ->and($planned->skipped)->toBe([])
+            ->and($planned->run->scope['taxonomies'])->toBe(['topics'])
+            ->and($planned->run->scope['out_of_scope'])->toBe([
+                ['container' => 'topics', 'handle' => 'internal', 'label' => 'Internal', 'type' => 'textarea', 'reason' => 'not_localizable'],
+            ]);
+    });
+
+    it('resolves selected terms in any site, each once, and never targets the taxonomy\'s default site', function () {
+        $this->makeTaxonomy('tags', ['el', 'en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTerm('tags', 'sea', ['el' => ['title' => 'Θάλασσα']]);
+
+        $planned = planRun(['sites' => ['en', 'el'], 'termIds' => ['tags::sea', 'topics::food', 'tags::sea']]);
+
+        expect(array_map(fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite, $planned->items))->toBe(['tags::sea→en', 'topics::food→el'])
+            ->and($planned->run->scope['term_ids'])->toBe(['tags::sea', 'topics::food', 'tags::sea']);
+    });
+
+    it('reports excluded taxonomies and taxonomies without a requested site, and leaves single-site taxonomies out of all', function () {
+        $this->withSettings(['excluded_taxonomies' => ['tags']]);
+        $this->makeTaxonomy('tags', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTaxonomy('places', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTaxonomy('labels', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTerm('tags', 'sea', ['en' => ['title' => 'Sea']]);
+        $this->makeTerm('places', 'chania', ['en' => ['title' => 'Chania']]);
+        $this->makeTerm('labels', 'new', ['en' => ['title' => 'New']]);
+
+        $named = planRun(['sites' => ['el', 'de'], 'taxonomies' => ['tags', 'places']]);
+        $all = planRun(['sites' => ['el', 'de'], 'taxonomies' => ['*']]);
+        $single = planRun(['sites' => ['el'], 'taxonomies' => ['labels']]);
+        $label = fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite;
+
+        expect(array_map($label, $named->items))->toBe(['places::chania→el'])
+            ->and($named->skipped)->toBe(['excluded_taxonomy' => 2, 'site_not_in_taxonomy' => 1])
+            ->and(array_map($label, $all->items))->toEqualCanonicalizing(['topics::food→el', 'topics::food→de', 'topics::wellness→el', 'topics::wellness→de', 'places::chania→el'])
+            ->and(collect($all->skipped)->sortKeys()->all())->toBe(['excluded_taxonomy' => 2, 'site_not_in_taxonomy' => 1])
+            ->and($single->items)->toBe([])
+            ->and($single->skipped)->toBe(['site_not_in_taxonomy' => 1]);
+    });
+
+    it('drops the terms a user may not edit, or in a site the user may not access, and counts them', function () {
+        $user = $this->signInWithPermissions(['access en site', 'access el site', 'view topics terms', 'edit topics terms']);
+
+        $planned = planRun(['sites' => ['el', 'de'], 'taxonomies' => ['topics'], 'user' => $user]);
+
+        expect(array_map(fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite, $planned->items))->toBe(['topics::food→el', 'topics::wellness→el'])
+            ->and($planned->skipped)->toBe(['unauthorized' => 2]);
+    });
+
+    it('refuses unknown taxonomies and terms', function (array $request, string $exception, string $message) {
+        expect(fn () => planRun($request))->toThrow($exception, $message);
+    })->with([
+        'taxonomy' => [['sites' => ['el'], 'taxonomies' => ['colours']], InvalidArgumentException::class, 'Taxonomy [colours] not found.'],
+        'term' => [['sites' => ['el'], 'termIds' => ['topics::drink']], TargetNotFound::class, 'Term [topics::drink] not found.'],
+    ]);
+
+    it('estimates the terms with the entries and skips a translated term', function () {
+        $this->fakeTranslations();
+        $options = PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']);
+        app(TargetTranslator::class)->translate(app(TargetFactory::class)->forTerm('topics::food', 'el'), $options, new ApplyOptions);
+        $calls = $this->modelCalls();
+        $run = storedRun(planRun(['sites' => ['el'], 'entryIds' => [$this->hello->id()], 'taxonomies' => ['topics']]));
+
+        $progress = app(RunPlanner::class)->estimate($run, 0, 60_000);
+
+        expect($progress->estimate->segments)->toBe(3)
+            ->and($progress->estimate->chars)->toBe(mb_strlen('HelloA short intro.Wellness'))
+            ->and(app(RunRepository::class)->item($run, 1))->toMatchObject(['type' => ContentType::Term, 'status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do'])
+            ->and(app(RunRepository::class)->item($run, 2)->status)->toBe(RunItemStatus::Pending)
+            ->and($this->modelCalls())->toBe($calls);
+    });
+});
+
 describe('pages', function () {
     it('orders pages by their tree and makes a new child depend on its parent item in the same site', function () {
         $this->makePages(['home', 'rooms' => ['suites' => ['honeymoon']], 'dining'], root: false, creationOrder: ['honeymoon', 'dining', 'suites', 'rooms', 'home']);

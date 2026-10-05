@@ -11,6 +11,7 @@ use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
@@ -52,6 +53,7 @@ use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Entry;
+use Statamic\Facades\Term;
 use Statamic\Facades\User;
 
 class EditorController extends Controller
@@ -117,7 +119,9 @@ class EditorController extends Controller
         }
 
         if (! $target?->exists()) {
-            $this->fail(410, 'target_missing', __('The entry this translation was made for no longer exists.'));
+            $this->fail(410, 'target_missing', ($plan->target['type'] ?? null) === ContentType::Term->value
+                ? __('The term this translation was made for no longer exists.')
+                : __('The entry this translation was made for no longer exists.'));
         }
 
         $this->authorized($target, $user);
@@ -166,8 +170,8 @@ class EditorController extends Controller
     }
 
     /**
-     * Translates the saved origin open in the editor into some of the sites its banner lists, as a run that starts at
-     * once (T8.13). Its creator follows it through the run routes §A14 allows them; the open form is not touched (D4).
+     * Translates the saved origin open in the editor, an entry or a term in its taxonomy's default site, into some of
+     * the sites its banner lists, as a run that starts at once (T8.13). Its creator follows it through the run routes §A14 allows them; the open form is not touched (D4).
      */
     public function push(
         EditorPushRequest $request,
@@ -179,37 +183,45 @@ class EditorController extends Controller
         RunState $state,
     ): JsonResponse {
         $user = User::current();
-        $payload = $status->for($request->validated('reference'), $user);
+        $reference = $request->validated('reference');
+        $term = self::isTerm($reference);
+        $payload = $status->for($reference, $user);
         $listed = array_column($payload['origin']['localizations'] ?? [], 'site');
 
         if ($payload['reason'] === EditorStatus::UNKNOWN_REFERENCE) {
-            $this->fail(404, 'unknown_reference', __('The entry to translate was not found.'));
+            $this->fail(404, 'unknown_reference', $term ? __('The term to translate was not found.') : __('The entry to translate was not found.'));
         }
 
         if ($listed === []) {
-            $this->fail(422, 'not_an_origin', __('This entry has no translations to update from here.'));
+            $this->fail(422, 'not_an_origin', $term ? __('This term has no translations to update from here.') : __('This entry has no translations to update from here.'));
         }
 
         if ($unlisted = array_diff($request->validated('sites'), $listed)) {
-            $this->fail(422, 'invalid_sites', __('This entry cannot be translated into :sites from here.', ['sites' => implode(', ', $unlisted)]));
+            $sites = ['sites' => implode(', ', $unlisted)];
+
+            $this->fail(422, 'invalid_sites', $term
+                ? __('This term cannot be translated into :sites from here.', $sites)
+                : __('This entry cannot be translated into :sites from here.', $sites));
         }
 
         if ($payload['active_run'] !== null) {
             throw new HttpResponseException(response()->json([
-                'message' => __('A translation of this entry is already in progress.'),
+                'message' => $term ? __('A translation of this term is already in progress.') : __('A translation of this entry is already in progress.'),
                 'code' => 'run_active',
                 'active_run' => $payload['active_run'],
             ], 409));
         }
 
-        $entry = Entry::find(TargetRef::parse($request->validated('reference'))->id);
+        $ref = TargetRef::parse($reference);
+        $item = $term ? Term::find($ref->id)->in($ref->site) : Entry::find($ref->id);
 
         try {
             $planned = $planner->build(new RunRequest(
                 sites: array_values($request->validated('sites')),
                 driver: RunDispatcher::resolveDriver(),
-                sourceSite: $entry->locale(),
-                entryIds: [(string) $entry->id()],
+                sourceSite: $item->locale(),
+                entryIds: $term ? [] : [(string) $item->id()],
+                termIds: $term ? [(string) $item->id()] : [],
                 options: [
                     'mode' => $request->validated('mode'),
                     'overwrite_manual' => $request->boolean('overwrite_manual'),
@@ -217,7 +229,7 @@ class EditorController extends Controller
                     'new_status' => $request->validated('new_status'),
                 ],
                 user: $user,
-                reference: $entry->reference(),
+                reference: $item->reference(),
             ));
         } catch (NoProviderConfigured|MissingDefaultModel $exception) {
             $this->fail(422, 'no_translator', $exception->getMessage());
@@ -230,9 +242,11 @@ class EditorController extends Controller
         }
 
         if ($planned->items === []) {
-            $this->fail(422, 'nothing_to_translate', isset($planned->skipped[RunPlanner::EXCLUDED_COLLECTION])
-                ? __('Entries of this collection are excluded from translation in the settings.')
-                : __('There is nothing to translate into these sites.'));
+            $this->fail(422, 'nothing_to_translate', match (true) {
+                isset($planned->skipped[RunPlanner::EXCLUDED_COLLECTION]) => __('Entries of this collection are excluded from translation in the settings.'),
+                isset($planned->skipped[RunPlanner::EXCLUDED_TAXONOMY]) => __('Terms of this taxonomy are excluded from translation in the settings.'),
+                default => __('There is nothing to translate into these sites.'),
+            });
         }
 
         $run = $runs->create($planned->run, $planned->items);
@@ -255,7 +269,7 @@ class EditorController extends Controller
         try {
             return $this->targets->fromReference($reference);
         } catch (InvalidTargetRef|TargetNotFound) {
-            $this->fail(404, 'unknown_reference', __('The entry to translate was not found.'));
+            $this->fail(404, 'unknown_reference', self::isTerm($reference) ? __('The term to translate was not found.') : __('The entry to translate was not found.'));
         } catch (NotALocalization|NotSupportedYet $exception) {
             $this->fail(422, 'not_translatable', $exception->getMessage());
         }
@@ -271,6 +285,12 @@ class EditorController extends Controller
         } catch (InvalidTargetRef|TargetNotFound|NotALocalization|NotSupportedYet) {
             return null;
         }
+    }
+
+    // Messages name what the reference names; any reference that is not a term's reads as an entry's.
+    private static function isTerm(string $reference): bool
+    {
+        return str_starts_with($reference, ContentType::Term->value.'::');
     }
 
     /**

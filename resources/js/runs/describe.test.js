@@ -165,6 +165,12 @@ describe('what the run translates', () => {
             sites: 'Greek',
         });
         expect(describeScope({ collections: [], entry_ids: ['a', 'b'], sites: [] })).toEqual({ what: '2 selected entries', sites: '' });
+        expect(describeScope({ collections: ['articles'], taxonomies: ['topics', 'tags'], sites: ['el'] }, siteName).what).toBe('articles, topics, tags');
+        expect(describeScope({ collections: ['*'], taxonomies: ['*'], term_ids: ['topics::food'] }).what).toBe('All collections, All taxonomies, 1 selected term');
+        expect(describeScope({ term_ids: ['topics::food', 'topics::wellness'], sites: ['el', 'de'] }, siteName)).toEqual({
+            what: '2 selected terms',
+            sites: 'Greek, German',
+        });
         expect(describeScope({}).what).toBe('Nothing selected');
     });
 

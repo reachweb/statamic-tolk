@@ -16,8 +16,10 @@ use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
+use Statamic\Facades\Term;
 
 final class TargetFactory
 {
@@ -31,20 +33,17 @@ final class TargetFactory
     ) {}
 
     /**
-     * The reference of an existing target; an entry reference must name a localization.
+     * The reference of an existing target; an entry or term reference must name a localization.
      */
     public function fromReference(string|TargetRef $reference): Target
     {
         $ref = $reference instanceof TargetRef ? $reference : TargetRef::parse($reference);
 
-        if ($ref->type !== ContentType::Entry) {
-            throw NotSupportedYet::contentType($ref->type);
-        }
-
-        $localization = Entry::find($ref->id) ?? throw TargetNotFound::entry($ref->id);
-        $origin = $localization->origin() ?? throw NotALocalization::for((string) $ref);
-
-        return $this->forEntry($origin, $localization->locale());
+        return match ($ref->type) {
+            ContentType::Entry => $this->entryFromReference($ref),
+            ContentType::Term => $this->termFromReference($ref),
+            default => throw NotSupportedYet::contentType($ref->type),
+        };
     }
 
     /**
@@ -70,6 +69,28 @@ final class TargetFactory
         return new EntryTarget((string) $entry->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->walker, $this->resolver, $this->stateWriter);
     }
 
+    /**
+     * $term is any site of the term, or its id; the source is always the term in its taxonomy's default site.
+     */
+    public function forTerm(TermContract|string $term, string $site): TermTarget
+    {
+        $source = $term instanceof TermContract ? $term->inDefaultLocale() : (Term::find($term) ?? throw TargetNotFound::term($term));
+
+        if (Site::get($site) === null) {
+            throw UnknownSite::for($site);
+        }
+
+        if ($source->locale() === $site) {
+            throw InvalidTarget::defaultSite((string) $source->id(), $site);
+        }
+
+        if (! $source->taxonomy()->sites()->contains($site)) {
+            throw InvalidTarget::siteNotInTaxonomy($source->taxonomyHandle(), $site);
+        }
+
+        return new TermTarget((string) $source->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter);
+    }
+
     public function fromDescription(array $describe): Target
     {
         $type = ContentType::tryFrom((string) ($describe['type'] ?? ''));
@@ -82,7 +103,32 @@ final class TargetFactory
 
         return match ($type) {
             ContentType::Entry => $this->forEntry((string) $sourceId, $site),
+            ContentType::Term => $this->forTerm((string) $sourceId, $site),
             default => throw NotSupportedYet::contentType($type),
         };
+    }
+
+    private function entryFromReference(TargetRef $ref): EntryTarget
+    {
+        $localization = Entry::find($ref->id) ?? throw TargetNotFound::entry($ref->id);
+        $origin = $localization->origin() ?? throw NotALocalization::for((string) $ref);
+
+        return $this->forEntry($origin, $localization->locale());
+    }
+
+    // A term reference names the site; the default site's term is the origin of the others.
+    private function termFromReference(TargetRef $ref): TermTarget
+    {
+        $term = Term::find($ref->id);
+
+        if ($term === null || ! $term->taxonomy()->sites()->contains($ref->site)) {
+            throw TargetNotFound::term($ref->id, $ref->site);
+        }
+
+        if (! $term->in($ref->site)->hasOrigin()) {
+            throw NotALocalization::for((string) $ref);
+        }
+
+        return $this->forTerm($term, $ref->site);
     }
 }

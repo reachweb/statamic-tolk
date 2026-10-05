@@ -6,7 +6,7 @@ import OriginPush from './OriginPush.vue';
 import ProgressBar from './ProgressBar.vue';
 import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
-import { attachBanner } from '../editor/banner.js';
+import { attachBanner, isTermReference } from '../editor/banner.js';
 import { registry } from '../editor/registry.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
@@ -54,6 +54,7 @@ const shown = computed(() => !ctx.readOnly.value && (banner.value.visible || fai
 // re-emit normalised values after its 500 ms window, so it flags most forms right after they load.
 const dirty = computed(() => registry.dirtyHandles(name).length > 0);
 const settingsUrl = Statamic.$config.get('tolk.settingsUrl');
+const term = computed(() => isTermReference(state.value?.reference));
 
 const colors = {
     untranslated: 'amber',
@@ -183,7 +184,7 @@ async function undo() {
             <div v-if="banner.origin" class="space-y-2" data-tolk-origin>
                 <div class="flex items-center gap-2">
                     <Icon name="dictionary-language-book" class="size-4 shrink-0 text-gray-500" />
-                    <Text>{{ __('Translations of this entry:') }}</Text>
+                    <Text>{{ term ? __('Translations of this term:') : __('Translations of this entry:') }}</Text>
                 </div>
                 <ul class="space-y-1 ps-6">
                     <li

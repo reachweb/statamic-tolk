@@ -11,15 +11,13 @@ use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\RootMissing;
-use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
-use Reach\StatamicTolk\State\PendingState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\Concerns\AppliesFields;
 use Reach\StatamicTolk\Translation\AssembledField;
-use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Revisions\Revision;
@@ -35,6 +33,8 @@ use Statamic\Support\Arr;
  */
 final class EntryTarget implements Target
 {
+    use AppliesFields;
+
     private ?EntryContract $entry = null;
 
     private ?EntryContract $localization = null;
@@ -248,26 +248,8 @@ final class EntryTarget implements Target
         $item = $this->working();
         $hadWorkingCopy = $localization->revisionsEnabled() && $localization->hasWorkingCopy();
         $ref = $this->ref();
-
-        $writes = $skipped = [];
-
-        foreach ($fields as $handle => $field) {
-            if ($this->resolver->currentTargetHash($this, $this->fields()->get($handle)) !== $field->targetBefore && ! $options->overwriteManual) {
-                $skipped[$handle] = TargetResult::TARGET_CHANGED;
-            } else {
-                $writes[$handle] = $field;
-            }
-        }
-
-        $values = $this->normalise($item, array_map(
-            fn (AssembledField $field) => $field->value,
-            array_filter($writes, fn (AssembledField $field) => ! $field->remove),
-        ));
-
-        foreach ($values as $handle => $value) {
-            $this->stateWriter->recordPending($ref, $this->sourceSite(), $handle, $this->pending($writes[$handle], $value));
-        }
-
+        [$writes, $skipped] = $this->writable($fields, $options);
+        $values = $this->prepareWrites($item, $ref, $writes);
         $mirror = $created && $this->publishesAsOrigin($localization, $writes, $options);
 
         if ($writes !== [] || $mirror) {
@@ -276,14 +258,7 @@ final class EntryTarget implements Target
             }
 
             array_push($warnings, ...$this->saveChanges($item, $mirror, $hadWorkingCopy, $options));
-
-            $removed = array_keys(array_filter($writes, fn (AssembledField $field) => $field->remove));
-
-            if ($removed !== []) {
-                $this->stateWriter->forget($ref, $removed);
-            }
-
-            $this->stateWriter->confirm($this->fresh());
+            $this->confirmWrites($ref, $writes);
         }
 
         return new ApplyResult(
@@ -294,25 +269,6 @@ final class EntryTarget implements Target
             skipped: $skipped,
             warnings: $warnings,
         );
-    }
-
-    /**
-     * @param  list<AssembledField>  $fields
-     * @return array<string, AssembledField>
-     */
-    private function keyByHandle(array $fields): array
-    {
-        $keyed = [];
-
-        foreach ($fields as $field) {
-            if (! $this->fields()->has($field->handle)) {
-                throw SourceChanged::field($field->handle);
-            }
-
-            $keyed[$field->handle] = $field;
-        }
-
-        return $keyed;
     }
 
     /**
@@ -443,34 +399,6 @@ final class EntryTarget implements Target
     private function revisionMessage(): string
     {
         return 'Translated from '.(Site::get($this->sourceSite())?->name() ?? $this->sourceSite()).' with Tolk';
-    }
-
-    /**
-     * The values as a load and save in the CP leaves them (§A11 step 3), so a later CP save does not rewrite them.
-     *
-     * @param  array<string, mixed>  $values
-     * @return array<string, mixed>
-     */
-    private function normalise(EntryContract $localization, array $values): array
-    {
-        if ($values === []) {
-            return [];
-        }
-
-        // Every entry of a collection shares one blueprint object, so the parent is set right before fields().
-        $processed = $localization->blueprint()->setParent($localization)->fields()
-            ->addValues($values)
-            ->preProcess()
-            ->process()
-            ->values()
-            ->all();
-
-        return array_intersect_key($processed, $values);
-    }
-
-    private function pending(AssembledField $field, mixed $value): PendingState
-    {
-        return $field->pending($this->resolver->targetHash($this->fields()->get($field->handle), $value));
     }
 
     /**

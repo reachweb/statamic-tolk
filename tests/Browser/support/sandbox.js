@@ -84,6 +84,21 @@ export function entryState(id) {
     return existsSync(file) ? parse(readFileSync(file, 'utf8')) : null;
 }
 
+// The data of a term's file (`content/taxonomies/{taxonomy}/{slug}.yaml`): the default site's at the root, the other
+// sites' under `localizations`. Null when the taxonomy has no such term.
+export function termFile(taxonomy, slug) {
+    const file = join(sandboxPath(), 'content/taxonomies', taxonomy, `${slug}.yaml`);
+
+    return existsSync(file) ? (parse(readFileSync(file, 'utf8')) ?? {}) : null;
+}
+
+// The addon's state of a term in one site (`content/tolk/terms/{taxonomy}/{slug}/{site}.yaml`, §A5), or null.
+export function termState(taxonomy, slug, site) {
+    const file = join(sandboxPath(), 'content/tolk/terms', taxonomy, slug, `${site}.yaml`);
+
+    return existsSync(file) ? parse(readFileSync(file, 'utf8')) : null;
+}
+
 function parseEntry(contents) {
     const lines = contents.split(/\r?\n/);
 

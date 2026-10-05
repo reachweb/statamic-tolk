@@ -213,8 +213,11 @@ export function notLocalizableHint(scope) {
 
 // What the run translates, for the runs list and the run page's title.
 export function describeScope(scope, siteName = (handle) => handle) {
-    const collections = Array.isArray(scope?.collections) ? scope.collections : [];
-    const entries = Array.isArray(scope?.entry_ids) ? scope.entry_ids.length : 0;
+    const list = (key) => (Array.isArray(scope?.[key]) ? scope[key] : []);
+    const collections = list('collections');
+    const taxonomies = list('taxonomies');
+    const entries = list('entry_ids').length;
+    const terms = list('term_ids').length;
     const parts = [];
 
     if (collections.includes('*')) {
@@ -225,6 +228,16 @@ export function describeScope(scope, siteName = (handle) => handle) {
 
     if (entries > 0) {
         parts.push(__n(':count selected entry|:count selected entries', entries));
+    }
+
+    if (taxonomies.includes('*')) {
+        parts.push(__('All taxonomies'));
+    } else if (taxonomies.length > 0) {
+        parts.push(taxonomies.join(', '));
+    }
+
+    if (terms > 0) {
+        parts.push(__n(':count selected term|:count selected terms', terms));
     }
 
     return {

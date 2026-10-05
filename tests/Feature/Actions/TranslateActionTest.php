@@ -10,9 +10,11 @@ use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Action;
 use Statamic\Facades\Asset;
 use Statamic\Facades\AssetContainer;
+use Statamic\Facades\Term;
 
 const TRANSLATE_ACTION = 'tolk_translate';
 
@@ -67,6 +69,32 @@ function onlyRun(): Run
     expect($runs)->toHaveCount(1);
 
     return $runs[0];
+}
+
+/**
+ * The actions a term listing loads for the selected terms, keyed by handle.
+ *
+ * @param  list<TermContract>  $terms
+ */
+function listedTermActions(array $terms): array
+{
+    return collect(test()->postJson(cp_route('taxonomies.terms.actions.bulk', $terms[0]->taxonomyHandle()), [
+        'selections' => array_map(fn (TermContract $term) => $term->id(), $terms),
+        'context' => ['taxonomy' => $terms[0]->taxonomyHandle()],
+    ])->assertOk()->json())->keyBy('handle')->all();
+}
+
+/**
+ * @param  list<TermContract>  $terms
+ */
+function runTermAction(array $terms, array $values = []): TestResponse
+{
+    return test()->postJson(cp_route('taxonomies.terms.actions.run', $terms[0]->taxonomyHandle()), [
+        'action' => TRANSLATE_ACTION,
+        'selections' => array_map(fn (TermContract $term) => $term->id(), $terms),
+        'context' => ['taxonomy' => $terms[0]->taxonomyHandle()],
+        'values' => ['sites' => ['el', 'de'], 'mode' => 'missing', ...$values],
+    ]);
 }
 
 describe('visibility', function () {
@@ -266,6 +294,87 @@ describe('running', function () {
         $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'access de site', 'view articles entries']);
 
         runTranslateAction([$this->hello])->assertForbidden();
+
+        expect(app(RunRepository::class)->recent(10))->toBe([]);
+    });
+});
+
+describe('terms', function () {
+    beforeEach(function () {
+        $this->makeTaxonomy('topics', ['en', 'el', 'de'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'description' => ['type' => 'textarea', 'localizable' => true],
+        ]);
+        $this->food = Term::find($this->makeTerm('topics', 'food', ['en' => ['title' => 'Food']])->id());
+        $this->wellness = Term::find($this->makeTerm('topics', 'wellness', ['en' => ['title' => 'Wellness']])->id());
+    });
+
+    it('is offered for the terms of a multi-site taxonomy, without the status of new localizations', function () {
+        $this->signInAdmin();
+
+        $action = listedTermActions([$this->food, $this->wellness])[TRANSLATE_ACTION];
+
+        expect(collect($action['fields'])->pluck('handle')->all())->toBe(['sites', 'mode', 'overwrite_manual', 'review'])
+            ->and(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English', 'el' => 'Greek', 'de' => 'German'])
+            ->and($action['values']['sites'])->toBe(['el', 'de'])
+            ->and($action['confirmationText'])->toBe('The next page shows an estimate before this term is translated.|The next page shows an estimate before these :count terms are translated.');
+    });
+
+    it('leaves the taxonomy\'s own first site out of the default sites', function () {
+        $this->makeTaxonomy('tags', ['el', 'en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $sea = Term::find($this->makeTerm('tags', 'sea', ['el' => ['title' => 'Θάλασσα']])->id());
+        $this->signInAdmin();
+
+        $action = listedTermActions([$sea])[TRANSLATE_ACTION];
+
+        expect(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English', 'el' => 'Greek'])
+            ->and($action['values']['sites'])->toBe(['en']);
+    });
+
+    it('is not offered for a single-site taxonomy, one the settings exclude, or a user who may not edit its terms', function () {
+        $this->makeTaxonomy('labels', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $label = Term::find($this->makeTerm('labels', 'new', ['en' => ['title' => 'New']])->id());
+        $this->signInAdmin();
+
+        expect(listedTermActions([$label]))->not->toHaveKey(TRANSLATE_ACTION);
+
+        $this->withSettings(['excluded_taxonomies' => ['topics']]);
+
+        expect(listedTermActions([$this->food]))->not->toHaveKey(TRANSLATE_ACTION);
+
+        $this->withSettings();
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'view topics terms']);
+
+        expect(listedTermActions([$this->food]))->not->toHaveKey(TRANSLATE_ACTION);
+
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'view topics terms', 'edit topics terms']);
+
+        expect(listedTermActions([$this->food]))->toHaveKey(TRANSLATE_ACTION);
+    });
+
+    it('creates a pending run of the selected terms and redirects to its page', function () {
+        $this->signInAdmin();
+
+        $response = runTermAction([$this->food, $this->wellness], ['mode' => 'update'])->assertOk();
+        $run = onlyRun();
+
+        expect($response->json('redirect'))->toBe(cp_route('tolk.runs.show', $run->id))
+            ->and($run->status)->toBe(RunStatus::Pending)
+            ->and($run->options['mode'])->toBe('update')
+            ->and($run->scope)->toMatchArray(['sites' => ['el', 'de'], 'entry_ids' => [], 'term_ids' => ['topics::food', 'topics::wellness']])
+            ->and(array_map(fn (RunItem $item) => [$item->type->value, $item->sourceId, $item->targetSite], RunFixtures::items($run)))->toBe([
+                ['term', 'topics::food', 'el'],
+                ['term', 'topics::food', 'de'],
+                ['term', 'topics::wellness', 'el'],
+                ['term', 'topics::wellness', 'de'],
+            ]);
+        $this->assertNoModelCalls();
+    });
+
+    it('refuses a user who may not edit the selected terms', function () {
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'view topics terms']);
+
+        runTermAction([$this->food], ['sites' => ['el']])->assertForbidden();
 
         expect(app(RunRepository::class)->recent(10))->toBe([]);
     });

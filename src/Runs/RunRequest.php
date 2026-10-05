@@ -43,7 +43,9 @@ final readonly class RunRequest
      * @param  RunDriver  $driver  what drives the run once it starts
      * @param  ?string  $sourceSite  the site to translate a missing localization from, when the family has one there
      * @param  list<string>  $collections  handles, or [ALL] for every multi-site collection
+     * @param  list<string>  $taxonomies  handles, or [ALL] for every multi-site taxonomy
      * @param  list<string>  $entryIds  any entry of each family
+     * @param  list<string>  $termIds  term ids, `{taxonomy}::{default slug}`
      * @param  ?string  $reference  the item open in the editor when the run was pushed from it (T8.13)
      */
     public function __construct(
