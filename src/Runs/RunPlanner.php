@@ -348,7 +348,7 @@ final readonly class RunPlanner
         if (RunRequest::all($handles)) {
             return Collection::all()
                 ->filter(fn ($collection) => $collection->sites()->count() > 1)
-                ->map(fn ($collection) => $collection->handle())
+                ->map->handle()
                 ->values()
                 ->all();
         }
@@ -374,7 +374,7 @@ final readonly class RunPlanner
         }
 
         try {
-            $target = $this->factory->fromDescription(['type' => $item->type->value, 'source_id' => $item->sourceId, 'site' => $item->targetSite]);
+            $target = $this->factory->fromDescription($item->describe());
         } catch (InvalidTarget|NotSupportedYet|TargetNotFound|UnknownSite) {
             // Translating fails the item and says why.
             return new Estimate;

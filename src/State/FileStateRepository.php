@@ -7,12 +7,11 @@ use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use LogicException;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
+use Reach\StatamicTolk\Support\Concerns\StoresFiles;
 use Reach\StatamicTolk\Targets\TargetRef;
-use RuntimeException;
 use Statamic\Facades\YAML;
 use Statamic\Yaml\ParseException;
 use Symfony\Component\Finder\Finder;
@@ -22,6 +21,8 @@ use Symfony\Component\Finder\Finder;
  */
 final class FileStateRepository implements StateRepository
 {
+    use StoresFiles;
+
     public function __construct(private readonly Filesystem $files) {}
 
     public function get(TargetRef $ref): ItemState
@@ -96,19 +97,7 @@ final class FileStateRepository implements StateRepository
         $contents = YAML::dump($state->toArray());
 
         // Removing another target's empty state directory can race with this write, so it gets a second try.
-        retry(2, function () use ($path, $contents) {
-            $this->files->ensureDirectoryExists(dirname($path));
-
-            $temporary = $path.'.'.Str::random(16).'.tmp';
-
-            try {
-                if ($this->files->put($temporary, $contents) === false || ! $this->files->move($temporary, $path)) {
-                    throw new RuntimeException("Unable to write the translation state file [{$path}].");
-                }
-            } finally {
-                $this->files->delete($temporary);
-            }
-        });
+        retry(2, fn () => $this->writeAtomically($path, $contents, 'the translation state file'));
     }
 
     private function remove(TargetRef $ref): void

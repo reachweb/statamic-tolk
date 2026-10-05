@@ -5,12 +5,9 @@ namespace Reach\StatamicTolk\Runs;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Closure;
-use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
-use JsonException;
 use LogicException;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Usage;
@@ -20,7 +17,7 @@ use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Exceptions\ClaimLost;
 use Reach\StatamicTolk\Exceptions\RunNotFound;
 use Reach\StatamicTolk\State\Concerns\ReadsStoredValues;
-use RuntimeException;
+use Reach\StatamicTolk\Support\Concerns\StoresFiles;
 use ValueError;
 
 /**
@@ -34,8 +31,7 @@ use ValueError;
 final class FileRunRepository implements RunRepository
 {
     use ReadsStoredValues;
-
-    public const int MAX_ATTEMPTS = 3;
+    use StoresFiles;
 
     private const array IDLE = [RunStatus::Pending, RunStatus::Cancelled, RunStatus::Aborted];
 
@@ -63,7 +59,7 @@ final class FileRunRepository implements RunRepository
                     throw new LogicException("The run [{$run->id}] has two items with the index [{$item->index}].");
                 }
 
-                $this->put($this->itemPath($run->id, $item->index), $item->toArray());
+                $this->writeJson($this->itemPath($run->id, $item->index), $item->toArray(), 'the run file');
                 $index[$item->index] = $this->entry($item);
             }
 
@@ -171,23 +167,12 @@ final class FileRunRepository implements RunRepository
 
     public function claimNext(Run $run, string $workerId, int $ttl): ?RunItem
     {
-        return $this->claim($run, $workerId, $ttl, RunItemStatus::Translating, function (array $index) {
-            $now = CarbonImmutable::now();
-            $openStages = $this->openStages($index);
-
-            return fn (array $entry) => $entry['status'] === RunItemStatus::Pending->value
-                && $this->isAvailable($entry, $now)
-                && $this->isReady($index, $entry, $openStages);
-        });
+        return $this->claim($run, $workerId, $ttl, RunItemStatus::Pending, RunItemStatus::Translating);
     }
 
     public function claimTranslated(Run $run, string $workerId, int $ttl): ?RunItem
     {
-        return $this->claim($run, $workerId, $ttl, RunItemStatus::Applying, function () {
-            $now = CarbonImmutable::now();
-
-            return fn (array $entry) => $entry['status'] === RunItemStatus::Translated->value && $this->isAvailable($entry, $now);
-        });
+        return $this->claim($run, $workerId, $ttl, RunItemStatus::Translated, RunItemStatus::Applying);
     }
 
     public function extendClaim(Run $run, RunItem $item): void
@@ -268,11 +253,12 @@ final class FileRunRepository implements RunRepository
     }
 
     /**
-     * @param  Closure(array<int, array> $index): Closure(array $entry): bool  $fresh  builds the test for an item that is up for its first claim
+     * Hands out the worker's own item in $holding, else the first available item in $from, else one in $holding whose
+     * claim expired, and moves it to $holding.
      */
-    private function claim(Run $run, string $workerId, int $ttl, RunItemStatus $holding, Closure $fresh): ?RunItem
+    private function claim(Run $run, string $workerId, int $ttl, RunItemStatus $from, RunItemStatus $holding): ?RunItem
     {
-        return $this->locked($run->id, function () use ($run, $workerId, $ttl, $holding, $fresh) {
+        return $this->locked($run->id, function () use ($run, $workerId, $ttl, $from, $holding) {
             $stored = $this->readRun($run->id);
 
             if ($stored === null) {
@@ -283,7 +269,7 @@ final class FileRunRepository implements RunRepository
             $changed = [];
             $claimed = in_array($stored->status, self::IDLE, true)
                 ? null
-                : $this->select($run->id, $index, $changed, $workerId, $ttl, $holding, $fresh($index));
+                : $this->select($run->id, $index, $changed, $workerId, $ttl, $from, $holding);
 
             $this->commit($run, $stored, $index, $changed, started: $claimed !== null);
 
@@ -293,18 +279,24 @@ final class FileRunRepository implements RunRepository
 
     /**
      * @param  array<int, RunItem>  $changed
-     * @param  Closure(array $entry): bool  $isFresh
      */
-    private function select(string $id, array $index, array &$changed, string $workerId, int $ttl, RunItemStatus $holding, Closure $isFresh): ?RunItem
+    private function select(string $id, array $index, array &$changed, string $workerId, int $ttl, RunItemStatus $from, RunItemStatus $holding): ?RunItem
     {
+        $now = CarbonImmutable::now();
+        // Dependencies and stages hold back only the items that are still to be translated.
+        $openStages = $from === RunItemStatus::Pending ? $this->openStages($index) : null;
         $own = $fresh = $expired = [];
 
         foreach ($index as $i => $entry) {
-            if ($entry['status'] !== $holding->value) {
-                if ($isFresh($entry)) {
+            if ($entry['status'] === $from->value) {
+                if ($this->isAvailable($entry, $now) && ($openStages === null || $this->isReady($index, $entry, $openStages))) {
                     $fresh[] = $i;
                 }
 
+                continue;
+            }
+
+            if ($entry['status'] !== $holding->value) {
                 continue;
             }
 
@@ -330,13 +322,13 @@ final class FileRunRepository implements RunRepository
 
             $item->attempts++;
 
-            if ($item->attempts < self::MAX_ATTEMPTS) {
+            if ($item->attempts < RunItem::MAX_ATTEMPTS) {
                 return $changed[$i] = $this->handOut($item, $workerId, $ttl, $holding);
             }
 
             $item->status = RunItemStatus::Failed;
             $item->claim = null;
-            $item->error = 'No worker finished this item in '.self::MAX_ATTEMPTS.' attempts.';
+            $item->error = 'No worker finished this item in '.RunItem::MAX_ATTEMPTS.' attempts.';
             $changed[$i] = $item;
         }
 
@@ -393,7 +385,7 @@ final class FileRunRepository implements RunRepository
         }
 
         foreach ($changed as $i => $item) {
-            $this->put($this->itemPath($run->id, $i), $item->toArray());
+            $this->writeJson($this->itemPath($run->id, $i), $item->toArray(), 'the run file');
         }
 
         $this->writeIndex($run->id, $index);
@@ -519,7 +511,7 @@ final class FileRunRepository implements RunRepository
     private function readIndex(string $id): array
     {
         $index = [];
-        $entries = $this->isValidId($id) ? $this->read($this->indexPath($id)) : null;
+        $entries = $this->isValidId($id) ? $this->readJson($this->indexPath($id)) : null;
 
         foreach ($entries ?? [] as $entry) {
             if (is_array($entry) && is_int($entry['index'] ?? null) && RunItemStatus::tryFrom($entry['status'] ?? '')) {
@@ -535,15 +527,15 @@ final class FileRunRepository implements RunRepository
     // Keys with an empty value are left out: the index is rewritten on every claim.
     private function writeIndex(string $id, array $index): void
     {
-        $this->put($this->indexPath($id), array_values(array_map(fn (array $entry) => array_filter(
+        $this->writeJson($this->indexPath($id), array_values(array_map(fn (array $entry) => array_filter(
             $entry,
             fn (mixed $value) => $value !== null && $value !== [],
-        ), $index)), pretty: false);
+        ), $index)), 'the run file', pretty: false);
     }
 
     private function readRun(string $id): ?Run
     {
-        $data = $this->isValidId($id) ? $this->read($this->runPath($id)) : null;
+        $data = $this->isValidId($id) ? $this->readJson($this->runPath($id)) : null;
 
         try {
             $run = $data === null ? null : Run::fromArray($data);
@@ -561,14 +553,14 @@ final class FileRunRepository implements RunRepository
     {
         $stored = $data->toArray();
 
-        $this->put($this->runPath($run->id), $stored);
+        $this->writeJson($this->runPath($run->id), $stored, 'the run file');
 
         $run->refresh(Run::fromArray($stored));
     }
 
     private function readItem(string $id, int $index): ?RunItem
     {
-        $data = $this->isValidId($id) ? $this->read($this->itemPath($id, $index)) : null;
+        $data = $this->isValidId($id) ? $this->readJson($this->itemPath($id, $index)) : null;
 
         try {
             return $data === null ? null : RunItem::fromArray($data);
@@ -601,36 +593,10 @@ final class FileRunRepository implements RunRepository
         return array_values(array_filter(array_map(basename(...), $this->files->directories($this->root())), $this->isValidId(...)));
     }
 
-    private function read(string $path): ?array
-    {
-        try {
-            $data = json_decode($this->files->get($path), true, 512, JSON_THROW_ON_ERROR);
-        } catch (FileNotFoundException|JsonException) {
-            return null;
-        }
-
-        return is_array($data) ? $data : null;
-    }
-
-    private function put(string $path, array $data, bool $pretty = true): void
-    {
-        $contents = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR | ($pretty ? JSON_PRETTY_PRINT : 0));
-        $temporary = $path.'.'.Str::random(16).'.tmp';
-
-        $this->files->ensureDirectoryExists(dirname($path));
-
-        try {
-            if ($this->files->put($temporary, $contents) === false || ! $this->files->move($temporary, $path)) {
-                throw new RuntimeException("Unable to write the run file [{$path}].");
-            }
-        } finally {
-            $this->files->delete($temporary);
-        }
-    }
-
+    // Every claim and item save takes this lock for a few milliseconds, so a waiter tries again sooner than Laravel's 250.
     private function locked(string $id, Closure $callback): mixed
     {
-        return Cache::store(config('tolk.cache_store'))->lock('tolk:run:'.$id, 10)->block(5, $callback);
+        return Cache::store(config('tolk.cache_store'))->lock('tolk:run:'.$id, 10)->betweenBlockedAttemptsSleepFor(10)->block(5, $callback);
     }
 
     private function isValidId(string $id): bool

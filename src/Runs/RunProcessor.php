@@ -5,6 +5,7 @@ namespace Reach\StatamicTolk\Runs;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Closure;
+use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Reach\StatamicTolk\Ai\ModelRef;
@@ -70,7 +71,7 @@ final readonly class RunProcessor
     /**
      * Attempts at an item that throws before it fails.
      */
-    public const int MAX_ATTEMPTS = 3;
+    public const int MAX_ATTEMPTS = RunItem::MAX_ATTEMPTS;
 
     /**
      * The first wait after an item threw, doubled with each further attempt.
@@ -83,6 +84,8 @@ final readonly class RunProcessor
     public const int BUSY_SECONDS = 1;
 
     private const array FINISHED = [RunStatus::Completed, RunStatus::CompletedWithErrors, RunStatus::Cancelled, RunStatus::Aborted];
+
+    private const array TO_APPLY = [RunItemStatus::Translated, RunItemStatus::Applying];
 
     public function __construct(
         private RunRepository $runs,
@@ -165,8 +168,10 @@ final readonly class RunProcessor
         $items = $returned = 0;
         $wait = null;
         $ttl = max(1, (int) config('tolk.write.lock_seconds'));
+        $counts = $this->runs->counts($run);
 
-        while (CarbonImmutable::now()->lessThan($deadline) && $this->hasItemsToApply($run)) {
+        // Read from the counts first, so a call with nothing to apply does not take the global write lock.
+        while (CarbonImmutable::now()->lessThan($deadline) && self::count($counts, ...self::TO_APPLY) > 0) {
             try {
                 $step = ContentWriter::write(fn () => $this->applyNext($run, $workerId, $ttl), $this->secondsUntil($deadline));
             } catch (WriterBusy) {
@@ -179,14 +184,13 @@ final readonly class RunProcessor
                 break;
             }
 
-            ['item' => $item, 'result' => $result, 'wait' => $wait] = $step;
+            ['item' => $item, 'result' => $result] = $step;
 
             if ($result !== null) {
                 TargetTranslated::dispatch($result->ref, $result->appliedFields(), array_keys($item->usage->usages), $item->usage);
             }
 
-            $finished = $item?->status->isFinal() ?? false;
-            $items += (int) $finished;
+            $items += (int) ($item?->status->isFinal() ?? false);
             $returned += (int) ($item?->status === RunItemStatus::Pending);
 
             // A cancel or an abort came while this call saved content, which the finalize of the cancel did not commit.
@@ -195,18 +199,20 @@ final readonly class RunProcessor
                 break;
             }
 
-            if ($finished) {
-                $this->finalizeWhenFinished($run);
-            }
+            $counts = $this->finalizeWhenFinished($run);
 
-            if ($wait !== null) {
+            // Another request holds the item.
+            if ($item === null) {
+                $wait = self::BUSY_SECONDS;
                 break;
             }
         }
 
-        $counts = $this->runs->counts($run);
-        $remains = $run->status === RunStatus::Running
-            && $counts[RunItemStatus::Translated->value] + $counts[RunItemStatus::Applying->value] > 0;
+        if ($run->status === RunStatus::Running) {
+            $counts = $this->finalizeWhenFinished($run);
+        }
+
+        $remains = $run->status === RunStatus::Running && self::count($counts, ...self::TO_APPLY) > 0;
         $wait = $wait ?? (CarbonImmutable::now()->lessThan($deadline) ? self::BUSY_SECONDS : 0);
 
         return new ApplyReport($items, $returned, $remains, $remains ? $wait : null);
@@ -261,9 +267,8 @@ final readonly class RunProcessor
      */
     private function work(Run $run, RunItem $item, PlanOptions $options, CarbonInterface $deadline, int $claimTtl, int &$units, int &$items): ?int
     {
-        $lock = $this->cache()->lock("tolk:item:{$run->id}:{$item->index}", $claimTtl);
+        $lock = $this->itemLock($run, $item, $claimTtl);
 
-        // An earlier request still works on the item. This claim replaced its own, so it stops at its next write.
         if (! $lock->get()) {
             return self::BUSY_SECONDS;
         }
@@ -287,10 +292,8 @@ final readonly class RunProcessor
             return $this->translateItem($run, $item, $options, $deadline, $units, $items);
         } catch (ClaimLost|UnitBusy|RunNotFound $quiet) {
             throw $quiet;
-        } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite $exception) {
-            return $this->fail($run, $item, $exception->getMessage(), $exception instanceof NotSupportedYet ? TargetResult::NOT_SUPPORTED : null, $items);
-        } catch (RootMissing $missing) {
-            return $this->fail($run, $item, $missing->getMessage(), TargetResult::ROOT_MISSING, $items);
+        } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing $exception) {
+            return $this->fail($run, $item, $exception->getMessage(), self::reason($exception), $items);
         } catch (TransientProviderFailure $failure) {
             return $this->waitFor($run, $item, $failure, $items);
         } catch (ProviderRejected $rejected) {
@@ -302,7 +305,7 @@ final readonly class RunProcessor
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->retryLater($run, $item, $exception, $items);
+            return $this->releaseForRetry($run, $item) ? null : $this->fail($run, $item, $exception->getMessage(), null, $items);
         }
     }
 
@@ -311,7 +314,7 @@ final readonly class RunProcessor
      */
     private function translateItem(Run $run, RunItem $item, PlanOptions $options, CarbonInterface $deadline, int &$units, int &$items): ?int
     {
-        $target = $this->factory->fromDescription(['type' => $item->type->value, 'source_id' => $item->sourceId, 'site' => $item->targetSite]);
+        $target = $this->factory->fromDescription($item->describe());
         $plan = ($item->planId === null ? null : $this->store->get($item->planId)) ?? $this->plan($run, $item, $target, $options);
 
         if ($plan === null) {
@@ -322,8 +325,9 @@ final readonly class RunProcessor
         }
 
         $record = $this->recorder($run, $item);
+        $runnable = $this->pipeline->runnable($plan);
 
-        while (($runnable = $this->pipeline->runnable($plan)) !== []) {
+        while ($runnable !== []) {
             if (! CarbonImmutable::now()->lessThan($deadline)) {
                 return 0;
             }
@@ -338,10 +342,14 @@ final readonly class RunProcessor
 
             $this->pipeline->runUnit($plan, array_key_first($runnable), $record);
             $units++;
-
-            // Stores the item's usage, and its waits, which a unit that succeeded resets.
             $item->waits = 0;
-            $this->runs->saveItem($run, $item);
+            $runnable = $this->pipeline->runnable($plan);
+
+            // Stores the item's usage, and its waits, which a unit that succeeded resets; after the last unit, the
+            // status is saved with them.
+            if ($runnable !== []) {
+                $this->runs->saveItem($run, $item);
+            }
         }
 
         $item->status = RunItemStatus::Translated;
@@ -355,9 +363,9 @@ final readonly class RunProcessor
     /**
      * Claims the next translated item and applies it under its lock. Runs inside ContentWriter::write().
      *
-     * @return ?array{item: ?RunItem, result: ?TargetResult, wait: ?int} null when no item could be claimed; `item` is
-     *                                                                   null when another request has it now, and
-     *                                                                   `result` is set when translations were saved
+     * @return ?array{item: ?RunItem, result: ?TargetResult} null when no item could be claimed; `item` is null when
+     *                                                       another request has it now, and `result` is set when
+     *                                                       translations were saved
      */
     private function applyNext(Run $run, string $workerId, int $ttl): ?array
     {
@@ -367,17 +375,16 @@ final readonly class RunProcessor
             return null;
         }
 
-        $lock = $this->cache()->lock("tolk:item:{$run->id}:{$item->index}", $ttl);
+        $lock = $this->itemLock($run, $item, $ttl);
 
-        // An earlier request still works on the item. This claim replaced its own, so it stops at its next write.
         if (! $lock->get()) {
-            return ['item' => null, 'result' => null, 'wait' => self::BUSY_SECONDS];
+            return ['item' => null, 'result' => null];
         }
 
         try {
-            return ['item' => $item, 'result' => $this->applyItem($run, $item), 'wait' => null];
+            return ['item' => $item, 'result' => $this->applyItem($run, $item)];
         } catch (ClaimLost|RunNotFound) {
-            return ['item' => null, 'result' => null, 'wait' => self::BUSY_SECONDS];
+            return ['item' => null, 'result' => null];
         } finally {
             $lock->release();
         }
@@ -391,20 +398,19 @@ final readonly class RunProcessor
         $plan = null;
 
         try {
-            $target = $this->factory->fromDescription(['type' => $item->type->value, 'source_id' => $item->sourceId, 'site' => $item->targetSite]);
+            $target = $this->factory->fromDescription($item->describe());
             $plan = $item->planId === null ? null : $this->store->get($item->planId);
             $user = $run->createdBy === null ? null : User::find($run->createdBy['id']);
 
             // The creator's access is checked again, because it may have changed since the run was planned (§A14).
             if ($run->createdBy !== null && ($user === null || ! $target->authorize($user))) {
                 $this->forget($plan);
-                $this->finishItem($run, $item, RunItemStatus::Skipped, RunItem::UNAUTHORIZED);
 
-                return null;
+                return $this->settle($run, $item, RunItemStatus::Skipped, RunItem::UNAUTHORIZED);
             }
 
             if ($plan === null) {
-                return $this->returnToPending($run, $item, null);
+                return $this->settle($run, $item, RunItemStatus::Pending, null);
             }
 
             $result = $this->applyPlan($run, $plan, $target, $user);
@@ -416,20 +422,20 @@ final readonly class RunProcessor
             // The first change sends the item back to be planned again; a second one fails it, as TargetTranslator does.
             return $item->reason === TargetResult::SOURCE_CHANGED
                 ? $this->failItem($run, $item, $changed->getMessage(), TargetResult::SOURCE_CHANGED)
-                : $this->returnToPending($run, $item, TargetResult::SOURCE_CHANGED);
+                : $this->settle($run, $item, RunItemStatus::Pending, TargetResult::SOURCE_CHANGED);
         } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing|ApplyFailed $exception) {
             $this->forget($plan);
 
-            return $this->failItem($run, $item, $exception->getMessage(), match (true) {
-                $exception instanceof NotSupportedYet => TargetResult::NOT_SUPPORTED,
-                $exception instanceof RootMissing => TargetResult::ROOT_MISSING,
-                $exception instanceof ApplyFailed => TargetResult::APPLY_FAILED,
-                default => null,
-            });
+            return $this->failItem($run, $item, $exception->getMessage(), self::reason($exception));
         } catch (Throwable $exception) {
             report($exception);
 
-            return $this->retryApplyLater($run, $item, $plan, $exception);
+            if (! $this->releaseForRetry($run, $item)) {
+                $this->forget($plan);
+                $this->failItem($run, $item, $exception->getMessage(), null);
+            }
+
+            return null;
         }
 
         $this->forget($plan);
@@ -486,52 +492,27 @@ final readonly class RunProcessor
         $item->reference = $result->ref === null ? $item->reference : (string) $result->ref;
         $item->editUrl = $target->fresh()->editUrl() ?? $item->editUrl;
 
-        $this->finishItem($run, $item, $status, $reason);
+        $this->settle($run, $item, $status, $reason);
     }
 
-    private function finishItem(Run $run, RunItem $item, RunItemStatus $status, ?string $reason): void
+    /**
+     * Gives the item its status after applying, or sends it back to `pending`; either way its plan is done with.
+     */
+    private function settle(Run $run, RunItem $item, RunItemStatus $status, ?string $reason): null
     {
         $item->status = $status;
         $item->reason = $reason;
         $item->planId = null;
         $this->runs->saveItem($run, $item);
+
+        return null;
     }
 
     private function failItem(Run $run, RunItem $item, string $message, ?string $reason): null
     {
         $item->error = Sanitizer::message($message);
-        $this->finishItem($run, $item, RunItemStatus::Failed, $reason);
 
-        return null;
-    }
-
-    private function returnToPending(Run $run, RunItem $item, ?string $reason): null
-    {
-        $item->status = RunItemStatus::Pending;
-        $item->reason = $reason;
-        $item->planId = null;
-        $this->runs->saveItem($run, $item);
-
-        return null;
-    }
-
-    /**
-     * Gives an item whose apply threw back as `translated` after a growing delay, and fails it at its MAX_ATTEMPTS-th
-     * attempt.
-     */
-    private function retryApplyLater(Run $run, RunItem $item, ?Plan $plan, Throwable $exception): null
-    {
-        $item->attempts++;
-
-        if ($item->attempts >= self::MAX_ATTEMPTS) {
-            $this->forget($plan);
-
-            return $this->failItem($run, $item, $exception->getMessage(), null);
-        }
-
-        $this->runs->release($run, $item, CarbonImmutable::now()->addSeconds(self::RETRY_SECONDS * 2 ** ($item->attempts - 1)));
-
-        return null;
+        return $this->settle($run, $item, RunItemStatus::Failed, $reason);
     }
 
     /**
@@ -550,13 +531,6 @@ final readonly class RunProcessor
         if ($plan !== null) {
             $this->store->forget($plan);
         }
-    }
-
-    private function hasItemsToApply(Run $run): bool
-    {
-        $counts = $this->runs->counts($run);
-
-        return $counts[RunItemStatus::Translated->value] + $counts[RunItemStatus::Applying->value] > 0;
     }
 
     private function secondsUntil(CarbonInterface $deadline): int
@@ -644,19 +618,18 @@ final readonly class RunProcessor
     }
 
     /**
-     * Releases an item that threw with a growing delay, and fails it at its MAX_ATTEMPTS-th attempt.
+     * Counts an attempt at an item that threw and releases it after a growing delay: `pending` again, or `translated`
+     * when its apply threw. False at its MAX_ATTEMPTS-th attempt, when the caller fails it instead.
      */
-    private function retryLater(Run $run, RunItem $item, Throwable $exception, int &$items): ?int
+    private function releaseForRetry(Run $run, RunItem $item): bool
     {
-        $item->attempts++;
-
-        if ($item->attempts >= self::MAX_ATTEMPTS) {
-            return $this->fail($run, $item, $exception->getMessage(), null, $items);
+        if (++$item->attempts >= self::MAX_ATTEMPTS) {
+            return false;
         }
 
         $this->runs->release($run, $item, CarbonImmutable::now()->addSeconds(self::RETRY_SECONDS * 2 ** ($item->attempts - 1)));
 
-        return null;
+        return true;
     }
 
     private function fail(Run $run, RunItem $item, string $message, ?string $reason, int &$items): null
@@ -687,11 +660,21 @@ final readonly class RunProcessor
         $this->finalize($run);
     }
 
-    private function finalizeWhenFinished(Run $run): void
+    /**
+     * Finalizes the run once no item is unfinished, also when the repository finished the last one itself (an expired
+     * claim's last attempt, a dependency that failed).
+     *
+     * @return array<string, int> the counts it decided on
+     */
+    private function finalizeWhenFinished(Run $run): array
     {
-        if (self::unfinished($this->runs->counts($run)) === 0) {
+        $counts = $this->runs->counts($run);
+
+        if (self::unfinished($counts) === 0) {
             $this->finalize($run);
         }
+
+        return $counts;
     }
 
     private function countUnavailable(Run $run): int
@@ -710,9 +693,8 @@ final readonly class RunProcessor
 
     private function report(Run $run, int $units, int $items, ?int $wait): WorkReport
     {
-        $counts = $this->runs->counts($run);
-        $remains = $run->status === RunStatus::Running
-            && $counts[RunItemStatus::Pending->value] + $counts[RunItemStatus::Translating->value] > 0;
+        $counts = $run->status === RunStatus::Running ? $this->finalizeWhenFinished($run) : [];
+        $remains = $run->status === RunStatus::Running && self::count($counts, RunItemStatus::Pending, RunItemStatus::Translating) > 0;
 
         return new WorkReport($units, $items, $remains, $remains ? ($wait ?? $this->runs->nextAvailableIn($run)) : null);
     }
@@ -720,18 +702,42 @@ final readonly class RunProcessor
     /**
      * @param  array<string, int>  $counts
      */
+    private static function count(array $counts, RunItemStatus ...$statuses): int
+    {
+        return array_sum(array_map(fn (RunItemStatus $status) => $counts[$status->value] ?? 0, $statuses));
+    }
+
+    /**
+     * @param  array<string, int>  $counts
+     */
     private static function unfinished(array $counts): int
     {
-        return array_sum(array_map(
-            fn (RunItemStatus $status) => $status->isFinal() ? 0 : $counts[$status->value] ?? 0,
-            RunItemStatus::cases(),
-        ));
+        return self::count($counts, ...array_filter(RunItemStatus::cases(), fn (RunItemStatus $status) => ! $status->isFinal()));
+    }
+
+    private static function reason(Throwable $exception): ?string
+    {
+        return match (true) {
+            $exception instanceof NotSupportedYet => TargetResult::NOT_SUPPORTED,
+            $exception instanceof RootMissing => TargetResult::ROOT_MISSING,
+            $exception instanceof ApplyFailed => TargetResult::APPLY_FAILED,
+            default => null,
+        };
     }
 
     // Start, abort and finalize change the run's status under one lock of their own: the repository's is private.
     private function locked(Run $run, Closure $callback): mixed
     {
-        return $this->cache()->lock('tolk:run-status:'.$run->id, 10)->block(5, $callback);
+        return $this->cache()->lock('tolk:run-status:'.$run->id, 10)->betweenBlockedAttemptsSleepFor(10)->block(5, $callback);
+    }
+
+    /**
+     * Held for a whole step on an item, so a retried request never works on it twice at once. While an earlier request
+     * holds it, that request still works on the item; the caller's claim replaced its own, so it stops at its next write.
+     */
+    private function itemLock(Run $run, RunItem $item, int $ttl): Lock
+    {
+        return $this->cache()->lock("tolk:item:{$run->id}:{$item->index}", $ttl);
     }
 
     private function cache(): Repository
