@@ -26,7 +26,6 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
-use Statamic\Facades\Git;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -52,21 +51,6 @@ function translateCommand(array $options): array
     $exitCode = Artisan::call('tolk:translate', ['--yes' => true, '--concurrency' => 1, ...$options]);
 
     return [$exitCode, Artisan::output()];
-}
-
-/**
- * Collects the messages of git commits instead of committing.
- */
-function commandCommits(): ArrayObject
-{
-    config(['statamic.git.enabled' => true, 'statamic.git.automatic' => true]);
-    $messages = new ArrayObject;
-    Git::shouldReceive('as')->andReturnSelf();
-    Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use ($messages) {
-        $messages[] = $message;
-    });
-
-    return $messages;
 }
 
 describe('validation', function () {
@@ -632,7 +616,7 @@ describe('summary and git', function () {
 
     it('commits once after the loop when a target was saved, and not when nothing was', function () {
         $this->fakeTranslations();
-        $commits = commandCommits();
+        $commits = RunFixtures::commits();
 
         translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
         $first = $commits->getArrayCopy();
@@ -646,7 +630,7 @@ describe('summary and git', function () {
         $this->fakeTranslations();
         $this->fakeReview();
         translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
-        $commits = commandCommits();
+        $commits = RunFixtures::commits();
 
         [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review']);
 
@@ -656,7 +640,7 @@ describe('summary and git', function () {
     });
 
     it('commits what was saved before ProviderRejected aborted the run', function () {
-        $commits = commandCommits();
+        $commits = RunFixtures::commits();
         ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? ScriptedEngine::translated($call)
             : throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
@@ -925,7 +909,7 @@ describe('the run engine', function () {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
         }
 
-        $commits = commandCommits();
+        $commits = RunFixtures::commits();
         ScriptedEngine::bind(function (EngineCall $call, int $number) {
             if ($number === 1) {
                 posix_kill(getmypid(), SIGINT);

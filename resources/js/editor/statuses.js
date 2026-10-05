@@ -128,10 +128,16 @@ function incompleteNote(fields) {
 }
 
 function notLocalizableHint(fields) {
+    return notLocalizableText(labels(fields), fields.length);
+}
+
+// The joined names of `count` fields that are not localizable, with the command that explains it; the run page names
+// fields of several containers.
+export function notLocalizableText(names, count) {
     return __n(
         ':fields is not translated because it is not localizable. Run php please tolk:doctor for details.|:fields are not translated because they are not localizable. Run php please tolk:doctor for details.',
-        fields.length,
-        { fields: labels(fields) },
+        count,
+        { fields: names },
     );
 }
 

@@ -1,7 +1,8 @@
 // Turns a run's state (`runs/{id}/state`, T8.7) into what the run pages show. Pure apart from `__()` and `__n()`.
 
 import { asMap } from '../api.js';
-import { FINAL_STATUSES } from './ticker.js';
+import { notLocalizableText } from '../editor/statuses.js';
+import { isFinal } from './ticker.js';
 
 export const ITEM_STATUSES = ['pending', 'translating', 'translated', 'applying', 'done', 'skipped', 'failed'];
 
@@ -112,7 +113,7 @@ export function describeProgress(state) {
 export function runActions(state) {
     const run = state?.run ?? {};
     const { counts, unfinished } = describeProgress(state);
-    const final = FINAL_STATUSES.includes(run.status);
+    const final = isFinal(state);
     const stalled = run.status === 'running' && Boolean(state?.stalled);
 
     return {
@@ -128,7 +129,7 @@ export function runActions(state) {
 export function describeResult(state) {
     const run = state?.run ?? {};
 
-    if (!FINAL_STATUSES.includes(run.status)) {
+    if (!isFinal(state)) {
         return null;
     }
 
@@ -207,11 +208,7 @@ export function notLocalizableHint(scope) {
         .map((field) => (containers.size > 1 ? `${field.label || field.handle} (${field.container})` : field.label || field.handle))
         .join(', ');
 
-    return __n(
-        ':fields is not translated because it is not localizable. Run php please tolk:doctor for details.|:fields are not translated because they are not localizable. Run php please tolk:doctor for details.',
-        fields.length,
-        { fields: names },
-    );
+    return notLocalizableText(names, fields.length);
 }
 
 // What the run translates, for the runs list and the run page's title.

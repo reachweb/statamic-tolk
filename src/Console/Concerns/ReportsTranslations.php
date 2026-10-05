@@ -5,7 +5,6 @@ namespace Reach\StatamicTolk\Console\Concerns;
 use Illuminate\Support\Str;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
-use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Translation\Plan;
@@ -230,14 +229,13 @@ trait ReportsTranslations
     }
 
     /**
-     * The item as the TargetResult of TargetTranslator: a review that accepted every field is `skipped` there.
+     * The item as a TargetResult. A review that accepted every field is `done` here and `skipped` from TargetTranslator;
+     * the report reads its `no_corrections` reason, not the status.
      */
     private function itemResult(RunItem $item): TargetResult
     {
-        $accepted = $item->status === RunItemStatus::Done && $item->reason === TargetResult::NO_CORRECTIONS;
-
         return new TargetResult(
-            status: $accepted ? TargetResultStatus::Skipped : TargetResultStatus::from($item->status->value),
+            status: TargetResultStatus::from($item->status->value),
             created: $item->created,
             fields: $item->fields,
             corrections: $item->corrections,
@@ -253,8 +251,8 @@ trait ReportsTranslations
         $applied = $result->appliedFields();
 
         $description = match (true) {
-            $result->status === TargetResultStatus::Done => '<info>done</info>, '.($result->created ? 'created, ' : '').$this->count(count($applied), 'field').$this->correctionsNote($result),
             $result->reason === TargetResult::NO_CORRECTIONS => '<info>reviewed</info>, nothing to correct',
+            $result->status === TargetResultStatus::Done => '<info>done</info>, '.($result->created ? 'created, ' : '').$this->count(count($applied), 'field').$this->correctionsNote($result),
             $result->status === TargetResultStatus::Skipped => '<comment>skipped</comment>, '.match (true) {
                 $result->reason === TargetResult::NOTHING_TO_DO => 'nothing to do',
                 $result->reason === TargetResult::TARGET_CHANGED => 'edited by someone while it was being translated',

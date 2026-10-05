@@ -83,8 +83,6 @@ final readonly class RunProcessor
      */
     public const int BUSY_SECONDS = 1;
 
-    private const array FINISHED = [RunStatus::Completed, RunStatus::CompletedWithErrors, RunStatus::Cancelled, RunStatus::Aborted];
-
     private const array TO_APPLY = [RunItemStatus::Translated, RunItemStatus::Applying];
 
     public function __construct(
@@ -109,7 +107,7 @@ final readonly class RunProcessor
         $started = $this->locked($run, function () use ($run) {
             $this->runs->save($run);
 
-            if (! in_array($run->status, [RunStatus::Pending, RunStatus::Running], true)) {
+            if ($run->status->isFinal()) {
                 return false;
             }
 
@@ -138,7 +136,7 @@ final readonly class RunProcessor
         $cancelled = $this->locked($run, function () use ($run) {
             $this->runs->save($run);
 
-            if (! in_array($run->status, [RunStatus::Pending, RunStatus::Running], true)) {
+            if ($run->status->isFinal()) {
                 return false;
             }
 
@@ -306,7 +304,7 @@ final readonly class RunProcessor
                 $run->status = $counts[RunItemStatus::Failed->value] > 0 ? RunStatus::CompletedWithErrors : RunStatus::Completed;
             }
 
-            $ended = in_array($run->status, self::FINISHED, true);
+            $ended = $run->status->isFinal();
             $fires = $ended && $run->finalizedAt === null;
             $commits = $run->saves > $run->committedSaves;
 

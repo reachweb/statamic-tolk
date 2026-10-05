@@ -6,6 +6,7 @@ use Closure;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Prompts\PromptContext;
+use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -40,9 +41,6 @@ final readonly class RunPlanner
     public const string EXCLUDED_COLLECTION = 'excluded_collection';
 
     public const string SITE_NOT_IN_COLLECTION = 'site_not_in_collection';
-
-    // Out-of-scope reasons that say nothing about text: a fieldtype without a handler, and the slug, never translated (D16).
-    private const array NOT_TEXT = ['unsupported_fieldtype', 'slug'];
 
     public function __construct(
         private EntryFamilies $families,
@@ -228,18 +226,8 @@ final readonly class RunPlanner
      */
     private function noteOutOfScope(Target $target, array &$outOfScope): void
     {
-        foreach ($target->explainFields() as $field) {
-            if ($field['in_scope'] || in_array($field['reason'], self::NOT_TEXT, true)) {
-                continue;
-            }
-
-            $outOfScope[$target->container().'.'.$field['handle'].':'.$field['reason']] ??= [
-                'container' => $target->container(),
-                'handle' => $field['handle'],
-                'label' => (string) $field['display'],
-                'type' => $field['type'],
-                'reason' => $field['reason'],
-            ];
+        foreach (TranslatableFields::textOutOfScope($target->explainFields()) as $field) {
+            $outOfScope[$target->container().'.'.$field['handle'].':'.$field['reason']] ??= ['container' => $target->container(), ...$field];
         }
     }
 

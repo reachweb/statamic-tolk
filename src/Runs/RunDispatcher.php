@@ -122,7 +122,10 @@ final readonly class RunDispatcher
         });
     }
 
-    private static function hasWorker(): bool
+    /**
+     * Whether a worker of its own runs the lane jobs' connection, which `auto` needs to choose the queue.
+     */
+    public static function hasWorker(): bool
     {
         $driver = self::connectionConfig()['driver'] ?? null;
 

@@ -10,4 +10,12 @@ enum RunStatus: string
     case CompletedWithErrors = 'completed_with_errors';
     case Cancelled = 'cancelled';
     case Aborted = 'aborted';
+
+    public function isFinal(): bool
+    {
+        return match ($this) {
+            self::Pending, self::Running => false,
+            default => true,
+        };
+    }
 }

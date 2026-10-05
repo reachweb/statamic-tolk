@@ -40,13 +40,14 @@ final readonly class RunState
      */
     public function for(Run $run, int $page = 1, int $perPage = self::PER_PAGE, ?RunItemStatus $status = null): array
     {
-        $counts = $this->runs->counts($run);
+        $breakdown = $this->runs->breakdown($run);
+        $counts = self::totals($breakdown);
         $total = $status === null ? array_sum($counts) : $counts[$status->value];
 
         return [
             'run' => $this->run($run),
             'counts' => $counts,
-            'breakdown' => $this->runs->breakdown($run),
+            'breakdown' => $breakdown,
             'items' => array_map($this->item(...), $this->runs->items($run, $status, $page, $perPage)),
             'pagination' => [
                 'page' => $page,
@@ -127,6 +128,24 @@ final readonly class RunState
             ...Arr::except($run->toArray(), ['generation', 'saves', 'committed_saves']),
             'cost' => $this->pricing->total($run->usage),
         ];
+    }
+
+    /**
+     * The counts per item status, summed from the breakdown, so both come from one read of the run.
+     *
+     * @return array<string, int>
+     */
+    private static function totals(array $breakdown): array
+    {
+        $counts = array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0);
+
+        foreach ($breakdown as $group) {
+            foreach ($group['counts'] as $status => $count) {
+                $counts[$status] += $count;
+            }
+        }
+
+        return $counts;
     }
 
     // The claim and the plan are the workers' business.
