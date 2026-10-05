@@ -44,6 +44,7 @@ final readonly class RunRequest
      * @param  ?string  $sourceSite  the site to translate a missing localization from, when the family has one there
      * @param  list<string>  $collections  handles, or [ALL] for every multi-site collection
      * @param  list<string>  $entryIds  any entry of each family
+     * @param  ?string  $reference  the item open in the editor when the run was pushed from it (T8.13)
      */
     public function __construct(
         array $sites,
@@ -57,6 +58,7 @@ final readonly class RunRequest
         public array $termIds = [],
         array $options = [],
         public ?User $user = null,
+        public ?string $reference = null,
     ) {
         if ($sites === []) {
             throw new InvalidArgumentException('A run needs at least one site to translate into.');
@@ -122,6 +124,7 @@ final readonly class RunRequest
             'navs' => $this->navs,
             'entry_ids' => $this->entryIds,
             'term_ids' => $this->termIds,
+            'reference' => $this->reference,
         ];
     }
 }

@@ -18,6 +18,7 @@ function tolkCpRoutes(): array
         'editor unit' => ['tolk.editor.unit', 'POST', 'tolk/editor/unit', 'editor'],
         'editor confirm' => ['tolk.editor.confirm', 'POST', 'tolk/editor/confirm', 'editor'],
         'editor baseline' => ['tolk.editor.baseline', 'POST', 'tolk/editor/baseline', 'editor'],
+        'editor push' => ['tolk.editor.push', 'POST', 'tolk/editor/push', 'editor'],
         'runs index' => ['tolk.runs.index', 'GET', 'tolk/runs', 'runs'],
         'runs store' => ['tolk.runs.store', 'POST', 'tolk/runs', 'runs'],
         'runs show' => ['tolk.runs.show', 'GET', 'tolk/runs/01MISSINGRUN', 'runs', $run],

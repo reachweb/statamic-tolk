@@ -40,6 +40,7 @@ final readonly class EditorStatus
         private ModelCatalog $catalog,
         private Providers $providers,
         private Settings $settings,
+        private EditorPush $push,
     ) {}
 
     /**
@@ -70,9 +71,13 @@ final readonly class EditorStatus
         $localization = $target === null ? null : $this->localization($target, $source);
         $origin = $this->origin($entry, $user);
 
-        return $localization === null && $origin === null
-            ? $this->payload(self::NO_ACCESS)
-            : $this->payload(null, $localization, $origin);
+        if ($localization === null && $origin === null) {
+            return $this->payload(self::NO_ACCESS);
+        }
+
+        $active = $origin === null ? null : $this->push->active($entry->reference(), $user);
+
+        return $this->payload(null, $localization, $origin, $active === null ? null : $this->push->payload($active));
     }
 
     private function entry(string $reference): ?EntryContract
@@ -146,18 +151,23 @@ final readonly class EditorStatus
         return TranslatableFields::textOutOfScope($target->explainFields());
     }
 
-    private function payload(?string $reason, ?array $localization = null, ?array $origin = null): array
+    /**
+     * @param  ?array  $activeRun  the user's push from this item that is still running (EditorPush::payload())
+     */
+    private function payload(?string $reason, ?array $localization = null, ?array $origin = null, ?array $activeRun = null): array
     {
         return [
             'translatable' => $reason === null,
             'reason' => $reason,
             'localization' => $localization,
             'origin' => $origin,
+            'active_run' => $activeRun,
             'defaults' => [
                 'translator' => $this->translator(),
                 'providers_configured' => $this->providers->configured() !== [],
                 'fake_engine' => FakeEngine::enabled(),
                 'review' => $this->settings->reviewEnabled(),
+                'new_status' => $this->settings->newLocalizationStatus(),
             ],
             'offer' => $this->settings->offerOnCreate(),
         ];

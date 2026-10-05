@@ -53,6 +53,7 @@ it('describes what was asked for as the run scope', function () {
         'navs' => ['main'],
         'entry_ids' => ['a', 'b'],
         'term_ids' => ['tags::hotel'],
+        'reference' => null,
     ]);
 });
 

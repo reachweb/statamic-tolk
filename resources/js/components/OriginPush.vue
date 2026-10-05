@@ -1,0 +1,162 @@
+<script setup>
+import { computed, ref } from 'vue';
+import { Badge, Button, Checkbox, Description, Field, Icon, Modal, Radio, RadioGroup, Text } from '@statamic/cms/ui';
+import ProgressBar from './ProgressBar.vue';
+import { describePush, PUSHING, pushChoices, pushes, updateSites } from '../editor/push.js';
+import { useEditorStore } from '../editor/store.js';
+
+const props = defineProps({
+    containerName: { type: String, required: true },
+    reference: { type: String, required: true },
+    // `describe(status).origin`
+    origin: { type: Object, required: true },
+    status: { type: Object, default: null },
+    // The run translates the saved origin, not what is in the form.
+    dirty: { type: Boolean, default: false },
+});
+
+const store = useEditorStore();
+const push = computed(() => store.containers[props.containerName]?.push ?? null);
+const shown = computed(() => describePush(push.value, props.status));
+const pushing = computed(() => PUSHING.includes(push.value?.phase));
+const buttons = computed(() => !pushing.value && (props.origin.translateInto || props.origin.update));
+const choices = computed(() => pushChoices(props.origin));
+const open = ref(false);
+const selected = ref([]);
+const newStatus = ref('draft');
+const review = ref(false);
+const creates = computed(() => choices.value.some((choice) => choice.missing && selected.value.includes(choice.site)));
+
+function choose() {
+    selected.value = choices.value.map((choice) => choice.site);
+    newStatus.value = props.status?.defaults?.new_status === 'mirror' ? 'mirror' : 'draft';
+    review.value = props.status?.defaults?.review === true;
+    open.value = true;
+}
+
+function toggle(site, checked) {
+    selected.value = checked ? [...new Set([...selected.value, site])] : selected.value.filter((handle) => handle !== site);
+}
+
+function translateInto() {
+    open.value = false;
+    pushes.start(props.containerName, {
+        reference: props.reference,
+        sites: choices.value.map((choice) => choice.site).filter((site) => selected.value.includes(site)),
+        mode: 'missing',
+        review: review.value,
+        newStatus: creates.value ? newStatus.value : null,
+    });
+}
+
+// Review follows the setting, as the localization's Update does.
+function update() {
+    pushes.start(props.containerName, { reference: props.reference, sites: updateSites(props.origin), mode: 'update' });
+}
+
+function reload() {
+    window.location.reload();
+}
+</script>
+
+<template>
+    <div class="space-y-2 ps-6" data-tolk-push>
+        <div v-if="buttons" class="flex flex-wrap items-center gap-2 pt-1" data-tolk-push-actions>
+            <Button v-if="origin.translateInto" variant="primary" size="sm" :disabled="dirty" data-tolk-action="translate-into" @click="choose">
+                {{ __('Translate into…') }}
+            </Button>
+            <Button v-if="origin.update" size="sm" :disabled="dirty" data-tolk-action="update-translations" @click="update">
+                {{ __('Update translations') }}
+            </Button>
+            <Description v-if="dirty" data-tolk-save-first>{{ __('Save first: the translations are made from the saved entry.') }}</Description>
+        </div>
+
+        <Text v-if="push?.phase === 'starting'" data-tolk-push-phase="starting">{{ __('Starting the translation…') }}</Text>
+
+        <div v-if="push?.phase === 'running'" class="space-y-2" data-tolk-push-phase="running">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <Text v-if="push.cancelling">{{ __('Cancelling. Translations already being saved are still saved.') }}</Text>
+                <Text v-else>{{ __('Translating into :sites…', { sites: shown.sites }) }}</Text>
+                <Button size="sm" variant="ghost" :disabled="push.cancelling" data-tolk-action="push-cancel" @click="pushes.cancel(containerName)">
+                    {{ __('Cancel') }}
+                </Button>
+            </div>
+            <ProgressBar :value="shown.progress.finished" :max="shown.progress.total" :label="__('Translation progress')" />
+            <Description data-tolk-push-progress>
+                {{ __(':finished of :total translations finished.', { finished: shown.progress.finished, total: shown.progress.total }) }}
+            </Description>
+            <Description v-if="shown.keepOpen">
+                {{ __('Keep this page open until the translations are saved. If you leave, they continue when you open this entry again.') }}
+            </Description>
+            <div v-if="shown.failure" class="flex flex-wrap items-center gap-2" data-tolk-push-failure>
+                <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" />
+                <Text variant="danger">{{ __('The translations stopped: :message', { message: shown.failure }) }}</Text>
+                <Button size="sm" data-tolk-action="push-resume" @click="pushes.resume(containerName)">{{ __('Try again') }}</Button>
+            </div>
+        </div>
+
+        <div v-if="shown?.result" class="space-y-2" data-tolk-push-result :data-tolk-push-status="shown.result.status">
+            <Text>{{ shown.result.text }}</Text>
+            <Text v-if="shown.result.error" variant="danger">{{ shown.result.error }}</Text>
+            <ul class="space-y-1">
+                <li
+                    v-for="item in shown.result.items"
+                    :key="item.index"
+                    class="flex flex-wrap items-center gap-2"
+                    :data-tolk-push-item="item.handle"
+                    :data-tolk-push-item-status="item.status"
+                >
+                    <a v-if="item.editUrl" :href="item.editUrl" class="text-sm font-medium underline">{{ item.site }}</a>
+                    <Text v-else variant="strong">{{ item.site }}</Text>
+                    <Badge :text="item.statusLabel" :color="item.statusColor" />
+                    <Text v-if="item.error || item.reason" variant="subtle">{{ item.error ?? item.reason }}</Text>
+                </li>
+            </ul>
+            <Description v-if="shown.reload">{{ __('Reload the page to see the new localizations in the Sites panel.') }}</Description>
+            <div class="flex flex-wrap gap-2">
+                <Button v-if="shown.reload" size="sm" variant="primary" data-tolk-action="reload" @click="reload">{{ __('Reload') }}</Button>
+                <Button size="sm" variant="ghost" data-tolk-action="push-close" @click="pushes.dismiss(containerName)">{{ __('Close') }}</Button>
+            </div>
+        </div>
+
+        <div v-if="push?.phase === 'error'" class="flex flex-wrap items-center gap-2" data-tolk-push-phase="error">
+            <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" />
+            <Text variant="danger" data-tolk-push-error>{{ shown.error }}</Text>
+            <Button size="sm" variant="ghost" data-tolk-action="push-close" @click="pushes.dismiss(containerName)">{{ __('Close') }}</Button>
+        </div>
+
+        <Modal v-model:open="open" :title="__('Translate into other languages')" icon="dictionary-language-book" data-tolk-push-modal>
+            <div class="space-y-6">
+                <Text>{{ __('The saved entry is translated and saved in each language you choose. This form stays as it is.') }}</Text>
+                <div class="space-y-3">
+                    <div v-for="choice in choices" :key="choice.site" :data-tolk-push-site="choice.site">
+                        <Checkbox
+                            :model-value="selected.includes(choice.site)"
+                            :label="choice.name"
+                            :description="choice.summary"
+                            @update:model-value="toggle(choice.site, $event)"
+                        />
+                    </div>
+                </div>
+                <Field v-if="creates" id="tolk-push-status" :label="__('New localizations')">
+                    <RadioGroup v-model="newStatus" appearance="inline" data-tolk-push-new-status>
+                        <Radio value="draft" :label="__('Drafts')" />
+                        <Radio value="mirror" :label="__('Same as origin')" />
+                    </RadioGroup>
+                </Field>
+                <Checkbox
+                    v-model="review"
+                    :label="__('Review after translating')"
+                    :description="__('A second model checks each translation and corrects it before it is saved.')"
+                />
+            </div>
+
+            <template #footer>
+                <div class="flex items-center justify-end gap-3 pt-3 pb-1">
+                    <Button variant="ghost" :text="__('Cancel')" data-tolk-push-action="close" @click="open = false" />
+                    <Button variant="primary" :text="__('Translate')" :disabled="selected.length === 0" data-tolk-push-action="translate" @click="translateInto" />
+                </div>
+            </template>
+        </Modal>
+    </div>
+</template>

@@ -308,6 +308,21 @@ describe('attachBanner', () => {
         expect(store.container('base').status).toEqual(status('entry::b'));
     });
 
+    it('hands every status it keeps to the push module, which follows a run still running', async () => {
+        let answer;
+        const onStatus = vi.fn();
+        loadStatus.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+        attach({ onStatus });
+        await settled();
+
+        base.context.reference.value = 'entry::b';
+        await settled();
+        answer(status('entry::a'));
+        await settled();
+
+        expect(onStatus).toHaveBeenCalledExactlyOnceWith('base', status('entry::b'));
+    });
+
     it('does not take the clean values late after a later switch', async () => {
         attach();
         await settled();

@@ -220,18 +220,19 @@ describe('access', function () {
 });
 
 describe('defaults', function () {
-    it('names the translator and the offer and review settings', function () {
+    it('names the translator and the offer, review and new localization settings', function () {
         $this->signInAdmin();
 
         editorStatus($this->origin)
-            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => true, 'fake_engine' => false, 'review' => false])
+            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => true, 'fake_engine' => false, 'review' => false, 'new_status' => 'draft'])
             ->assertJsonPath('offer', true);
 
-        $this->withSettings(['offer_on_create' => false, 'translator_model' => 'gemini:gemini-3.8-flash', 'review_enabled' => true]);
+        $this->withSettings(['offer_on_create' => false, 'translator_model' => 'gemini:gemini-3.8-flash', 'review_enabled' => true, 'new_localization_status' => 'mirror']);
 
         editorStatus($this->origin)
             ->assertJsonPath('defaults.translator', 'gemini:gemini-3.8-flash')
             ->assertJsonPath('defaults.review', true)
+            ->assertJsonPath('defaults.new_status', 'mirror')
             ->assertJsonPath('offer', false);
     });
 
@@ -240,17 +241,19 @@ describe('defaults', function () {
         $this->withProviderKeys();
 
         editorStatus($this->origin)
-            ->assertJsonPath('defaults', ['translator' => null, 'providers_configured' => false, 'fake_engine' => false, 'review' => false]);
+            ->assertJsonPath('defaults', ['translator' => null, 'providers_configured' => false, 'fake_engine' => false, 'review' => false, 'new_status' => 'draft']);
 
         config(['tolk.fake_engine' => true]);
 
         editorStatus($this->origin)
-            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => false, 'fake_engine' => true, 'review' => false]);
+            ->assertJsonPath('defaults', ['translator' => 'anthropic:claude-sonnet-5-5', 'providers_configured' => false, 'fake_engine' => true, 'review' => false, 'new_status' => 'draft']);
     });
 
     it('comes with a payload that is not translatable too', function () {
         $this->signInAdmin();
 
-        editorStatus('entry::missing')->assertJsonStructure(['translatable', 'reason', 'localization', 'origin', 'defaults' => ['translator', 'providers_configured', 'fake_engine', 'review'], 'offer']);
+        editorStatus('entry::missing')
+            ->assertJsonStructure(['translatable', 'reason', 'localization', 'origin', 'active_run', 'defaults' => ['translator', 'providers_configured', 'fake_engine', 'review', 'new_status'], 'offer'])
+            ->assertJsonPath('active_run', null);
     });
 });

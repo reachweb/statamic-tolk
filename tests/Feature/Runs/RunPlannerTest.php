@@ -127,6 +127,7 @@ describe('build', function () {
                 'navs' => [],
                 'entry_ids' => [],
                 'term_ids' => [],
+                'reference' => null,
                 'skipped' => [],
                 'out_of_scope' => [],
             ])
