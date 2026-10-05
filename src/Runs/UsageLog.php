@@ -3,25 +3,23 @@
 namespace Reach\StatamicTolk\Runs;
 
 use Closure;
-use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
-use JsonException;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Pricing;
 use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Enums\UsageSource;
-use RuntimeException;
+use Reach\StatamicTolk\Support\Concerns\StoresFiles;
 
 /**
  * Provider usage per month, in `{usage.path}/{YYYY-MM}.json`: per requested model and source, the tokens, the calls and
- * the cost at the prices of the day of each call. Every write happens under the month's cache lock and goes through a
- * temporary file and rename().
+ * the cost at the prices of the day of each call. Every write happens under the month's cache lock.
  */
 final readonly class UsageLog
 {
+    use StoresFiles;
+
     public function __construct(
         private Filesystem $files,
         private Pricing $pricing,
@@ -43,7 +41,7 @@ final readonly class UsageLog
             ];
             $data[(string) $model] = $sources;
 
-            $this->put($this->path($month), $data);
+            $this->writeJson($this->path($month), $data, 'the usage log');
         });
     }
 
@@ -110,34 +108,13 @@ final readonly class UsageLog
 
     private function read(string $month): array
     {
-        try {
-            $data = json_decode($this->files->get($this->path($month)), true, 512, JSON_THROW_ON_ERROR);
-        } catch (FileNotFoundException|JsonException) {
-            return [];
-        }
-
-        return is_array($data) ? $data : [];
+        return $this->readJson($this->path($month)) ?? [];
     }
 
-    private function put(string $path, array $data): void
-    {
-        $contents = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR);
-        $temporary = $path.'.'.Str::random(16).'.tmp';
-
-        $this->files->ensureDirectoryExists(dirname($path));
-
-        try {
-            if ($this->files->put($temporary, $contents) === false || ! $this->files->move($temporary, $path)) {
-                throw new RuntimeException("Unable to write the usage log [{$path}].");
-            }
-        } finally {
-            $this->files->delete($temporary);
-        }
-    }
-
+    // Every provider call takes this lock, each for a few milliseconds, so a waiter retries sooner than Laravel's 250.
     private function locked(string $month, Closure $callback): mixed
     {
-        return Cache::store(config('tolk.cache_store'))->lock('tolk:usage:'.$month, 10)->block(5, $callback);
+        return Cache::store(config('tolk.cache_store'))->lock('tolk:usage:'.$month, 10)->betweenBlockedAttemptsSleepFor(10)->block(5, $callback);
     }
 
     private function path(string $month): string

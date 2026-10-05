@@ -20,6 +20,11 @@ final class RunItem
     public const string UNAUTHORIZED = 'unauthorized';
 
     /**
+     * Attempts at an item before it fails: a takeover after its claim expired, or a retry after its work threw.
+     */
+    public const int MAX_ATTEMPTS = 3;
+
+    /**
      * @param  list<int>  $dependsOn  indexes of the items that must be done or skipped first
      * @param  ?string  $reason  why the item was skipped or failed, such as `dependency_failed`; on a pending item
      *                           `source_changed` when its origin changed before it was applied
@@ -50,6 +55,14 @@ final class RunItem
         public ?string $reference = null,
         public ?string $editUrl = null,
     ) {}
+
+    /**
+     * @return array{type: string, source_id: string, site: string} TargetFactory::fromDescription() input
+     */
+    public function describe(): array
+    {
+        return ['type' => $this->type->value, 'source_id' => $this->sourceId, 'site' => $this->targetSite];
+    }
 
     public function toArray(): array
     {
