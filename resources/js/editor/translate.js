@@ -100,6 +100,12 @@ function otherPlanSkips(skipped) {
     return Object.fromEntries(planSkips(skipped).filter(([, reason]) => reason !== EDITED_IN_FORM));
 }
 
+// A request that replaces its fields (the field action, T8.12) plans them even when the form holds unsaved text of
+// them; text typed while it runs is still kept by the fill.
+function replaces(request, handle) {
+    return request.replace === true && (request.fields ?? []).includes(handle);
+}
+
 function planBody(request, { reference, skip }) {
     return {
         reference,
@@ -207,9 +213,11 @@ export function createTranslations({
         const handles = reviewing ? (request.fields ?? reviewHandles(ctx, container.status)) : request.fields;
         const snap = snapshot(ctx, handles ?? Object.keys(ctx.values.value), container.delivered);
         const planValues = clone(ctx.values.value);
+        const skip = () =>
+            skipHandles(ctx, container.status, { name, registry, delivered: container.delivered }).filter((handle) => !replaces(request, handle));
         const [path, body] = reviewing
             ? ['editor/review', reviewBody(request, { reference, handles, values: planValues })]
-            : ['editor/plan', planBody(request, { reference, skip: skipHandles(ctx, container.status, { name, registry, delivered: container.delivered }) })];
+            : ['editor/plan', planBody(request, { reference, skip: skip() })];
 
         if (continuing) {
             carryOver(snap, container);
@@ -311,9 +319,13 @@ export function createTranslations({
         }
     }
 
-    // `review` and `reviewer` null follow the review setting, as the banner's buttons do.
-    function translate(name, { mode = 'missing', fields = null, overwriteManual = false, translator = null, review = null, reviewer = null } = {}) {
-        return start(name, { kind: 'translate', mode, fields, overwriteManual, translator, review, reviewer });
+    // `review` and `reviewer` null follow the review setting, as the banner's buttons do. `replace` plans the requested
+    // fields even when the form holds unsaved text of them.
+    function translate(
+        name,
+        { mode = 'missing', fields = null, overwriteManual = false, translator = null, review = null, reviewer = null, replace = false } = {},
+    ) {
+        return start(name, { kind: 'translate', mode, fields, overwriteManual, translator, review, reviewer, replace });
     }
 
     // Reviews the form's machine output (T7.5); with `overwriteManual` its manual fields too, which stay manual.

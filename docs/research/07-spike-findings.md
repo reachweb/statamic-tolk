@@ -455,3 +455,13 @@ Seen in T7.5, 2026-10-05, on Statamic 6.35.0 in the sandbox with headless Chromi
 - With the fake engine and no provider keys, the translator and the reviewer both resolve to `anthropic:claude-sonnet-5-5`, so usage has one model key and the summary names it for both lines.
 - On `fake-engine-markers` the body is delivered incomplete (`[[invalid]]` and `[[refuse]]`), so it reads outdated and a second review leaves it out; the `[[review]]` paragraph's correction already equals the reviewer's answer, which the pipeline drops. A browser scenario that needs a second correction puts `[[review]]` into the origin's title.
 - The browser harness reuses stored logins while they are valid, but the session cookie expires a fixed `SESSION_LIFETIME` (120 minutes) after the login, however active the session is. A login reused shortly before that limit logged the scenarios after it out in the middle of a run; the global setup now renews a login whose cookie expires within 30 minutes.
+
+### Field actions (T8.12)
+
+Seen in T8.12, 2026-10-05, on Statamic 6.35.0 in the sandbox with headless Chromium (Playwright 1.63.0), and in core's source at `v6.35.0`.
+
+- `toFieldActions()` builds the actions and filters them by `visible` inside the fieldtype's `fieldActions` computed, so whatever `visible` reads reactively (the registry's containers, the store's status and phase) re-evaluates it. Non-quick actions go into the dots dropdown, whose items ignore `disabled` (`FieldActions.vue`), so an action that cannot run at the moment has to be hidden.
+- The confirmation modal (`confirm` without `fields`) is a `confirmation-modal` with no publish container, so it does not count as another container. With `fields` it mounts a `PublishContainer` named `field-action-modal-{id}`.
+- A field inside a Replicator or Bard set has no `localizable` key in its config, so `config.localizable` already rules nested fields out in the sandbox; `fieldPathPrefix` still matters for a blueprint that marks a set field localizable.
+- An `entries` field's item link opens the related entry in a stack (`[data-ui-stack-content]`, container `relate-fieldtype-inline-{n}`); Escape closes it. Field headers are `[data-ui-field-header]` with the field's `label[for="field_{path}"]`, and a stack repeats the page form's ids.
+- With the field typed into before the action runs, the banner's `skip` lists it as an unsaved edit and the plan skips it as `edited_in_form`; the action therefore passes `replace`, which keeps the requested field out of `skip` (text typed while it runs is still kept by the fill).

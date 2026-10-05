@@ -7,7 +7,7 @@ import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
 import { attachBanner } from '../editor/banner.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
-import { describe, describeSummary } from '../editor/statuses.js';
+import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
 import { useEditorStore } from '../editor/store.js';
 import { keptMessage, RESTART, reviewable, translations, undoable } from '../editor/translate.js';
 
@@ -34,6 +34,12 @@ const notSaved = computed(() => (state.value?.notSaved?.length ? notSavedMessage
 // stay, for a review of the filled form with the same reviewer or another one (D8).
 const actions = computed(() => ['idle', 'done'].includes(phase.value) && Boolean(banner.value.localization) && !banner.value.setup);
 const canReview = computed(() => reviewable(state.value));
+// A translation of one field, such as the field action's, names it.
+const workingField = computed(() => {
+    const request = state.value?.request;
+
+    return request?.kind === 'translate' && request.fields?.length === 1 ? fieldLabels(request.fields, state.value.status) : null;
+});
 const showingChanges = ref(false);
 
 // The list belongs to one result: a new translation or review closes it.
@@ -115,6 +121,9 @@ async function undo() {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <Text v-if="state.progress.cancelling">{{ __('Cancelling. Fields already on their way are still filled in.') }}</Text>
                     <Text v-else-if="state.request?.kind === 'review'">{{ __('Reviewing the translation…') }}</Text>
+                    <Text v-else-if="workingField" data-tolk-working-field>
+                        {{ __('Translating :field into :site…', { field: workingField, site: banner.localization?.target?.name ?? '' }) }}
+                    </Text>
                     <Text v-else>{{ __('Translating into :site…', { site: banner.localization?.target?.name ?? '' }) }}</Text>
                     <Button size="sm" variant="ghost" :disabled="state.progress.cancelling" data-tolk-action="cancel" @click="translations.cancel(name)">
                         {{ __('Cancel') }}
