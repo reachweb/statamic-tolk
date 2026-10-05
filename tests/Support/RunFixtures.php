@@ -24,13 +24,24 @@ final class RunFixtures
      */
     public static function started(array $request = []): Run
     {
-        $scope = isset($request['entryIds']) || isset($request['collections']) ? [] : ['collections' => ['articles']];
-        $planned = app(RunPlanner::class)->build(new RunRequest(...['sites' => ['el'], 'driver' => RunDriver::Browser, ...$scope, ...$request]));
-        $run = app(RunRepository::class)->create($planned->run, $planned->items);
+        $run = self::pending($request);
 
         app(RunProcessor::class)->start($run);
 
         return $run;
+    }
+
+    /**
+     * The same run, stored and not started.
+     *
+     * @param  array<string, mixed>  $request  RunRequest arguments by name
+     */
+    public static function pending(array $request = []): Run
+    {
+        $scope = isset($request['entryIds']) || isset($request['collections']) ? [] : ['collections' => ['articles']];
+        $planned = app(RunPlanner::class)->build(new RunRequest(...['sites' => ['el'], 'driver' => RunDriver::Browser, ...$scope, ...$request]));
+
+        return app(RunRepository::class)->create($planned->run, $planned->items);
     }
 
     public static function translate(Run $run, string $worker = 'lane-1', int $seconds = 30, int $ttl = 300): WorkReport
