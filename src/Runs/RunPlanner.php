@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Runs;
 
+use Closure;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Prompts\PromptContext;
@@ -21,6 +22,7 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetResult;
@@ -81,8 +83,10 @@ final readonly class RunPlanner
      * Plans the run's pending items from $fromIndex on, without storing the plans, until the budget is used (at least
      * one item), adds them to the run's estimate, and marks an item whose plan is empty `skipped`. Index 0 starts the
      * estimate over; a call from any index other than where the last one stopped (a retried request) adds nothing.
+     *
+     * @param  ?Closure(RunItem, Plan): void  $planned  called with each item and its plan, empty or not
      */
-    public function estimate(Run $run, int $fromIndex, int $budgetMs): EstimateProgress
+    public function estimate(Run $run, int $fromIndex, int $budgetMs, ?Closure $planned = null): EstimateProgress
     {
         $stored = $run->estimate === null ? new EstimateProgress(new Estimate, 0) : EstimateProgress::fromArray($run->estimate);
 
@@ -98,7 +102,7 @@ final readonly class RunPlanner
         $index = max(0, $fromIndex);
 
         while ($index < $size) {
-            $estimate = $estimate->add($this->estimateItem($run, $index++, $options, $contexts));
+            $estimate = $estimate->add($this->estimateItem($run, $index++, $options, $contexts, $planned));
 
             if (hrtime(true) >= $deadline) {
                 break;
@@ -400,8 +404,9 @@ final readonly class RunPlanner
 
     /**
      * @param  array<string, PromptContext>  $contexts  by site, built once per site because each builds a glossary
+     * @param  ?Closure(RunItem, Plan): void  $planned
      */
-    private function estimateItem(Run $run, int $index, PlanOptions $options, array &$contexts): Estimate
+    private function estimateItem(Run $run, int $index, PlanOptions $options, array &$contexts, ?Closure $planned): Estimate
     {
         $item = $this->runs->item($run, $index);
 
@@ -418,8 +423,12 @@ final readonly class RunPlanner
 
         $plan = $options->mode === Mode::Review ? $this->planner->planReview($target, $options) : $this->planner->plan($target, $options);
 
+        if ($planned !== null) {
+            $planned($item, $plan);
+        }
+
         if ($plan->isEmpty()) {
-            $this->skipUnclaimed($run, $index);
+            $this->skipUnclaimed($run, $index, $plan);
 
             return new Estimate;
         }
@@ -427,8 +436,9 @@ final readonly class RunPlanner
         return $this->estimator->forPlan($plan, $contexts[$item->targetSite] ??= PromptContext::fromSettings($this->settings, $item->targetSite));
     }
 
-    // Read again right before the write: a worker may have taken the item while it was planned.
-    private function skipUnclaimed(Run $run, int $index): void
+    // Read again right before the write: a worker may have taken the item while it was planned. The fields say why
+    // each was left out, as when translating skips the item.
+    private function skipUnclaimed(Run $run, int $index, Plan $plan): void
     {
         $item = $this->runs->item($run, $index);
 
@@ -438,6 +448,7 @@ final readonly class RunPlanner
 
         $item->status = RunItemStatus::Skipped;
         $item->reason = TargetResult::NOTHING_TO_DO;
+        $item->fields = $plan->skipped;
 
         try {
             $this->runs->saveItem($run, $item);

@@ -31,6 +31,7 @@ final class RunItem
      * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`, or why it was
      *                                         skipped or failed, as TargetResult::$fields
      * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
+     * @param  bool  $created  whether applying the item created the localization
      */
     public function __construct(
         public int $index,
@@ -54,6 +55,7 @@ final class RunItem
         public UsageMap $usage = new UsageMap,
         public ?string $reference = null,
         public ?string $editUrl = null,
+        public bool $created = false,
     ) {}
 
     /**
@@ -88,6 +90,7 @@ final class RunItem
             'usage' => $this->usage->toArray(),
             'reference' => $this->reference,
             'edit_url' => $this->editUrl,
+            'created' => $this->created,
         ];
     }
 
@@ -115,6 +118,7 @@ final class RunItem
             usage: UsageMap::fromArray(self::storedArray($data, 'usage')),
             reference: self::storedString($data, 'reference'),
             editUrl: self::storedString($data, 'edit_url'),
+            created: (bool) ($data['created'] ?? false),
         );
     }
 }
