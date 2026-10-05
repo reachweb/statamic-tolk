@@ -129,7 +129,7 @@ final readonly class Planner
      */
     private function make(UnitKind $kind, Target $target, PlanOptions $options, array $fields, array $segments, array $batched, array $skipped): Plan
     {
-        $batches = $this->batchPlanner->plan($batched, $this->budget($options->profile, $batched), (int) config('tolk.batch.max_segments'));
+        $batches = $this->batchPlanner->plan($batched, $this->budget($options, $batched), (int) config('tolk.batch.max_segments'));
 
         return new Plan(
             id: (string) Str::ulid(),
@@ -149,13 +149,14 @@ final readonly class Planner
 
     /**
      * Source characters per batch. The editor sends its units in parallel, so a small entry is still split over them and
-     * its fields fill one after another (T6.11). Reused segments are never batched and do not count.
+     * its fields fill one after another (T6.11). A run lane sends an item's units one after another, where a split would
+     * only add calls. Reused segments are never batched and do not count.
      */
-    private function budget(string $profile, array $segments): int
+    private function budget(PlanOptions $options, array $segments): int
     {
-        $max = (int) config("tolk.batch.max_chars.{$profile}");
+        $max = (int) config("tolk.batch.max_chars.{$options->profile}");
 
-        if ($profile !== 'web') {
+        if ($options->profile !== 'web' || ! $options->parallel) {
             return $max;
         }
 

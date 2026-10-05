@@ -151,7 +151,7 @@ class EditorController extends Controller
     private function options(Settings $settings, ModelCatalog $catalog, UserContract $user, array $overrides): PlanOptions
     {
         try {
-            return PlanOptions::fromSettings($settings, $catalog, [...$overrides, 'profile' => 'web', 'userId' => (string) $user->id()]);
+            return PlanOptions::fromSettings($settings, $catalog, [...$overrides, 'profile' => 'web', 'parallel' => true, 'userId' => (string) $user->id()]);
         } catch (NoProviderConfigured|MissingDefaultModel $exception) {
             $this->fail(422, 'no_translator', $exception->getMessage());
         }
