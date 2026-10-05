@@ -2,6 +2,8 @@
 
 namespace Reach\StatamicTolk\Ai;
 
+use Reach\StatamicTolk\Exceptions\InvalidModelRef;
+
 class Pricing
 {
     /**
@@ -30,5 +32,29 @@ class Pricing
             + $usage->cacheRead * $price['input'] * self::CACHE_READ_RATE
             + $usage->cacheWrite * $price['input'] * self::CACHE_WRITE_RATE
             + $usage->output * $price['output']) / 1_000_000;
+    }
+
+    /**
+     * USD for every model of the map, or null when one of them has no price.
+     */
+    public function total(UsageMap $usages): ?float
+    {
+        $total = 0.0;
+
+        foreach ($usages->usages as $model => $usage) {
+            try {
+                $cost = $this->cost(ModelRef::fromString($model), $usage);
+            } catch (InvalidModelRef) {
+                return null;
+            }
+
+            if ($cost === null) {
+                return null;
+            }
+
+            $total += $cost;
+        }
+
+        return $total;
     }
 }

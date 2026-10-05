@@ -213,6 +213,35 @@ final class FileRunRepository implements RunRepository
         });
     }
 
+    public function retryFailed(Run $run): int
+    {
+        return $this->locked($run->id, function () use ($run) {
+            $stored = $this->readRun($run->id) ?? throw RunNotFound::for($run->id);
+            $index = $this->readIndex($run->id);
+            $changed = [];
+
+            // All at once, so commit() does not skip an item again for a dependency that is not reset yet.
+            foreach ($index as $i => $entry) {
+                $retried = $entry['status'] === RunItemStatus::Failed->value
+                    || ($entry['status'] === RunItemStatus::Skipped->value && $entry['reason'] === RunItem::DEPENDENCY_FAILED);
+
+                if (! $retried || ! $item = $this->readItem($run->id, $i)) {
+                    continue;
+                }
+
+                $item->status = RunItemStatus::Pending;
+                $item->reason = $item->error = null;
+                $item->attempts = $item->waits = 0;
+                $item->claim = $item->availableAt = null;
+                $changed[$i] = $item;
+            }
+
+            $this->commit($run, $stored, $index, $changed);
+
+            return count($changed);
+        });
+    }
+
     public function nextAvailableIn(Run $run): ?int
     {
         $status = $this->readRun($run->id)?->status;

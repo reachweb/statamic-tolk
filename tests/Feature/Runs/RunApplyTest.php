@@ -24,7 +24,6 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Events\EntrySaved;
 use Statamic\Events\EntrySaving;
 use Statamic\Facades\Entry;
-use Statamic\Facades\Git;
 use Statamic\Git\Subscriber;
 
 beforeEach(function () {
@@ -69,22 +68,6 @@ function finishRun(Run $run): void
 function greekStatus(Statamic\Contracts\Entries\Entry $origin): ItemStatus
 {
     return app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry((string) $origin->id(), 'el'))->itemStatus;
-}
-
-/**
- * Collects the messages of git commits instead of committing. CommitJob is unique, so the pushed jobs of a faked queue
- * would not show a second commit.
- */
-function runCommits(): ArrayObject
-{
-    config(['statamic.git.enabled' => true, 'statamic.git.automatic' => true]);
-    $messages = new ArrayObject;
-    Git::shouldReceive('as')->andReturnSelf();
-    Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use ($messages) {
-        $messages[] = $message;
-    });
-
-    return $messages;
 }
 
 describe('applyReady', function () {
@@ -409,7 +392,7 @@ describe('applyReady', function () {
     });
 
     it('fails an item whose save a listener vetoed and still commits the localization it created', function () {
-        $commits = runCommits();
+        $commits = RunFixtures::commits();
         $this->fakeTranslations();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
         RunFixtures::translate($run);
@@ -522,7 +505,7 @@ describe('finalize', function () {
     });
 
     it('fires RunFinished once and dispatches one commit when called twice', function () {
-        $commits = runCommits();
+        $commits = RunFixtures::commits();
         Event::fake([RunFinished::class]);
         $this->fakeTranslations();
         $run = RunFixtures::started();
@@ -546,7 +529,7 @@ describe('finalize', function () {
     });
 
     it('commits the content a run saved before it was cancelled', function () {
-        $commits = runCommits();
+        $commits = RunFixtures::commits();
         Event::fake([RunFinished::class]);
         $this->fakeTranslations();
         $run = RunFixtures::started();
@@ -572,7 +555,7 @@ describe('finalize', function () {
     });
 
     it('commits the content an apply saved after the run was cancelled', function () {
-        $commits = runCommits();
+        $commits = RunFixtures::commits();
         $this->fakeTranslations();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id()]]);
         RunFixtures::translate($run);
@@ -594,7 +577,7 @@ describe('finalize', function () {
     });
 
     it('commits once for a stalled run without ending it, and nothing when nothing was saved since', function () {
-        $commits = runCommits();
+        $commits = RunFixtures::commits();
         Event::fake([RunFinished::class]);
         $this->fakeTranslations();
         $run = RunFixtures::started();
@@ -630,7 +613,7 @@ describe('finalize', function () {
     });
 
     it('saves without Statamic\'s git listener and dispatches no commit per entry', function () {
-        $commits = runCommits();
+        $commits = RunFixtures::commits();
         $listening = [];
         Event::listen(EntrySaved::class, function () use (&$listening) {
             $listening[] = in_array(Subscriber::class.'@commit', Event::getRawListeners()[EntrySaved::class] ?? [], true);

@@ -96,6 +96,14 @@ interface RunRepository
     public function release(Run $run, RunItem $item, ?CarbonInterface $availableAt = null): void;
 
     /**
+     * Puts the failed items, and the items skipped because a dependency failed, back to `pending`, atomically: their
+     * attempts, waits, reason, error and availability are cleared, their plan is kept. Returns how many.
+     *
+     * @throws RunNotFound
+     */
+    public function retryFailed(Run $run): int;
+
+    /**
      * Seconds until some item can be claimed with claimNext(), 0 when one can be now, null when nothing is waiting.
      */
     public function nextAvailableIn(Run $run): ?int;

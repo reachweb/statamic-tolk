@@ -1,5 +1,6 @@
 <?php
 
+use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -439,6 +440,31 @@ it('marks a child skipped on the next claim when its parent failed', function ()
         ->and($this->runs->item($run, 1)->reason)->toBe(RunItem::DEPENDENCY_FAILED)
         ->and($this->runs->item($run, 3)->reason)->toBe(RunItem::DEPENDENCY_FAILED)
         ->and($this->runs->counts($run))->toBe(runRepoCounts(['skipped' => 3, 'failed' => 1]));
+});
+
+it('puts failed items and the items their failure skipped back to pending, all at once', function () {
+    $later = CarbonImmutable::now()->addMinute();
+    // Item 1 waits for item 3, which is later in the run, so resetting one item at a time would skip it again.
+    $run = runRepoRun([
+        runRepoItem(0, ['status' => RunItemStatus::Done]),
+        runRepoItem(1, ['dependsOn' => [3], 'status' => RunItemStatus::Skipped, 'reason' => RunItem::DEPENDENCY_FAILED]),
+        runRepoItem(2, ['status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do']),
+        runRepoItem(3, ['dependsOn' => [5], 'status' => RunItemStatus::Skipped, 'reason' => RunItem::DEPENDENCY_FAILED]),
+        runRepoItem(4, ['status' => RunItemStatus::Failed, 'reason' => 'root_missing', 'error' => 'Translate Home into Greek first.', 'attempts' => 2, 'waits' => 4, 'planId' => 'plan-4', 'availableAt' => $later, 'warnings' => ['Kept.']]),
+        runRepoItem(5, ['status' => RunItemStatus::Failed, 'error' => 'Boom', 'attempts' => 3]),
+    ]);
+    $this->travel(5)->seconds();
+
+    expect($this->runs->retryFailed($run))->toBe(4)
+        ->and($this->runs->counts($run))->toBe(runRepoCounts(['done' => 1, 'skipped' => 1, 'pending' => 4]))
+        ->and($this->runs->item($run, 4))->toMatchObject([
+            'status' => RunItemStatus::Pending, 'reason' => null, 'error' => null, 'attempts' => 0, 'waits' => 0,
+            'availableAt' => null, 'claim' => null, 'planId' => 'plan-4', 'warnings' => ['Kept.'],
+        ])
+        ->and($this->runs->item($run, 1)->reason)->toBeNull()
+        ->and($run->progressedAt->equalTo(CarbonImmutable::now()))->toBeTrue()
+        ->and(runRepoClaimAll($run, 'lane-'))->toBe([4, 5])
+        ->and($this->runs->retryFailed($run))->toBe(0);
 });
 
 it('holds a stage-1 item back until the stage-0 items of its site are finished', function () {

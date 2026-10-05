@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use ArrayObject;
 use Carbon\CarbonImmutable;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -11,6 +12,7 @@ use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Runs\WorkReport;
+use Statamic\Facades\Git;
 
 /**
  * Stored runs of the `articles` collection, for tests of the run processor.
@@ -68,5 +70,21 @@ final class RunFixtures
     public static function stored(Run $run): Run
     {
         return app(RunRepository::class)->find($run->id);
+    }
+
+    /**
+     * Turns Statamic's git on and collects the messages of its commits instead of committing. CommitJob is unique, so
+     * the pushed jobs of a faked queue would not show a second commit.
+     */
+    public static function commits(): ArrayObject
+    {
+        config(['statamic.git.enabled' => true, 'statamic.git.automatic' => true]);
+        $messages = new ArrayObject;
+        Git::shouldReceive('as')->andReturnSelf();
+        Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use ($messages) {
+            $messages[] = $message;
+        });
+
+        return $messages;
     }
 }
