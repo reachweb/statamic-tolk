@@ -222,7 +222,7 @@ describe('planning', function () {
         config(['tolk.batch.min_chars' => 1, 'tolk.concurrency.editor' => 2]);
         reviewExistingTranslate($this->origin, options: ['fields' => ['body']]);
 
-        $plan = reviewExistingPlan($this->origin, ['profile' => 'web']);
+        $plan = reviewExistingPlan($this->origin, ['profile' => 'web', 'parallel' => true]);
 
         expect($plan->batches)->toBe([
             ['id' => 'b1', 'segment_ids' => ['s1'], 'chars' => 36],

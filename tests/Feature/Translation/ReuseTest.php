@@ -284,7 +284,7 @@ describe('planning reuse', function () {
     it('splits the editor\'s batches by the characters still to translate, without the reused ones', function () {
         config(['tolk.batch.min_chars' => 1, 'tolk.concurrency.editor' => 2]);
 
-        $plan = reusePlan($this->origin, ['mode' => Mode::Update, 'fields' => ['title', 'blocks'], 'profile' => 'web']);
+        $plan = reusePlan($this->origin, ['mode' => Mode::Update, 'fields' => ['title', 'blocks'], 'profile' => 'web', 'parallel' => true]);
 
         expect($plan->fields['blocks']['reused'])->toBe(3)
             ->and($plan->batches)->toBe([

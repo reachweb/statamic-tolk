@@ -143,6 +143,7 @@ it('survives toArray() and fromArray()', function () {
         'profile' => 'background',
         'strict' => true,
         'userId' => 'user-1',
+        'parallel' => true,
     ]);
 
     expect(PlanOptions::fromArray($options->toArray()))->toEqual($options)
@@ -159,5 +160,6 @@ it('survives toArray() and fromArray()', function () {
             'profile' => 'background',
             'strict' => true,
             'user_id' => 'user-1',
+            'parallel' => true,
         ]);
 });

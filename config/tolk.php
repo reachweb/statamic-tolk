@@ -119,10 +119,10 @@ return [
     | Requests and batches
     |--------------------------------------------------------------------------
     |
-    | `web` applies to requests an editor waits for, `background` to queue
-    | jobs and the CLI. Timeouts are seconds per provider call. Batches are
-    | measured in source characters; `min_chars` is the floor when the editor
-    | splits a small entry into parallel batches.
+    | `web` applies to the editor's requests and to runs driven by the browser
+    | or a queue, `background` to the CLI. Timeouts are seconds per provider
+    | call. Batches are measured in source characters; `min_chars` is the
+    | floor when the editor splits a small entry into parallel batches.
     |
     */
 
