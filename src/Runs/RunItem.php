@@ -21,7 +21,11 @@ final class RunItem
 
     /**
      * @param  list<int>  $dependsOn  indexes of the items that must be done or skipped first
-     * @param  ?string  $reason  why the item was skipped, such as `dependency_failed`
+     * @param  ?string  $reason  why the item was skipped or failed, such as `dependency_failed`; on a pending item
+     *                           `source_changed` when its origin changed before it was applied
+     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`, or why it was
+     *                                         skipped or failed, as TargetResult::$fields
+     * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
      */
     public function __construct(
         public int $index,
@@ -40,6 +44,7 @@ final class RunItem
         public ?CarbonImmutable $availableAt = null,
         public array $fields = [],
         public array $warnings = [],
+        public array $corrections = [],
         public ?string $error = null,
         public UsageMap $usage = new UsageMap,
         public ?string $reference = null,
@@ -65,6 +70,7 @@ final class RunItem
             'available_at' => self::timeToString($this->availableAt),
             'fields' => $this->fields,
             'warnings' => $this->warnings,
+            'corrections' => $this->corrections,
             'error' => $this->error,
             'usage' => $this->usage->toArray(),
             'reference' => $this->reference,
@@ -91,6 +97,7 @@ final class RunItem
             availableAt: self::storedTime($data, 'available_at'),
             fields: self::storedArray($data, 'fields'),
             warnings: self::storedArray($data, 'warnings'),
+            corrections: self::storedArray($data, 'corrections'),
             error: self::storedString($data, 'error'),
             usage: UsageMap::fromArray(self::storedArray($data, 'usage')),
             reference: self::storedString($data, 'reference'),

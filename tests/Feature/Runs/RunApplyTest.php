@@ -1,0 +1,655 @@
+<?php
+
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Sleep;
+use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Enums\ItemStatus;
+use Reach\StatamicTolk\Enums\RunDriver;
+use Reach\StatamicTolk\Enums\RunItemStatus;
+use Reach\StatamicTolk\Enums\RunStatus;
+use Reach\StatamicTolk\Events\RunFinished;
+use Reach\StatamicTolk\Events\TargetTranslated;
+use Reach\StatamicTolk\Runs\ApplyReport;
+use Reach\StatamicTolk\Runs\Run;
+use Reach\StatamicTolk\Runs\RunItem;
+use Reach\StatamicTolk\Runs\RunPlanner;
+use Reach\StatamicTolk\Runs\RunProcessor;
+use Reach\StatamicTolk\Runs\RunRequest;
+use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Translation\PlanStore;
+use Statamic\Events\EntrySaved;
+use Statamic\Events\EntrySaving;
+use Statamic\Facades\Entry;
+use Statamic\Facades\Git;
+use Statamic\Git\Subscriber;
+
+beforeEach(function () {
+    $this->useFileCache();
+    $this->freezeSecond();
+    Queue::fake();
+
+    $this->makeCollection('articles', ['en', 'el', 'de'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+        'intro' => ['type' => 'textarea', 'localizable' => true],
+    ]);
+
+    $this->hello = $this->makeEntry('articles', 'en', ['title' => 'Hello', 'intro' => 'A short intro.'], 'hello');
+    $this->world = $this->makeEntry('articles', 'en', ['title' => 'World', 'intro' => 'Another intro.'], 'world');
+    $this->again = $this->makeEntry('articles', 'en', ['title' => 'Again', 'intro' => 'A third intro.'], 'again');
+
+    $this->runs = app(RunRepository::class);
+});
+
+/**
+ * A stored and started run; without entries or collections, the articles into Greek, three items.
+ */
+function bulkRun(array $request = []): Run
+{
+    $scope = isset($request['entryIds']) || isset($request['collections']) ? [] : ['collections' => ['articles']];
+    $planned = app(RunPlanner::class)->build(new RunRequest(...['sites' => ['el'], 'driver' => RunDriver::Browser, ...$scope, ...$request]));
+    $run = app(RunRepository::class)->create($planned->run, $planned->items);
+
+    app(RunProcessor::class)->start($run);
+
+    return $run;
+}
+
+function applyRun(Run $run, string $worker = 'apply-1', int $seconds = 30): ApplyReport
+{
+    return app(RunProcessor::class)->applyReady($run, $worker, CarbonImmutable::now()->addSeconds($seconds));
+}
+
+/**
+ * Translates and applies until nothing is left to do, as a driver would; at most ten rounds.
+ */
+function finishRun(Run $run): void
+{
+    $processor = app(RunProcessor::class);
+
+    for ($round = 0; $round < 10; $round++) {
+        $translated = $processor->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $applied = applyRun($run);
+
+        if (! $translated->remains && ! $applied->remains) {
+            return;
+        }
+    }
+
+    throw new RuntimeException('The run did not finish in ten rounds.');
+}
+
+/**
+ * @return list<RunItem>
+ */
+function bulkItems(Run $run): array
+{
+    return app(RunRepository::class)->items($run, perPage: 1000);
+}
+
+/**
+ * @return list<string>
+ */
+function bulkStatuses(Run $run): array
+{
+    return array_map(fn (RunItem $item) => $item->status->value, bulkItems($run));
+}
+
+function runAsStored(Run $run): Run
+{
+    return app(RunRepository::class)->find($run->id);
+}
+
+function greekStatus(Statamic\Contracts\Entries\Entry $origin): ItemStatus
+{
+    return app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry((string) $origin->id(), 'el'))->itemStatus;
+}
+
+/**
+ * Collects the messages of git commits instead of committing. CommitJob is unique, so the pushed jobs of a faked queue
+ * would not show a second commit.
+ */
+function runCommits(): ArrayObject
+{
+    config(['statamic.git.enabled' => true, 'statamic.git.automatic' => true]);
+    $messages = new ArrayObject;
+    Git::shouldReceive('as')->andReturnSelf();
+    Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use ($messages) {
+        $messages[] = $message;
+    });
+
+    return $messages;
+}
+
+describe('applyReady', function () {
+    it('applies every translated item and leaves each target current', function () {
+        Event::fake([TargetTranslated::class, RunFinished::class]);
+        $this->fakeTranslations();
+        $run = bulkRun();
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $plans = array_map(fn (RunItem $item) => $item->planId, bulkItems($run));
+
+        $report = applyRun($run);
+        $items = bulkItems($run);
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($report->toArray())->toBe(['items' => 3, 'returned' => 0, 'remains' => false, 'wait' => null])
+            ->and(bulkStatuses($run))->toBe(['done', 'done', 'done'])
+            ->and($items[0]->fields)->toBe(['title' => 'applied', 'intro' => 'applied'])
+            ->and($items[0]->reason)->toBeNull()
+            ->and($items[0]->planId)->toBeNull()
+            ->and($items[0]->claim)->toBeNull()
+            ->and($items[0]->reference)->toBe('entry::'.$greek->id())
+            ->and($items[0]->editUrl)->toBe($greek->editUrl())
+            ->and($greek->get('title'))->toBe('[T] Hello')
+            ->and($greek->published())->toBeFalse()
+            ->and(array_map(greekStatus(...), [$this->hello, $this->world, $this->again]))->toBe(array_fill(0, 3, ItemStatus::Current))
+            ->and(runAsStored($run)->status)->toBe(RunStatus::Completed)
+            ->and(runAsStored($run)->saves)->toBe(3);
+
+        foreach ($plans as $plan) {
+            expect(app(PlanStore::class)->get($plan))->toBeNull();
+        }
+
+        Event::assertDispatchedTimes(TargetTranslated::class, 3);
+        Event::assertDispatched(TargetTranslated::class, fn (TargetTranslated $event) => (string) $event->ref === 'entry::'.$greek->id()
+            && $event->handles === ['title', 'intro']
+            && $event->models === array_keys($items[0]->usage->usages));
+        Event::assertDispatchedTimes(RunFinished::class, 1);
+    });
+
+    it('takes the write lock before claiming and applies nothing while another process holds it', function () {
+        Sleep::fake(syncWithCarbon: true);
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $lock = Cache::lock(ContentWriter::LOCK, 60);
+        $lock->get();
+        $start = CarbonImmutable::now();
+
+        $report = applyRun($run, seconds: 2);
+
+        expect($start->diffInMilliseconds(CarbonImmutable::now()))->toBeLessThanOrEqual(2000)
+            ->and($report->toArray())->toBe(['items' => 0, 'returned' => 0, 'remains' => true, 'wait' => RunProcessor::BUSY_SECONDS])
+            ->and(bulkStatuses($run))->toBe(['translated'])
+            ->and(bulkItems($run)[0]->claim)->toBeNull();
+
+        $lock->release();
+
+        expect(applyRun($run)->items)->toBe(1)
+            ->and(bulkStatuses($run))->toBe(['done']);
+    });
+
+    it('applies nothing once the deadline has passed and nothing of a run that is not running', function () {
+        $this->fakeTranslations();
+        $run = bulkRun();
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+
+        $late = applyRun($run, seconds: 0);
+        $run->status = RunStatus::Cancelled;
+        $this->runs->save($run);
+        $cancelled = applyRun($run);
+
+        expect($late->toArray())->toBe(['items' => 0, 'returned' => 0, 'remains' => true, 'wait' => 0])
+            ->and($cancelled->toArray())->toBe(['items' => 0, 'returned' => 0, 'remains' => false, 'wait' => null])
+            ->and(bulkStatuses($run))->toBe(['translated', 'translated', 'translated'])
+            ->and(Entry::query()->where('site', 'el')->count())->toBe(0);
+    });
+
+    it('applies a child under its localized parent', function () {
+        $this->fakeTranslations();
+        $this->makePages(['home', 'rooms' => ['suites'], 'dining']);
+        $run = bulkRun(['collections' => ['pages']]);
+
+        finishRun($run);
+
+        expect(bulkStatuses($run))->toBe(['done', 'done', 'done', 'done'])
+            ->and($this->treeOfSlugs('el'))->toBe($this->treeOfSlugs('en'))
+            ->and($this->treeOfSlugs('el'))->toBe(['home' => [], 'rooms' => ['suites' => []], 'dining' => []])
+            ->and(runAsStored($run)->status)->toBe(RunStatus::Completed);
+    });
+
+    it('keeps the planner\'s warnings and adds those of the apply', function () {
+        $this->fakeTranslations();
+        $pages = $this->makePages(['home', 'rooms' => ['suites']], root: false);
+        $this->makeEntry('pages', 'el', ['title' => 'Άλλη'], 'suites');
+        $run = bulkRun(['entryIds' => [$pages['suites']->id()]]);
+
+        finishRun($run);
+
+        expect(bulkStatuses($run))->toBe(['done'])
+            ->and(bulkItems($run)[0]->warnings)->toBe([
+                'Its parent page, Rooms, has no localization in Greek, so this page will be placed at the top level.',
+                'The slug "suites" is already used in Greek, so the new localization got "suites-2".',
+            ]);
+    });
+
+    it('sends an item whose origin changed after translating back to pending, and applies it on the next round', function () {
+        $this->fakeTranslations();
+        $run = bulkRun();
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $plan = bulkItems($run)[0]->planId;
+        $this->hello->set('title', 'Hello there')->save();
+
+        $report = applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($report->toArray())->toBe(['items' => 2, 'returned' => 1, 'remains' => false, 'wait' => null])
+            ->and(bulkStatuses($run))->toBe(['pending', 'done', 'done'])
+            ->and($item->reason)->toBe('source_changed')
+            ->and($item->planId)->toBeNull()
+            ->and($item->claim)->toBeNull()
+            ->and(app(PlanStore::class)->get($plan))->toBeNull()
+            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse()
+            ->and(runAsStored($run)->status)->toBe(RunStatus::Running);
+
+        finishRun($run);
+
+        expect(bulkStatuses($run))->toBe(['done', 'done', 'done'])
+            ->and(bulkItems($run)[0]->reason)->toBeNull()
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello there')
+            ->and(greekStatus($this->hello))->toBe(ItemStatus::Current)
+            ->and(runAsStored($run)->status)->toBe(RunStatus::Completed);
+    });
+
+    it('fails an item whose origin changed again before its second apply', function () {
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        $processor = app(RunProcessor::class);
+
+        foreach (['Hello there', 'Hello again'] as $title) {
+            $processor->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+            $this->hello->set('title', $title)->save();
+            applyRun($run);
+        }
+
+        $item = bulkItems($run)[0];
+
+        expect($item->status)->toBe(RunItemStatus::Failed)
+            ->and($item->reason)->toBe('source_changed')
+            ->and($item->error)->toBe('The source of the field [title] changed after its translation was planned.')
+            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse()
+            ->and(runAsStored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+    });
+
+    it('sends an item whose plan expired back to pending', function () {
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        app(PlanStore::class)->forget(app(PlanStore::class)->get(bulkItems($run)[0]->planId));
+
+        $report = applyRun($run);
+
+        expect($report->returned)->toBe(1)
+            ->and(bulkStatuses($run))->toBe(['pending'])
+            ->and(bulkItems($run)[0]->reason)->toBeNull()
+            ->and($this->modelCalls())->toBe(1);
+
+        finishRun($run);
+
+        expect(bulkStatuses($run))->toBe(['done'])
+            ->and($this->modelCalls())->toBe(2)
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello');
+    });
+
+    it('keeps a field a human edited meanwhile and reports target_changed', function () {
+        $this->fakeTranslations();
+        finishRun(bulkRun(['entryIds' => [$this->hello->id()]]));
+        $this->hello->merge(['title' => 'Hello there', 'intro' => 'A longer intro.'])->save();
+        $run = bulkRun(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $this->hello->fresh()->in('el')->set('title', 'Γεια σας')->save();
+
+        applyRun($run);
+        $item = bulkItems($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($item->fields)->toBe(['title' => 'target_changed', 'intro' => 'applied'])
+            ->and($greek->get('title'))->toBe('Γεια σας')
+            ->and($greek->get('intro'))->toBe('[T] A longer intro.');
+    });
+
+    it('overwrites a field a human edited meanwhile when the run overwrites manual edits', function () {
+        $this->fakeTranslations();
+        finishRun(bulkRun(['entryIds' => [$this->hello->id()]]));
+        $this->hello->set('title', 'Hello there')->save();
+        $run = bulkRun(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update', 'overwrite_manual' => true]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $this->hello->fresh()->in('el')->set('title', 'Γεια σας')->save();
+
+        applyRun($run);
+
+        expect(bulkItems($run)[0]->fields)->toBe(['title' => 'applied', 'intro' => 'current'])
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello there');
+    });
+
+    it('skips an item whose every field a human edited meanwhile', function () {
+        $this->fakeTranslations();
+        finishRun(bulkRun(['entryIds' => [$this->hello->id()]]));
+        $this->hello->set('title', 'Hello there')->save();
+        $run = bulkRun(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $this->hello->fresh()->in('el')->set('title', 'Γεια σας')->save();
+
+        applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($item->status)->toBe(RunItemStatus::Skipped)
+            ->and($item->reason)->toBe('target_changed')
+            ->and($item->fields)->toBe(['title' => 'target_changed', 'intro' => 'current'])
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('Γεια σας')
+            ->and(runAsStored($run)->status)->toBe(RunStatus::Completed)
+            ->and(runAsStored($run)->saves)->toBe(0);
+    });
+
+    it('skips the item at apply time when its creator lost access', function () {
+        $this->fakeTranslations();
+        $user = $this->signInWithPermissions(['access en site', 'access el site', 'edit articles entries']);
+        $run = bulkRun(['entryIds' => [$this->hello->id(), $this->world->id()], 'user' => $user]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $plans = array_map(fn (RunItem $item) => $item->planId, bulkItems($run));
+        $this->setTestRoles(['tolk_test' => ['access en site', 'access el site']]);
+
+        applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect(bulkStatuses($run))->toBe(['skipped', 'skipped'])
+            ->and($item->reason)->toBe(RunItem::UNAUTHORIZED)
+            ->and($item->planId)->toBeNull()
+            ->and(app(PlanStore::class)->get($plans[0]))->toBeNull()
+            ->and(Entry::query()->where('site', 'el')->count())->toBe(0)
+            ->and(runAsStored($run)->status)->toBe(RunStatus::Completed);
+    });
+
+    it('applies with the creator as the user and the run\'s publish option', function () {
+        $this->fakeTranslations();
+        $this->hello->published(true)->save();
+        $user = $this->signInWithPermissions(['access en site', 'access el site', 'edit articles entries', 'publish articles entries']);
+        $run = bulkRun(['entryIds' => [$this->hello->id()], 'user' => $user, 'options' => ['new_status' => 'mirror']]);
+
+        finishRun($run);
+        $greek = $this->hello->fresh()->in('el');
+
+        expect(bulkStatuses($run))->toBe(['done'])
+            ->and($greek->published())->toBeTrue()
+            ->and($greek->get('updated_by'))->toBe($user->id());
+    });
+
+    it('lists a field that failed in strict mode and applies the others', function () {
+        $this->withSettings(['strict_fields' => true]);
+        $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? null : '[T] '.$text);
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+
+        finishRun($run);
+        $item = bulkItems($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($item->fields)->toBe(['title' => 'missing', 'intro' => 'applied'])
+            ->and($item->warnings[0])->toStartWith('The field [title] could not be translated completely')
+            ->and($greek->has('title'))->toBeFalse()
+            ->and($greek->get('intro'))->toBe('[T] A short intro.');
+    });
+
+    it('fails an item none of whose fields could be translated completely in strict mode', function () {
+        $this->withSettings(['strict_fields' => true]);
+        $this->fakeTranslations(fn () => null);
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+
+        finishRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($item->status)->toBe(RunItemStatus::Failed)
+            ->and($item->reason)->toBe('fields_failed')
+            ->and($item->error)->toBe('No field could be translated completely.')
+            ->and($item->fields)->toBe(['title' => 'missing', 'intro' => 'missing'])
+            ->and($this->hello->fresh()->existsIn('el'))->toBeFalse()
+            ->and(runAsStored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+    });
+
+    it('saves only the corrected fields of a review and keeps the corrections on the item', function () {
+        $this->fakeTranslations();
+        finishRun(bulkRun(['entryIds' => [$this->hello->id(), $this->world->id()]]));
+        $this->fakeReview(fn (string $source) => $source === 'Hello' ? 'Γεια' : null);
+        $run = bulkRun(['entryIds' => [$this->hello->id(), $this->world->id()], 'options' => ['mode' => 'review']]);
+
+        finishRun($run);
+        [$corrected, $accepted] = bulkItems($run);
+
+        expect(bulkStatuses($run))->toBe(['done', 'done'])
+            ->and($corrected->reason)->toBeNull()
+            ->and($corrected->fields)->toBe(['title' => 'applied', 'intro' => 'no_corrections'])
+            ->and($corrected->corrections['title'][0])->toMatchArray(['id' => 's1', 'before' => '[T] Hello', 'after' => 'Γεια'])
+            ->and($accepted->reason)->toBe('no_corrections')
+            ->and($accepted->fields)->toBe(['title' => 'no_corrections', 'intro' => 'no_corrections'])
+            ->and($accepted->corrections)->toBe([])
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('Γεια')
+            ->and($this->world->fresh()->in('el')->get('title'))->toBe('[T] World')
+            ->and(runAsStored($run)->saves)->toBe(1);
+    });
+
+    it('fails an item whose source was deleted after translating', function () {
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $this->hello->delete();
+
+        applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($item->status)->toBe(RunItemStatus::Failed)
+            ->and($item->error)->toBe("Entry [{$this->hello->id()}] not found.")
+            ->and(runAsStored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+    });
+
+    it('fails an item whose save a listener vetoed and still commits the localization it created', function () {
+        $commits = runCommits();
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        Event::listen(EntrySaving::class, fn (EntrySaving $event) => $event->entry->has('title') && $event->entry->locale() === 'el' ? false : null);
+
+        applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($item->status)->toBe(RunItemStatus::Failed)
+            ->and($item->reason)->toBe('apply_failed')
+            ->and($item->error)->toStartWith('Saving [entry::')
+            ->and($this->hello->fresh()->existsIn('el'))->toBeTrue()
+            ->and(runAsStored($run)->saves)->toBe(1)
+            ->and(runAsStored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+        expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+    });
+
+    it('retries an item whose apply threw after a growing delay and fails it at the third attempt', function () {
+        Exceptions::fake();
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id(), $this->world->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        Event::listen(EntrySaving::class, function (EntrySaving $event) {
+            if ($event->entry->locale() === 'el' && $event->entry->origin()?->id() === $this->hello->id()) {
+                throw new RuntimeException('Disk full.');
+            }
+        });
+
+        $first = applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($first->toArray())->toBe(['items' => 1, 'returned' => 0, 'remains' => true, 'wait' => RunProcessor::BUSY_SECONDS])
+            ->and(bulkStatuses($run))->toBe(['translated', 'done'])
+            ->and($item->attempts)->toBe(1)
+            ->and($item->availableAt)->toEqual(CarbonImmutable::now()->addSeconds(5))
+            ->and(applyRun($run)->items)->toBe(0);
+
+        $this->travel(5)->seconds();
+        applyRun($run);
+
+        expect(bulkItems($run)[0]->attempts)->toBe(2)
+            ->and(bulkItems($run)[0]->availableAt)->toEqual(CarbonImmutable::now()->addSeconds(10));
+
+        $this->travel(10)->seconds();
+        $last = applyRun($run);
+        $item = bulkItems($run)[0];
+
+        expect($last->toArray())->toBe(['items' => 1, 'returned' => 0, 'remains' => false, 'wait' => null])
+            ->and($item->status)->toBe(RunItemStatus::Failed)
+            ->and($item->error)->toBe('Disk full.')
+            ->and($item->planId)->toBeNull()
+            ->and(runAsStored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+        Exceptions::assertReportedCount(3);
+    });
+
+    it('applies the item of a worker that holds it again, and leaves an item another request works on', function () {
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        $claimed = $this->runs->claimTranslated($run, 'apply-1', 120);
+        $lock = Cache::lock("tolk:item:{$run->id}:0", 120);
+        $lock->get();
+
+        $busy = applyRun($run);
+
+        expect($busy->toArray())->toBe(['items' => 0, 'returned' => 0, 'remains' => true, 'wait' => RunProcessor::BUSY_SECONDS])
+            ->and(bulkStatuses($run))->toBe(['applying'])
+            ->and(bulkItems($run)[0]->claim->token)->not->toBe($claimed->claim->token);
+
+        $lock->release();
+
+        expect(applyRun($run)->items)->toBe(1)
+            ->and(bulkStatuses($run))->toBe(['done']);
+    });
+});
+
+describe('finalize', function () {
+    it('fires RunFinished once and dispatches one commit when called twice', function () {
+        $commits = runCommits();
+        Event::fake([RunFinished::class]);
+        $this->fakeTranslations();
+        $run = bulkRun();
+
+        finishRun($run);
+        app(RunProcessor::class)->finalize($run);
+        app(RunProcessor::class)->finalize(runAsStored($run));
+
+        $stored = runAsStored($run);
+
+        expect($stored->status)->toBe(RunStatus::Completed)
+            ->and($stored->finishedAt)->toEqual(CarbonImmutable::now())
+            ->and($stored->finalizedAt)->toEqual(CarbonImmutable::now())
+            ->and([$stored->saves, $stored->committedSaves])->toBe([3, 3]);
+        Event::assertDispatchedTimes(RunFinished::class, 1);
+        Event::assertDispatched(RunFinished::class, fn (RunFinished $event) => $event->runId === $run->id
+            && $event->status === RunStatus::Completed
+            && $event->counts['done'] === 3
+            && $event->usage->toArray() === $stored->usage->toArray());
+        expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+    });
+
+    it('commits the content a run saved before it was cancelled', function () {
+        $commits = runCommits();
+        Event::fake([RunFinished::class]);
+        $this->fakeTranslations();
+        $run = bulkRun();
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        Cache::lock("tolk:item:{$run->id}:1", 120)->get();
+        Cache::lock("tolk:item:{$run->id}:2", 120)->get();
+
+        applyRun($run);
+        applyRun($run, 'apply-2');
+
+        expect(bulkStatuses($run))->toBe(['done', 'applying', 'applying']);
+        expect($commits)->toHaveCount(0);
+        Event::assertNotDispatched(RunFinished::class);
+
+        $run->status = RunStatus::Cancelled;
+        $this->runs->save($run);
+        app(RunProcessor::class)->finalize($run);
+
+        expect(runAsStored($run)->finishedAt)->toEqual(CarbonImmutable::now());
+        expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+        Event::assertDispatched(RunFinished::class, fn (RunFinished $event) => $event->status === RunStatus::Cancelled
+            && $event->counts['done'] === 1);
+    });
+
+    it('commits the content an apply saved after the run was cancelled', function () {
+        $commits = runCommits();
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id(), $this->world->id()]]);
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        Event::listen(EntrySaved::class, function () use ($run) {
+            $stored = app(RunRepository::class)->find($run->id);
+
+            if ($stored->status === RunStatus::Running) {
+                $stored->status = RunStatus::Cancelled;
+                app(RunRepository::class)->save($stored);
+                app(RunProcessor::class)->finalize($stored);
+            }
+        });
+
+        $report = applyRun($run);
+
+        expect($report->toArray())->toBe(['items' => 1, 'returned' => 0, 'remains' => false, 'wait' => null])
+            ->and(bulkStatuses($run))->toBe(['done', 'translated']);
+        expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+    });
+
+    it('commits once for a stalled run without ending it, and nothing when nothing was saved since', function () {
+        $commits = runCommits();
+        Event::fake([RunFinished::class]);
+        $this->fakeTranslations();
+        $run = bulkRun();
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+        Cache::lock("tolk:item:{$run->id}:1", 120)->get();
+        applyRun($run);
+
+        app(RunProcessor::class)->finalize($run);
+        app(RunProcessor::class)->finalize($run);
+
+        expect(runAsStored($run)->status)->toBe(RunStatus::Running)
+            ->and(runAsStored($run)->finishedAt)->toBeNull()
+            ->and(runAsStored($run)->finalizedAt)->toBeNull();
+        expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+        Event::assertNotDispatched(RunFinished::class);
+    });
+
+    it('fires RunFinished again when a resumed run ends again', function () {
+        Event::fake([RunFinished::class]);
+        $this->fakeTranslations();
+        $run = bulkRun(['entryIds' => [$this->hello->id()]]);
+        $run->status = RunStatus::Cancelled;
+        $this->runs->save($run);
+        app(RunProcessor::class)->finalize($run);
+
+        $run->status = RunStatus::Running;
+        $run->finishedAt = $run->finalizedAt = null;
+        $this->runs->save($run);
+        finishRun($run);
+
+        Event::assertDispatchedTimes(RunFinished::class, 2);
+        Event::assertDispatched(RunFinished::class, fn (RunFinished $event) => $event->status === RunStatus::Completed);
+    });
+
+    it('saves without Statamic\'s git listener and dispatches no commit per entry', function () {
+        $commits = runCommits();
+        $listening = [];
+        Event::listen(EntrySaved::class, function () use (&$listening) {
+            $listening[] = in_array(Subscriber::class.'@commit', Event::getRawListeners()[EntrySaved::class] ?? [], true);
+        });
+        $this->fakeTranslations();
+        $run = bulkRun();
+        app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300);
+
+        applyRun($run);
+
+        expect($listening)->not->toBeEmpty()
+            ->and(array_unique($listening))->toBe([false])
+            ->and(in_array(Subscriber::class.'@commit', Event::getRawListeners()[EntrySaved::class] ?? [], true))->toBeTrue();
+        expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+    });
+});

@@ -183,7 +183,11 @@ final class FileRunRepository implements RunRepository
 
     public function claimTranslated(Run $run, string $workerId, int $ttl): ?RunItem
     {
-        return $this->claim($run, $workerId, $ttl, RunItemStatus::Applying, fn () => fn (array $entry) => $entry['status'] === RunItemStatus::Translated->value);
+        return $this->claim($run, $workerId, $ttl, RunItemStatus::Applying, function () {
+            $now = CarbonImmutable::now();
+
+            return fn (array $entry) => $entry['status'] === RunItemStatus::Translated->value && $this->isAvailable($entry, $now);
+        });
     }
 
     public function extendClaim(Run $run, RunItem $item): void

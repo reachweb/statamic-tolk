@@ -7,7 +7,7 @@ use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Targets\TargetRef;
 
 /**
- * Translations were saved into a target server-side (TargetTranslator).
+ * Translations were saved into a target server-side (TargetTranslator, RunProcessor::applyReady()).
  */
 final readonly class TargetTranslated
 {

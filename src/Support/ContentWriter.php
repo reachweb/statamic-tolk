@@ -29,15 +29,19 @@ final class ContentWriter
     /**
      * Runs the callback under the global write lock, after reloading what other processes cached, without Statamic's git
      * listeners. A call from inside the callback runs at once, because the lock is already held.
+     *
+     * @param  ?int  $wait  seconds to wait for the lock; null for `write.wait_seconds`
+     *
+     * @throws WriterBusy when the lock was not free in time
      */
-    public static function write(Closure $callback): mixed
+    public static function write(Closure $callback, ?int $wait = null): mixed
     {
         if (self::$active) {
             return $callback();
         }
 
         $lock = Cache::store(config('tolk.cache_store'))->lock(self::LOCK, (int) config('tolk.write.lock_seconds'));
-        $wait = (int) config('tolk.write.wait_seconds');
+        $wait = max(0, $wait ?? (int) config('tolk.write.wait_seconds'));
 
         try {
             $lock->block($wait);

@@ -13,7 +13,6 @@ use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
-use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\RootMissing;
@@ -22,7 +21,6 @@ use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\WriterBusy;
 use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\State\StateWriter;
-use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use RuntimeException;
@@ -35,14 +33,13 @@ final readonly class TargetTranslator
 {
     public const int MAX_WAITS = 10;
 
-    private const string FIELDS_FAILED_MESSAGE = 'No field could be translated completely.';
-
     public function __construct(
         private Planner $planner,
         private PlanStore $store,
         private Pipeline $pipeline,
         private StateWriter $stateWriter,
         private UsageRecorder $recorder,
+        private PlanApplier $applier,
     ) {}
 
     /**
@@ -114,7 +111,7 @@ final readonly class TargetTranslator
         try {
             $this->run($plan, $record);
 
-            return $this->apply($plan, $target->fresh(), $apply);
+            return $this->applier->apply($plan, $target->fresh(), $apply);
         } finally {
             $this->store->forget($plan);
         }
@@ -143,84 +140,6 @@ final readonly class TargetTranslator
         }
     }
 
-    /**
-     * Assembles every field from a target resolved after the units ran, so a source edited meanwhile raises
-     * SourceChanged, and saves the fields that assembled. A review saves only the fields it corrected.
-     */
-    private function apply(Plan $plan, Target $target, ApplyOptions $options): TargetResult
-    {
-        $assembled = $failed = $unchanged = $corrections = $warnings = [];
-
-        foreach ($plan->fieldHandles() as $handle) {
-            try {
-                $assembled[$handle] = $this->pipeline->assemble($plan, $target, $handle);
-            } catch (FieldFailed $failure) {
-                $failed[$handle] = array_values($failure->reasons)[0];
-                $warnings[] = $failure->getMessage();
-            }
-        }
-
-        foreach ($assembled as $handle => $field) {
-            if ($field->unchanged) {
-                $unchanged[$handle] = TargetResult::NO_CORRECTIONS;
-                array_push($warnings, ...$field->warnings);
-            }
-        }
-
-        $assembled = array_diff_key($assembled, $unchanged);
-
-        if ($assembled === [] && $unchanged !== []) {
-            return new TargetResult(
-                status: TargetResultStatus::Skipped,
-                ref: $target->ref(),
-                fields: $this->ordered($target, $plan->skipped + $unchanged),
-                warnings: $warnings,
-                reason: TargetResult::NO_CORRECTIONS,
-            );
-        }
-
-        if ($assembled === []) {
-            return new TargetResult(
-                status: TargetResultStatus::Failed,
-                ref: $target->ref(),
-                fields: $this->ordered($target, $plan->skipped + $failed),
-                warnings: $warnings,
-                reason: TargetResult::FIELDS_FAILED,
-                error: self::FIELDS_FAILED_MESSAGE,
-            );
-        }
-
-        $applied = ContentWriter::write(fn () => $target->fresh()->apply(array_values($assembled), $options));
-        $fields = $failed;
-
-        foreach ($applied->applied as $handle) {
-            $field = $assembled[$handle];
-            $fields[$handle] = $field->incomplete ? TargetResult::INCOMPLETE : TargetResult::APPLIED;
-            array_push($warnings, ...$field->warnings);
-
-            if ($field->corrections !== []) {
-                $corrections[$handle] = $field->corrections;
-            }
-        }
-
-        [$status, $reason] = match (true) {
-            $applied->applied !== [] => [TargetResultStatus::Done, null],
-            $failed !== [] => [TargetResultStatus::Failed, TargetResult::FIELDS_FAILED],
-            default => [TargetResultStatus::Skipped, TargetResult::TARGET_CHANGED],
-        };
-
-        return new TargetResult(
-            status: $status,
-            ref: $applied->ref,
-            created: $applied->created,
-            fields: $this->ordered($target, $plan->skipped + $applied->skipped + $unchanged + $fields),
-            corrections: $corrections,
-            warnings: [...$warnings, ...$applied->warnings],
-            reason: $reason,
-            error: $status === TargetResultStatus::Failed ? self::FIELDS_FAILED_MESSAGE : null,
-        );
-    }
-
     private function failed(Target $target, RuntimeException|LogicException $exception): TargetResult
     {
         $reason = match (true) {
@@ -237,14 +156,5 @@ final readonly class TargetTranslator
             : $exception->getMessage();
 
         return TargetResult::failed($reason, $message, $target->fresh()->ref());
-    }
-
-    /**
-     * @param  array<string, string>  $fields
-     * @return array<string, string> the fields in blueprint order
-     */
-    private function ordered(Target $target, array $fields): array
-    {
-        return array_replace(array_intersect_key(array_flip($target->fields()->keys()->all()), $fields), $fields);
     }
 }

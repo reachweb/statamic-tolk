@@ -27,6 +27,9 @@ final class Run
      * @param  ?array{id: string, name: string}  $createdBy  null for the CLI
      * @param  ?CarbonImmutable  $progressedAt  the last time an item changed, a claim was extended or usage was added
      * @param  ?array  $estimate  null until the run has been estimated
+     * @param  ?CarbonImmutable  $finalizedAt  when RunFinished was fired for the run's end; null until then
+     * @param  int  $saves  the items whose content this run saved, or may have saved before an error
+     * @param  int  $committedSaves  the value of `saves` at the last commit
      */
     public function __construct(
         public string $id,
@@ -45,6 +48,8 @@ final class Run
         public int $generation = 0,
         public ?string $error = null,
         public array $warnings = [],
+        public int $saves = 0,
+        public int $committedSaves = 0,
     ) {}
 
     /**
@@ -88,6 +93,8 @@ final class Run
             'generation' => $this->generation,
             'error' => $this->error,
             'warnings' => $this->warnings,
+            'saves' => $this->saves,
+            'committed_saves' => $this->committedSaves,
         ];
     }
 
@@ -112,6 +119,8 @@ final class Run
             generation: (int) ($data['generation'] ?? 0),
             error: self::storedString($data, 'error'),
             warnings: self::storedArray($data, 'warnings'),
+            saves: (int) ($data['saves'] ?? 0),
+            committedSaves: (int) ($data['committed_saves'] ?? 0),
         );
 
         $run->original = $run->toArray();

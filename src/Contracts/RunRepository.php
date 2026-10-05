@@ -71,7 +71,7 @@ interface RunRepository
 
     /**
      * Hands out, atomically and moved to `applying`, the item this worker already holds, else the lowest `translated`
-     * item, else an `applying` item whose claim expired (an attempt; the third fails it).
+     * item that is available, else an `applying` item whose claim expired (an attempt; the third fails it).
      */
     public function claimTranslated(Run $run, string $workerId, int $ttl): ?RunItem;
 
