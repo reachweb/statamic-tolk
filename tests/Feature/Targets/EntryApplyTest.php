@@ -9,7 +9,6 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
-use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Support\ContentWriter;
@@ -457,15 +456,6 @@ describe('the writer', function () {
         Event::listen(EntrySaving::class, fn () => false);
 
         expect(fn () => applyInWriter($this->origin, $fields))->toThrow(ApplyFailed::class);
-    });
-
-    it('does not apply to a collection with revisions yet', function () {
-        config(['statamic.revisions.enabled' => true]);
-        Collection::find('articles')->revisionsEnabled(true)->save();
-        $fields = applyAssembled($this->origin);
-
-        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(NotSupportedYet::class)
-            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
     });
 });
 

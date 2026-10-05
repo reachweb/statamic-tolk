@@ -465,3 +465,14 @@ Seen in T8.12, 2026-10-05, on Statamic 6.35.0 in the sandbox with headless Chrom
 - A field inside a Replicator or Bard set has no `localizable` key in its config, so `config.localizable` already rules nested fields out in the sandbox; `fieldPathPrefix` still matters for a blueprint that marks a set field localizable.
 - An `entries` field's item link opens the related entry in a stack (`[data-ui-stack-content]`, container `relate-fieldtype-inline-{n}`); Escape closes it. Field headers are `[data-ui-field-header]` with the field's `label[for="field_{path}"]`, and a stack repeats the page form's ids.
 - With the field typed into before the action runs, the banner's `skip` lists it as an unsaved edit and the plan skips it as `edited_in_form`; the action therefore passes `replace`, which keeps the requested field out of `skip` (text typed while it runs is still kept by the fill).
+
+### Revisions (T9.1)
+
+Read in core's source at `v6.35.0` and run in Pest and in the sandbox (fake engine, `STATAMIC_REVISIONS_ENABLED=true` and `revisions: true` on `articles` for the check only), 2026-10-05.
+
+- `Revisable::store()` saves the entry (`published(false)`, `updateLastModified($user)`), then, with revisions on, sets its return value to the revision's `save()`. A save that an `EntrySaving` listener cancelled therefore still makes a revision and reads as success. The addon does the two steps itself and checks each one.
+- A revision's file is `{key}/{timestamp}.yaml` with the timestamp in seconds, and `revisions()` keys them by that timestamp. Two revisions of one entry in the same second leave only the later one: a localization that is created (store) and published (`publish()`) in one second keeps only its publish revision. The CP shows the same for a human who localizes and publishes within a second.
+- `EntriesController::update()` decides on `$entry->fromWorkingCopy()->published()`: published goes to `makeWorkingCopy()->user(...)->save()` with no `updateLastModified()`; unpublished saves the working-copy view directly. `revisionAttributes()` leaves `updated_at` and `updated_by` out of every revision.
+- `publishWorkingCopy()` starts from `fromWorkingCopy()`, which is a clone of the entry itself when it has no working copy, so a new localization's in-memory fields are published by `publish()` without a direct save first. It calls `updateLastModified($user)` even with no user, which removes `updated_by`.
+- `RevisionSaved` and `RevisionDeleted` are in `ListensForContentEvents`, so Statamic's git subscriber commits on them; inside `ContentWriter::write()` they are suspended like the other content events, and a run on a collection with revisions commits once.
+- Tests: `AddonTestCase` does not set the revisions store's directory, so it defaults to Testbench's `storage/statamic/revisions`, shared by every test. The addon's `TestCase` points it at the test's temporary folder.

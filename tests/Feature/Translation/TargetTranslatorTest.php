@@ -450,17 +450,4 @@ describe('failures', function () {
             ->and($result->fields)->toBe(['title' => 'target_changed', 'intro' => 'current', 'body' => 'current'])
             ->and($this->origin->fresh()->in('el')->get('title'))->toBe('Γεια σας');
     });
-
-    it('fails a target on a collection with revisions', function () {
-        $this->fakeTranslations();
-        config(['statamic.revisions.enabled' => true]);
-        Collection::find('articles')->revisionsEnabled(true)->save();
-
-        $result = translateTarget($this->origin);
-
-        expect($result->status)->toBe(TargetResultStatus::Failed)
-            ->and($result->reason)->toBe(TargetResult::NOT_SUPPORTED)
-            ->and($result->error)->toContain('revisions')
-            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
-    });
 });
