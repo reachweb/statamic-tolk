@@ -84,6 +84,14 @@ function driveRun(Run $run): array
 }
 
 /**
+ * Every item status with the given counts, the others 0.
+ */
+function runCounts(array $counts): array
+{
+    return [...array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0), ...$counts];
+}
+
+/**
  * A user who may translate articles into Greek in the editor, but not run bulk translations.
  */
 function greekTranslator(): UserContract
@@ -613,19 +621,55 @@ describe('pages', function () {
                 ->where('runs.0.url', cp_route('tolk.runs.show', $run->id)));
     });
 
-    it('renders a run\'s page with its state and URLs', function () {
+    it('renders a run\'s page with its state, URLs and model labels', function () {
         $this->signInAdmin();
-        $run = createdRun();
+        $this->withSettings(['translator_model' => 'openai:gpt-6.1-sol']);
+        $run = createdRun(['sites' => ['el', 'de'], 'options' => ['review' => true, 'reviewer' => 'gemini:gemini-3.8-flash']]);
 
         $this->get(cp_route('tolk.runs.show', $run->id))
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('tolk::Runs/Show')
                 ->where('state.run.id', $run->id)
-                ->where('state.counts.pending', 3)
-                ->has('state.items', 3)
+                ->where('state.run.status', 'pending')
+                ->where('state.run.estimate', null)
+                ->where('state.counts.pending', 6)
+                ->where('state.breakdown', [
+                    ['type' => 'entry', 'site' => 'el', 'counts' => runCounts(['pending' => 3])],
+                    ['type' => 'entry', 'site' => 'de', 'counts' => runCounts(['pending' => 3])],
+                ])
+                ->has('state.items', 6)
+                ->where('state.pagination.total', 6)
                 ->where('urls.tick', cp_route('tolk.runs.tick', $run->id))
                 ->where('urls.take_over', cp_route('tolk.runs.take-over', $run->id))
+                ->where('models', ['openai:gpt-6.1-sol' => 'GPT-6.1 Sol', 'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash'])
                 ->where('lanes', 2));
+    });
+
+    it('passes the text fields left out of scope to the run\'s page', function () {
+        $this->signInAdmin();
+        $this->makeCollection('notes', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'internal_note' => ['type' => 'textarea', 'display' => 'Internal note'],
+        ]);
+        $this->makeEntry('notes', 'en', ['title' => 'One'], 'one');
+        $run = createdRun(['collections' => ['notes']]);
+
+        $this->get(cp_route('tolk.runs.show', $run->id))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('tolk::Runs/Show')
+                ->where('state.run.scope.out_of_scope', [
+                    ['container' => 'notes', 'handle' => 'internal_note', 'label' => 'Internal note', 'type' => 'textarea', 'reason' => 'not_localizable'],
+                ]));
+    });
+
+    it('refuses both pages to a user who may not run bulk translations', function () {
+        $this->signInAdmin();
+        $run = createdRun();
+        greekTranslator();
+
+        $this->getJson(cp_route('tolk.runs.index'))->assertForbidden();
+        $this->getJson(cp_route('tolk.runs.show', $run->id))->assertForbidden();
     });
 });

@@ -12,6 +12,7 @@ use Reach\StatamicTolk\ServiceProvider;
 use Reach\StatamicTolk\Tests\Support\Fieldtypes\NoteFieldtype;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeTextHandler;
 use Reach\StatamicTolk\Tolk;
+use Statamic\Facades\CP\Nav;
 use Statamic\Fields\Field;
 
 it('registers a handler that the walker uses', function () {
@@ -48,6 +49,8 @@ it('lets a handler registered before Tolk boots replace a built-in one', functio
     app()->forgetInstance(FieldtypeRegistry::class);
 
     Tolk::registerFieldtype('textarea', FakeTextHandler::class);
+    // AddonTestCase replaces the CP nav with a mock once the addon has booted.
+    Nav::shouldReceive('extend');
     app()->getProvider(ServiceProvider::class)->bootAddon();
 
     $registry = app(FieldtypeRegistry::class);

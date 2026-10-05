@@ -85,12 +85,12 @@ it('creates a run with six items in its own files', function () {
         ->and(json_decode(File::get("{$directory}/items/1.json"), true))->toBe(runRepoItem(1, ['dependsOn' => [0], 'targetSite' => 'de', 'title' => 'Ünïcode/slash'])->toArray())
         ->and(File::get("{$directory}/items/1.json"))->toContain('"Ünïcode/slash"')
         ->and(json_decode(File::get("{$directory}/index.json"), true))->toBe([
-            ['index' => 0, 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
-            ['index' => 1, 'site' => 'de', 'stage' => 0, 'status' => 'pending', 'attempts' => 0, 'depends_on' => [0]],
-            ['index' => 2, 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
-            ['index' => 3, 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
-            ['index' => 4, 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
-            ['index' => 5, 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
+            ['index' => 0, 'type' => 'entry', 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
+            ['index' => 1, 'type' => 'entry', 'site' => 'de', 'stage' => 0, 'status' => 'pending', 'attempts' => 0, 'depends_on' => [0]],
+            ['index' => 2, 'type' => 'entry', 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
+            ['index' => 3, 'type' => 'entry', 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
+            ['index' => 4, 'type' => 'entry', 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
+            ['index' => 5, 'type' => 'entry', 'site' => 'el', 'stage' => 0, 'status' => 'pending', 'attempts' => 0],
         ])
         ->and($this->runs->find($run->id)->toArray())->toBe($run->toArray())
         ->and($this->runs->item($run, 3)->toArray())->toBe(runRepoItem(3)->toArray())
@@ -125,6 +125,23 @@ it('pages the items and filters them by status', function () {
         ->and($indexes($this->runs->items($run, RunItemStatus::Translating, 1, 10)))->toBe([0, 1])
         ->and($indexes($this->runs->items($run, RunItemStatus::Pending, 2, 3)))->toBe([5, 6])
         ->and($indexes($this->runs->items($run, RunItemStatus::Done)))->toBe([]);
+});
+
+it('counts the items per status for each content type and target site, in item order', function () {
+    $run = runRepoRun([
+        runRepoItem(0, ['targetSite' => 'de']),
+        runRepoItem(1),
+        runRepoItem(2, ['targetSite' => 'de', 'status' => RunItemStatus::Skipped]),
+        runRepoItem(3, ['type' => ContentType::Term]),
+    ]);
+    $this->runs->claimNext($run, 'lane-1', 60);
+
+    expect($this->runs->breakdown($run))->toBe([
+        ['type' => 'entry', 'site' => 'de', 'counts' => runRepoCounts(['translating' => 1, 'skipped' => 1])],
+        ['type' => 'entry', 'site' => 'el', 'counts' => runRepoCounts(['pending' => 1])],
+        ['type' => 'term', 'site' => 'el', 'counts' => runRepoCounts(['pending' => 1])],
+    ])
+        ->and($this->runs->breakdown(Run::make(RunDriver::Cli)))->toBe([]);
 });
 
 it('gives a worker its own item back', function () {

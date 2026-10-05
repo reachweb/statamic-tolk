@@ -37,7 +37,7 @@ final class FileRunRepository implements RunRepository
 
     private const array HOLDING = [RunItemStatus::Translating, RunItemStatus::Applying];
 
-    private const array ENTRY = ['index' => 0, 'site' => '', 'stage' => 0, 'status' => 'pending', 'attempts' => 0, 'depends_on' => [], 'reason' => null, 'claim' => null, 'available_at' => null];
+    private const array ENTRY = ['index' => 0, 'type' => 'entry', 'site' => '', 'stage' => 0, 'status' => 'pending', 'attempts' => 0, 'depends_on' => [], 'reason' => null, 'claim' => null, 'available_at' => null];
 
     public function __construct(private readonly Filesystem $files) {}
 
@@ -154,15 +154,25 @@ final class FileRunRepository implements RunRepository
 
     public function counts(Run $run): array
     {
-        $counts = array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0);
+        $counts = self::noCounts();
 
         foreach ($this->readIndex($run->id) as $entry) {
-            if (isset($counts[$entry['status']])) {
-                $counts[$entry['status']]++;
-            }
+            $counts[$entry['status']]++;
         }
 
         return $counts;
+    }
+
+    public function breakdown(Run $run): array
+    {
+        $groups = [];
+
+        foreach ($this->readIndex($run->id) as $entry) {
+            $groups[$entry['type'].'|'.$entry['site']] ??= ['type' => $entry['type'], 'site' => $entry['site'], 'counts' => self::noCounts()];
+            $groups[$entry['type'].'|'.$entry['site']]['counts'][$entry['status']]++;
+        }
+
+        return array_values($groups);
     }
 
     public function claimNext(Run $run, string $workerId, int $ttl): ?RunItem
@@ -523,6 +533,7 @@ final class FileRunRepository implements RunRepository
     {
         return [
             'index' => $item->index,
+            'type' => $item->type->value,
             'site' => $item->targetSite,
             'stage' => $item->stage,
             'status' => $item->status->value,
@@ -626,6 +637,14 @@ final class FileRunRepository implements RunRepository
     private function locked(string $id, Closure $callback): mixed
     {
         return Cache::store(config('tolk.cache_store'))->lock('tolk:run:'.$id, 10)->betweenBlockedAttemptsSleepFor(10)->block(5, $callback);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function noCounts(): array
+    {
+        return array_fill_keys(array_column(RunItemStatus::cases(), 'value'), 0);
     }
 
     private function isValidId(string $id): bool

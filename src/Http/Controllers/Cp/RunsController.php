@@ -66,6 +66,7 @@ class RunsController extends Controller
         return Inertia::render('tolk::Runs/Show', [
             'state' => $this->stateOf($stored, $request),
             'urls' => $this->state->urls($stored),
+            'models' => $this->state->models($stored),
             'lanes' => max(1, (int) config('tolk.concurrency.browser')),
         ]);
     }
