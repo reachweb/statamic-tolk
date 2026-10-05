@@ -7,7 +7,7 @@ use RuntimeException;
 final class ApplyFailed extends RuntimeException
 {
     /**
-     * save() or publish() returned false: a listener of EntryCreating, EntrySaving or RevisionSaving vetoed the save.
+     * save() or publish() returned false: a listener of EntryCreating, EntrySaving, RevisionSaving or TermSaving vetoed the save.
      */
     public static function vetoed(string $target): self
     {

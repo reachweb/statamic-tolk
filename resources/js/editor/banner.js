@@ -8,7 +8,12 @@ import { translations } from './translate.js';
 
 export const BANNER = 'tolk-banner';
 
-// Only the full-page form of a saved entry gets a banner. A stacked inline editor is named
+// A term's publish form; every other form with a banner is an entry's.
+export function isTermReference(reference) {
+    return typeof reference === 'string' && reference.startsWith('term::');
+}
+
+// Only the full-page form of a saved entry or term gets a banner. A stacked inline editor is named
 // `relate-fieldtype-inline-{n}` and also shows `entry::` references; the create page has no reference yet.
 export function shouldPush(payload) {
     const reference = payload?.reference?.value;
@@ -16,7 +21,7 @@ export function shouldPush(payload) {
     return (
         payload?.name === BASE &&
         typeof reference === 'string' &&
-        reference.startsWith('entry::') &&
+        (reference.startsWith('entry::') || isTermReference(reference)) &&
         Statamic.$config.get('tolk.multisite') === true &&
         Statamic.$permissions.has('translate content')
     );

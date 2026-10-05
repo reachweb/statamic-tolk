@@ -39,11 +39,12 @@ use Statamic\Console\RunsInPlease;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
+use Statamic\Facades\Taxonomy;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Throwable;
 
 /**
- * Translates entries through a run (§A12): the run is estimated and confirmed here, then translated by `tolk:work`
+ * Translates entries and terms through a run (§A12): the run is estimated and confirmed here, then translated by `tolk:work`
  * worker processes while this process applies what they translated, one item at a time (§A11). With one worker, or
  * when no process can be started, this process does both.
  */
@@ -76,15 +77,18 @@ class TranslateCommand extends Command
     private const array LEFT_OUT = [
         RunPlanner::EXCLUDED_COLLECTION => ['target is in a collection excluded in the settings', 'targets are in collections excluded in the settings'],
         RunPlanner::SITE_NOT_IN_COLLECTION => ['target is in a site its collection does not have', 'targets are in sites their collection does not have'],
+        RunPlanner::EXCLUDED_TAXONOMY => ['target is in a taxonomy excluded in the settings', 'targets are in taxonomies excluded in the settings'],
+        RunPlanner::SITE_NOT_IN_TAXONOMY => ['target is in a site its taxonomy does not have', 'targets are in sites their taxonomy does not have'],
         RunItem::UNAUTHORIZED => ['target is one you may not edit', 'targets are ones you may not edit'],
     ];
 
     protected $signature = 'tolk:translate
         {--entry=* : Translate the family of this entry (any of its localizations names it)}
         {--collection=* : Translate every entry of this collection}
+        {--taxonomy=* : Translate every term of this taxonomy}
         {--all : Translate every collection that has more than one site}
         {--site=* : The site to translate into (required)}
-        {--from= : The site to translate a missing localization from, where the entry has one there (default: the origin)}
+        {--from= : The site to translate a missing localization from, where the entry has one there (default: the origin; a term is always translated from the first site of its taxonomy)}
         {--mode=missing : missing (only what is not translated yet), update (also outdated translations), all (everything again) or review (only review the existing machine translations)}
         {--force : Overwrite fields that were edited by hand (in mode review: review them too; they stay manual)}
         {--publish : Publish a new localization when its origin is published, instead of saving it as a draft}
@@ -99,7 +103,7 @@ class TranslateCommand extends Command
         {--dry-run : Show what would be translated, without calling the model or saving anything}
         {--yes : Translate without asking for confirmation}';
 
-    protected $description = 'Translate entries into other sites';
+    protected $description = 'Translate entries and terms into other sites';
 
     private RunRepository $runs;
 
@@ -125,7 +129,7 @@ class TranslateCommand extends Command
             $mode = $this->mode();
             $review = $this->review($mode);
             $sourceSite = $this->sourceSite();
-            [$collections, $entryIds] = $this->selection();
+            [$collections, $entryIds, $taxonomies] = $this->selection();
             $concurrency = $this->concurrency();
             $this->checkQueue();
             $options = PlanOptions::fromSettings($settings, $catalog, [
@@ -148,6 +152,7 @@ class TranslateCommand extends Command
                 driver: $this->option('queue') ? RunDriver::Queue : RunDriver::Cli,
                 sourceSite: $sourceSite,
                 collections: $collections,
+                taxonomies: $taxonomies,
                 entryIds: $entryIds,
                 options: [
                     'mode' => $mode->value,
@@ -658,28 +663,35 @@ class TranslateCommand extends Command
     }
 
     /**
-     * @return array{0: list<string>, 1: list<string>} the collections and the entry ids
+     * @return array{0: list<string>, 1: list<string>, 2: list<string>} the collections, the entry ids and the taxonomies
      */
     private function selection(): array
     {
         $collections = array_values(array_unique($this->option('collection')));
         $entryIds = array_values(array_unique($this->option('entry')));
+        $taxonomies = array_values(array_unique($this->option('taxonomy')));
 
         if ($this->option('all')) {
-            if ($collections !== [] || $entryIds !== []) {
-                throw new InvalidArgumentException('--all cannot be combined with --collection or --entry.');
+            if ($collections !== [] || $entryIds !== [] || $taxonomies !== []) {
+                throw new InvalidArgumentException('--all cannot be combined with --collection, --entry or --taxonomy.');
             }
 
-            return [[RunRequest::ALL], []];
+            return [[RunRequest::ALL], [], []];
         }
 
-        if ($collections === [] && $entryIds === []) {
-            throw new InvalidArgumentException('Name what to translate with --collection, --entry or --all.');
+        if ($collections === [] && $entryIds === [] && $taxonomies === []) {
+            throw new InvalidArgumentException('Name what to translate with --collection, --entry, --taxonomy or --all.');
         }
 
         foreach ($collections as $handle) {
             if (Collection::find($handle) === null) {
                 throw new InvalidArgumentException("Collection [{$handle}] not found.");
+            }
+        }
+
+        foreach ($taxonomies as $handle) {
+            if (Taxonomy::find($handle) === null) {
+                throw new InvalidArgumentException("Taxonomy [{$handle}] not found.");
             }
         }
 
@@ -689,7 +701,7 @@ class TranslateCommand extends Command
             }
         }
 
-        return [$collections, $entryIds];
+        return [$collections, $entryIds, $taxonomies];
     }
 
     private function concurrency(): int

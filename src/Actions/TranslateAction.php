@@ -10,12 +10,13 @@ use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Actions\Action;
 use Statamic\Contracts\Entries\Entry;
+use Statamic\Contracts\Taxonomies\Term;
 use Statamic\Facades\Site;
 use Statamic\Facades\User;
 
 /**
- * "Translate…" in entry listings and the tree view (§A13): creates a pending run of the selected items and opens its
- * page, where the estimate comes first and Start follows (D19).
+ * "Translate…" in entry and term listings and the tree view (§A13): creates a pending run of the selected items and
+ * opens its page, where the estimate comes first and Start follows (D19).
  */
 class TranslateAction extends Action
 {
@@ -52,16 +53,24 @@ class TranslateAction extends Action
 
     public function confirmationText()
     {
+        if ($this->onlyTerms()) {
+            /** @translation */
+            return 'The next page shows an estimate before this term is translated.|The next page shows an estimate before these :count terms are translated.';
+        }
+
         /** @translation */
         return 'The next page shows an estimate before this entry is translated.|The next page shows an estimate before these :count entries are translated.';
     }
 
     public function run($items, $values)
     {
+        $ids = fn (string $type) => $items->filter(fn ($item) => $item instanceof $type)->map(fn ($item) => (string) $item->id())->values()->all();
+
         $planned = app(RunPlanner::class)->build(new RunRequest(
             sites: array_values(array_map(strval(...), (array) ($values['sites'] ?? []))),
             driver: RunDispatcher::resolveDriver(),
-            entryIds: $items->map(fn (Entry $entry) => (string) $entry->id())->values()->all(),
+            entryIds: $ids(Entry::class),
+            termIds: $ids(Term::class),
             options: [
                 'mode' => $values['mode'] ?? null,
                 'overwrite_manual' => (bool) ($values['overwrite_manual'] ?? false),
@@ -86,13 +95,17 @@ class TranslateAction extends Action
     {
         $settings = app(Settings::class);
         $sites = $this->siteOptions();
+        // A term is translated from its taxonomy's first site, which need not be the default site.
+        $sources = $this->onlyTerms()
+            ? $this->items->map(fn (Term $term) => $term->taxonomy()->sites()->first())->unique()->all()
+            : [Site::default()->handle()];
 
-        return [
+        $fields = [
             'sites' => [
                 'type' => 'checkboxes',
                 'display' => __('Translate into'),
                 'options' => $sites,
-                'default' => array_values(array_diff(array_keys($sites), [Site::default()->handle()])),
+                'default' => array_values(array_diff(array_keys($sites), $sources)),
                 'validate' => ['required'],
             ],
             'mode' => [
@@ -130,28 +143,50 @@ class TranslateAction extends Action
                 'default' => $settings->newLocalizationStatus(),
             ],
         ];
+
+        // Every site of a taxonomy has its localization of every term, so terms create none.
+        if ($this->onlyTerms()) {
+            unset($fields['new_status']);
+        }
+
+        return $fields;
     }
 
     /**
-     * An entry of a collection with more than one site that the settings do not exclude.
+     * An entry of a collection, or a term of a taxonomy, with more than one site that the settings do not exclude.
      */
     private function translatable(mixed $item): bool
     {
-        return $item instanceof Entry
-            && $item->collection()->sites()->count() > 1
-            && ! in_array($item->collectionHandle(), app(Settings::class)->excludedCollections(), true);
+        $settings = app(Settings::class);
+
+        return match (true) {
+            $item instanceof Entry => $item->collection()->sites()->count() > 1
+                && ! in_array($item->collectionHandle(), $settings->excludedCollections(), true),
+            $item instanceof Term => $item->taxonomy()->sites()->count() > 1
+                && ! in_array($item->taxonomyHandle(), $settings->excludedTaxonomies(), true),
+            default => false,
+        };
+    }
+
+    // Core lists the actions of one listing at a time, so the items are all entries or all terms.
+    private function onlyTerms(): bool
+    {
+        return $this->items->isNotEmpty() && $this->items->every(fn ($item) => $item instanceof Term);
     }
 
     /**
-     * The sites of the selected items' collections that the user may access, in the order of the site config.
+     * The sites of the selected items' collections or taxonomies that the user may access, in the order of the site config.
      *
      * @return array<string, string>
      */
     private function siteOptions(): array
     {
         $handles = $this->items
-            ->filter(fn ($item) => $item instanceof Entry)
-            ->flatMap(fn (Entry $entry) => $entry->collection()->sites()->all())
+            ->flatMap(fn ($item) => match (true) {
+                $item instanceof Entry => $item->collection()->sites()->all(),
+                $item instanceof Term => $item->taxonomy()->sites()->all(),
+                default => [],
+            })
             ->unique()
             ->all();
         $user = User::current();

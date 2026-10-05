@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Http;
 
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Collection;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Providers;
@@ -19,12 +20,14 @@ use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
+use Statamic\Facades\Term;
 
 /**
- * The status payload of the editor banner for the item open in the publish form: what it holds as a localization and,
- * when it is the origin of other sites, what they hold.
+ * The status payload of the editor banner for the entry or term open in the publish form: what it holds as a
+ * localization and, when it is the origin of other sites, what they hold.
  */
 final readonly class EditorStatus
 {
@@ -48,39 +51,43 @@ final readonly class EditorStatus
      */
     public function for(string $reference, User $user): array
     {
-        $entry = $this->entry($reference);
+        $item = $this->item($reference);
 
-        if ($entry === null) {
+        if ($item === null) {
             return $this->payload(self::UNKNOWN_REFERENCE);
         }
 
-        $source = $entry->origin();
-        $target = $source === null ? null : $this->targets->forEntry($source, $entry->locale());
+        // A term in its taxonomy's default site is its own origin().
+        $source = $item->hasOrigin() ? $item->origin() : null;
+        $target = $source === null ? null : $this->target($source, $item->locale());
         $allowed = $target === null
-            ? $this->mayAccess($user, $entry->locale()) && $user->can('edit', $entry)
+            ? $this->mayAccess($user, $item->locale()) && $user->can('edit', $item)
             : $target->authorize($user);
 
         if (! $allowed) {
             throw new AuthorizationException;
         }
 
-        if ($entry->collection()->sites()->count() < 2) {
+        if ($this->sitesOf($item)->count() < 2) {
             return $this->payload(self::SINGLE_SITE);
         }
 
         $localization = $target === null ? null : $this->localization($target, $source);
-        $origin = $this->origin($entry, $user);
+        $origin = $this->origin($item, $user);
 
         if ($localization === null && $origin === null) {
             return $this->payload(self::NO_ACCESS);
         }
 
-        $active = $origin === null ? null : $this->push->active($entry->reference(), $user);
+        $active = $origin === null ? null : $this->push->active($item->reference(), $user);
 
         return $this->payload(null, $localization, $origin, $active === null ? null : $this->push->payload($active));
     }
 
-    private function entry(string $reference): ?EntryContract
+    /**
+     * The entry, or the term in the site the reference names.
+     */
+    private function item(string $reference): EntryContract|TermContract|null
     {
         try {
             $ref = TargetRef::parse($reference);
@@ -88,10 +95,34 @@ final readonly class EditorStatus
             return null;
         }
 
-        return $ref->type === ContentType::Entry ? Entry::find($ref->id) : null;
+        return match ($ref->type) {
+            ContentType::Entry => Entry::find($ref->id),
+            ContentType::Term => $this->term($ref),
+            default => null,
+        };
     }
 
-    private function localization(Target $target, EntryContract $source): array
+    private function term(TargetRef $ref): ?TermContract
+    {
+        $term = Term::find($ref->id);
+
+        return $term !== null && $term->taxonomy()->sites()->contains($ref->site) ? $term->in($ref->site) : null;
+    }
+
+    private function target(EntryContract|TermContract $source, string $site): Target
+    {
+        return $source instanceof EntryContract ? $this->targets->forEntry($source, $site) : $this->targets->forTerm($source, $site);
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function sitesOf(EntryContract|TermContract $item): Collection
+    {
+        return $item instanceof EntryContract ? $item->collection()->sites() : $item->taxonomy()->sites();
+    }
+
+    private function localization(Target $target, EntryContract|TermContract $source): array
     {
         $status = $this->resolver->resolve($target);
 
@@ -112,23 +143,20 @@ final readonly class EditorStatus
     }
 
     /**
-     * The sites the item is the origin of, among those the user may access: its direct localizations and, for the root of
-     * the family, the sites it has no localization in yet (§A11 "Entries").
+     * The sites the item is the origin of, among those the user may access: an entry's direct localizations and, for
+     * the root of the family, the sites it has no localization in yet (§A11 "Entries"); every other site of a term's
+     * taxonomy for the term in its default site (§A11 "Terms").
      */
-    private function origin(EntryContract $entry, User $user): ?array
+    private function origin(EntryContract|TermContract $item, User $user): ?array
     {
-        $children = $entry->directDescendants();
-        $family = $entry->isRoot() ? $entry->descendants() : null;
         $localizations = [];
 
-        foreach ($entry->collection()->sites() as $site) {
-            $listed = $children->has($site) || ($family !== null && ! $family->has($site));
-
-            if ($site === $entry->locale() || ! $listed || ! $this->mayAccess($user, $site)) {
+        foreach ($this->originOf($item) as $site) {
+            if (! $this->mayAccess($user, $site)) {
                 continue;
             }
 
-            $target = $this->targets->forEntry($entry, $site);
+            $target = $this->target($item, $site);
             $status = $this->resolver->resolve($target);
 
             $localizations[] = [
@@ -141,6 +169,24 @@ final readonly class EditorStatus
         }
 
         return $localizations === [] ? null : ['localizations' => $localizations];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function originOf(EntryContract|TermContract $item): array
+    {
+        if ($item instanceof TermContract) {
+            return $item->isRoot() ? $this->sitesOf($item)->reject(fn (string $site) => $site === $item->locale())->values()->all() : [];
+        }
+
+        $children = $item->directDescendants();
+        $family = $item->isRoot() ? $item->descendants() : null;
+
+        return $this->sitesOf($item)
+            ->filter(fn (string $site) => $site !== $item->locale() && ($children->has($site) || ($family !== null && ! $family->has($site))))
+            ->values()
+            ->all();
     }
 
     /**

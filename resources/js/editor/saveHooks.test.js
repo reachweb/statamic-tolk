@@ -70,7 +70,7 @@ function run(callback, payload) {
 const savedPayload = (reference = 'entry::de') => ({ collection: 'pages', reference: 'entry::stale', response: { data: { data: { reference } } } });
 
 describe('listen', () => {
-    it('registers both hooks once', () => {
+    it('registers the hooks of the entry and term forms once', () => {
         const registered = [];
         const save = hooks();
 
@@ -80,6 +80,8 @@ describe('listen', () => {
         expect(registered).toEqual([
             ['entry.saving', save.saving],
             ['entry.saved', save.saved],
+            ['term.saving', save.saving],
+            ['term.saved', save.saved],
         ]);
     });
 });
@@ -204,6 +206,37 @@ describe('entry.saved', () => {
         await run(hooks({ api }).saved, { collection: 'pages', reference: 'entry::de', response: { data: { data: { reference: 'entry::el' } } } });
 
         expect(api.post).toHaveBeenCalledWith('editor/confirm', { reference: 'entry::el', delivered: [] });
+    });
+
+    it('confirms a term saved by its form, whose response names no reference', async () => {
+        mount('term::topics::food::el');
+        const api = { post: vi.fn(async () => ({ ...freshStatus(), not_saved: [] })) };
+        store.container('base').delivered = { description: { plan: 'p1' } };
+        const response = { data: { data: { id: 'topics::food', title: 'Food', edit_url: 'http://localhost/cp/taxonomies/topics/terms/food/el' } } };
+
+        // As core's term form runs `term.saved`: with the reference it was opened with.
+        await run(hooks({ api }).saved, { taxonomy: 'topics', reference: 'term::topics::food::el', response });
+
+        expect(api.post).toHaveBeenCalledExactlyOnceWith('editor/confirm', { reference: 'term::topics::food::el', delivered: ['description'] });
+    });
+
+    it('confirms the term open in the form after an in-place switch to another site', async () => {
+        mount('term::topics::food::de');
+        const api = { post: vi.fn(async () => ({ ...freshStatus(), not_saved: [] })) };
+
+        await run(hooks({ api }).saved, { taxonomy: 'topics', reference: 'term::topics::food::el', response: { data: { data: { id: 'topics::food' } } } });
+
+        expect(api.post).toHaveBeenCalledExactlyOnceWith('editor/confirm', { reference: 'term::topics::food::de', delivered: [] });
+    });
+
+    it('ignores a stacked editor saving another term', async () => {
+        mount('term::topics::food::el');
+        const api = { post: vi.fn() };
+
+        await run(hooks({ api }).saved, { taxonomy: 'topics', reference: 'term::topics::wellness::en', response: { data: { data: { id: 'topics::wellness' } } } });
+        await run(hooks({ api }).saved, { taxonomy: 'tags', reference: 'term::tags::food::en', response: { data: { data: { id: 'tags::food' } } } });
+
+        expect(api.post).not.toHaveBeenCalled();
     });
 
     it('does nothing on a form without a banner', async () => {

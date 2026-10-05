@@ -28,9 +28,12 @@ use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
+use Statamic\Facades\Taxonomy;
+use Statamic\Facades\Term;
 
 /**
  * Turns a RunRequest into a run and its items (§A12), and estimates a stored run item by item. Building only enumerates
@@ -41,6 +44,10 @@ final readonly class RunPlanner
     public const string EXCLUDED_COLLECTION = 'excluded_collection';
 
     public const string SITE_NOT_IN_COLLECTION = 'site_not_in_collection';
+
+    public const string EXCLUDED_TAXONOMY = 'excluded_taxonomy';
+
+    public const string SITE_NOT_IN_TAXONOMY = 'site_not_in_taxonomy';
 
     public function __construct(
         private EntryFamilies $families,
@@ -68,6 +75,7 @@ final readonly class RunPlanner
         $options = $this->runOptions($request);
         $skipped = $outOfScope = [];
         $items = $this->entryItems($this->entryTargets($request, $skipped, $outOfScope), Mode::from($options['mode']) !== Mode::Review);
+        $items = [...$items, ...$this->termItems($request, count($items), $skipped, $outOfScope)];
         $scope = [...$request->scope(), 'skipped' => $skipped, 'out_of_scope' => array_values($outOfScope)];
 
         return new PlannedRun(
@@ -217,6 +225,96 @@ final readonly class RunPlanner
         }
 
         return $families;
+    }
+
+    /**
+     * One item per term × site the user may edit, from index $offset on, term by term (§A11 "Terms"). The other pairs
+     * are counted in $skipped; a term's default site is the source and not a target at all. Terms have no chains and
+     * no tree, so the items depend on nothing.
+     *
+     * @param  array<string, int>  $skipped
+     * @param  array<string, array>  $outOfScope  see noteOutOfScope()
+     * @return list<RunItem>
+     */
+    private function termItems(RunRequest $request, int $offset, array &$skipped, array &$outOfScope): array
+    {
+        $taxonomies = $this->taxonomies($request->taxonomies);
+
+        if ($taxonomies === [] && $request->termIds === []) {
+            return [];
+        }
+
+        $excluded = $this->settings->excludedTaxonomies();
+        $items = $explained = [];
+
+        foreach ($this->terms($taxonomies, $request->termIds) as $term) {
+            $taxonomy = $term->taxonomy();
+
+            foreach ($request->sites as $site) {
+                if ($site === $term->locale()) {
+                    continue;
+                }
+
+                if (in_array($taxonomy->handle(), $excluded, true)) {
+                    self::count($skipped, self::EXCLUDED_TAXONOMY);
+
+                    continue;
+                }
+
+                if (! $taxonomy->sites()->contains($site)) {
+                    self::count($skipped, self::SITE_NOT_IN_TAXONOMY);
+
+                    continue;
+                }
+
+                $target = $this->factory->forTerm($term, $site);
+
+                if ($request->user !== null && ! $target->authorize($request->user)) {
+                    self::count($skipped, RunItem::UNAUTHORIZED);
+
+                    continue;
+                }
+
+                $blueprint = $taxonomy->handle().'.'.$term->blueprint()->handle();
+
+                if (! isset($explained[$blueprint])) {
+                    $explained[$blueprint] = true;
+                    $this->noteOutOfScope($target, $outOfScope);
+                }
+
+                $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title());
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * The terms of the given taxonomies and ids, each once, in their taxonomy's default site, grouped by taxonomy in
+     * the order first named.
+     *
+     * @param  list<string>  $taxonomies
+     * @param  list<string>  $termIds
+     * @return list<TermContract>
+     */
+    private function terms(array $taxonomies, array $termIds): array
+    {
+        $terms = [];
+
+        foreach ($taxonomies as $handle) {
+            $default = Taxonomy::find($handle)->sites()->first();
+
+            foreach (Term::query()->where('taxonomy', $handle)->where('site', $default)->get() as $term) {
+                $terms[(string) $term->id()] ??= $term;
+            }
+        }
+
+        foreach ($termIds as $id) {
+            $term = Term::find($id) ?? throw TargetNotFound::term($id);
+            $terms[(string) $term->id()] ??= $term;
+        }
+
+        return collect($terms)->groupBy(fn (TermContract $term) => $term->taxonomyHandle())->flatten(1)->values()->all();
     }
 
     /**
@@ -384,6 +482,29 @@ final readonly class RunPlanner
         foreach ($handles as $handle) {
             if (Collection::find($handle) === null) {
                 throw new InvalidArgumentException("Collection [{$handle}] not found.");
+            }
+        }
+
+        return array_values(array_unique($handles));
+    }
+
+    /**
+     * @param  list<string>  $handles
+     * @return list<string>
+     */
+    private function taxonomies(array $handles): array
+    {
+        if (RunRequest::all($handles)) {
+            return Taxonomy::all()
+                ->filter(fn ($taxonomy) => $taxonomy->sites()->count() > 1)
+                ->map->handle()
+                ->values()
+                ->all();
+        }
+
+        foreach ($handles as $handle) {
+            if (Taxonomy::find($handle) === null) {
+                throw new InvalidArgumentException("Taxonomy [{$handle}] not found.");
             }
         }
 

@@ -2,7 +2,7 @@ import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { ApiError } from '../api.js';
-import { attachBanner, createBanners, shouldPush } from './banner.js';
+import { attachBanner, createBanners, isTermReference, shouldPush } from './banner.js';
 import { SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
@@ -59,14 +59,25 @@ function container(name = 'base', reference = 'entry::a', values = { title: 'Î¤Î
     };
 }
 
+describe('isTermReference', () => {
+    it('tells a term\'s reference from the others', () => {
+        expect(isTermReference('term::topics::food::el')).toBe(true);
+        expect(isTermReference('entry::abc')).toBe(false);
+        expect(isTermReference('globals::site_settings::el')).toBe(false);
+        expect(isTermReference(null)).toBe(false);
+    });
+});
+
 describe('shouldPush', () => {
-    it('pushes into the base container of an entry', () => {
+    it('pushes into the base container of an entry or a term', () => {
         expect(shouldPush(container().payload)).toBe(true);
+        expect(shouldPush(container('base', 'term::topics::food::el').payload)).toBe(true);
+        expect(shouldPush(container('base', 'term::topics::food::en').payload)).toBe(true);
     });
 
     it.each([
         ['an inline editor', container('relate-fieldtype-inline-3').payload],
-        ['a term', container('base', 'term::topics::food::el').payload],
+        ['an inline term editor', container('relate-fieldtype-inline-3', 'term::topics::food::el').payload],
         ['a global set', container('base', 'globals::site_settings::el').payload],
         ['the create page', container('base', '').payload],
         ['a missing reference', container('base', null).payload],
