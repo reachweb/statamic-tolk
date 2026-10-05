@@ -15,7 +15,9 @@ use Reach\StatamicTolk\Content\Handlers\ReplicatorHandler;
 use Reach\StatamicTolk\Content\Handlers\TableHandler;
 use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Contracts\Engine;
+use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Runs\FileRunRepository;
 use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Addon;
@@ -58,6 +60,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->app->scoped(Settings::class);
         $this->app->singleton(FieldtypeRegistry::class, fn ($app) => $this->builtInHandlers(new FieldtypeRegistry($app)));
         $this->app->singleton(StateRepository::class, FileStateRepository::class);
+        $this->app->singleton(RunRepository::class, FileRunRepository::class);
         $this->app->bind(Engine::class, fn ($app) => $app->make(FakeEngine::enabled() ? FakeEngine::class : TranslationEngine::class));
     }
 
