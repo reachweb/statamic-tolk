@@ -17,6 +17,8 @@ final class RunItem
 
     public const string DEPENDENCY_FAILED = 'dependency_failed';
 
+    public const string UNAUTHORIZED = 'unauthorized';
+
     /**
      * @param  list<int>  $dependsOn  indexes of the items that must be done or skipped first
      * @param  ?string  $reason  why the item was skipped, such as `dependency_failed`
