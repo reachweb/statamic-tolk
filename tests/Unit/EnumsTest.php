@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Enums\UnitKind;
+use Reach\StatamicTolk\Enums\UsageSource;
 
 it('pins every case and its value', function (string $enum, array $cases) {
     expect(array_column($enum::cases(), 'value', 'name'))->toBe($cases);
@@ -57,6 +58,7 @@ it('pins every case and its value', function (string $enum, array $cases) {
     ]],
     'TargetResultStatus' => [TargetResultStatus::class, ['Done' => 'done', 'Skipped' => 'skipped', 'Failed' => 'failed']],
     'RunDriver' => [RunDriver::class, ['Queue' => 'queue', 'Browser' => 'browser', 'Cli' => 'cli']],
+    'UsageSource' => [UsageSource::class, ['Editor' => 'editor', 'Run' => 'run', 'Cli' => 'cli']],
     'Finish' => [Finish::class, ['Stop' => 'stop', 'Length' => 'length', 'Refused' => 'refused', 'Empty' => 'empty']],
     'ProviderErrorKind' => [ProviderErrorKind::class, [
         'Paused' => 'paused',

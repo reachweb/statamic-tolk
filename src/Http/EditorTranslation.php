@@ -7,12 +7,14 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\UnitKind;
+use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\UnitBusy;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
+use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\Translation\EditorDelivery;
 use Reach\StatamicTolk\Translation\Pipeline;
 use Reach\StatamicTolk\Translation\Plan;
@@ -37,6 +39,7 @@ final readonly class EditorTranslation
         private PlanStore $store,
         private Pipeline $pipeline,
         private EditorDelivery $delivery,
+        private UsageRecorder $recorder,
     ) {}
 
     /**
@@ -78,6 +81,7 @@ final readonly class EditorTranslation
 
         $outcome = $this->pipeline->runUnit($plan, $unitId, function (ModelRef $model, Usage $call) use (&$usage) {
             $usage = $usage->add($model, $call);
+            $this->recorder->record($model, $call, UsageSource::Editor);
         });
 
         $ready = array_intersect($this->pipeline->readyFields($plan), $this->fieldsOf($plan, $unit));

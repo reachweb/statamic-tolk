@@ -7,6 +7,7 @@ use Reach\StatamicTolk\Ai\Throttle;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
+use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
@@ -255,6 +256,22 @@ describe('unit', function () {
             ->and(array_keys($again->json('fields')))->toBe(['title', 'intro', 'subtitle'])
             ->and($again->json('usage'))->toBe([])
             ->and(greekState('intro')->pending)->toHaveCount(1);
+    });
+
+    it('adds each call to the month\'s usage log, under the editor', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $plan = editorPlan($this->greek)->json('plan');
+
+        $usage = editorUnit($plan, 'b1')->assertOk()->json('usage');
+        $logged = app(UsageLog::class)->month();
+        editorUnit($plan, 'b1')->assertOk();
+
+        expect(array_keys($logged))->toBe(['anthropic:claude-sonnet-5-5'])
+            ->and($logged['anthropic:claude-sonnet-5-5']['calls'])->toBe(1)
+            ->and(array_keys($logged['anthropic:claude-sonnet-5-5']['sources']))->toBe(['editor'])
+            ->and(array_diff_key($logged['anthropic:claude-sonnet-5-5']['sources']['editor'], ['cost' => 0]))->toBe($usage['anthropic:claude-sonnet-5-5'])
+            ->and(app(UsageLog::class)->month())->toBe($logged);
     });
 
     it('reports a field that failed in strict mode and delivers the field completed with it', function () {
