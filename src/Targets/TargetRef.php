@@ -44,6 +44,7 @@ final readonly class TargetRef implements Stringable
             ContentType::Term => 'terms',
             ContentType::GlobalSet => 'globals',
             ContentType::Nav => 'navs',
+            ContentType::Lang => 'lang',
         };
 
         return implode('/', [$directory, ...array_map(self::safeSegment(...), $this->components())]);

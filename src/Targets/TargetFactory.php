@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Support\LangFiles;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
@@ -34,11 +35,13 @@ final class TargetFactory
         private readonly ContentWalker $walker,
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
+        private readonly LangFiles $langFiles,
     ) {}
 
     /**
-     * The reference of an existing target; an entry, term or globals reference must name a localization, and a nav
-     * reference a site other than the default site, whose tree is the source.
+     * The reference of an existing target; an entry, term or globals reference must name a localization, a nav
+     * reference a site other than the default site, whose tree is the source, and a lang reference a language other
+     * than the default site's, whose file is the source.
      */
     public function fromReference(string|TargetRef $reference): Target
     {
@@ -49,6 +52,7 @@ final class TargetFactory
             ContentType::Term => $this->termFromReference($ref),
             ContentType::GlobalSet => $this->globalsFromReference($ref),
             ContentType::Nav => $this->navFromReference($ref),
+            ContentType::Lang => $this->langFromReference($ref),
             default => throw NotSupportedYet::contentType($ref->type),
         };
     }
@@ -136,6 +140,29 @@ final class TargetFactory
     }
 
     /**
+     * The translation file $group in $lang, translated from the same group in $sourceLang. Prompts use the language of
+     * the first site with each `lang()`, the default site first for the source (§A16).
+     *
+     * @throws InvalidTarget when the languages are the same or no site uses one of them
+     * @throws TargetNotFound when the source file does not exist
+     */
+    public function forLang(string $group, string $lang, string $sourceLang): LangTarget
+    {
+        if ($lang === $sourceLang) {
+            throw InvalidTarget::langSource($lang);
+        }
+
+        $site = $this->siteWithLang($lang) ?? throw InvalidTarget::langWithoutSite($lang);
+        $sourceSite = $this->siteWithLang($sourceLang) ?? throw InvalidTarget::langWithoutSite($sourceLang);
+
+        if (! $this->langFiles->exists($sourceLang, $group)) {
+            throw TargetNotFound::lang(LangFiles::name($sourceLang, $group));
+        }
+
+        return new LangTarget($group, $lang, $sourceLang, $site, $sourceSite, $this->langFiles, $this->resolver, $this->stateWriter);
+    }
+
+    /**
      * The term of a term reference in the site it names; null when there is no such term or its taxonomy lacks the site.
      */
     public function findTerm(TargetRef $ref): ?TermContract
@@ -160,6 +187,7 @@ final class TargetFactory
             ContentType::Term => $this->forTerm((string) $sourceId, $site),
             ContentType::GlobalSet => $this->forGlobalSet((string) $sourceId, $site),
             ContentType::Nav => $this->navFromDescription((string) $sourceId, $site),
+            ContentType::Lang => $this->langFromDescription((string) $sourceId, $site),
             default => throw NotSupportedYet::contentType($type),
         };
     }
@@ -222,5 +250,36 @@ final class TargetFactory
         [$handle, $sourceSite] = str_contains($sourceId, '::') ? explode('::', $sourceId, 2) : [$sourceId, null];
 
         return $this->forNav($handle, $site, $sourceSite);
+    }
+
+    // A lang reference names the target language; the source is the default site's language.
+    private function langFromReference(TargetRef $ref): LangTarget
+    {
+        $sourceLang = (string) Site::default()->lang();
+
+        if ($ref->site === $sourceLang) {
+            throw NotALocalization::for((string) $ref);
+        }
+
+        return $this->forLang($ref->id, $ref->site, $sourceLang);
+    }
+
+    // A translation file's source id is `{group}::{source language}`, and its site the target language (LangTarget::describe()).
+    private function langFromDescription(string $sourceId, string $lang): LangTarget
+    {
+        [$group, $sourceLang] = str_contains($sourceId, '::') ? explode('::', $sourceId, 2) : [$sourceId, (string) Site::default()->lang()];
+
+        return $this->forLang($group, $lang, $sourceLang);
+    }
+
+    private function siteWithLang(string $lang): ?string
+    {
+        $default = Site::default();
+
+        if ($default->lang() === $lang) {
+            return $default->handle();
+        }
+
+        return Site::all()->first(fn ($site) => $site->lang() === $lang)?->handle();
     }
 }

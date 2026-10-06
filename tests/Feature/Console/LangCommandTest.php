@@ -1,0 +1,413 @@
+<?php
+
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Translation\FileLoader;
+use Illuminate\Translation\Translator;
+use Reach\StatamicTolk\Ai\EngineCall;
+use Reach\StatamicTolk\Ai\ProviderError;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Enums\ProviderErrorKind;
+use Reach\StatamicTolk\Exceptions\ProviderRejected;
+use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Tests\Support\RunFixtures;
+use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
+use Statamic\Facades\Site;
+
+const LANG_MESSAGES = <<<'PHP'
+    <?php
+
+    return [
+        'booking' => [
+            'title' => 'Book your stay',
+            'welcome' => 'Welcome back, :name!',
+            'rooms_left' => '{0} No rooms|{1} One room|[2,*] :count rooms',
+        ],
+        'footer' => 'Open daily from 10:30',
+        'limit' => 5,
+    ];
+    PHP;
+
+beforeEach(function () {
+    $this->useFileCache();
+    $this->app->useLangPath($this->temporaryPath('lang'));
+
+    writeLang('en.json', json_encode(['Book now' => 'Book now', 'Contact us' => 'Contact us', 'Hello, :name' => 'Hello, :name'], JSON_PRETTY_PRINT));
+    writeLang('en/messages.php', LANG_MESSAGES);
+});
+
+function writeLang(string $path, string $contents): void
+{
+    (new Filesystem)->ensureDirectoryExists(dirname(lang_path($path)));
+    (new Filesystem)->put(lang_path($path), $contents);
+}
+
+function readLang(string $path): mixed
+{
+    return str_ends_with($path, '.json')
+        ? json_decode(file_get_contents(lang_path($path)), true)
+        : (static fn (string $file) => include $file)(lang_path($path));
+}
+
+/**
+ * Runs the command in this process and returns its exit code and output.
+ *
+ * @return array{0: int, 1: string}
+ */
+function langCommand(array $arguments = []): array
+{
+    $exitCode = Artisan::call('tolk:lang', $arguments);
+
+    return [$exitCode, Artisan::output()];
+}
+
+/**
+ * Laravel's translator, reading the test's lang path: the app's own loader was built with the path it booted with.
+ */
+function langTranslator(string $locale): Translator
+{
+    return new Translator(new FileLoader(new Filesystem, lang_path()), $locale);
+}
+
+it('translates the JSON file and the PHP files into a new language with every parameter and plural variant intact', function () {
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(0)
+        ->and(readLang('de.json'))->toBe(['Book now' => '[T] Book now', 'Contact us' => '[T] Contact us', 'Hello, :name' => '[T] Hello, :name'])
+        ->and(readLang('de/messages.php'))->toBe([
+            'booking' => [
+                'title' => '[T] Book your stay',
+                'welcome' => '[T] Welcome back, :name!',
+                'rooms_left' => '{0} [T] No rooms|{1} [T] One room|[2,*] [T] :count rooms',
+            ],
+            'footer' => '[T] Open daily from 10:30',
+            'limit' => 5,
+        ])
+        ->and(file_exists(lang_path('el.json')))->toBeFalse()
+        ->and($output)->toContain('Files: 2 (German).')
+        ->and($output)->toContain('lang/de.json: done, created, 3 fields')
+        ->and($output)->toContain('lang/de/messages.php: done, created, 4 fields')
+        ->and($output)->toMatch('/\| 2 +\| 0 +\| 0 +\| 0 +\|/')
+        ->and(langTranslator('de')->get('Hello, :name', ['name' => 'Ana']))->toBe('[T] Hello, Ana')
+        ->and(langTranslator('de')->get('messages.booking.welcome', ['name' => 'Ana']))->toBe('[T] Welcome back, Ana!')
+        ->and(langTranslator('de')->choice('messages.booking.rooms_left', 3))->toBe('[T] 3 rooms')
+        ->and(langTranslator('de')->choice('messages.booking.rooms_left', 1))->toBe('[T] One room');
+
+    $state = app(StateRepository::class)->get(new TargetRef(ContentType::Lang, 'messages', 'de'));
+
+    expect($state->sourceSite)->toBe('en')
+        ->and(array_keys($state->fields))->toBe(['booking.title', 'booking.welcome', 'booking.rooms_left', 'footer'])
+        ->and($state->fields['booking.rooms_left']->segments)->toHaveCount(3)
+        ->and(file_exists($this->temporaryPath('state/lang/messages/de.yaml')))->toBeTrue()
+        ->and(file_exists($this->temporaryPath('state/lang/_json/de.yaml')))->toBeTrue();
+});
+
+it('sends nothing on a second run', function () {
+    $this->fakeTranslations();
+    langCommand(['sites' => ['de']]);
+    $calls = $this->modelCalls();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(0)
+        ->and($this->modelCalls())->toBe($calls)
+        ->and($output)->toContain('lang/de.json: skipped, nothing to do')
+        ->and($output)->toContain('lang/de/messages.php: skipped, nothing to do');
+});
+
+it('re-sends only the edited key in mode update', function () {
+    $this->fakeTranslations();
+    langCommand(['sites' => ['de']]);
+    writeLang('en/messages.php', str_replace("'Book your stay'", "'Book your summer stay'", LANG_MESSAGES));
+    $sent = new ArrayObject;
+    $this->fakeTranslations(function (string $text) use ($sent) {
+        $sent[] = $text;
+
+        return '[T] '.$text;
+    });
+
+    [, $missing] = langCommand(['sites' => ['de']]);
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--mode' => 'update']);
+
+    expect($exitCode)->toBe(0)
+        ->and($missing)->toContain('lang/de/messages.php: skipped, nothing to do')
+        ->and($sent->getArrayCopy())->toBe(['Book your summer stay'])
+        ->and($output)->toContain('lang/de/messages.php: done, 1 field')
+        ->and(readLang('de/messages.php')['booking'])->toBe([
+            'title' => '[T] Book your summer stay',
+            'welcome' => '[T] Welcome back, :name!',
+            'rooms_left' => '{0} [T] No rooms|{1} [T] One room|[2,*] [T] :count rooms',
+        ]);
+});
+
+it('keeps a string edited by hand unless --force is given', function () {
+    $this->fakeTranslations();
+    langCommand(['sites' => ['de']]);
+    $edited = readLang('de.json');
+    $edited['Contact us'] = 'Kontaktieren Sie uns';
+    writeLang('de.json', json_encode($edited));
+
+    [, $output] = langCommand(['sites' => ['de'], '--mode' => 'all']);
+
+    expect(readLang('de.json')['Contact us'])->toBe('Kontaktieren Sie uns')
+        ->and($output)->toContain('lang/de.json: done, 2 fields; manual edits kept: Contact us');
+
+    langCommand(['sites' => ['de'], '--force' => true]);
+
+    expect(readLang('de.json')['Contact us'])->toBe('[T] Contact us');
+});
+
+it('writes one file for sites that share a language', function () {
+    Site::setSites([
+        'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],
+        'de' => ['name' => 'German', 'url' => 'http://localhost/de/', 'locale' => 'de_DE', 'lang' => 'de'],
+        'at' => ['name' => 'Austria', 'url' => 'http://localhost/at/', 'locale' => 'de_AT', 'lang' => 'de'],
+    ]);
+    $sent = new ArrayObject;
+    $this->fakeTranslations(function (string $text) use ($sent) {
+        $sent[] = $text;
+
+        return '[T] '.$text;
+    });
+
+    [$exitCode, $output] = langCommand(['sites' => ['de', 'at']]);
+    [, $all] = langCommand(['--dry-run' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Files: 2 (German).')
+        ->and(substr_count($output, 'lang/de.json:'))->toBe(1)
+        ->and(count($sent))->toBe(9)
+        ->and((new Filesystem)->files(lang_path()))->toHaveCount(2)
+        ->and($all)->toContain('Files: 2 (German).');
+});
+
+it('translates into every site whose language differs from the source when no site is named', function () {
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Files: 4 (Greek, German).')
+        ->and(readLang('el.json')['Book now'])->toBe('[T] Book now')
+        ->and(readLang('de/messages.php')['footer'])->toBe('[T] Open daily from 10:30');
+});
+
+it('translates from the language of the --from site', function () {
+    writeLang('de.json', json_encode(['Book now' => 'Jetzt buchen']));
+    writeLang('en.json', '{}');
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand(['sites' => ['el'], '--from' => 'de']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Files: 1 (Greek).')
+        ->and(readLang('el.json'))->toBe(['Book now' => '[T] Jetzt buchen'])
+        ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, '_json', 'el'))->sourceSite)->toBe('de');
+});
+
+it('limits the files to --group', function () {
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['_json']]);
+
+    expect($exitCode)->toBe(0)
+        ->and(file_exists(lang_path('de.json')))->toBeTrue()
+        ->and(file_exists(lang_path('de/messages.php')))->toBeFalse()
+        ->and($output)->not->toContain('messages.php');
+});
+
+it('shows the keys by status, the plan and the estimate in a dry run, and writes nothing', function () {
+    $this->fakeTranslations();
+    langCommand(['sites' => ['de'], '--group' => ['_json']]);
+    writeLang('en.json', json_encode(['Book now' => 'Book now today', 'Contact us' => 'Contact us', 'Hello, :name' => 'Hello, :name', 'New' => 'New']));
+    $before = file_get_contents(lang_path('de.json'));
+    $state = file_get_contents($this->temporaryPath('state/lang/_json/de.yaml'));
+    $calls = $this->modelCalls();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--mode' => 'update', '--dry-run' => true, '-v' => true]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('lang/de.json: 1 untranslated, 1 outdated, 2 current → 2 keys to translate (2 segments, 17 characters)')
+        ->and($output)->toContain('    Book now, New')
+        ->and($output)->toContain('lang/de/messages.php: 4 untranslated → 4 keys to translate (6 segments,')
+        ->and($output)->toContain('Estimated tokens')
+        ->and($output)->toContain('Estimated cost')
+        ->and($output)->toContain('Dry run: 2 of 2 files would be translated (8 segments,')
+        ->and($output)->toContain('Nothing was sent or written.')
+        ->and($this->modelCalls())->toBe($calls)
+        ->and(file_get_contents(lang_path('de.json')))->toBe($before)
+        ->and(file_get_contents($this->temporaryPath('state/lang/_json/de.yaml')))->toBe($state)
+        ->and(file_exists(lang_path('de/messages.php')))->toBeFalse()
+        ->and(file_exists($this->temporaryPath('state/lang/messages/de.yaml')))->toBeFalse();
+});
+
+it('asks before rewriting a PHP file it did not write, and not again once it wrote it', function () {
+    $this->fakeTranslations();
+    writeLang('de/messages.php', "<?php\n\n// Kept by hand.\nreturn ['footer' => 'Täglich geöffnet ab 10:30'];\n");
+
+    $this->artisan('tolk:lang', ['sites' => ['de']])
+        ->expectsOutputToContain('These files are written anew, so their comments and layout are lost: lang/de/messages.php.')
+        ->expectsConfirmation('Translate and rewrite them?', 'no')
+        ->expectsOutputToContain('Nothing was translated.')
+        ->assertExitCode(0);
+
+    expect(file_exists(lang_path('de.json')))->toBeFalse();
+    $this->assertNoModelCalls();
+
+    $this->artisan('tolk:lang', ['sites' => ['de']])
+        ->expectsConfirmation('Translate and rewrite them?', 'yes')
+        ->assertExitCode(0);
+
+    expect(readLang('de/messages.php')['footer'])->toBe('Täglich geöffnet ab 10:30')
+        ->and(readLang('de/messages.php')['booking']['title'])->toBe('[T] Book your stay');
+
+    writeLang('en/messages.php', str_replace("'Book your stay'", "'Book your summer stay'", LANG_MESSAGES));
+
+    $this->artisan('tolk:lang', ['sites' => ['de'], '--mode' => 'update'])
+        ->doesntExpectOutputToContain('These files are written anew')
+        ->assertExitCode(0);
+
+    expect(readLang('de/messages.php')['booking']['title'])->toBe('[T] Book your summer stay');
+});
+
+it('does not ask with --yes, or about a file with nothing to do', function () {
+    $this->fakeTranslations();
+    writeLang('de/messages.php', "<?php\n\n// Kept by hand.\nreturn ['footer' => 'Täglich'];\n");
+
+    $this->artisan('tolk:lang', ['sites' => ['de'], '--yes' => true])
+        ->doesntExpectOutputToContain('These files are written anew')
+        ->assertExitCode(0);
+
+    writeLang('de/messages.php', "<?php\n\n// Kept by hand.\nreturn ".var_export(readLang('de/messages.php'), true).";\n");
+
+    $this->artisan('tolk:lang', ['sites' => ['de']])
+        ->doesntExpectOutputToContain('These files are written anew')
+        ->assertExitCode(0);
+});
+
+it('lists the pluralised strings of a language with more plural forms than the source', function () {
+    Site::setSites([
+        'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],
+        'ru' => ['name' => 'Russian', 'url' => 'http://localhost/ru/', 'locale' => 'ru_RU', 'lang' => 'ru'],
+        'de' => ['name' => 'German', 'url' => 'http://localhost/de/', 'locale' => 'de_DE', 'lang' => 'de'],
+    ]);
+    $this->fakeTranslations();
+
+    [, $output] = langCommand();
+    [, $dryRun] = langCommand(['--dry-run' => true]);
+
+    expect($output)->toContain('These pluralised strings keep the 2 forms of the source language in their translations, but their language has more.')
+        ->and($output)->toMatch('/\| lang\/ru\/messages\.php +\| booking\.rooms_left +\| 3 +\|/')
+        ->and($output)->not->toContain('lang/de/messages.php | booking.rooms_left')
+        ->and($output)->not->toMatch('/\| lang\/ru\/messages\.php +\| booking\.(title|welcome) /')
+        ->and($dryRun)->toMatch('/\| lang\/ru\/messages\.php +\| booking\.rooms_left +\| 3 +\|/');
+});
+
+it('reviews with --reviewer and applies the corrections', function () {
+    $this->fakeTranslations();
+    $this->fakeReview(fn (string $source, string $translation) => $source === 'Book now' ? 'Jetzt buchen' : null);
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['_json'], '--reviewer' => 'openai:gpt-6.1-sol']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('Reviewer: ')
+        ->and($output)->toContain('lang/de.json: done, created, 3 fields, 1 correction')
+        ->and(readLang('de.json')['Book now'])->toBe('Jetzt buchen');
+});
+
+it('reviews existing translations in mode review', function () {
+    $this->fakeTranslations();
+    langCommand(['sites' => ['de'], '--group' => ['_json']]);
+    $this->fakeReview(fn (string $source) => $source === 'Contact us' ? 'Kontakt' : null);
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['_json'], '--mode' => 'review']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('lang/de.json: done, 1 field, 1 correction')
+        ->and(readLang('de.json')['Contact us'])->toBe('Kontakt');
+});
+
+it('exits 1 for invalid input and sends nothing', function (array $arguments, string $message) {
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand($arguments);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain($message)
+        ->and(file_exists(lang_path('de.json')))->toBeFalse();
+    $this->assertNoModelCalls();
+})->with([
+    'unknown site' => [['sites' => ['fr']], 'Unknown site [fr].'],
+    'the source language' => [['sites' => ['en']], 'The site [en] uses the source language [en], so there is nothing to translate into it.'],
+    'unknown --from' => [['sites' => ['de'], '--from' => 'fr'], 'Unknown site [fr].'],
+    'unknown group' => [['sites' => ['de'], '--group' => ['auth']], 'The translation file [lang/en/auth.php] was not found.'],
+    'invalid mode' => [['sites' => ['de'], '--mode' => 'some'], 'Invalid mode [some]. Use missing, update, all or review.'],
+    '--no-review with --review' => [['sites' => ['de'], '--review' => true, '--no-review' => true], '--no-review cannot be combined with --review, --reviewer or --mode=review.'],
+    '--no-review with --reviewer' => [['sites' => ['de'], '--reviewer' => 'openai:gpt-6.1-sol', '--no-review' => true], '--no-review cannot be combined with --review, --reviewer or --mode=review.'],
+    'invalid translator' => [['sites' => ['de'], '--translator' => 'nope'], 'nope'],
+]);
+
+it('exits 1 when a file cannot be read', function () {
+    $this->fakeTranslations();
+    writeLang('de.json', '{"Book now": ');
+
+    [$exitCode, $output] = langCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain('The translation file [lang/de.json] could not be read')
+        ->and(file_get_contents(lang_path('de.json')))->toBe('{"Book now": ')
+        ->and(file_exists(lang_path('de/messages.php')))->toBeFalse();
+    $this->assertNoModelCalls();
+});
+
+it('checks that the translator and the reviewer have a provider with a key', function () {
+    $this->withProviderKeys(['ai.providers.anthropic.key' => 'key']);
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--reviewer' => 'openai:gpt-6.1-sol']);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain('openai');
+    $this->assertNoModelCalls();
+});
+
+it('says so when there is nothing to translate', function () {
+    [$noFiles, $output] = langCommand(['sites' => ['de'], '--from' => 'el']);
+
+    Site::setSites(['en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'], 'uk' => ['name' => 'UK', 'url' => 'http://localhost/uk/', 'locale' => 'en_GB', 'lang' => 'en']]);
+    [$oneLanguage, $single] = langCommand();
+
+    expect($noFiles)->toBe(0)
+        ->and($output)->toContain('There are no translation files in lang/el.')
+        ->and($oneLanguage)->toBe(0)
+        ->and($single)->toContain('Every site uses the source language [en], so there is nothing to translate into.');
+});
+
+it('stops at ProviderRejected with its message, commits what was saved and exits 1', function () {
+    $commits = RunFixtures::commits();
+    ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
+        ? ScriptedEngine::translated($call)
+        : throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
+
+    [$exitCode, $output] = langCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain('Invalid API key.')
+        ->and($output)->toContain('lang/de.json: done, created, 3 fields')
+        ->and(file_exists(lang_path('de/messages.php')))->toBeFalse()
+        ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+});
+
+it('commits once when a file was saved, and not when nothing was', function () {
+    $this->fakeTranslations();
+    $commits = RunFixtures::commits();
+
+    langCommand(['sites' => ['de']]);
+    langCommand(['sites' => ['de']]);
+
+    expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+});

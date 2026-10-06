@@ -25,4 +25,9 @@ final class TargetNotFound extends RuntimeException
     {
         return new self($site === null ? "Navigation [{$handle}] not found." : "Navigation [{$handle}] has no tree in the site [{$site}].");
     }
+
+    public static function lang(string $file): self
+    {
+        return new self("Translation file [{$file}] not found.");
+    }
 }

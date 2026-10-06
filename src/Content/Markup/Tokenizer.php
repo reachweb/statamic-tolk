@@ -284,18 +284,31 @@ final class Tokenizer
         return $pieces;
     }
 
-    private static function plain(string $text): Tokenized
+    /**
+     * A `plain` text in which, besides Antlers tags, each match of the pattern $atoms is an atom, such as Laravel's
+     * `:parameters` (LangStringHandler).
+     */
+    public static function plainWithAtoms(string $text, string $atoms): Tokenized
+    {
+        return self::plain($text, $atoms);
+    }
+
+    private static function plain(string $text, ?string $atoms = null): Tokenized
     {
         $tokenized = '';
         $map = [];
 
         foreach (self::splitAntlers($text) as $index => $part) {
-            if ($index % 2 === 1) {
-                $id = 'x'.(count($map) + 1);
-                $map[$id] = $part;
-                $tokenized .= "<{$id}/>";
-            } else {
-                $tokenized .= self::escape($part);
+            $parts = $index % 2 === 1 ? ['', $part] : ($atoms === null ? [$part] : preg_split($atoms, $part, -1, PREG_SPLIT_DELIM_CAPTURE));
+
+            foreach ($parts as $position => $piece) {
+                if ($position % 2 === 1) {
+                    $id = 'x'.(count($map) + 1);
+                    $map[$id] = $piece;
+                    $tokenized .= "<{$id}/>";
+                } else {
+                    $tokenized .= self::escape($piece);
+                }
             }
         }
 

@@ -31,6 +31,16 @@ final class InvalidTarget extends InvalidArgumentException
         return new self("The site [{$site}] is the source of the navigation [{$handle}], so it cannot be its own translation target.");
     }
 
+    public static function langSource(string $lang): self
+    {
+        return new self("The language [{$lang}] is the source language, so it cannot be its own translation target.");
+    }
+
+    public static function langWithoutSite(string $lang): self
+    {
+        return new self("No site uses the language [{$lang}].");
+    }
+
     public static function description(array $describe): self
     {
         return new self('Invalid target description '.json_encode($describe, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).'. Use type, source_id and site.');
