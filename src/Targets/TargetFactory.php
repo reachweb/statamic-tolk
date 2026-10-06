@@ -9,7 +9,6 @@ use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
-use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\State\StateWriter;
@@ -40,8 +39,8 @@ final class TargetFactory
 
     /**
      * The reference of an existing target; an entry, term or globals reference must name a localization, a nav
-     * reference a site other than the default site, whose tree is the source, and a lang reference a language other
-     * than the default site's, whose file is the source.
+     * reference a site other than the default site, whose tree is the source, and a lang or forms reference a language
+     * other than the default site's, whose file or form texts are the source.
      */
     public function fromReference(string|TargetRef $reference): Target
     {
@@ -53,7 +52,7 @@ final class TargetFactory
             ContentType::GlobalSet => $this->globalsFromReference($ref),
             ContentType::Nav => $this->navFromReference($ref),
             ContentType::Lang => $this->langFromReference($ref),
-            default => throw NotSupportedYet::contentType($ref->type),
+            ContentType::Forms => $this->formsFromReference($ref),
         };
     }
 
@@ -148,18 +147,25 @@ final class TargetFactory
      */
     public function forLang(string $group, string $lang, string $sourceLang): LangTarget
     {
-        if ($lang === $sourceLang) {
-            throw InvalidTarget::langSource($lang);
-        }
-
-        $site = $this->siteWithLang($lang) ?? throw InvalidTarget::langWithoutSite($lang);
-        $sourceSite = $this->siteWithLang($sourceLang) ?? throw InvalidTarget::langWithoutSite($sourceLang);
+        [$site, $sourceSite] = $this->languageSites($lang, $sourceLang);
 
         if (! $this->langFiles->exists($sourceLang, $group)) {
             throw TargetNotFound::lang(LangFiles::name($sourceLang, $group));
         }
 
         return new LangTarget($group, $lang, $sourceLang, $site, $sourceSite, $this->langFiles, $this->resolver, $this->stateWriter);
+    }
+
+    /**
+     * The texts of every form in $lang, translated from $sourceLang; prompts use the languages as forLang() does (§A16).
+     *
+     * @throws InvalidTarget when the languages are the same or no site uses one of them
+     */
+    public function forForms(string $lang, string $sourceLang): FormsTarget
+    {
+        [$site, $sourceSite] = $this->languageSites($lang, $sourceLang);
+
+        return new FormsTarget($lang, $sourceLang, $site, $sourceSite, $this->langFiles, $this->resolver, $this->stateWriter);
     }
 
     /**
@@ -188,7 +194,7 @@ final class TargetFactory
             ContentType::GlobalSet => $this->forGlobalSet((string) $sourceId, $site),
             ContentType::Nav => $this->navFromDescription((string) $sourceId, $site),
             ContentType::Lang => $this->langFromDescription((string) $sourceId, $site),
-            default => throw NotSupportedYet::contentType($type),
+            ContentType::Forms => $this->forForms($site, (string) $sourceId),
         };
     }
 
@@ -270,6 +276,37 @@ final class TargetFactory
         [$group, $sourceLang] = str_contains($sourceId, '::') ? explode('::', $sourceId, 2) : [$sourceId, (string) Site::default()->lang()];
 
         return $this->forLang($group, $lang, $sourceLang);
+    }
+
+    // A forms reference names the target language; the source is the default site's language.
+    private function formsFromReference(TargetRef $ref): FormsTarget
+    {
+        $sourceLang = (string) Site::default()->lang();
+
+        if ($ref->id === $sourceLang) {
+            throw NotALocalization::for((string) $ref);
+        }
+
+        return $this->forForms($ref->id, $sourceLang);
+    }
+
+    /**
+     * The first site with each language, the default site first.
+     *
+     * @return array{0: string, 1: string} the target's site and the source's
+     *
+     * @throws InvalidTarget when the languages are the same or no site uses one of them
+     */
+    private function languageSites(string $lang, string $sourceLang): array
+    {
+        if ($lang === $sourceLang) {
+            throw InvalidTarget::langSource($lang);
+        }
+
+        return [
+            $this->siteWithLang($lang) ?? throw InvalidTarget::langWithoutSite($lang),
+            $this->siteWithLang($sourceLang) ?? throw InvalidTarget::langWithoutSite($sourceLang),
+        ];
     }
 
     private function siteWithLang(string $lang): ?string

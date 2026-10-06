@@ -9,4 +9,5 @@ enum ContentType: string
     case GlobalSet = 'globals';
     case Nav = 'nav';
     case Lang = 'lang';
+    case Forms = 'forms';
 }

@@ -20,6 +20,8 @@ it('round-trips every type', function (string $reference, ContentType $type, str
     'nav' => ['nav::main::el', ContentType::Nav, 'main', 'el', 'navs/main/el'],
     'translation file' => ['lang::messages::de', ContentType::Lang, 'messages', 'de', 'lang/messages/de'],
     'json translation file' => ['lang::_json::pt_BR', ContentType::Lang, '_json', 'pt_BR', 'lang/_json/pt_br.11bb446e'],
+    'form texts' => ['forms::de', ContentType::Forms, 'de', null, 'forms/de'],
+    'form texts in a regional language' => ['forms::pt_BR', ContentType::Forms, 'pt_BR', null, 'forms/pt_br.11bb446e'],
 ]);
 
 it('accepts integer entry ids', function () {
@@ -98,6 +100,9 @@ it('rejects invalid references', function (string $reference) {
     'nav without handle' => ['nav::::el'],
     'translation file without language' => ['lang::messages'],
     'translation file with an extra part' => ['lang::messages::extra::de'],
+    'form texts without language' => ['forms::'],
+    'form texts with a site' => ['forms::de::de'],
+    'form texts with a colon' => ['forms::de:'],
 ]);
 
 it('validates when constructed directly', function (ContentType $type, string $id, ?string $site) {
@@ -111,4 +116,6 @@ it('validates when constructed directly', function (ContentType $type, string $i
     'nav handle with a separator' => [ContentType::Nav, 'main::footer', 'el'],
     'site with a separator' => [ContentType::Nav, 'main', 'el::de'],
     'translation file without language' => [ContentType::Lang, 'messages', null],
+    'form texts with a site' => [ContentType::Forms, 'de', 'de'],
+    'form texts without language' => [ContentType::Forms, '', null],
 ]);

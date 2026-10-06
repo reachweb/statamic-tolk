@@ -30,9 +30,9 @@ final readonly class TargetRef implements Stringable
             throw InvalidTargetRef::for($reference);
         }
 
-        [$id, $site] = $type === ContentType::Entry || ! str_contains($parts[1], '::')
-            ? [$parts[1], null]
-            : [Str::beforeLast($parts[1], '::'), Str::afterLast($parts[1], '::')];
+        [$id, $site] = self::hasSite($type) && str_contains($parts[1], '::')
+            ? [Str::beforeLast($parts[1], '::'), Str::afterLast($parts[1], '::')]
+            : [$parts[1], null];
 
         return new self($type, $id, $site);
     }
@@ -45,6 +45,7 @@ final readonly class TargetRef implements Stringable
             ContentType::GlobalSet => 'globals',
             ContentType::Nav => 'navs',
             ContentType::Lang => 'lang',
+            ContentType::Forms => 'forms',
         };
 
         return implode('/', [$directory, ...array_map(self::safeSegment(...), $this->components())]);
@@ -55,9 +56,18 @@ final readonly class TargetRef implements Stringable
         return $this->type->value.'::'.$this->id.($this->site === null ? '' : '::'.$this->site);
     }
 
+    /**
+     * An entry reference names the localization by its id alone, and a forms reference names only the language
+     * (`forms::{lang}`); every other type ends with the site or language.
+     */
+    private static function hasSite(ContentType $type): bool
+    {
+        return ! in_array($type, [ContentType::Entry, ContentType::Forms], true);
+    }
+
     private function components(): array
     {
-        return $this->type === ContentType::Entry ? [$this->id] : [...explode('::', $this->id), $this->site];
+        return self::hasSite($this->type) ? [...explode('::', $this->id), $this->site] : [$this->id];
     }
 
     private function isValid(): bool
@@ -66,9 +76,17 @@ final readonly class TargetRef implements Stringable
             return $this->id !== '' && $this->site === null;
         }
 
+        if (! self::hasSite($this->type) && $this->site !== null) {
+            return false;
+        }
+
         $components = $this->components();
 
-        if (count($components) !== ($this->type === ContentType::Term ? 3 : 2)) {
+        if (count($components) !== match ($this->type) {
+            ContentType::Term => 3,
+            ContentType::Forms => 1,
+            default => 2,
+        }) {
             return false;
         }
 

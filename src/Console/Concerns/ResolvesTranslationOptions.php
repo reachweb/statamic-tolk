@@ -14,8 +14,8 @@ use Reach\StatamicTolk\Translation\PlanOptions;
 use Statamic\Facades\Site;
 
 /**
- * The options tolk:translate, tolk:site and tolk:lang share: --from, the review options, --concurrency, --queue, and the
- * check that every model the operation calls has a provider with a key.
+ * The options tolk:translate, tolk:site, tolk:lang and tolk:forms share: --from, the review options, --concurrency,
+ * --queue, and the check that every model the operation calls has a provider with a key.
  */
 trait ResolvesTranslationOptions
 {
