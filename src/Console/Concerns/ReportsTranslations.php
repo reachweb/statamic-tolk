@@ -217,7 +217,7 @@ trait ReportsTranslations
         ], array_values($this->outOfScope)));
 
         if (in_array('not_localizable', array_column($this->outOfScope, 'reason'), true)) {
-            $this->line('A field that is not localizable is shared by every site. Make it localizable in its blueprint to translate it. Run php please tolk:doctor for details.');
+            $this->line('A field that is not localizable is shared by every site. To translate it, make it localizable in its blueprint: php please tolk:doctor --fix-localizable does that.');
         }
     }
 

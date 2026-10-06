@@ -758,7 +758,7 @@ describe('summary and git', function () {
             ->and(substr_count($output, 'articles.note'))->toBe(1)
             ->and($output)->not->toContain('articles.tags')
             ->and($output)->not->toContain('articles.slug')
-            ->and($output)->toContain('Make it localizable in its blueprint to translate it. Run php please tolk:doctor for details.');
+            ->and($output)->toContain('To translate it, make it localizable in its blueprint: php please tolk:doctor --fix-localizable does that.');
     });
 
     it('commits once after the loop when a target was saved, and not when nothing was', function () {

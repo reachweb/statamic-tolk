@@ -175,8 +175,11 @@ final class TranslatableFields
         return in_array(Str::afterLast(strtolower($handle), '_'), self::TECHNICAL_WORDS, true);
     }
 
-    // A text field with another input type (url, email) is never translated, so there is nothing to switch off.
-    private function holdsText(Field $field): bool
+    /**
+     * Whether the field's values can hold text to translate: a text field with another input type (url, email) never
+     * does, so there is nothing to switch on or off.
+     */
+    public function holdsText(Field $field): bool
     {
         return ! $this->registry->for($field) instanceof TextHandler || TextHandler::holdsProse($field->fieldtype()->config());
     }
