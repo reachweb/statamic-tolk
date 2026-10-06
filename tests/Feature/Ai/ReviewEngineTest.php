@@ -258,6 +258,7 @@ it('throws ProviderPaused without a request while the reviewer\'s provider is pa
 });
 
 it('pauses the reviewer\'s provider on a 429 and throws ProviderPaused', function () {
+    $this->freezeTime();
     ProviderFixtures::fake('openai', ProviderFixtures::error('openai', 429, 'rate_limit_exceeded', 'Rate limit reached for requests.'), 429, ['retry-after' => '12']);
 
     $exception = reviewFailure('openai');

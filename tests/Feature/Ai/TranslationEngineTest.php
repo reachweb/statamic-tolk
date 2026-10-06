@@ -223,6 +223,7 @@ it('reports a refusal as refused', function (string $provider) {
 })->with(ProviderFixtures::PROVIDERS);
 
 it('pauses the provider for the retry-after of a 429 and throws ProviderPaused with that wait', function (string $provider, string $type) {
+    $this->freezeTime();
     ProviderFixtures::fake($provider, ProviderFixtures::error($provider, 429, $type, 'Rate limit reached for requests.'), 429, ['retry-after' => '17']);
 
     $exception = engineFailure($provider);

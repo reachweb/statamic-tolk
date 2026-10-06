@@ -34,6 +34,17 @@ jobs:
           extensions: dom, fileinfo, iconv, mbstring
           coverage: none
 
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-laravel${{ matrix.laravel }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-php${{ matrix.php }}-laravel${{ matrix.laravel }}-
+
       # The committed lock needs PHP 8.4.1 or later (Symfony 8.1), so every cell resolves its own versions.
       - name: Install dependencies
         run: composer update --with "laravel/framework:${{ matrix.laravel }}" --with "orchestra/testbench:${{ matrix.testbench }}" --prefer-stable --prefer-dist --no-interaction --no-progress
@@ -41,8 +52,9 @@ jobs:
       - name: Check code style
         run: vendor/bin/pint --test
 
+      # One process per core; tests/TestCase.php gives each process its own Testbench application.
       - name: Run tests
-        run: vendor/bin/pest
+        run: vendor/bin/pest --parallel
 
   assets:
     name: CP assets
@@ -58,6 +70,17 @@ jobs:
           php-version: '8.4'
           extensions: dom, fileinfo, iconv, mbstring
           coverage: none
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-assets-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-assets-
 
       # npm links @statamic/cms from vendor/, so install the locked version the committed build was made with.
       - name: Install PHP dependencies
