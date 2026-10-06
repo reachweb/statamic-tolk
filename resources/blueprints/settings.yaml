@@ -7,51 +7,59 @@ tabs:
           -
             handle: translator_model
             field:
-              type: text
+              type: tolk_model
+              role: translator
               display: 'Translator model'
-              instructions: 'The model that translates, written as `provider:model`, for example `anthropic:claude-sonnet-5-5`. Leave empty to use the quality model of the first provider with an API key.'
+              instructions: 'The AI model that translates your content. Automatic uses the recommended model of the first provider with an API key. To use a model that is not listed, type it as `provider:model`.'
           -
             handle: review_enabled
             field:
               type: toggle
               display: 'Review translations'
-              instructions: 'A second model checks every translation and corrects it. This roughly doubles the time and cost of a translation.'
+              instructions: 'A second model checks every translation and corrects what it would change. This roughly doubles the time and the cost of each translation. You can still turn review on or off for a single translation.'
               default: false
           -
             handle: reviewer_model
             field:
-              type: text
+              type: tolk_model
+              role: reviewer
               display: 'Reviewer model'
-              instructions: 'The model that reviews, written as `provider:model`. Leave empty to use the quality model of another provider with an API key, or the translator.'
+              instructions: 'The model that checks the translations. Automatic uses the recommended model of another provider with an API key, or the translator when there is no other.'
+              always_save: true
+              if:
+                review_enabled: 'equals true'
           -
             handle: fallback_model
             field:
-              type: text
+              type: tolk_model
+              role: fallback
               display: 'Fallback model'
-              instructions: 'Used when the translator keeps failing, written as `provider:model`. Leave empty for no fallback.'
+              instructions: 'Takes over when the translator keeps failing, for example while its provider is unavailable.'
           -
             handle: new_localization_status
             field:
               type: button_group
               display: 'New localizations'
-              instructions: 'The status of localizations that a bulk translation or the command line creates.'
+              instructions: 'Whether the localizations that bulk translations and the command line create are drafts, or published when their origin is. Existing localizations keep their status, and nothing translated in the editor is saved until you save it.'
               options:
                 draft: Draft
                 mirror: 'Same as origin'
               default: draft
+              validate:
+                - 'in:draft,mirror'
           -
             handle: offer_on_create
             field:
               type: toggle
               display: 'Offer to translate new localizations'
-              instructions: 'When you create a localization in the editor, offer to translate it from its origin.'
+              instructions: 'When you create a localization in the editor, offer to fill it with a translation of its origin.'
               default: true
           -
             handle: strict_fields
             field:
               type: toggle
               display: 'Strict fields'
-              instructions: 'When part of a field cannot be translated, leave the whole field untranslated instead of keeping that part in the original language.'
+              instructions: 'When part of a field cannot be translated, for example because the model refuses it, the field is normally translated with that part left in the original language, flagged, and tried again on the next update. Turn this on to leave the whole field untranslated instead.'
               default: false
   context:
     display: Context
@@ -61,23 +69,23 @@ tabs:
           -
             handle: site_profile
             field:
-              type: textarea
+              type: tolk_site_profile
               display: 'Site profile'
-              instructions: 'A short description of the organisation, what it offers, its audience and its tone of voice. It is sent with every translation.'
+              instructions: 'A short description of the organisation, what it offers, its audience and its tone of voice, sent with every translation. Generate writes one from your content with the translator model, and you can edit it as you like.'
               default: ''
           -
             handle: instructions
             field:
               type: textarea
               display: Instructions
-              instructions: 'Instructions for every translation, in any language.'
+              instructions: 'Instructions for every translation, for example on tone, spelling or units. You can write them in any language.'
               default: ''
           -
             handle: language_instructions
             field:
               type: grid
               display: 'Language instructions'
-              instructions: 'How to address the reader and extra instructions for one language.'
+              instructions: 'How to address the reader, and extra instructions, for one language. Each language can have one row.'
               mode: stacked
               add_row: 'Add language'
               default: []
@@ -89,21 +97,28 @@ tabs:
                     display: Site
                     mode: select
                     max_items: 1
+                    validate:
+                      - required
+                      - 'new Reach\StatamicTolk\Http\Rules\UniqueLanguageSite'
                 -
                   handle: formality
                   field:
                     type: button_group
                     display: Formality
+                    instructions: 'How the translation addresses the reader. Default leaves it to the model.'
                     options:
                       default: Default
                       formal: Formal
                       informal: Informal
                     default: default
+                    validate:
+                      - 'in:default,formal,informal'
                 -
                   handle: instructions
                   field:
                     type: textarea
                     display: Instructions
+                    instructions: 'Extra instructions for this language only.'
   glossary:
     display: Glossary
     sections:
@@ -114,7 +129,7 @@ tabs:
             field:
               type: grid
               display: Glossary
-              instructions: 'Terms that must always be translated the same way, or not at all.'
+              instructions: 'Terms that must always be translated the same way, or not at all. A row for one language replaces a row for every language with the same term.'
               mode: table
               add_row: 'Add term'
               default: []
@@ -124,6 +139,9 @@ tabs:
                   field:
                     type: text
                     display: Term
+                    validate:
+                      - required
+                      - 'new Reach\StatamicTolk\Http\Rules\UniqueGlossaryTerm'
                 -
                   handle: site
                   field:
@@ -137,6 +155,8 @@ tabs:
                   field:
                     type: text
                     display: Translation
+                    validate:
+                      - 'new Reach\StatamicTolk\Http\Rules\GlossaryTranslation'
                 -
                   handle: do_not_translate
                   field:
@@ -173,7 +193,7 @@ tabs:
             field:
               type: list
               display: 'Excluded fields'
-              instructions: 'Field handles that are never translated, in any blueprint.'
+              instructions: 'Fields that are never translated, wherever they appear. Enter each field by its handle, for example `internal_note`.'
               default: []
   providers:
     display: Providers
@@ -183,6 +203,6 @@ tabs:
           -
             handle: providers
             field:
-              type: info
+              type: tolk_providers
               display: Providers
-              content: 'API keys are read from your `.env` file: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `GEMINI_API_KEY`. They are never stored in these settings.'
+              instructions: 'API keys are read from the `.env` file of your site and are never stored in these settings. Each provider names the variable it needs.'

@@ -39,6 +39,34 @@ it('has blueprint defaults equal to Settings::DEFAULTS key by key', function () 
     }
 });
 
+it('uses the addon\'s fieldtypes for the models, the site profile and the providers', function () {
+    $fields = tolkSettingsBlueprintFields();
+
+    expect(collect($fields)->map(fn (array $field) => [$field['type'], $field['role'] ?? null])->filter(fn (array $type) => str_starts_with($type[0], 'tolk_'))->all())
+        ->toBe([
+            'translator_model' => ['tolk_model', 'translator'],
+            'reviewer_model' => ['tolk_model', 'reviewer'],
+            'fallback_model' => ['tolk_model', 'fallback'],
+            'site_profile' => ['tolk_site_profile', null],
+            'providers' => ['tolk_providers', null],
+        ]);
+});
+
+// The reviewer still matters while review is off, because a single translation can turn review on.
+it('shows the reviewer only while review is on, and keeps it while hidden', function () {
+    $reviewer = tolkSettingsBlueprintFields()['reviewer_model'];
+
+    expect($reviewer['if'])->toBe(['review_enabled' => 'equals true'])
+        ->and($reviewer['always_save'])->toBeTrue();
+});
+
+it('gives every field a label and instructions', function () {
+    foreach (tolkSettingsBlueprintFields() as $handle => $field) {
+        expect($field['display'] ?? '')->not->toBe('', "[{$handle}] has no label.")
+            ->and($field['instructions'] ?? '')->not->toBe('', "[{$handle}] has no instructions.");
+    }
+});
+
 it('uses sites fields with one item inside both grids', function () {
     $fields = tolkSettingsBlueprintFields();
 

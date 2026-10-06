@@ -212,7 +212,10 @@ class Settings
             ->all();
     }
 
-    private static function siteOf(array $row): ?string
+    /**
+     * The site of a grid row: a `sites` field with one item stores a string, and the form sends a list.
+     */
+    public static function siteOf(array $row): ?string
     {
         $site = self::text(Arr::first(Arr::wrap($row['site'] ?? null)));
 
