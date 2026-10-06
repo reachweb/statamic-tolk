@@ -1,5 +1,6 @@
 import * as defaultApi from '../api.js';
-import { asMap } from '../api.js';
+
+const { asMap } = defaultApi;
 
 // The settings form's fields this one works with.
 export const GLOSSARY = 'glossary';

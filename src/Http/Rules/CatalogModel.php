@@ -9,7 +9,6 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Support\Settings;
-use Statamic\Facades\Addon;
 
 /**
  * A model outside the catalog is accepted only from a user who may edit the addon's settings (§A14). The format is
@@ -27,7 +26,7 @@ final readonly class CatalogModel implements ValidationRule
             return;
         }
 
-        if (app(ModelCatalog::class)->has($model) || $this->user?->can('editSettings', Addon::get(Settings::PACKAGE))) {
+        if (app(ModelCatalog::class)->has($model) || Settings::editableBy($this->user)) {
             return;
         }
 

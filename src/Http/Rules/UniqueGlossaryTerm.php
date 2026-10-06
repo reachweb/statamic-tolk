@@ -13,11 +13,11 @@ final class UniqueGlossaryTerm extends GridRowRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        $term = self::text($value);
+        $term = Settings::text($value);
         $site = Settings::siteOf($this->row($attribute));
 
         $taken = collect($this->rowsBefore($attribute))->contains(
-            fn (array $row) => self::text($row['term'] ?? null) === $term && Settings::siteOf($row) === $site
+            fn (array $row) => Settings::text($row['term'] ?? null) === $term && Settings::siteOf($row) === $site
         );
 
         if (! $taken) {

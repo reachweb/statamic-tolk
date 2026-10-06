@@ -34,12 +34,7 @@ class Providers
      */
     public function status(string $provider): array
     {
-        $source = match (true) {
-            ! in_array($provider, ModelRef::PROVIDERS, true) => null,
-            self::filled(config("tolk.providers.{$provider}.key")) => 'addon',
-            self::filled(config("ai.providers.{$provider}.key")) => 'ai',
-            default => null,
-        };
+        $source = in_array($provider, ModelRef::PROVIDERS, true) ? $this->lookup($provider, 'key')['source'] : null;
 
         return [
             'provider' => $provider,
@@ -48,6 +43,16 @@ class Providers
             'source' => $source,
             'env' => ['ai' => self::variable($provider), 'addon' => self::variable($provider, addon: true)],
         ];
+    }
+
+    /**
+     * The status of each provider, in the order of ModelRef::PROVIDERS.
+     *
+     * @return list<array{provider: string, label: string, configured: bool, source: ?string, env: array{ai: string, addon: string}}>
+     */
+    public function statuses(): array
+    {
+        return array_map($this->status(...), ModelRef::PROVIDERS);
     }
 
     public static function label(string $provider): string
@@ -97,15 +102,25 @@ class Providers
 
     private function setting(string $provider, string $key): ?string
     {
-        foreach (["tolk.providers.{$provider}.{$key}", "ai.providers.{$provider}.{$key}"] as $path) {
+        return $this->lookup($provider, $key)['value'];
+    }
+
+    /**
+     * A provider setting, trimmed, from Tolk's own override (`addon`) or else from config/ai.php (`ai`).
+     *
+     * @return array{value: ?string, source: ?string}
+     */
+    private function lookup(string $provider, string $key): array
+    {
+        foreach (['addon' => "tolk.providers.{$provider}.{$key}", 'ai' => "ai.providers.{$provider}.{$key}"] as $source => $path) {
             $value = config($path);
 
             if (self::filled($value)) {
-                return trim($value);
+                return ['value' => trim($value), 'source' => $source];
             }
         }
 
-        return null;
+        return ['value' => null, 'source' => null];
     }
 
     private static function filled(mixed $value): bool

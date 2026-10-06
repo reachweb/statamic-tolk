@@ -3,7 +3,6 @@
 namespace Reach\StatamicTolk\Fieldtypes;
 
 use Reach\StatamicTolk\Ai\FakeEngine;
-use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Statamic\Fields\Fieldtype;
 
@@ -23,10 +22,8 @@ class ProvidersStatus extends Fieldtype
 
     public function preload(): array
     {
-        $providers = app(Providers::class);
-
         return [
-            'providers' => array_map(fn (string $provider) => $providers->status($provider), ModelRef::PROVIDERS),
+            'providers' => app(Providers::class)->statuses(),
             'fake_engine' => FakeEngine::enabled(),
         ];
     }

@@ -131,15 +131,13 @@ function incompleteNote(fields) {
 // The joined names of `count` fields that are not localizable, with the command that explains it unless the page links
 // them to the Audit page; the run page names fields of several containers.
 export function notLocalizableText(names, count, linked = false) {
-    return linked
-        ? __n(':fields is not translated because it is not localizable.|:fields are not translated because they are not localizable.', count, {
-              fields: names,
-          })
-        : __n(
-              ':fields is not translated because it is not localizable. Run php please tolk:doctor for details.|:fields are not translated because they are not localizable. Run php please tolk:doctor for details.',
-              count,
-              { fields: names },
-          );
+    return __n(
+        linked
+            ? ':fields is not translated because it is not localizable.|:fields are not translated because they are not localizable.'
+            : ':fields is not translated because it is not localizable. Run php please tolk:doctor for details.|:fields are not translated because they are not localizable. Run php please tolk:doctor for details.',
+        count,
+        { fields: names },
+    );
 }
 
 function labels(fields) {

@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Support;
 
+use Illuminate\Contracts\Auth\Access\Authorizable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Reach\StatamicTolk\Ai\ModelRef;
@@ -222,7 +223,15 @@ class Settings
         return $site === '' ? null : $site;
     }
 
-    private static function text(mixed $value): string
+    /**
+     * Whether the user may edit these settings: the ability core registers for an addon's settings (§A14).
+     */
+    public static function editableBy(?Authorizable $user): bool
+    {
+        return (bool) $user?->can('editSettings', Addon::get(self::PACKAGE));
+    }
+
+    public static function text(mixed $value): string
     {
         return is_scalar($value) ? trim((string) $value) : '';
     }

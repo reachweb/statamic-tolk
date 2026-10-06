@@ -9,6 +9,16 @@ const LEVELS = {
     error: { color: 'red', icon: 'warning-diamond', class: 'text-red-600' },
 };
 
+// The element id of a check on the Audit page, where a link with it as the hash scrolls to.
+export function checkAnchor(id) {
+    return `tolk-audit-${id}`;
+}
+
+// The link of the hints about fields that are not localizable; null for users without the Audit page.
+export function localizableUrl(auditUrl) {
+    return auditUrl ? `${auditUrl}#${checkAnchor(LOCALIZABLE)}` : null;
+}
+
 export function levelLabel(level) {
     return { ok: __('OK'), warning: __('Warning'), error: __('Error') }[level] ?? level;
 }
@@ -72,6 +82,13 @@ export function splitFields(item) {
 
 export function fieldName(field) {
     return field.label && field.label !== field.handle ? `${field.label} (${field.handle})` : field.handle;
+}
+
+// Why a field of an imported fieldset cannot be changed here.
+export function importedNote(field) {
+    return __('From the fieldset :fieldset: make it localizable in the fieldset, which changes every blueprint that imports it.', {
+        fieldset: field.fieldset,
+    });
 }
 
 // The handles chosen for an item, in the blueprint's order, among the fields the page can change.

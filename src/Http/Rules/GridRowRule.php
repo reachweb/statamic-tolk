@@ -45,11 +45,6 @@ abstract class GridRowRule implements DataAwareRule, ValidationRule
             ->all();
     }
 
-    protected static function text(mixed $value): string
-    {
-        return is_scalar($value) ? trim((string) $value) : '';
-    }
-
     protected static function siteName(string $site): string
     {
         return Site::get($site)?->name() ?? $site;

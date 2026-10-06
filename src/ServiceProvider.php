@@ -143,6 +143,6 @@ class ServiceProvider extends AddonServiceProvider
     {
         $addon = Addon::get(Settings::PACKAGE);
 
-        return $addon && User::current()?->can('editSettings', $addon) ? $addon->settingsUrl() : null;
+        return $addon && Settings::editableBy(User::current()) ? $addon->settingsUrl() : null;
     }
 }

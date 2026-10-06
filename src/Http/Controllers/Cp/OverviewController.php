@@ -9,7 +9,6 @@ use Inertia\Response;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
-use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -39,15 +38,16 @@ class OverviewController extends Controller
     public function index(StatusScanner $scanner, Providers $providers, UsageLog $usage, ModelCatalog $catalog, RunRepository $runs, RunState $state): Response
     {
         $sites = Site::authorized()->map(fn ($site) => ['handle' => $site->handle(), 'name' => $site->name()])->values()->all();
-        $models = $usage->month();
+        $month = now()->format('Y-m');
+        $models = $usage->month($month);
 
         return Inertia::render('tolk::Overview', [
             'multisite' => Site::multiEnabled() && Site::hasMultiple(),
             'sites' => $sites,
             'rows' => $this->rows($scanner, array_column($sites, 'handle')),
-            'providers' => array_map($providers->status(...), ModelRef::PROVIDERS),
+            'providers' => $providers->statuses(),
             'fakeEngine' => FakeEngine::enabled(),
-            'usage' => ['month' => now()->format('Y-m'), 'models' => $models, 'labels' => $catalog->labels(array_keys($models))],
+            'usage' => ['month' => $month, 'models' => $models, 'labels' => $catalog->labels(array_keys($models))],
             'runs' => array_map($state->summary(...), $runs->recent(self::RECENT_RUNS)),
             'urls' => [
                 'scan' => cp_route('tolk.overview.scan'),

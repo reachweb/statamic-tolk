@@ -6,6 +6,7 @@ import OriginPush from './OriginPush.vue';
 import ProgressBar from './ProgressBar.vue';
 import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
+import { localizableUrl } from '../audit/checks.js';
 import { attachBanner, isTermReference } from '../editor/banner.js';
 import { registry } from '../editor/registry.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
@@ -26,8 +27,8 @@ onBeforeUnmount(stop);
 
 const state = computed(() => store.containers[name] ?? null);
 const phase = computed(() => state.value?.phase ?? 'idle');
-const auditUrl = Statamic.$config.get('tolk.auditUrl');
-const banner = computed(() => describe(state.value?.status ?? null, { linked: Boolean(auditUrl) }));
+const auditLink = localizableUrl(Statamic.$config.get('tolk.auditUrl'));
+const banner = computed(() => describe(state.value?.status ?? null, { linked: Boolean(auditLink) }));
 const summary = computed(() => describeSummary(state.value?.summary ?? null, state.value?.status ?? null));
 const canUndo = computed(() => undoable(state.value));
 const restart = computed(() => RESTART.includes(state.value?.error?.code));
@@ -104,7 +105,7 @@ async function undo() {
                 <Description v-if="banner.localization.incompleteNote">{{ banner.localization.incompleteNote }}</Description>
                 <Description v-if="banner.localization.hint" data-tolk-not-localizable>
                     {{ banner.localization.hint }}
-                    <a v-if="auditUrl" :href="`${auditUrl}#tolk-audit-localizable`" data-tolk-audit-link>{{ __('Open the setup audit') }}</a>
+                    <a v-if="auditLink" :href="auditLink" data-tolk-audit-link>{{ __('Open the setup audit') }}</a>
                 </Description>
 
                 <div v-if="actions" class="flex flex-wrap gap-2 pt-1" data-tolk-actions>
