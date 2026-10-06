@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
@@ -72,6 +73,23 @@ it('deletes the state of a global set\'s site without an origin and of a navigat
         ->and($report->orphaned(PruneReport::NOT_A_LOCALIZATION))->toBe(['globals::site_settings::el'])
         ->and($report->orphaned(PruneReport::DELETED))->toEqualCanonicalizing(['nav::main::de', 'nav::footer::el'])
         ->and(iterator_to_array(app(StateRepository::class)->references(), false))->toBe([]);
+});
+
+it('deletes the state of a translation file whose source file is gone, and keeps that of a language no site uses', function () {
+    $this->app->useLangPath($this->temporaryPath('lang'));
+    (new Filesystem)->ensureDirectoryExists(lang_path('en'));
+    file_put_contents(lang_path('en.json'), '{"Book now": "Book now"}');
+    file_put_contents(lang_path('de.json'), '{"Book now": "Jetzt buchen"}');
+    prunerState(new TargetRef(ContentType::Lang, '_json', 'de'));
+    prunerState(new TargetRef(ContentType::Lang, 'messages', 'de'));
+    prunerState(new TargetRef(ContentType::Lang, '_json', 'fr'));
+    prunerState(new TargetRef(ContentType::Lang, '_json', 'en'));
+
+    $report = pruned();
+
+    expect($report->orphaned(PruneReport::DELETED))->toBe(['lang::messages::de'])
+        ->and($report->orphaned(PruneReport::NOT_A_LOCALIZATION))->toBe(['lang::_json::en'])
+        ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['lang::_json::de', 'lang::_json::fr']);
 });
 
 it('stops a stalled run that is older than the retention instead of deleting it, and counts it once with a dry run', function () {

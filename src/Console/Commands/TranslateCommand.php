@@ -492,13 +492,9 @@ class TranslateCommand extends Command
             );
         }
 
-        if ($estimate === null) {
-            return;
+        if ($estimate !== null) {
+            $this->printEstimate($estimate);
         }
-
-        $this->components->twoColumnDetail('Segments', number_format($estimate->segments).' ('.$this->count($estimate->chars, 'character').')');
-        $this->components->twoColumnDetail('Estimated tokens', number_format($estimate->inputTokens).' input, '.number_format($estimate->outputTokens).' output');
-        $this->components->twoColumnDetail('Estimated cost', $estimate->cost === null ? 'unknown, a model has no price' : self::dollars($estimate->cost));
     }
 
     /**
@@ -697,17 +693,5 @@ class TranslateCommand extends Command
         [$one, $many] = self::LEFT_OUT[$reason] ?? ['target is left out: '.str_replace('_', ' ', $reason), 'targets are left out: '.str_replace('_', ' ', $reason)];
 
         return number_format($count).' '.($count === 1 ? $one : $many).'.';
-    }
-
-    /**
-     * US dollars, as the catalog's prices are; below a cent, two significant digits.
-     */
-    private static function dollars(float $amount): string
-    {
-        if ($amount > 0 && $amount < 0.01) {
-            return '$'.number_format($amount, 1 - (int) floor(log10($amount)));
-        }
-
-        return '$'.number_format($amount, 2);
     }
 }

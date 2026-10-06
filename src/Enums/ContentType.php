@@ -8,4 +8,5 @@ enum ContentType: string
     case Term = 'term';
     case GlobalSet = 'globals';
     case Nav = 'nav';
+    case Lang = 'lang';
 }

@@ -18,6 +18,8 @@ it('round-trips every type', function (string $reference, ContentType $type, str
     'term' => ['term::topics::local-food::el', ContentType::Term, 'topics::local-food', 'el', 'terms/topics/local-food/el'],
     'global set' => ['globals::site_settings::de', ContentType::GlobalSet, 'site_settings', 'de', 'globals/site_settings/de'],
     'nav' => ['nav::main::el', ContentType::Nav, 'main', 'el', 'navs/main/el'],
+    'translation file' => ['lang::messages::de', ContentType::Lang, 'messages', 'de', 'lang/messages/de'],
+    'json translation file' => ['lang::_json::pt_BR', ContentType::Lang, '_json', 'pt_BR', 'lang/_json/pt_br.11bb446e'],
 ]);
 
 it('accepts integer entry ids', function () {
@@ -94,6 +96,8 @@ it('rejects invalid references', function (string $reference) {
     'global set with an extra part' => ['globals::site_settings::extra::de'],
     'nav without site' => ['nav::main::'],
     'nav without handle' => ['nav::::el'],
+    'translation file without language' => ['lang::messages'],
+    'translation file with an extra part' => ['lang::messages::extra::de'],
 ]);
 
 it('validates when constructed directly', function (ContentType $type, string $id, ?string $site) {
@@ -106,4 +110,5 @@ it('validates when constructed directly', function (ContentType $type, string $i
     'global set without site' => [ContentType::GlobalSet, 'site_settings', null],
     'nav handle with a separator' => [ContentType::Nav, 'main::footer', 'el'],
     'site with a separator' => [ContentType::Nav, 'main', 'el::de'],
+    'translation file without language' => [ContentType::Lang, 'messages', null],
 ]);

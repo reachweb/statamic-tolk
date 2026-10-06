@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Content;
 
 use Illuminate\Contracts\Container\Container;
+use Reach\StatamicTolk\Content\Handlers\LangStringHandler;
 use Reach\StatamicTolk\Content\Handlers\NavTreeHandler;
 use Reach\StatamicTolk\Contracts\FieldHandler;
 use Reach\StatamicTolk\Exceptions\InvalidFieldHandler;
@@ -32,6 +33,7 @@ final class FieldtypeRegistry
      */
     public const array INTERNAL_HANDLERS = [
         NavTreeHandler::HANDLE => NavTreeHandler::class,
+        LangStringHandler::HANDLE => LangStringHandler::class,
     ];
 
     private array $handlers = [];

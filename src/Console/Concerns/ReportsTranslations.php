@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
+use Reach\StatamicTolk\Runs\Estimate;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\TargetResult;
@@ -145,6 +146,16 @@ trait ReportsTranslations
             'characters' => array_sum(array_column($plan->batches, 'chars')),
             'reused' => array_sum(array_column($plan->fields, 'reused')),
         ];
+    }
+
+    /**
+     * The segments, tokens and cost of an estimate (D19).
+     */
+    protected function printEstimate(Estimate $estimate): void
+    {
+        $this->components->twoColumnDetail('Segments', number_format($estimate->segments).' ('.$this->count($estimate->chars, 'character').')');
+        $this->components->twoColumnDetail('Estimated tokens', number_format($estimate->inputTokens).' input, '.number_format($estimate->outputTokens).' output');
+        $this->components->twoColumnDetail('Estimated cost', $estimate->cost === null ? 'unknown, a model has no price' : self::dollars($estimate->cost));
     }
 
     /**
@@ -298,6 +309,18 @@ trait ReportsTranslations
     private function fieldsWith(TargetResult $result, string $outcome): array
     {
         return array_keys($result->fields, $outcome, true);
+    }
+
+    /**
+     * US dollars, as the catalog's prices are; below a cent, two significant digits.
+     */
+    private static function dollars(float $amount): string
+    {
+        if ($amount > 0 && $amount < 0.01) {
+            return '$'.number_format($amount, 1 - (int) floor(log10($amount)));
+        }
+
+        return '$'.number_format($amount, 2);
     }
 
     private function siteName(string $site): string
