@@ -92,13 +92,17 @@ class ServiceProvider extends AddonServiceProvider
         }));
     }
 
-    // The runs index is the landing page until the overview exists (T10.5). Like core's own items, the name is not translated here.
+    // Like core's own items, the names are not translated here.
     private function registerNavigation(): void
     {
         Nav::extend(fn ($nav) => $nav->tools('Translations')
-            ->route('tolk.runs.index')
+            ->route('tolk.overview')
             ->icon('dictionary-language-book')
-            ->can('run bulk translations'));
+            ->can('run bulk translations')
+            ->children([
+                $nav->item('Overview')->route('tolk.overview'),
+                $nav->item('Runs')->route('tolk.runs.index'),
+            ]));
     }
 
     // The built-in handlers come with the registry, so an addon that boots before this one (Tolk::registerFieldtype()) can replace them.

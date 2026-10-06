@@ -6,6 +6,7 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Statamic\Contracts\Entries\Collection as CollectionContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Query\Builder;
 use Statamic\Facades\Entry;
 
 /**
@@ -27,7 +28,7 @@ final class EntryFamilies
         $roots = [];
 
         foreach ($collections as $handle) {
-            foreach (Entry::query()->where('collection', $handle)->whereNull('origin')->lazy() as $entry) {
+            foreach ($this->rootQuery($handle)->lazy() as $entry) {
                 $roots[(string) $entry->id()] ??= $entry;
             }
         }
@@ -42,6 +43,16 @@ final class EntryFamilies
             ->flatMap(fn ($group) => $this->inTreeOrder($group->all()))
             ->values()
             ->all();
+    }
+
+    /**
+     * The sites the collection's roots are in, each once, read from the index without loading the entries.
+     *
+     * @return list<string>
+     */
+    public function rootSites(string $collection): array
+    {
+        return $this->rootQuery($collection)->pluck('site')->unique()->values()->all();
     }
 
     /**
@@ -65,6 +76,12 @@ final class EntryFamilies
         }
 
         return $targets;
+    }
+
+    // A family's root is the entry without an origin.
+    private function rootQuery(string $collection): Builder
+    {
+        return Entry::query()->where('collection', $collection)->whereNull('origin');
     }
 
     /**

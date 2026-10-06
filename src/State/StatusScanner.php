@@ -173,10 +173,10 @@ final readonly class StatusScanner
      */
     private function entrySites(CollectionContract $collection): array
     {
-        $rootSites = collect($this->families->roots([$collection->handle()], []))->map->locale()->unique();
+        $rootSites = $this->families->rootSites($collection->handle());
 
         return $collection->sites()
-            ->filter(fn (string $site) => $rootSites->contains(fn (string $rootSite) => $rootSite !== $site))
+            ->filter(fn (string $site) => array_diff($rootSites, [$site]) !== [])
             ->values()
             ->all();
     }

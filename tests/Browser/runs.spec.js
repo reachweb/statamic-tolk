@@ -132,13 +132,17 @@ test('Cancel stops a run, which keeps what it saved and can be resumed', async (
     expect(browserErrors()).toEqual([]);
 });
 
-test('the Translations nav item leads the admin to the runs', async ({ page }) => {
+test('the Translations nav item leads the admin to the overview, and its Runs item to the runs', async ({ page }) => {
     await page.goto(cpUrl('dashboard'));
 
     const item = page.getByRole('link', { name: 'Translations', exact: true });
 
     await expect(item).toBeVisible();
     await item.click();
+    await expect(page.locator('[data-tolk-overview]')).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(cpUrl('tolk'));
+
+    await page.getByRole('link', { name: 'Runs', exact: true }).click();
     await expect(page.locator('[data-tolk-runs-empty]')).toBeVisible();
     expect(new URL(page.url()).pathname).toBe(cpUrl('tolk/runs'));
 });

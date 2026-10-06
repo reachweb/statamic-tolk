@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Ai;
 
 use Illuminate\Support\Arr;
 use Reach\StatamicTolk\Enums\Tier;
+use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
 use Reach\StatamicTolk\Support\Settings;
@@ -133,6 +134,32 @@ class ModelCatalog
         $label = $this->find($model)['label'] ?? null;
 
         return is_string($label) && $label !== '' ? $label : $model->model;
+    }
+
+    /**
+     * The label of each model reference, by reference; a string that is not a reference is its own label, and anything
+     * else is left out.
+     *
+     * @param  iterable<mixed>  $references
+     * @return array<string, string>
+     */
+    public function labels(iterable $references): array
+    {
+        $labels = [];
+
+        foreach ($references as $reference) {
+            if (! is_string($reference) || isset($labels[$reference])) {
+                continue;
+            }
+
+            try {
+                $labels[$reference] = $this->label(ModelRef::fromString($reference));
+            } catch (InvalidModelRef) {
+                $labels[$reference] = $reference;
+            }
+        }
+
+        return $labels;
     }
 
     public function resolveTranslator(Settings $settings, ?ModelRef $override = null): ModelRef
