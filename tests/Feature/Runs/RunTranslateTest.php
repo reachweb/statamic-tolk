@@ -35,6 +35,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
 
 beforeEach(function () {
@@ -322,6 +323,22 @@ describe('translate', function () {
             ->and($pages['dining']->fresh()->existsIn('el'))->toBeFalse()
             ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
         $this->assertNoModelCalls();
+    });
+
+    it('reloads what other processes saved before it plans an item, such as the localizations a navigation links to', function () {
+        $this->fakeTranslations();
+        $this->makeNav('main', ['en' => [['id' => 'hello', 'entry' => $this->hello->id(), 'title' => 'Say hello']]]);
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'navs' => ['main']]);
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->applyReady($run, 'apply-1', CarbonImmutable::now()->addSeconds(30));
+        // A worker still holds what it read before the applier created the Greek localization.
+        Blink::put('entry-descendants-'.$this->hello->id(), collect());
+
+        RunFixtures::translate($run);
+        $nav = RunFixtures::items($run)[1];
+
+        expect($nav->status)->toBe(RunItemStatus::Translated)
+            ->and(array_column(app(PlanStore::class)->get($nav->planId)->segments, 'text'))->toBe(['Say hello']);
     });
 
     it('reviews the existing translations in mode review', function () {

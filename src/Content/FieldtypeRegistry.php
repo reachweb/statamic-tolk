@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Content;
 
 use Illuminate\Contracts\Container\Container;
+use Reach\StatamicTolk\Content\Handlers\NavTreeHandler;
 use Reach\StatamicTolk\Contracts\FieldHandler;
 use Reach\StatamicTolk\Exceptions\InvalidFieldHandler;
 use Statamic\Fields\Field;
@@ -23,6 +24,14 @@ final class FieldtypeRegistry
             'instructions' => 'Guidance for the translator, for example: product name, keep in English',
             'width' => 50,
         ],
+    ];
+
+    /**
+     * The handlers of synthetic fields, which a target builds itself and no fieldtype stands for. Such a field names
+     * its handler in its config as `tolk_handler`.
+     */
+    public const array INTERNAL_HANDLERS = [
+        NavTreeHandler::HANDLE => NavTreeHandler::class,
     ];
 
     private array $handlers = [];
@@ -46,12 +55,12 @@ final class FieldtypeRegistry
     // Whether a walk translates the field: its fieldtype has a handler and its "Translate automatically" option is on.
     public function translates(Field $field): bool
     {
-        return $this->has($field->type()) && $field->fieldtype()->config('tolk_translate') !== false;
+        return $this->handlerClass($field) !== null && $field->fieldtype()->config('tolk_translate') !== false;
     }
 
     public function for(Field $field): ?FieldHandler
     {
-        $handlerClass = $this->handlers[$field->type()] ?? null;
+        $handlerClass = $this->handlerClass($field);
 
         return $handlerClass === null ? null : $this->container->make($handlerClass);
     }
@@ -59,6 +68,15 @@ final class FieldtypeRegistry
     public function handles(): array
     {
         return array_keys($this->handlers);
+    }
+
+    private function handlerClass(Field $field): ?string
+    {
+        $internal = $field->get('tolk_handler');
+
+        return is_string($internal) && isset(self::INTERNAL_HANDLERS[$internal])
+            ? self::INTERNAL_HANDLERS[$internal]
+            : $this->handlers[$field->type()] ?? null;
     }
 
     /**

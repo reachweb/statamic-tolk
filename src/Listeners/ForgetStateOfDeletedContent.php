@@ -8,6 +8,8 @@ use Reach\StatamicTolk\Support\GitListeners;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Events\EntryDeleted;
 use Statamic\Events\GlobalVariablesDeleted;
+use Statamic\Events\NavDeleted;
+use Statamic\Events\NavTreeDeleted;
 use Statamic\Events\TermDeleted;
 use Statamic\Facades\Site;
 
@@ -36,6 +38,21 @@ final readonly class ForgetStateOfDeletedContent
     public function handleGlobalVariablesDeleted(GlobalVariablesDeleted $event): void
     {
         $this->forget([new TargetRef(ContentType::GlobalSet, (string) $event->variables->handle(), (string) $event->variables->locale())]);
+    }
+
+    public function handleNavTreeDeleted(NavTreeDeleted $event): void
+    {
+        $this->forget([new TargetRef(ContentType::Nav, (string) $event->tree->handle(), (string) $event->tree->locale())]);
+    }
+
+    /**
+     * Deleting a navigation leaves its trees' files behind, without an event for them.
+     */
+    public function handleNavDeleted(NavDeleted $event): void
+    {
+        $handle = (string) $event->nav->handle();
+
+        $this->forget(Site::all()->keys()->map(fn (string $site) => new TargetRef(ContentType::Nav, $handle, $site))->all());
     }
 
     /**

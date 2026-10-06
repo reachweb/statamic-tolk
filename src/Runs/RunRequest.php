@@ -41,9 +41,12 @@ final readonly class RunRequest
     /**
      * @param  list<string>  $sites  the sites to translate into
      * @param  RunDriver  $driver  what drives the run once it starts
-     * @param  ?string  $sourceSite  the site to translate a missing localization from, when the family has one there
+     * @param  ?string  $sourceSite  the site to translate a missing localization from, when the family has one there,
+     *                               and a navigation from, when it has a tree there
      * @param  list<string>  $collections  handles, or [ALL] for every multi-site collection
      * @param  list<string>  $taxonomies  handles, or [ALL] for every multi-site taxonomy
+     * @param  list<string>  $globals  handles, or [ALL] for every multi-site global set
+     * @param  list<string>  $navs  handles, or [ALL] for every navigation
      * @param  list<string>  $entryIds  any entry of each family
      * @param  list<string>  $termIds  term ids, `{taxonomy}::{default slug}`
      * @param  ?string  $reference  the item open in the editor when the run was pushed from it (T8.13)

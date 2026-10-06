@@ -26,6 +26,11 @@ final class InvalidTarget extends InvalidArgumentException
         return new self("The taxonomy [{$taxonomy}] is not available in the site [{$site}].");
     }
 
+    public static function navSource(string $handle, string $site): self
+    {
+        return new self("The site [{$site}] is the source of the navigation [{$handle}], so it cannot be its own translation target.");
+    }
+
     public static function description(array $describe): self
     {
         return new self('Invalid target description '.json_encode($describe, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).'. Use type, source_id and site.');

@@ -54,6 +54,34 @@ final class TranslatableFields
     }
 
     /**
+     * Fields a walk maps as nested fields, explained as explain() explains a blueprint, with the two rules that apply to
+     * them (§A2): `unsupported_fieldtype` and `disabled`.
+     *
+     * @return list<array{handle: string, display: mixed, type: string, in_scope: bool, reason: string}>
+     */
+    public function explainNested(Fields $fields): array
+    {
+        return $fields->all()
+            ->map(function (Field $field) {
+                $reason = match (true) {
+                    ! $this->registry->has($field->type()) => 'unsupported_fieldtype',
+                    $field->fieldtype()->config('tolk_translate') === false => 'disabled',
+                    default => 'ok',
+                };
+
+                return [
+                    'handle' => $field->handle(),
+                    'display' => $field->display(),
+                    'type' => $field->type(),
+                    'in_scope' => $reason === 'ok',
+                    'reason' => $reason,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
      * The text-bearing fields of an explain() result that are out of scope, with the reason (§A2).
      *
      * @param  list<array{handle: string, display: mixed, type: string, in_scope: bool, reason: string}>  $explained

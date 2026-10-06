@@ -23,16 +23,19 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\GlobalsTarget;
+use Reach\StatamicTolk\Targets\NavTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Structures\Nav as NavContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Statamic\Facades\Term;
@@ -82,6 +85,7 @@ final readonly class RunPlanner
         $items = $this->entryItems($this->entryTargets($request, $notes), Mode::from($options['mode']) !== Mode::Review);
         $items = [...$items, ...$this->termItems($request, count($items), $notes)];
         $items = [...$items, ...$this->globalItems($request, count($items), $notes)];
+        $items = [...$items, ...$this->navItems($request, count($items), $notes)];
         $scope = [...$request->scope(), 'skipped' => $notes['skipped'], 'out_of_scope' => array_values($notes['out_of_scope'])];
 
         return new PlannedRun(
@@ -292,6 +296,40 @@ final readonly class RunPlanner
     }
 
     /**
+     * One item per navigation × site the user may edit, from index $offset on, nav by nav (§A11 "Navigation"). The
+     * source is the nav's tree in the request's source site when it has one there, else the default site's tree; the
+     * source site is not a target, and a nav without a source tree is counted in the notes. Nav items are of stage 1,
+     * so each is translated only once no entry, term or global set item of its site is unfinished: the localizations
+     * the run creates are then there for its entry branches (§A12).
+     *
+     * @param  array  $notes  see sitesFor()
+     * @return list<RunItem>
+     */
+    private function navItems(RunRequest $request, int $offset, array &$notes): array
+    {
+        $items = [];
+
+        foreach ($this->navs($request->navs) as $nav) {
+            $sourceSite = $request->sourceSite !== null && $nav->existsIn($request->sourceSite) ? $request->sourceSite : Site::default()->handle();
+            $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
+                $site === $sourceSite => self::SOURCE,
+                ! $nav->existsIn($sourceSite) => NavTarget::NO_SOURCE_TREE,
+                default => null,
+            });
+
+            foreach ($sites as $site) {
+                $target = $this->factory->forNav($nav, $site, $sourceSite);
+
+                if ($this->admits($request, $target, $nav->handle(), $notes)) {
+                    $items[] = new RunItem($offset + count($items), ContentType::Nav, $target->describe()['source_id'], $site, $target->title(), stage: 1);
+                }
+            }
+        }
+
+        return $items;
+    }
+
+    /**
      * The requested sites that $leftOut() names no reason for. The others are counted in the notes' `skipped` under
      * their reason, except a source site (SOURCE). The notes hold what build() reports, and the blueprints admits()
      * has explained.
@@ -367,6 +405,24 @@ final readonly class RunPlanner
         }
 
         return collect($terms)->groupBy(fn (TermContract $term) => $term->taxonomyHandle())->flatten(1)->all();
+    }
+
+    /**
+     * The named navigations, or with [ALL] every one: a navigation can get a tree in any site.
+     *
+     * @param  list<string>  $handles
+     * @return list<NavContract>
+     */
+    private function navs(array $handles): array
+    {
+        if (RunRequest::all($handles)) {
+            return Nav::all()->values()->all();
+        }
+
+        return array_map(
+            fn (string $handle) => Nav::findByHandle($handle) ?? throw new InvalidArgumentException("Navigation [{$handle}] not found."),
+            array_values(array_unique($handles)),
+        );
     }
 
     /**

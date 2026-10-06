@@ -27,6 +27,7 @@ use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
 use Statamic\Facades\Term;
 
 beforeEach(function () {
@@ -69,12 +70,14 @@ describe('validation', function () {
     })->with([
         'unknown site' => [['--collection' => ['articles'], '--site' => ['fr']], 'Unknown site [fr].'],
         'no site' => [['--collection' => ['articles']], 'Name the sites to translate into with --site.'],
-        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry, --taxonomy, --globals or --all.'],
-        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy or --globals.'],
-        '--all with --taxonomy' => [['--all' => true, '--taxonomy' => ['topics'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy or --globals.'],
-        '--all with --globals' => [['--all' => true, '--globals' => ['site_settings'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy or --globals.'],
+        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry, --taxonomy, --globals, --nav or --all.'],
+        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy, --globals or --nav.'],
+        '--all with --taxonomy' => [['--all' => true, '--taxonomy' => ['topics'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy, --globals or --nav.'],
+        '--all with --globals' => [['--all' => true, '--globals' => ['site_settings'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy, --globals or --nav.'],
+        '--all with --nav' => [['--all' => true, '--nav' => ['main'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy, --globals or --nav.'],
         'unknown taxonomy' => [['--taxonomy' => ['colours'], '--site' => ['el']], 'Taxonomy [colours] not found.'],
         'unknown global set' => [['--globals' => ['colours'], '--site' => ['el']], 'Global set [colours] not found.'],
+        'unknown navigation' => [['--nav' => ['footer'], '--site' => ['el']], 'Navigation [footer] not found.'],
         'unknown source site' => [['--collection' => ['articles'], '--site' => ['el'], '--from' => 'fr'], 'Unknown site [fr].'],
         '--queue with --concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true], '--concurrency cannot be combined with --queue'],
         'invalid concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => '0'], 'Invalid concurrency [0]. Use a whole number of at least 1.'],
@@ -446,6 +449,51 @@ describe('global sets', function () {
             ->and($output)->toContain('Nothing to translate.')
             ->and(GlobalSet::findByHandle('site_settings')->in('de')->data()->all())->toBe([]);
         $this->assertNoModelCalls();
+    });
+});
+
+describe('navigation', function () {
+    beforeEach(function () {
+        $this->makeNav('main', ['en' => [
+            ['id' => 'hello', 'entry' => $this->hello->id()],
+            ['id' => 'world', 'entry' => $this->world->id(), 'title' => 'The world'],
+            ['id' => 'book', 'title' => 'Book your stay', 'url' => 'https://booking.example'],
+        ]]);
+    });
+
+    it('translates a navigation with --nav after the entries, with the localizations they created', function () {
+        $this->fakeTranslations();
+
+        [$exitCode, $output] = translateCommand(['--entry' => [$this->hello->id()], '--nav' => ['main'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Targets: 2 (Greek).')
+            ->and($output)->toContain('Navigation → Greek')
+            ->and($output)->toMatch('/Hello → Greek.*\n(.*\n)*.*Main → Greek/')
+            ->and($output)->toContain('The navigation item "The world" was left out: its entry has no localization in Greek.')
+            ->and($output)->not->toContain('failed')
+            ->and(Nav::findByHandle('main')->in('el')->tree())->toBe([
+                ['id' => 'hello', 'entry' => $this->hello->fresh()->in('el')->id()],
+                ['id' => 'book', 'title' => '[T] Book your stay', 'url' => 'https://booking.example'],
+            ]);
+    });
+
+    it('reports a navigation without a tree in the site it is translated from', function () {
+        $this->fakeTranslations();
+        $this->makeNav('footer', ['de' => [['id' => 'legal', 'title' => 'Impressum']]]);
+
+        [$exitCode, $output] = translateCommand(['--nav' => ['footer'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('1 target is in a navigation without a tree in the site it is translated from.')
+            ->and($output)->toContain('Nothing to translate.')
+            ->and(Nav::findByHandle('footer')->in('el'))->toBeNull();
+        $this->assertNoModelCalls();
+
+        [$exitCode, $output] = translateCommand(['--nav' => ['footer'], '--site' => ['el'], '--from' => 'de']);
+
+        expect($exitCode)->toBe(0)
+            ->and(Nav::findByHandle('footer')->in('el')->tree())->toBe([['id' => 'legal', 'title' => '[T] Impressum']]);
     });
 });
 
@@ -859,21 +907,29 @@ describe('the run engine', function () {
         $this->assertNoModelCalls();
     });
 
-    it('translates every collection with more than one site with --all', function () {
+    it('translates every collection, taxonomy and global set with more than one site, and every navigation, with --all', function () {
         $this->fakeTranslations();
         $this->makeCollection('news', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
         $news = $this->makeEntry('news', 'en', ['title' => 'News']);
         $this->makeCollection('notes', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
         $note = $this->makeEntry('notes', 'en', ['title' => 'A note']);
+        $this->makeTaxonomy('topics', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food']]);
+        $this->makeGlobalSet('site_settings', ['en' => null, 'el' => 'en'], ['tagline' => ['type' => 'text', 'localizable' => true]], ['en' => ['tagline' => 'By the sea']]);
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book your stay']]]);
 
         [$exitCode, $output] = translateCommand(['--all' => true, '--site' => ['el']]);
+        $scope = app(RunRepository::class)->recent(1)[0]->scope;
 
         expect($exitCode)->toBe(0)
-            ->and($output)->toContain('Targets: 3 (Greek).')
+            ->and($output)->toContain('Targets: 6 (Greek).')
             ->and($news->fresh()->in('el')->get('title'))->toBe('[T] News')
             ->and($this->world->fresh()->in('el')->get('title'))->toBe('[T] World')
             ->and($note->fresh()->existsIn('el'))->toBeFalse()
-            ->and(app(RunRepository::class)->recent(1)[0]->scope['collections'])->toBe(['*']);
+            ->and(Term::find('topics::food')->in('el')->get('title'))->toBe('[T] Food')
+            ->and(GlobalSet::findByHandle('site_settings')->in('el')->get('tagline'))->toBe('[T] By the sea')
+            ->and(Nav::findByHandle('main')->in('el')->tree())->toBe([['id' => 'book', 'title' => '[T] Book your stay']])
+            ->and([$scope['collections'], $scope['taxonomies'], $scope['globals'], $scope['navs']])->toBe([['*'], ['*'], ['*'], ['*']]);
     });
 
     it('translates a missing localization from the site of --from where the entry has one there', function () {

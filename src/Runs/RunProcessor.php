@@ -385,8 +385,16 @@ final readonly class RunProcessor
      */
     private function translateItem(Run $run, RunItem $item, PlanOptions $options, CarbonInterface $deadline, int &$units, int &$items): ?int
     {
+        $plan = $item->planId === null ? null : $this->store->get($item->planId);
+
+        // A worker lives on while another process applies, and planning reads what the run saved before: the root page an
+        // entry is placed under, the localizations a navigation links to (§A12). Its Stache memory would not show them.
+        if ($plan === null) {
+            ContentWriter::refreshStache();
+        }
+
         $target = $this->factory->fromDescription($item->describe());
-        $plan = ($item->planId === null ? null : $this->store->get($item->planId)) ?? $this->plan($run, $item, $target, $options);
+        $plan ??= $this->plan($run, $item, $target, $options);
 
         if ($plan === null) {
             $items++;

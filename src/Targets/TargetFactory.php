@@ -17,9 +17,11 @@ use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
+use Statamic\Contracts\Structures\Nav as NavContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
 use Statamic\Facades\Term;
 
@@ -35,7 +37,8 @@ final class TargetFactory
     ) {}
 
     /**
-     * The reference of an existing target; an entry, term or globals reference must name a localization.
+     * The reference of an existing target; an entry, term or globals reference must name a localization, and a nav
+     * reference a site other than the default site, whose tree is the source.
      */
     public function fromReference(string|TargetRef $reference): Target
     {
@@ -45,6 +48,7 @@ final class TargetFactory
             ContentType::Entry => $this->entryFromReference($ref),
             ContentType::Term => $this->termFromReference($ref),
             ContentType::GlobalSet => $this->globalsFromReference($ref),
+            ContentType::Nav => $this->navFromReference($ref),
             default => throw NotSupportedYet::contentType($ref->type),
         };
     }
@@ -110,6 +114,28 @@ final class TargetFactory
     }
 
     /**
+     * $nav is the navigation or its handle. Its tree in $sourceSite, by default the default site's, is the source; a
+     * source site without a tree gives a target with nothing to translate.
+     */
+    public function forNav(NavContract|string $nav, string $site, ?string $sourceSite = null): NavTarget
+    {
+        $nav = $nav instanceof NavContract ? $nav : (Nav::findByHandle($nav) ?? throw TargetNotFound::nav($nav));
+        $sourceSite ??= Site::default()->handle();
+
+        foreach ([$site, $sourceSite] as $handle) {
+            if (Site::get($handle) === null) {
+                throw UnknownSite::for($handle);
+            }
+        }
+
+        if ($site === $sourceSite) {
+            throw InvalidTarget::navSource($nav->handle(), $site);
+        }
+
+        return new NavTarget($nav->handle(), $site, $sourceSite, $this->translatableFields, $this->summary, $this->resolver, $this->stateWriter, $nav);
+    }
+
+    /**
      * The term of a term reference in the site it names; null when there is no such term or its taxonomy lacks the site.
      */
     public function findTerm(TargetRef $ref): ?TermContract
@@ -133,6 +159,7 @@ final class TargetFactory
             ContentType::Entry => $this->forEntry((string) $sourceId, $site),
             ContentType::Term => $this->forTerm((string) $sourceId, $site),
             ContentType::GlobalSet => $this->forGlobalSet((string) $sourceId, $site),
+            ContentType::Nav => $this->navFromDescription((string) $sourceId, $site),
             default => throw NotSupportedYet::contentType($type),
         };
     }
@@ -171,5 +198,29 @@ final class TargetFactory
         }
 
         return $this->forGlobalSet($set, $ref->site);
+    }
+
+    // A nav reference names a site with a tree, translated from the default site's tree.
+    private function navFromReference(TargetRef $ref): NavTarget
+    {
+        $nav = Nav::findByHandle($ref->id) ?? throw TargetNotFound::nav($ref->id);
+
+        if (! $nav->existsIn($ref->site)) {
+            throw TargetNotFound::nav($ref->id, $ref->site);
+        }
+
+        if ($ref->site === Site::default()->handle()) {
+            throw NotALocalization::for((string) $ref);
+        }
+
+        return $this->forNav($nav, $ref->site);
+    }
+
+    // A nav's source id is `{handle}::{source site}` (NavTarget::describe()); a handle alone names the default site's tree.
+    private function navFromDescription(string $sourceId, string $site): NavTarget
+    {
+        [$handle, $sourceSite] = str_contains($sourceId, '::') ? explode('::', $sourceId, 2) : [$sourceId, null];
+
+        return $this->forNav($handle, $site, $sourceSite);
     }
 }

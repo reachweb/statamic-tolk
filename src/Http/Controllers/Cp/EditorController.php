@@ -264,12 +264,19 @@ class EditorController extends Controller
     private function localization(string $reference): Target
     {
         try {
-            return $this->targets->fromReference($reference);
+            $target = $this->targets->fromReference($reference);
         } catch (InvalidTargetRef|TargetNotFound) {
             $this->unknownReference($reference);
         } catch (NotALocalization|NotSupportedYet $exception) {
             $this->fail(422, 'not_translatable', $exception->getMessage());
         }
+
+        // A navigation has no publish form to deliver into (§A13); runs translate it.
+        if ($target->type() === ContentType::Nav) {
+            $this->fail(422, 'not_translatable', __('Navigation is translated in runs, not in the editor.'));
+        }
+
+        return $target;
     }
 
     /**

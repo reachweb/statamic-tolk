@@ -173,6 +173,10 @@ describe('what the run translates', () => {
         });
         expect(describeScope({ taxonomies: ['topics'], globals: ['site_settings', 'footer'], sites: ['el'] }, siteName).what).toBe('topics, site_settings, footer');
         expect(describeScope({ collections: ['*'], taxonomies: ['*'], globals: ['*'] }).what).toBe('All collections, All taxonomies, All global sets');
+        expect(describeScope({ globals: ['site_settings'], navs: ['main', 'footer'], sites: ['el'] }, siteName).what).toBe('site_settings, main, footer');
+        expect(describeScope({ collections: ['*'], taxonomies: ['*'], globals: ['*'], navs: ['*'] }).what).toBe(
+            'All collections, All taxonomies, All global sets, All navigation',
+        );
         expect(describeScope({}).what).toBe('Nothing selected');
     });
 
