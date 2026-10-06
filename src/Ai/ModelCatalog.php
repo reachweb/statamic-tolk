@@ -125,10 +125,14 @@ class ModelCatalog
 
     public function resolveTranslator(Settings $settings, ?ModelRef $override = null): ModelRef
     {
-        if ($model = $override ?? $settings->translatorModel()) {
-            return $model;
-        }
+        return $override ?? $settings->translatorModel() ?? $this->automaticTranslator();
+    }
 
+    /**
+     * The translator when the settings name none: the quality model of the first configured provider.
+     */
+    public function automaticTranslator(): ModelRef
+    {
         // The fake engine needs no key, so a sandbox without keys still gets a translator to plan with.
         $provider = Arr::first($this->providers->configured())
             ?? (FakeEngine::enabled() ? ModelRef::PROVIDERS[0] : throw NoProviderConfigured::make());
@@ -138,10 +142,14 @@ class ModelCatalog
 
     public function resolveReviewer(Settings $settings, ModelRef $translator, ?ModelRef $override = null): ModelRef
     {
-        if ($model = $override ?? $settings->reviewerModel()) {
-            return $model;
-        }
+        return $override ?? $settings->reviewerModel() ?? $this->automaticReviewer($translator);
+    }
 
+    /**
+     * The reviewer when the settings name none: the quality model of another configured provider, else the translator.
+     */
+    public function automaticReviewer(ModelRef $translator): ModelRef
+    {
         $provider = Arr::first($this->providers->configured(), fn (string $provider) => $provider !== $translator->provider);
 
         return $provider ? $this->default($provider, Tier::Quality) : $translator;
