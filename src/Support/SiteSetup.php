@@ -18,7 +18,10 @@ use Statamic\Stache\Repositories\TermRepository as StacheTermRepository;
  */
 final class SiteSetup
 {
-    public function __construct(private readonly Settings $settings) {}
+    public function __construct(
+        private readonly Settings $settings,
+        private readonly TermRepository $terms,
+    ) {}
 
     /**
      * The collections and taxonomies that are not excluded in the settings and not enabled for $site.
@@ -65,14 +68,14 @@ final class SiteSetup
         // Term::taxonomy() remembers the taxonomy, and unlike Collection::save(), Taxonomy::save() does not forget it.
         Blink::forget("taxonomy-{$handle}");
 
-        if (app(TermRepository::class) instanceof StacheTermRepository) {
+        if ($this->terms instanceof StacheTermRepository) {
             Stache::store('terms::'.$handle)->clear();
         }
     }
 
     /**
      * The global sets that are not enabled for $site, or that name no origin for it while no other site names it as
-     * theirs (the sites the audit lists, GlobalsTarget::NO_ORIGIN). `origin` is the site to translate from: $from, or
+     * theirs (GlobalsTarget::needsOrigin(), the sites the audit lists). `origin` is the site to translate from: $from, or
      * the default site, when the set has it, and otherwise the set's first other site; null when it has none.
      *
      * @return list<array{handle: string, name: string, enabled: bool, origin: ?string}>
@@ -84,7 +87,7 @@ final class SiteSetup
         foreach (GlobalSet::all() as $set) {
             $enabled = $set->sites()->contains($site);
 
-            if ($enabled && ($set->origins()->containsStrict($site) || GlobalsTarget::untranslatableReasonFor($set, $site) !== GlobalsTarget::NO_ORIGIN)) {
+            if ($enabled && ! GlobalsTarget::needsOrigin($set, $site)) {
                 continue;
             }
 

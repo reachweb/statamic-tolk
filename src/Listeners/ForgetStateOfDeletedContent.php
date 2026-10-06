@@ -27,9 +27,7 @@ final readonly class ForgetStateOfDeletedContent
      */
     public function handleTermDeleted(TermDeleted $event): void
     {
-        $id = (string) $event->term->id();
-
-        $this->forget(Site::all()->keys()->map(fn (string $site) => new TargetRef(ContentType::Term, $id, $site))->all());
+        $this->forget($this->inEverySite(ContentType::Term, (string) $event->term->id()));
     }
 
     /**
@@ -50,9 +48,15 @@ final readonly class ForgetStateOfDeletedContent
      */
     public function handleNavDeleted(NavDeleted $event): void
     {
-        $handle = (string) $event->nav->handle();
+        $this->forget($this->inEverySite(ContentType::Nav, (string) $event->nav->handle()));
+    }
 
-        $this->forget(Site::all()->keys()->map(fn (string $site) => new TargetRef(ContentType::Nav, $handle, $site))->all());
+    /**
+     * @return list<TargetRef>
+     */
+    private function inEverySite(ContentType $type, string $id): array
+    {
+        return Site::all()->keys()->map(fn (string $site) => new TargetRef($type, $id, $site))->all();
     }
 
     /**

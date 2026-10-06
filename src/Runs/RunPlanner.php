@@ -311,9 +311,10 @@ final readonly class RunPlanner
 
         foreach ($this->navs($request->navs) as $nav) {
             $sourceSite = $request->sourceSite !== null && $nav->existsIn($request->sourceSite) ? $request->sourceSite : Site::default()->handle();
+            $hasSourceTree = $nav->existsIn($sourceSite);
             $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
                 $site === $sourceSite => self::SOURCE,
-                ! $nav->existsIn($sourceSite) => NavTarget::NO_SOURCE_TREE,
+                ! $hasSourceTree => NavTarget::NO_SOURCE_TREE,
                 default => null,
             });
 

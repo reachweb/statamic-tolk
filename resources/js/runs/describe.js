@@ -226,38 +226,28 @@ export function describeScope(scope, siteName = (handle) => handle) {
     const entries = list('entry_ids').length;
     const terms = list('term_ids').length;
     const parts = [];
+    const containers = (handles, all) => {
+        if (handles.includes('*')) {
+            parts.push(all);
+        } else if (handles.length > 0) {
+            parts.push(handles.join(', '));
+        }
+    };
 
-    if (collections.includes('*')) {
-        parts.push(__('All collections'));
-    } else if (collections.length > 0) {
-        parts.push(collections.join(', '));
-    }
+    containers(collections, __('All collections'));
 
     if (entries > 0) {
         parts.push(__n(':count selected entry|:count selected entries', entries));
     }
 
-    if (taxonomies.includes('*')) {
-        parts.push(__('All taxonomies'));
-    } else if (taxonomies.length > 0) {
-        parts.push(taxonomies.join(', '));
-    }
+    containers(taxonomies, __('All taxonomies'));
 
     if (terms > 0) {
         parts.push(__n(':count selected term|:count selected terms', terms));
     }
 
-    if (globals.includes('*')) {
-        parts.push(__('All global sets'));
-    } else if (globals.length > 0) {
-        parts.push(globals.join(', '));
-    }
-
-    if (navs.includes('*')) {
-        parts.push(__('All navigation'));
-    } else if (navs.length > 0) {
-        parts.push(navs.join(', '));
-    }
+    containers(globals, __('All global sets'));
+    containers(navs, __('All navigation'));
 
     return {
         what: parts.join(', ') || __('Nothing selected'),

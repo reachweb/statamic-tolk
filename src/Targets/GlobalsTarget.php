@@ -74,6 +74,15 @@ final class GlobalsTarget implements Target
         };
     }
 
+    /**
+     * Whether $site has no origin to be translated from and is not the origin of another site, which would make it
+     * the set's source: the sites the audit reports and tolk:site offers to give an origin.
+     */
+    public static function needsOrigin(GlobalSetContract $set, string $site): bool
+    {
+        return ! $set->origins()->containsStrict($site) && self::untranslatableReasonFor($set, $site) === self::NO_ORIGIN;
+    }
+
     public function untranslatableReason(): ?string
     {
         return self::untranslatableReasonFor($this->set(), $this->site);
