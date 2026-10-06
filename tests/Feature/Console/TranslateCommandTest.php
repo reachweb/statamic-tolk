@@ -2,6 +2,7 @@
 
 use Carbon\CarbonInterval as Duration;
 use Illuminate\Console\Signals;
+use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
@@ -1146,6 +1147,10 @@ describe('the run engine', function () {
     it('waits for the workers after Ctrl-C, and stops them at once on a second one', function () {
         if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
+        }
+
+        if (! method_exists(FakeInvokedProcess::class, 'stop')) {
+            $this->markTestSkipped('The process fake of Laravel 12 cannot stop a process; the real one can.');
         }
 
         Process::fake(['*' => Process::describe()->runsFor(iterations: 1000)]);

@@ -11,11 +11,16 @@ use Reach\StatamicTolk\ServiceProvider;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\CreatesContent;
 use Reach\StatamicTolk\Tests\Support\FakesTranslation;
+use ReflectionClass;
+use ReflectionProperty;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Addon;
+use Statamic\Facades\Path;
 use Statamic\Facades\Site;
+use Statamic\Facades\Stache;
 use Statamic\Facades\User;
 use Statamic\Licensing\Outpost;
+use Statamic\Statamic;
 use Statamic\Testing\AddonTestCase;
 use Statamic\Testing\Concerns\FakesRoles;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
@@ -31,8 +36,12 @@ abstract class TestCase extends AddonTestCase
 
     private ?string $temporaryDirectory = null;
 
+    private static ?string $processBasePath = null;
+
     protected function setUp(): void
     {
+        self::resetStatamic();
+
         parent::setUp();
 
         $this->deleteAddonSettingsFile();
@@ -61,6 +70,52 @@ abstract class TestCase extends AddonTestCase
             (new Filesystem)->deleteDirectory($this->temporaryDirectory);
             $this->temporaryDirectory = null;
         }
+    }
+
+    /**
+     * Each process of a parallel run (`--parallel`) gets its own copy of Testbench's application, whose `resources/`
+     * holds the addon's settings file and whose `storage/` holds compiled views, so the processes do not share them.
+     */
+    public static function applicationBasePath()
+    {
+        $token = $_SERVER['TEST_TOKEN'] ?? getenv('TEST_TOKEN');
+
+        if (! is_string($token) || $token === '') {
+            return parent::applicationBasePath();
+        }
+
+        if (self::$processBasePath === null) {
+            $files = new Filesystem;
+            $path = sys_get_temp_dir().'/tolk-testbench/'.$token;
+
+            $files->deleteDirectory($path);
+            $files->copyDirectory(parent::applicationBasePath(), $path);
+
+            self::$processBasePath = $path;
+        }
+
+        return self::$processBasePath;
+    }
+
+    /**
+     * The Stache stores write into the test's temporary directory instead of the shared `tests/__fixtures__/dev-null`,
+     * which tearDown() deletes with the rest.
+     */
+    protected function preventSavingStacheItemsToDisk(): void
+    {
+        $fixtures = Str::before(Path::tidy($this->fakeStacheDirectory), '/dev-null');
+        $this->fakeStacheDirectory = $this->temporaryPath('stache');
+
+        Stache::stores()->each(function ($store) use ($fixtures) {
+            $relative = Str::after(Str::after('/'.Path::makeRelative($store->directory()), $fixtures), '/');
+
+            $store->directory($this->fakeStacheDirectory.'/'.$relative);
+        });
+    }
+
+    protected function deleteFakeStacheDirectory(): void
+    {
+        //
     }
 
     protected function getPackageProviders($app)
@@ -168,6 +223,20 @@ abstract class TestCase extends AddonTestCase
         $this->actingAs($user);
 
         return $user;
+    }
+
+    /**
+     * Statamic keeps what providers register on boot (the addon's routes, scripts, script data, booted callbacks) in
+     * static properties, which outlive each test's application. Without a reset, test N registers the addon's routes N
+     * times, and every earlier application stays in memory through the providers those closures are bound to.
+     */
+    private static function resetStatamic(): void
+    {
+        foreach ((new ReflectionClass(Statamic::class))->getProperties(ReflectionProperty::IS_STATIC) as $property) {
+            if ($property->hasDefaultValue()) {
+                $property->setValue(null, $property->getDefaultValue());
+            }
+        }
     }
 
     private function deleteAddonSettingsFile(): void
