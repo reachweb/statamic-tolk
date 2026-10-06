@@ -5,9 +5,11 @@ import {
     chosenFields,
     confirmation,
     fieldName,
+    importedNote,
     isBlueprintItem,
     level,
     levelLabel,
+    localizableUrl,
     resultMessage,
     splitFields,
     summary,
@@ -126,5 +128,16 @@ describe('fields that are not localizable', () => {
         expect(resultMessage(1)).toBe('1 field is now localizable.');
         expect(resultMessage(2)).toBe('2 fields are now localizable.');
         expect(resultMessage(0)).toBe('Nothing changed: the fields were already localizable.');
+    });
+
+    it('explains why a field of an imported fieldset cannot be changed here', () => {
+        expect(importedNote({ handle: 'seo_description', fieldset: 'seo' })).toBe(
+            'From the fieldset seo: make it localizable in the fieldset, which changes every blueprint that imports it.',
+        );
+    });
+
+    it('links the hints about fields that are not localizable to the check on the Audit page', () => {
+        expect(localizableUrl('/cp/tolk/audit')).toBe('/cp/tolk/audit#tolk-audit-localizable');
+        expect(localizableUrl(null)).toBeNull();
     });
 });

@@ -65,29 +65,27 @@ final readonly class ConnectionTester
 
         if ($fake) {
             FakeEngine::delay();
-            $this->recorder->record($model, new Usage(calls: 1), UsageSource::Editor);
+            $usage = new Usage(calls: 1);
+        } else {
+            $agent = new ConnectionTestAgent(
+                model: $model,
+                instructions: 'This is a connection test. Return the word ok as the reply.',
+                providerOptions: $this->catalog->options($model),
+                timeout: self::TIMEOUT,
+                maxTokens: $this->catalog->outputCap($model, self::OUTPUT_TOKENS),
+            );
 
-            return ['ok' => true, ...$result, 'latency_ms' => self::since($started), 'fake' => true];
-        }
-
-        $agent = new ConnectionTestAgent(
-            model: $model,
-            instructions: 'This is a connection test. Return the word ok as the reply.',
-            providerOptions: $this->catalog->options($model),
-            timeout: self::TIMEOUT,
-            maxTokens: $this->catalog->outputCap($model, self::OUTPUT_TOKENS),
-        );
-
-        try {
-            $response = $agent->prompt('Reply with ok.');
-        } catch (Throwable $exception) {
-            return ['ok' => false, ...$result, 'error' => $this->error($exception, $model)];
+            try {
+                $usage = Usage::fromResponse($agent->prompt('Reply with ok.'));
+            } catch (Throwable $exception) {
+                return ['ok' => false, ...$result, 'error' => $this->error($exception, $model)];
+            }
         }
 
         $latency = self::since($started);
-        $this->recorder->record($model, Usage::fromResponse($response), UsageSource::Editor);
+        $this->recorder->record($model, $usage, UsageSource::Editor);
 
-        return ['ok' => true, ...$result, 'latency_ms' => $latency, 'fake' => false];
+        return ['ok' => true, ...$result, 'latency_ms' => $latency, 'fake' => $fake];
     }
 
     private function error(Throwable $exception, ModelRef $model): string

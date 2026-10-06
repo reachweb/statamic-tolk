@@ -18,6 +18,8 @@ final readonly class OverviewCache
 
     private const string PREFIX = 'tolk:overview:';
 
+    private const string ENTRIES = self::PREFIX.'version:entries';
+
     /**
      * The cache key prefix of a cell under the current versions. Read it once before scanning, so a bump during the scan
      * leaves its result where nobody reads it.
@@ -30,21 +32,23 @@ final readonly class OverviewCache
             $type->value,
             $container,
             $this->version($this->versionKey($type, $container)),
+            // A navigation's status follows the localizations of the entries it links (T9.4).
+            ...($type === ContentType::Nav ? [$this->version(self::ENTRIES)] : []),
             $site,
         ]);
     }
 
     public function finished(string $slot): ?ScanResult
     {
-        return $this->read($slot);
+        return self::result($this->store()->get($slot));
     }
 
     /**
-     * The totals of a cell's scan up to $cursor.
+     * The totals of a cell's scan up to $cursor, taken out of the cache: the next slice stores its own.
      */
     public function partial(string $slot, string $cursor): ?ScanResult
     {
-        return $this->read($slot.':at:'.$cursor);
+        return self::result($this->store()->pull(self::key($slot, $cursor)));
     }
 
     /**
@@ -52,9 +56,7 @@ final readonly class OverviewCache
      */
     public function put(string $slot, ScanResult $totals): void
     {
-        $key = $totals->isFinished() ? $slot : $slot.':at:'.$totals->cursor;
-
-        $this->store()->put($key, $totals->toArray(), self::TTL);
+        $this->store()->put(self::key($slot, $totals->cursor), $totals->toArray(), self::TTL);
     }
 
     /**
@@ -66,6 +68,15 @@ final readonly class OverviewCache
     }
 
     /**
+     * An entry of the collection was saved or deleted, so its cells and those of every navigation are counted again.
+     */
+    public function bumpEntries(string $collection): void
+    {
+        $this->bump(ContentType::Entry, $collection);
+        $this->store()->forever(self::ENTRIES, self::token());
+    }
+
+    /**
      * Something every cell may depend on changed: the settings, a fieldset, or the Stache.
      */
     public function bumpAll(): void
@@ -73,10 +84,13 @@ final readonly class OverviewCache
         $this->store()->forever(self::PREFIX.'version', self::token());
     }
 
-    private function read(string $key): ?ScanResult
+    private static function key(string $slot, ?string $cursor): string
     {
-        $cached = $this->store()->get($key);
+        return $cursor === null ? $slot : $slot.':at:'.$cursor;
+    }
 
+    private static function result(mixed $cached): ?ScanResult
+    {
         return is_array($cached) ? ScanResult::fromArray($cached) : null;
     }
 

@@ -69,7 +69,7 @@ export function matrixCells(rows) {
 
 // What a cell's scan found so far: the counts per status, the untracked fields and what can be done.
 export function cellWork(cell) {
-    const counts = { ...Object.fromEntries(STATUSES.map((status) => [status, 0])), ...asMap(cell?.counts) };
+    const counts = asMap(cell?.counts);
     const count = (status) => Number(counts[status]) || 0;
 
     return {
@@ -139,7 +139,8 @@ export function emptyState({ multisite, providers, fakeEngine }) {
     return configured || fakeEngine ? null : 'no_provider';
 }
 
-// This month's usage (`UsageLog::month()`) as rows per model and a total. A total cost is unknown once one model's is.
+// This month's usage (`UsageLog::month()`) as rows per model, with the calls and the cost in total. The total cost is
+// unknown once one model's is.
 export function describeMonth(usage) {
     const labels = asMap(usage?.labels);
     const rows = Object.entries(asMap(usage?.models)).map(([reference, model]) => ({
@@ -156,8 +157,6 @@ export function describeMonth(usage) {
         month: usage?.month ?? '',
         rows,
         calls: rows.reduce((sum, row) => sum + row.calls, 0),
-        input: rows.reduce((sum, row) => sum + row.input, 0),
-        output: rows.reduce((sum, row) => sum + row.output, 0),
         cost: rows.some((row) => row.cost === null) ? null : rows.reduce((sum, row) => sum + row.cost, 0),
     };
 }

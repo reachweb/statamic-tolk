@@ -18,6 +18,7 @@ import {
 } from '@statamic/cms/ui';
 import { post } from '../api.js';
 import RunsTable from '../components/RunsTable.vue';
+import { providerBadge } from '../fieldtypes/providersStatus.js';
 import { createCellLoader } from '../overview/cells.js';
 import {
     cellKey,
@@ -51,7 +52,21 @@ const settingsUrl = Statamic.$config.get('tolk')?.settingsUrl ?? null;
 
 const empty = computed(() => emptyState(props));
 const columns = computed(() => matrixColumns(props.rows, props.sites));
-const groups = computed(() => groupRows(props.rows));
+// The groups' rows with one cell per column: its key, its status and what it shows, null where the row has no cell.
+const groups = computed(() =>
+    groupRows(props.rows).map((group) => ({
+        ...group,
+        rows: group.rows.map((row) => ({
+            ...row,
+            cells: columns.value.map((site) => {
+                const key = cellKey(row.type, row.handle, site.handle);
+                const scanned = row.sites.includes(site.handle);
+
+                return { site, key, status: scanned ? (cells[key]?.status ?? 'waiting') : 'none', view: scanned ? describeCell(cells[key]) : null };
+            }),
+        })),
+    })),
+);
 const allCells = computed(() => matrixCells(props.rows));
 const month = computed(() => describeMonth(props.usage));
 const untracked = computed(() => Object.values(cells).some((cell) => Number(cell?.untracked) > 0));
@@ -70,16 +85,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => loader.stop());
 
-function cell(row, site) {
-    return describeCell(cells[cellKey(row.type, row.handle, site)]);
-}
-
 function countAgain() {
     loader.load(allCells.value, { fresh: true });
 }
 
-function retry(row, site) {
-    loader.retry({ key: cellKey(row.type, row.handle, site), type: row.type, container: row.handle, site });
+function retry(row, site, key) {
+    loader.retry({ key, type: row.type, container: row.handle, site });
 }
 
 // Creates a pending run and opens its page, where the estimate and Start are (D19).
@@ -111,7 +122,7 @@ async function createRun(key, body) {
         <Card v-if="empty === 'single_site'" class="space-y-3" data-tolk-overview-empty="single_site">
             <Heading size="lg" :text="__('This site has one language')" />
             <Text>{{ __('Tolk translates the content of one site into the languages of the others. Add a site for each language in Statamic first; the overview then shows what is translated into each.') }}</Text>
-            <Link v-if="urls.audit" :href="urls.audit" class="text-sm text-blue-600 hover:underline dark:text-blue-400" data-tolk-audit-link>{{ __('Check the setup') }}</Link>
+            <Link :href="urls.audit" class="text-sm text-blue-600 hover:underline dark:text-blue-400" data-tolk-audit-link>{{ __('Check the setup') }}</Link>
         </Card>
 
         <Card v-else-if="empty === 'no_provider'" class="space-y-3" data-tolk-overview-empty="no_provider">
@@ -119,7 +130,7 @@ async function createRun(key, body) {
             <Text>{{ __('Tolk needs an API key of Anthropic, OpenAI or Google Gemini in the .env file before it can translate. The settings list the variables to set.') }}</Text>
             <div class="flex flex-wrap gap-4 text-sm">
                 <a v-if="settingsUrl" :href="settingsUrl" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-settings-link>{{ __('Open the settings') }}</a>
-                <Link v-if="urls.audit" :href="urls.audit" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-audit-link>{{ __('Check the setup') }}</Link>
+                <Link :href="urls.audit" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-audit-link>{{ __('Check the setup') }}</Link>
             </div>
         </Card>
 
@@ -160,54 +171,46 @@ async function createRun(key, body) {
                                 <Description>{{ row.handle }}</Description>
                             </TableCell>
                             <TableCell
-                                v-for="site in columns"
+                                v-for="{ site, key, status, view } in row.cells"
                                 :key="site.handle"
                                 class="align-top"
-                                :data-tolk-cell="cellKey(row.type, row.handle, site.handle)"
-                                :data-tolk-cell-status="row.sites.includes(site.handle) ? (cells[cellKey(row.type, row.handle, site.handle)]?.status ?? 'waiting') : 'none'"
+                                :data-tolk-cell="key"
+                                :data-tolk-cell-status="status"
                             >
-                                <Description v-if="!row.sites.includes(site.handle)">—</Description>
+                                <Description v-if="!view">—</Description>
                                 <div v-else class="space-y-1.5">
-                                    <div v-if="cell(row, site.handle).badges.length" class="flex flex-wrap gap-1">
-                                        <Badge
-                                            v-for="badge in cell(row, site.handle).badges"
-                                            :key="badge.status"
-                                            :text="badge.text"
-                                            :color="badge.color"
-                                            :data-tolk-count="badge.status"
-                                        />
+                                    <div v-if="view.badges.length" class="flex flex-wrap gap-1">
+                                        <Badge v-for="badge in view.badges" :key="badge.status" :text="badge.text" :color="badge.color" :data-tolk-count="badge.status" />
                                     </div>
-                                    <Description v-if="cell(row, site.handle).loading">{{ __('Counting…') }}</Description>
-                                    <Description v-else-if="cell(row, site.handle).finished && cell(row, site.handle).scanned === 0">
-                                        {{ __('Nothing to translate') }}
+                                    <Description v-if="view.loading">{{ __('Counting…') }}</Description>
+                                    <Description v-else-if="view.finished && view.scanned === 0">{{ __('Nothing to translate') }}</Description>
+                                    <Description v-if="view.untracked > 0" data-tolk-untracked>
+                                        {{ __n(':count untracked field|:count untracked fields', view.untracked) }}
                                     </Description>
-                                    <Description v-if="cell(row, site.handle).untracked > 0" data-tolk-untracked>
-                                        {{ __n(':count untracked field|:count untracked fields', cell(row, site.handle).untracked) }}
-                                    </Description>
-                                    <div v-if="cell(row, site.handle).failed" class="space-y-1">
-                                        <Text size="sm" variant="danger" data-tolk-cell-error>{{ cell(row, site.handle).error }}</Text>
-                                        <Button size="xs" :text="__('Try again')" data-tolk-cell-retry @click="retry(row, site.handle)" />
+                                    <div v-if="view.failed" class="space-y-1">
+                                        <Text size="sm" variant="danger" data-tolk-cell-error>{{ view.error }}</Text>
+                                        <Button size="xs" :text="__('Try again')" data-tolk-cell-retry @click="retry(row, site.handle, key)" />
                                     </div>
-                                    <div v-if="cell(row, site.handle).missing > 0 || cell(row, site.handle).outdated > 0" class="flex flex-wrap gap-1">
+                                    <div v-if="view.missing > 0 || view.outdated > 0" class="flex flex-wrap gap-1">
                                         <Button
-                                            v-if="cell(row, site.handle).missing > 0"
+                                            v-if="view.missing > 0"
                                             size="xs"
                                             :text="__('Translate missing')"
                                             :aria-label="__('Translate missing :content into :site', { content: row.title, site: site.name })"
-                                            :loading="busy === `${cellKey(row.type, row.handle, site.handle)}|missing`"
+                                            :loading="busy === `${key}|missing`"
                                             :disabled="busy !== null"
                                             data-tolk-cell-action="missing"
-                                            @click="createRun(`${cellKey(row.type, row.handle, site.handle)}|missing`, cellRun(row.type, row.handle, site.handle, 'missing'))"
+                                            @click="createRun(`${key}|missing`, cellRun(row.type, row.handle, site.handle, 'missing'))"
                                         />
                                         <Button
-                                            v-if="cell(row, site.handle).outdated > 0"
+                                            v-if="view.outdated > 0"
                                             size="xs"
                                             :text="__('Update outdated')"
                                             :aria-label="__('Update outdated :content in :site', { content: row.title, site: site.name })"
-                                            :loading="busy === `${cellKey(row.type, row.handle, site.handle)}|update`"
+                                            :loading="busy === `${key}|update`"
                                             :disabled="busy !== null"
                                             data-tolk-cell-action="update"
-                                            @click="createRun(`${cellKey(row.type, row.handle, site.handle)}|update`, cellRun(row.type, row.handle, site.handle, 'update'))"
+                                            @click="createRun(`${key}|update`, cellRun(row.type, row.handle, site.handle, 'update'))"
                                         />
                                     </div>
                                 </div>
@@ -262,7 +265,7 @@ async function createRun(key, body) {
                 <ul class="space-y-2">
                     <li v-for="provider in providers" :key="provider.provider" class="flex items-center justify-between gap-2" :data-tolk-provider="provider.provider">
                         <Text>{{ provider.label }}</Text>
-                        <Badge :text="provider.configured ? __('Configured') : __('No API key')" :color="provider.configured ? 'green' : 'default'" />
+                        <Badge v-bind="providerBadge(provider.configured)" />
                     </li>
                 </ul>
                 <Description v-if="fakeEngine" data-tolk-fake-engine>{{ __('The fake engine is on: translations are made up without calling a provider.') }}</Description>

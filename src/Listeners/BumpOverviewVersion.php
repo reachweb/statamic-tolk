@@ -7,7 +7,6 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\State\OverviewCache;
 use Reach\StatamicTolk\Support\Settings;
-use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\AddonSettingsSaved;
 use Statamic\Events\BlueprintDeleted;
 use Statamic\Events\BlueprintSaved;
@@ -26,8 +25,6 @@ use Statamic\Events\TaxonomySaved;
 use Statamic\Events\TermDeleted;
 use Statamic\Events\TermSaved;
 use Statamic\Facades\Entry;
-use Statamic\Facades\Nav;
-use Statamic\Fields\Blueprint;
 
 /**
  * Makes the Overview count a container again when its content, its state or its blueprint changed (OverviewCache).
@@ -36,14 +33,9 @@ final readonly class BumpOverviewVersion
 {
     public function __construct(private OverviewCache $cache) {}
 
-    public function handleEntrySaved(EntrySaved $event): void
+    public function handleEntry(EntrySaved|EntryDeleted $event): void
     {
-        $this->entry($event->entry);
-    }
-
-    public function handleEntryDeleted(EntryDeleted $event): void
-    {
-        $this->entry($event->entry);
+        $this->cache->bumpEntries($event->entry->collectionHandle());
     }
 
     /**
@@ -55,21 +47,16 @@ final readonly class BumpOverviewVersion
         $key = (string) $event->revision->key();
 
         if (str_starts_with($key, 'collections/')) {
-            $this->entries(explode('/', $key)[1]);
+            $this->cache->bumpEntries(explode('/', $key)[1]);
         }
     }
 
     public function handleCollectionSaved(CollectionSaved $event): void
     {
-        $this->entries($event->collection->handle());
+        $this->cache->bumpEntries($event->collection->handle());
     }
 
-    public function handleTermSaved(TermSaved $event): void
-    {
-        $this->cache->bump(ContentType::Term, $event->term->taxonomyHandle());
-    }
-
-    public function handleTermDeleted(TermDeleted $event): void
+    public function handleTerm(TermSaved|TermDeleted $event): void
     {
         $this->cache->bump(ContentType::Term, $event->term->taxonomyHandle());
     }
@@ -79,12 +66,7 @@ final readonly class BumpOverviewVersion
         $this->cache->bump(ContentType::Term, $event->taxonomy->handle());
     }
 
-    public function handleGlobalVariablesSaved(GlobalVariablesSaved $event): void
-    {
-        $this->cache->bump(ContentType::GlobalSet, $event->variables->handle());
-    }
-
-    public function handleGlobalVariablesDeleted(GlobalVariablesDeleted $event): void
+    public function handleGlobalVariables(GlobalVariablesSaved|GlobalVariablesDeleted $event): void
     {
         $this->cache->bump(ContentType::GlobalSet, $event->variables->handle());
     }
@@ -94,32 +76,24 @@ final readonly class BumpOverviewVersion
         $this->cache->bump(ContentType::GlobalSet, $event->globals->handle());
     }
 
-    public function handleNavTreeSaved(NavTreeSaved $event): void
+    public function handleNavTree(NavTreeSaved|NavTreeDeleted $event): void
     {
         $this->cache->bump(ContentType::Nav, $event->tree->handle());
     }
 
-    public function handleNavTreeDeleted(NavTreeDeleted $event): void
+    public function handleBlueprint(BlueprintSaved|BlueprintDeleted $event): void
     {
-        $this->cache->bump(ContentType::Nav, $event->tree->handle());
-    }
+        $blueprint = $event->blueprint;
+        $namespace = (string) $blueprint->namespace();
+        [$group, $handle] = str_contains($namespace, '.') ? explode('.', $namespace, 2) : [$namespace, (string) $blueprint->handle()];
 
-    public function handleBlueprintSaved(BlueprintSaved $event): void
-    {
-        $this->blueprint($event->blueprint);
-    }
-
-    public function handleBlueprintDeleted(BlueprintDeleted $event): void
-    {
-        $this->blueprint($event->blueprint);
-    }
-
-    /**
-     * A fieldset can be imported by any blueprint.
-     */
-    public function handleFieldsetSaved(FieldsetSaved $event): void
-    {
-        $this->cache->bumpAll();
+        match ($group) {
+            'collections' => $this->cache->bumpEntries($handle),
+            'taxonomies' => $this->cache->bump(ContentType::Term, $handle),
+            'globals' => $this->cache->bump(ContentType::GlobalSet, $handle),
+            'navigation' => $this->cache->bump(ContentType::Nav, $handle),
+            default => null,
+        };
     }
 
     /**
@@ -133,9 +107,10 @@ final readonly class BumpOverviewVersion
     }
 
     /**
-     * Content changed outside Statamic (a deploy, a git pull) reaches the Stache only when it is cleared or refreshed.
+     * A fieldset can be imported by any blueprint. Content changed outside Statamic (a deploy, a git pull) reaches the
+     * Stache only when it is cleared or refreshed.
      */
-    public function handleStacheCleared(StacheCleared $event): void
+    public function handleEverything(FieldsetSaved|StacheCleared $event): void
     {
         $this->cache->bumpAll();
     }
@@ -148,40 +123,9 @@ final readonly class BumpOverviewVersion
         $ref = $event->ref;
 
         match ($ref->type) {
-            ContentType::Entry => ($entry = Entry::find($ref->id)) ? $this->entry($entry) : null,
+            ContentType::Entry => ($entry = Entry::find($ref->id)) ? $this->cache->bumpEntries($entry->collectionHandle()) : null,
             ContentType::Term => $this->cache->bump(ContentType::Term, Str::before($ref->id, '::')),
             ContentType::GlobalSet, ContentType::Nav => $this->cache->bump($ref->type, $ref->id),
-            default => null,
-        };
-    }
-
-    private function entry(EntryContract $entry): void
-    {
-        $this->entries($entry->collectionHandle());
-    }
-
-    /**
-     * A navigation's status follows the localizations of the entries it links (T9.4).
-     */
-    private function entries(string $collection): void
-    {
-        $this->cache->bump(ContentType::Entry, $collection);
-
-        foreach (Nav::all() as $nav) {
-            $this->cache->bump(ContentType::Nav, $nav->handle());
-        }
-    }
-
-    private function blueprint(Blueprint $blueprint): void
-    {
-        $namespace = (string) $blueprint->namespace();
-        [$group, $handle] = str_contains($namespace, '.') ? explode('.', $namespace, 2) : [$namespace, (string) $blueprint->handle()];
-
-        match ($group) {
-            'collections' => $this->entries($handle),
-            'taxonomies' => $this->cache->bump(ContentType::Term, $handle),
-            'globals' => $this->cache->bump(ContentType::GlobalSet, $handle),
-            'navigation' => $this->cache->bump(ContentType::Nav, $handle),
             default => null,
         };
     }

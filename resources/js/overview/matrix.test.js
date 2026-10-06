@@ -182,8 +182,6 @@ describe('the page', () => {
                 { reference: 'anthropic:claude-haiku-4-5', model: 'anthropic:claude-haiku-4-5', calls: 1, input: 10, output: 5, cost: 0.001, sources: ['editor'] },
             ],
             calls: 3,
-            input: 1010,
-            output: 505,
             cost: 0.008,
         });
 

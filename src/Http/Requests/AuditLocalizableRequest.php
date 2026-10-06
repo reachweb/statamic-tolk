@@ -2,10 +2,9 @@
 
 namespace Reach\StatamicTolk\Http\Requests;
 
+use Illuminate\Contracts\Auth\Access\Authorizable;
 use Illuminate\Foundation\Http\FormRequest;
 use Reach\StatamicTolk\Support\Settings;
-use Statamic\Contracts\Auth\User;
-use Statamic\Facades\Addon;
 
 class AuditLocalizableRequest extends FormRequest
 {
@@ -13,9 +12,9 @@ class AuditLocalizableRequest extends FormRequest
      * Changing a blueprint from the audit needs the addon's settings ability and Statamic's permission to edit
      * blueprints (§A14).
      */
-    public static function allows(?User $user): bool
+    public static function allows(?Authorizable $user): bool
     {
-        return $user !== null && $user->can('editSettings', Addon::get(Settings::PACKAGE)) && $user->can('configure fields');
+        return Settings::editableBy($user) && $user->can('configure fields');
     }
 
     public function authorize(): bool

@@ -10,13 +10,16 @@ export function providerRows(meta) {
         provider: provider.provider,
         label: provider.label,
         configured: provider.configured === true,
-        badge: provider.configured
-            ? { text: __('Configured'), color: 'green' }
-            : { text: __('No API key'), color: 'default' },
+        badge: providerBadge(provider.configured === true),
         source: sourceNote(provider.source),
         hint: provider.configured ? null : setupHint(provider.env),
         testable: provider.configured === true || fakeEngine,
     }));
+}
+
+// Whether the provider has an API key, as a badge.
+export function providerBadge(configured) {
+    return configured ? { text: __('Configured'), color: 'green' } : { text: __('No API key'), color: 'default' };
 }
 
 function sourceNote(source) {

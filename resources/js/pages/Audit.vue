@@ -6,10 +6,12 @@ import { post } from '../api.js';
 import {
     LOCALIZABLE,
     blueprintKey,
+    checkAnchor,
     checkDetail,
     chosenFields,
     confirmation,
     fieldName,
+    importedNote,
     isBlueprintItem,
     level,
     resultMessage,
@@ -93,7 +95,7 @@ async function makeLocalizable() {
 
         <Card
             v-for="check in checks"
-            :id="`tolk-audit-${check.id}`"
+            :id="checkAnchor(check.id)"
             :key="check.id"
             class="space-y-3"
             :data-tolk-check="check.id"
@@ -144,13 +146,13 @@ async function makeLocalizable() {
                                         v-if="canMakeLocalizable"
                                         :model-value="false"
                                         :label="fieldName(field)"
-                                        :description="__('From the fieldset :fieldset: make it localizable in the fieldset, which changes every blueprint that imports it.', { fieldset: field.fieldset })"
+                                        :description="importedNote(field)"
                                         disabled
                                     />
                                     <template v-else>
                                         <Text>{{ fieldName(field) }}</Text>
                                         <Description>
-                                            {{ __('From the fieldset :fieldset: make it localizable in the fieldset, which changes every blueprint that imports it.', { fieldset: field.fieldset }) }}
+                                            {{ importedNote(field) }}
                                         </Description>
                                     </template>
                                     <a v-if="field.fieldset_url" :href="field.fieldset_url" class="ms-6 text-sm text-blue-600 hover:underline dark:text-blue-400" data-tolk-fieldset-link>
