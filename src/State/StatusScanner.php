@@ -111,9 +111,12 @@ final readonly class StatusScanner
     }
 
     /**
+     * The container's targets in $site, as scan() resolves them, each built only when called; an existing site the
+     * container has no targets in gives none.
+     *
      * @return list<Closure(): Target> in a stable order, so a cursor continues where the last scan stopped
      */
-    private function targets(ContentType $type, string $container, string $site): array
+    public function targets(ContentType $type, string $container, string $site): array
     {
         return match ($type) {
             ContentType::Entry => $this->entryTargets($this->collection($container), $site),

@@ -18,7 +18,7 @@ use Reach\StatamicTolk\Runs\RunItem;
 /**
  * The state of a run as the run page and the editor's push follow it (T8.7): the run with its usage, cost and estimate,
  * its counts per item status, overall and for each content type and target site, one page of its items, and whether a
- * queue run looks stalled.
+ * queue or CLI run looks stalled.
  */
 final readonly class RunState
 {
@@ -68,18 +68,19 @@ final readonly class RunState
     }
 
     /**
-     * A running queue run that no worker took up within FIRST_CLAIM_SECONDS of its start, or that made no progress for
-     * longer than a worker holds an item. Browser and CLI runs are driven by whoever follows them.
+     * A running queue run that no worker took up within FIRST_CLAIM_SECONDS of its start, or a running queue or CLI run
+     * that made no progress for longer than a worker holds an item: its workers, or the command, may have stopped (a
+     * closed terminal leaves a CLI run running). The page drives a browser run itself.
      */
     public function stalled(Run $run): bool
     {
-        if ($run->status !== RunStatus::Running || $run->driver !== RunDriver::Queue) {
+        if ($run->status !== RunStatus::Running || ! in_array($run->driver, [RunDriver::Queue, RunDriver::Cli], true)) {
             return false;
         }
 
         $now = CarbonImmutable::now();
 
-        if ($run->startedAt === null && $run->progressedAt?->lessThan($now->subSeconds(self::FIRST_CLAIM_SECONDS))) {
+        if ($run->driver === RunDriver::Queue && $run->startedAt === null && $run->progressedAt?->lessThan($now->subSeconds(self::FIRST_CLAIM_SECONDS))) {
             return true;
         }
 
