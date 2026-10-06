@@ -19,7 +19,7 @@ use Reach\StatamicTolk\Enums\UsageSource;
 it('pins every case and its value', function (string $enum, array $cases) {
     expect(array_column($enum::cases(), 'value', 'name'))->toBe($cases);
 })->with([
-    'ContentType' => [ContentType::class, ['Entry' => 'entry', 'Term' => 'term', 'GlobalSet' => 'globals', 'Nav' => 'nav', 'Lang' => 'lang']],
+    'ContentType' => [ContentType::class, ['Entry' => 'entry', 'Term' => 'term', 'GlobalSet' => 'globals', 'Nav' => 'nav', 'Lang' => 'lang', 'Forms' => 'forms']],
     'FieldStatus' => [FieldStatus::class, [
         'NotApplicable' => 'not_applicable',
         'Untranslated' => 'untranslated',

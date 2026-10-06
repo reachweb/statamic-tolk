@@ -92,6 +92,19 @@ it('deletes the state of a translation file whose source file is gone, and keeps
         ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['lang::_json::de', 'lang::_json::fr']);
 });
 
+it('keeps the state of the form texts of another language, and deletes that of the source language', function () {
+    $this->app->useLangPath($this->temporaryPath('lang'));
+    prunerState(new TargetRef(ContentType::Forms, 'de'));
+    prunerState(new TargetRef(ContentType::Forms, 'fr'));
+    prunerState(new TargetRef(ContentType::Forms, 'en'));
+
+    $report = pruned();
+
+    expect($report->orphaned(PruneReport::NOT_A_LOCALIZATION))->toBe(['forms::en'])
+        ->and($report->orphaned(PruneReport::DELETED))->toBe([])
+        ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['forms::de', 'forms::fr']);
+});
+
 it('stops a stalled run that is older than the retention instead of deleting it, and counts it once with a dry run', function () {
     $stalled = RunFixtures::started();
     $old = RunFixtures::pending();
