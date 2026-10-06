@@ -15,12 +15,16 @@
 #   --permission-mode M   permission mode for the sessions (default auto; bypassPermissions skips all checks)
 #   --model M             model for the sessions (default: your Claude Code default)
 #   --effort E            effort for the sessions (default: your Claude Code default)
+#   --output-lines N      lines shown per tool result or diff (default 20; 0 shows everything)
 #   --dry-run             show the next step and its prompt, then exit
 #   -h, --help            show this help
 #
+# Each session is shown as Claude Code shows it: streamed text, tool calls with their results,
+# diffs of edits and a status line (render.py).
 # A session that needs you writes .claude/loop/BLOCKED.md and the loop stops, printing the
 # command that reopens that session so you can answer it there.
-# Logs: .claude/loop/logs/*.jsonl (one per session).
+# Logs: .claude/loop/logs/*.jsonl (one per session). To replay one:
+#   python3 .claude/loop/render.py < .claude/loop/logs/<file>.jsonl | less -R
 # Exit codes: 0 finished, 1 a session failed, 2 waiting for you.
 
 set -euo pipefail
@@ -38,7 +42,7 @@ LOG_DIR="$LOOP_DIR/logs"
 LOCK="$LOOP_DIR/.lock"
 EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
 
-batch=5 cycles=3 review_now=0 dry_run=0 permission_mode=auto model="" effort=""
+batch=5 cycles=3 review_now=0 dry_run=0 permission_mode=auto model="" effort="" output_lines=20
 
 usage() { sed -n '3,/^$/s/^# \{0,1\}//p' "$0"; }
 
@@ -50,13 +54,14 @@ while [ $# -gt 0 ]; do
     --permission-mode) permission_mode="${2:?--permission-mode needs a mode}"; shift 2 ;;
     --model) model="${2:?--model needs a model}"; shift 2 ;;
     --effort) effort="${2:?--effort needs a level}"; shift 2 ;;
+    --output-lines) output_lines="${2:?--output-lines needs a number}"; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
 
-case "$batch$cycles" in *[!0-9]*) echo "--batch and --cycles take whole numbers." >&2; exit 1 ;; esac
+case "$batch$cycles$output_lines" in *[!0-9]*) echo "--batch, --cycles and --output-lines take whole numbers." >&2; exit 1 ;; esac
 [ "$batch" -ge 1 ] || { echo "--batch must be at least 1." >&2; exit 1; }
 
 if [ -t 1 ]; then
@@ -92,37 +97,23 @@ task_title() {
 
 git_head() { git -C "$ROOT" rev-parse --verify -q HEAD 2>/dev/null || true; }
 
-# Prints one line per tool call and text block of the main session, then its final message.
-PROGRESS_JQ='
-def clip($n): gsub("\\s+"; " ") | if length > $n then .[:$n] + "…" else . end;
-fromjson?
-| if .type == "assistant" and .parent_tool_use_id == null then
-    .message.content[]?
-    | if .type == "text" and (.text | test("\\S")) then "  " + (.text | clip(160)) + "\n"
-      elif .type == "tool_use" then
-        "  \u001b[2m→ " + .name
-        + ((.input | .description // .file_path // .command // .pattern // .skill // .url // .query // empty
-            | tostring | " " + clip(110)) // "")
-        + "\u001b[0m\n"
-      else empty end
-  elif .type == "result" then "\n" + (.result // "(no final message)") + "\n"
-  else empty end'
-
-# Runs one headless session with a fresh context. Sets SESSION, LOG and RESULT.
+# Runs one headless session with a fresh context and shows it as it runs. Sets SESSION, LOG and RESULT.
 run_claude() {
   local label="$1" prompt="$2" rc
   SESSION="$(uuidgen | tr '[:upper:]' '[:lower:]')"
   LOG="$LOG_DIR/$(date +%Y%m%d-%H%M%S)-$label.jsonl"
   printf '%s\n' "$SESSION" >"$LAST_SESSION"
 
-  local args=(-p --session-id "$SESSION" --name "loop $label" --output-format stream-json --verbose
+  local args=(-p --session-id "$SESSION" --name "loop $label"
+    --output-format stream-json --verbose --include-partial-messages
     --permission-mode "$permission_mode" --disallowedTools=AskUserQuestion)
   [ -n "$model" ] && args+=(--model "$model")
   [ -n "$effort" ] && args+=(--effort "$effort")
   [ -d "$SANDBOX" ] && args+=(--add-dir="$SANDBOX")
 
   set +e
-  (cd "$ROOT" && printf '%s' "$prompt" | claude "${args[@]}") | tee "$LOG" | jq --unbuffered -Rrj "$PROGRESS_JQ"
+  (cd "$ROOT" && printf '%s' "$prompt" | claude "${args[@]}") |
+    python3 "$LOOP_DIR/render.py" --log "$LOG" --cwd "$ROOT" --lines "$output_lines" --mode "$permission_mode"
   rc=${PIPESTATUS[0]}
   set -e
 
@@ -231,7 +222,7 @@ do_review() {
   say "${GREEN}✓ Review of $span done${OFF} ${DIM}($(elapsed "$start"), $(session_stats))${OFF}"
 }
 
-for cmd in claude jq uuidgen git; do
+for cmd in claude jq python3 uuidgen git; do
   command -v "$cmd" >/dev/null 2>&1 || { fail "This loop needs '$cmd' on the PATH."; exit 1; }
 done
 [ -f "$TASKS" ] || { fail "No TASKS.md in $ROOT."; exit 1; }
