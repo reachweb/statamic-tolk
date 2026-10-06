@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Console\Commands;
 
 use Illuminate\Console\Command;
+use Reach\StatamicTolk\Console\Concerns\OffersLocalizableFields;
 use Reach\StatamicTolk\Enums\AuditLevel;
 use Reach\StatamicTolk\Support\Audit;
 use Statamic\Console\RunsInPlease;
@@ -14,6 +15,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
  */
 class DoctorCommand extends Command
 {
+    use OffersLocalizableFields;
     use RunsInPlease;
 
     private const array LEVELS = [
@@ -87,29 +89,6 @@ class DoctorCommand extends Command
             return;
         }
 
-        foreach ($items as $item) {
-            $fixable = array_values(array_filter($item['fields'], fn (array $field) => $field['fieldset'] === null));
-
-            foreach (array_filter($item['fields'], fn (array $field) => $field['fieldset'] !== null) as $field) {
-                $this->components->warn(sprintf(
-                    '%s: %s comes from the fieldset %s, which this command does not change. Make it localizable in the fieldset, which changes every blueprint that imports it.',
-                    $item['name'],
-                    $field['label'],
-                    $field['fieldset'],
-                ));
-            }
-
-            if ($fixable === [] || ! $this->confirm(sprintf('Make %s localizable in %s?', implode(', ', array_column($fixable, 'label')), $item['name']), false)) {
-                continue;
-            }
-
-            $count = $audit->makeLocalizable($item['namespace'], $item['blueprint'], array_column($fixable, 'handle'));
-
-            $this->components->info(sprintf(
-                '%s: %s localizable. Each localization inherits the origin\'s text until it is translated.',
-                $item['name'],
-                $count === 1 ? '1 field is now' : "{$count} fields are now",
-            ));
-        }
+        $this->offerLocalizable($audit, $items);
     }
 }
