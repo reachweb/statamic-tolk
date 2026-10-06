@@ -198,10 +198,9 @@ class TranslateAction extends Action
             ->flatMap(fn ($item) => $this->sitesOf($item))
             ->unique()
             ->all();
-        $user = User::current();
 
-        return Site::all()
-            ->filter(fn ($site) => in_array($site->handle(), $handles, true) && ($user?->can('view', $site) ?? false))
+        return Site::authorized()
+            ->filter(fn ($site) => in_array($site->handle(), $handles, true))
             ->mapWithKeys(fn ($site) => [$site->handle() => $site->name()])
             ->all();
     }

@@ -296,6 +296,18 @@ describe('run', () => {
         expect(toast.error).toHaveBeenCalledExactlyOnceWith('This field is not part of the entry being translated.');
     });
 
+    it('names a term in a term form', async () => {
+        mount({ reference: 'term::topics::travel::de' });
+        const translations = fakeTranslations();
+        const { run } = actions({ translations });
+
+        run(payload('title', { value: 'Another form\'s title' }));
+        await flush();
+
+        expect(translations.translate).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('This field is not part of the term being translated.');
+    });
+
     it('compares structured values without regard to key order', async () => {
         const ctx = mount();
         ctx.values.value.body = [{ _id: 'a', type: 'text', heading: 'Hi' }];

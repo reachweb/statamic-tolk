@@ -4,7 +4,6 @@ namespace Reach\StatamicTolk\Translation;
 
 use Closure;
 use Illuminate\Support\Sleep;
-use LogicException;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
@@ -13,7 +12,6 @@ use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
-use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
@@ -87,7 +85,7 @@ final readonly class TargetTranslator
                 $target = $target->fresh();
                 $result = $this->runPlan($plan($target), $target, $apply, $record);
             }
-        } catch (RootMissing|SourceChanged|TransientProviderFailure|WriterBusy|ApplyFailed|NotSupportedYet $exception) {
+        } catch (RootMissing|SourceChanged|TransientProviderFailure|WriterBusy|ApplyFailed $exception) {
             $result = $this->failed($target, $exception);
         }
 
@@ -140,15 +138,14 @@ final readonly class TargetTranslator
         }
     }
 
-    private function failed(Target $target, RuntimeException|LogicException $exception): TargetResult
+    private function failed(Target $target, RuntimeException $exception): TargetResult
     {
         $reason = match (true) {
             $exception instanceof RootMissing => TargetResult::ROOT_MISSING,
             $exception instanceof SourceChanged => TargetResult::SOURCE_CHANGED,
             $exception instanceof TransientProviderFailure => TargetResult::PROVIDER_UNAVAILABLE,
             $exception instanceof WriterBusy => TargetResult::WRITER_BUSY,
-            $exception instanceof ApplyFailed => TargetResult::APPLY_FAILED,
-            default => TargetResult::NOT_SUPPORTED,
+            default => TargetResult::APPLY_FAILED,
         };
 
         $message = $exception instanceof TransientProviderFailure

@@ -91,6 +91,16 @@ final class TargetFactory
         return new TermTarget((string) $source->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter, $source);
     }
 
+    /**
+     * The term of a term reference in the site it names; null when there is no such term or its taxonomy lacks the site.
+     */
+    public function findTerm(TargetRef $ref): ?TermContract
+    {
+        $term = Term::find($ref->id);
+
+        return $term !== null && $term->taxonomy()->sites()->contains($ref->site) ? $term->in($ref->site) : null;
+    }
+
     public function fromDescription(array $describe): Target
     {
         $type = ContentType::tryFrom((string) ($describe['type'] ?? ''));
@@ -119,13 +129,9 @@ final class TargetFactory
     // A term reference names the site; the default site's term is the origin of the others.
     private function termFromReference(TargetRef $ref): TermTarget
     {
-        $term = Term::find($ref->id);
+        $term = $this->findTerm($ref) ?? throw TargetNotFound::term($ref->id, $ref->site);
 
-        if ($term === null || ! $term->taxonomy()->sites()->contains($ref->site)) {
-            throw TargetNotFound::term($ref->id, $ref->site);
-        }
-
-        if (! $term->in($ref->site)->hasOrigin()) {
+        if (! $term->hasOrigin()) {
             throw NotALocalization::for((string) $ref);
         }
 
