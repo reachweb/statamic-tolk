@@ -5,6 +5,7 @@ use Reach\StatamicTolk\Http\Controllers\Cp\EditorController;
 use Reach\StatamicTolk\Http\Controllers\Cp\ModelsController;
 use Reach\StatamicTolk\Http\Controllers\Cp\ProvidersController;
 use Reach\StatamicTolk\Http\Controllers\Cp\RunsController;
+use Reach\StatamicTolk\Http\Controllers\Cp\SiteProfileController;
 
 Route::name('tolk.')->prefix('tolk')->group(function () {
     Route::name('editor.')->prefix('editor')->middleware('can:translate content')->group(function () {
@@ -38,6 +39,7 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
 
     Route::get('models', [ModelsController::class, 'index'])->name('models.index');
 
-    // The addon's settings ability (`editSettings`, §A14); ProviderTestRequest checks.
+    // The addon's settings ability (`editSettings`, §A14); ProviderTestRequest and SiteProfileGenerateRequest check.
     Route::post('providers/test', [ProvidersController::class, 'test'])->name('providers.test');
+    Route::post('site-profile/generate', [SiteProfileController::class, 'generate'])->name('site-profile.generate');
 });
