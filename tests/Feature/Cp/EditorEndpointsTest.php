@@ -159,6 +159,18 @@ describe('plan', function () {
             ->assertJsonPath('code', 'unknown_reference');
     });
 
+    it('refuses a navigation, which has no publish form', function () {
+        $this->signInAdmin();
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book your stay']], 'el' => []]);
+
+        $this->postJson(cp_route('tolk.editor.plan'), ['reference' => 'nav::main::el', 'mode' => 'missing'])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'not_translatable');
+        $this->postJson(cp_route('tolk.editor.review'), ['reference' => 'nav::main::el', 'values' => ['tree' => []]])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'not_translatable');
+    });
+
     it('forbids a user who cannot edit the localization', function () {
         $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'view articles entries']);
 

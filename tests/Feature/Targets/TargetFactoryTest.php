@@ -4,10 +4,10 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
-use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Targets\EntryTarget;
+use Reach\StatamicTolk\Targets\NavTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 
@@ -63,9 +63,15 @@ describe('fromReference', function () {
         targets()->fromReference('page::1');
     })->throws(InvalidTargetRef::class);
 
-    it('does not support navigation yet', function () {
-        targets()->fromReference('nav::main::el');
-    })->throws(NotSupportedYet::class);
+    it('builds the target of a navigation tree, translated from the default site\'s tree', function () {
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book']], 'el' => []]);
+
+        $target = targets()->fromReference('nav::main::el');
+
+        expect($target)->toBeInstanceOf(NavTarget::class)
+            ->and((string) $target->ref())->toBe('nav::main::el')
+            ->and($target->sourceSite())->toBe('en');
+    });
 });
 
 describe('forEntry', function () {
@@ -138,7 +144,13 @@ describe('fromDescription', function () {
         'no site' => [['type' => 'entry', 'source_id' => 'a']],
     ]);
 
-    it('does not support navigation yet', function () {
-        targets()->fromDescription(['type' => 'nav', 'source_id' => 'main', 'site' => 'el']);
-    })->throws(NotSupportedYet::class);
+    it('rebuilds a navigation target with the source site its source id names', function () {
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book']], 'de' => []]);
+
+        $target = targets()->fromDescription(['type' => 'nav', 'source_id' => 'main::de', 'site' => 'el']);
+
+        expect($target)->toBeInstanceOf(NavTarget::class)
+            ->and($target->describe())->toBe(['type' => 'nav', 'source_id' => 'main::de', 'site' => 'el'])
+            ->and($target->exists())->toBeFalse();
+    });
 });

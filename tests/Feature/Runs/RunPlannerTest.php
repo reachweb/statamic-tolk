@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Event;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -14,15 +15,20 @@ use Reach\StatamicTolk\Runs\PlannedRun;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Runs\RunPlanner;
+use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Events\EntrySaved;
+use Statamic\Events\NavTreeSaved;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -432,6 +438,89 @@ describe('global sets', function () {
             ->and(app(RunRepository::class)->item($run, 2))->toMatchObject(['type' => ContentType::GlobalSet, 'targetSite' => 'el', 'status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do'])
             ->and(app(RunRepository::class)->item($run, 3)->status)->toBe(RunItemStatus::Pending)
             ->and($this->modelCalls())->toBe($calls);
+    });
+});
+
+describe('navigation', function () {
+    beforeEach(function () {
+        $this->makeNav('main', ['en' => [
+            ['id' => 'hello', 'entry' => $this->hello->id()],
+            ['id' => 'book', 'title' => 'Book your stay', 'url' => 'https://booking.example'],
+        ]]);
+    });
+
+    it('adds one item per nav and site after the other items, of stage 1, translated from the default site\'s tree', function () {
+        $this->makeGlobalSet('site_settings', ['en' => null, 'el' => 'en'], ['tagline' => ['type' => 'text', 'localizable' => true]], ['en' => ['tagline' => 'By the sea']]);
+
+        $planned = planRun(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'globals' => ['site_settings'], 'navs' => ['main']]);
+
+        expect(array_map(fn (RunItem $item) => [$item->index, $item->type, $item->sourceId, $item->targetSite, $item->title, $item->stage], $planned->items))->toBe([
+            [0, ContentType::Entry, $this->hello->id(), 'el', 'Hello', 0],
+            [1, ContentType::Entry, $this->hello->id(), 'de', 'Hello', 0],
+            [2, ContentType::GlobalSet, 'site_settings', 'el', 'Site Settings', 0],
+            [3, ContentType::Nav, 'main::en', 'el', 'Main', 1],
+            [4, ContentType::Nav, 'main::en', 'de', 'Main', 1],
+        ])
+            ->and($planned->items[3]->dependsOn)->toBe([])
+            ->and($planned->skipped)->toBe(['site_not_in_global_set' => 1])
+            ->and($planned->run->scope['navs'])->toBe(['main']);
+    });
+
+    it('translates from the source site\'s tree where the nav has one, leaves the source site out and reports a nav without a source tree', function () {
+        $this->makeNav('footer', ['de' => [['id' => 'legal', 'title' => 'Impressum']]]);
+        $label = fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite;
+
+        $fromDefault = planRun(['sites' => ['en', 'el', 'de'], 'navs' => ['main', 'footer']]);
+        $fromGerman = planRun(['sites' => ['en', 'el'], 'sourceSite' => 'de', 'navs' => ['main', 'footer']]);
+        $all = planRun(['sites' => ['el'], 'navs' => ['*']]);
+
+        expect(array_map($label, $fromDefault->items))->toBe(['main::en→el', 'main::en→de'])
+            ->and($fromDefault->skipped)->toBe(['no_source_tree' => 2])
+            ->and(array_map($label, $fromGerman->items))->toBe(['main::en→el', 'footer::de→en', 'footer::de→el'])
+            ->and($fromGerman->skipped)->toBe([])
+            ->and(array_map($label, $all->items))->toEqualCanonicalizing(['main::en→el'])
+            ->and($all->skipped)->toBe(['no_source_tree' => 1]);
+    });
+
+    it('drops the trees a user may not edit, or in a site the user may not access, and counts them', function () {
+        $user = $this->signInWithPermissions(['access en site', 'access el site', 'edit main nav']);
+        $this->makeNav('footer', ['en' => [['id' => 'legal', 'title' => 'Legal']]]);
+
+        $planned = planRun(['sites' => ['el', 'de'], 'navs' => ['main', 'footer'], 'user' => $user]);
+
+        expect(array_map(fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite, $planned->items))->toBe(['main::en→el'])
+            ->and($planned->skipped)->toBe(['unauthorized' => 3]);
+    });
+
+    it('refuses an unknown navigation', function () {
+        planRun(['sites' => ['el'], 'navs' => ['footer']]);
+    })->throws(InvalidArgumentException::class, 'Navigation [footer] not found.');
+
+    it('applies the nav of a run with entries last, with the localizations the run created', function () {
+        $this->fakeTranslations();
+        $saved = [];
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$saved) {
+            $saved[] = 'entry';
+        });
+        Event::listen(NavTreeSaved::class, function (NavTreeSaved $event) use (&$saved) {
+            $saved[] = 'nav:'.$event->tree->locale();
+        });
+        $run = storedRun(planRun(['sites' => ['el'], 'collections' => ['articles'], 'navs' => ['main']]));
+
+        app(RunProcessor::class)->start($run);
+        RunFixtures::finish($run);
+
+        expect(array_map(fn (RunItem $item) => [$item->type, $item->status], RunFixtures::items($run)))->toBe([
+            [ContentType::Entry, RunItemStatus::Done],
+            [ContentType::Entry, RunItemStatus::Done],
+            [ContentType::Nav, RunItemStatus::Done],
+        ])
+            ->and(array_values(array_unique($saved)))->toBe(['entry', 'nav:el'])
+            ->and(array_slice($saved, -1))->toBe(['nav:el'])
+            ->and(Nav::findByHandle('main')->in('el')->tree())->toBe([
+                ['id' => 'hello', 'entry' => $this->hello->in('el')->id()],
+                ['id' => 'book', 'title' => '[T] Book your stay', 'url' => 'https://booking.example'],
+            ]);
     });
 });
 

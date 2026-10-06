@@ -20,4 +20,9 @@ final class TargetNotFound extends RuntimeException
     {
         return new self($site === null ? "Global set [{$handle}] not found." : "Global set [{$handle}] not found in the site [{$site}].");
     }
+
+    public static function nav(string $handle, ?string $site = null): self
+    {
+        return new self($site === null ? "Navigation [{$handle}] not found." : "Navigation [{$handle}] has no tree in the site [{$site}].");
+    }
 }

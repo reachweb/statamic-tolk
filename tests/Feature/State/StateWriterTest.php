@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Git;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Nav;
 use Statamic\Git\CommitJob;
 
 beforeEach(function () {
@@ -585,6 +586,24 @@ describe('deleted content', function () {
         GlobalSet::findByHandle('site_settings')->delete();
 
         expect($references())->toBe(['globals::footer::el']);
+    });
+
+    it('forgets the state of a deleted navigation tree, and of every site of a deleted navigation', function () {
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book']], 'el' => [['id' => 'book', 'title' => 'Κράτηση']], 'de' => [['id' => 'book', 'title' => 'Buchen']]]);
+        $this->makeNav('footer', ['en' => [['id' => 'legal', 'title' => 'Legal']], 'el' => [['id' => 'legal', 'title' => 'Νομικά']]]);
+        $references = fn () => array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false));
+
+        foreach (['nav::main::el', 'nav::main::de', 'nav::footer::el'] as $reference) {
+            app(StateRepository::class)->update(TargetRef::parse($reference), fn (ItemState $state) => $state->withField('tree', StateFixtures::machine('Book', 'Κράτηση')));
+        }
+
+        Nav::findByHandle('main')->in('de')->delete();
+
+        expect($references())->toEqualCanonicalizing(['nav::main::el', 'nav::footer::el']);
+
+        Nav::findByHandle('main')->delete();
+
+        expect($references())->toBe(['nav::footer::el']);
     });
 
     it('commits the forgotten state once, and nothing for content without state', function () {

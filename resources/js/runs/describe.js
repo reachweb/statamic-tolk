@@ -222,6 +222,7 @@ export function describeScope(scope, siteName = (handle) => handle) {
     const collections = list('collections');
     const taxonomies = list('taxonomies');
     const globals = list('globals');
+    const navs = list('navs');
     const entries = list('entry_ids').length;
     const terms = list('term_ids').length;
     const parts = [];
@@ -250,6 +251,12 @@ export function describeScope(scope, siteName = (handle) => handle) {
         parts.push(__('All global sets'));
     } else if (globals.length > 0) {
         parts.push(globals.join(', '));
+    }
+
+    if (navs.includes('*')) {
+        parts.push(__('All navigation'));
+    } else if (navs.length > 0) {
+        parts.push(navs.join(', '));
     }
 
     return {
