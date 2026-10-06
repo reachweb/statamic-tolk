@@ -535,3 +535,14 @@ Read in core's source at `v6.35.0` (`ui/Modal/Modal.vue`, `ui/Modal/Confirmation
 
 - A fieldtype on the addon settings page gets the page's publish container from `injectPublishContext()`, and rows written into another field with `setFieldMeta()` then `setFieldValue()` behave like rows core's grid adds: the glossary grid on another tab shows them, the form is dirty, and the save stores them with an `id` of their own (core's `addRow()`: the row is `meta.defaults`, the `_id` is new, and `meta.existing[_id]` is a copy of `meta.new`).
 - Core's `Modal` with a controlled `open` prop closes in two steps: it hides at once and emits `update:open` 300 ms later, and the prop's watcher then starts a second close that tears the portal down another 300 ms later. A modal opened again inside that window closes itself when the stale close finishes. `SiteProfile.vue` mounts its `ConfirmationModal` with `v-if` (and `open`), so each confirmation is a fresh instance with no stale close; only a click in the first 300 ms after Cancel, while the bound value is still true, does nothing. The addon's other modals (`TranslateOptions`, `OriginPush`, `ChangesModal`, the banner's changes) still use `v-model:open`, so one reopened within about 600 ms of closing either does not open or closes again.
+
+### Settings blueprint (T10.4)
+
+Read in Statamic 6.35.0 (`Fieldtypes/Grid.php`, `Fields/Validator.php`, `Fields/Field.php`, `AddonSettingsController`, `RendersControlPanelExceptions`) and run with `tests/Browser/settings.spec.js`, 2026-10-06.
+
+- A grid validates each row field under `{grid}.{index}.{field}` against the whole form's values, so a rule class on a row field (`validate: ['new Class']` in the blueprint) that implements `DataAwareRule` reads its row and the rows before it. The error shows on that row's field in the form, in table mode too.
+- Core adds `nullable` to every rule list without a `required…` rule, and Laravel then skips other rules for an empty value. A rule that must judge an empty value (a glossary row's missing translation) needs `public bool $implicit = true`.
+- In the form a `sites` field with `max_items: 1` validates as a list (`['el']`, `[]` when empty), while the saved value is a string; `Settings::siteOf()` reads both.
+- A field hidden by an `if` condition is still rendered (`display: none`), and its value is left out of the save unless the field has `always_save: true`. Without it, turning review off and saving dropped `reviewer_model` (checked by removing it from the blueprint).
+- A refused save logs two console errors: the 422 and core's `PipelineStopped`.
+- The settings page's policy refusal is answered with a redirect to the CP index and an `error` flash for a page visit, and with a 403 for a JSON request.
