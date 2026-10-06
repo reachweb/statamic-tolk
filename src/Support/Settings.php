@@ -40,6 +40,21 @@ class Settings
         return $this;
     }
 
+    /**
+     * Saves the given keys to the addon settings and keeps every other key as it is stored.
+     */
+    public function save(array $values): void
+    {
+        $settings = Addon::get(self::PACKAGE)->settings();
+
+        foreach ($values as $key => $value) {
+            $settings->set($key, $value);
+        }
+
+        $settings->save();
+        $this->fresh();
+    }
+
     public function translatorModel(): ?ModelRef
     {
         return $this->model('translator_model');

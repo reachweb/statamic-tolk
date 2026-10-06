@@ -32,6 +32,19 @@ final class TranslatableFields
     }
 
     /**
+     * The fields whose text a walk reads, localizable or not: what for() returns plus the fields only `not_localizable`
+     * keeps out.
+     *
+     * @param  array{auto_title?: bool, excluded_fields?: list<string>}  $context
+     * @return Collection<string, Field>
+     */
+    public function textFields(Blueprint $blueprint, array $context = []): Collection
+    {
+        return $blueprint->fields()->all()
+            ->filter(fn (Field $field) => in_array($this->reason($field, $context), ['ok', 'not_localizable'], true));
+    }
+
+    /**
      * @param  array{auto_title?: bool, excluded_fields?: list<string>}  $context
      * @return list<array{handle: string, display: mixed, type: string, in_scope: bool, reason: string}>
      */
@@ -91,10 +104,8 @@ final class TranslatableFields
     {
         $found = [];
 
-        foreach ($blueprint->fields()->all() as $field) {
-            if (in_array($this->reason($field, []), ['ok', 'not_localizable'], true)) {
-                $this->collectTechnical($this->nestedFields($field) ?? [], [$field->handle()], [$field->display()], $found);
-            }
+        foreach ($this->textFields($blueprint) as $field) {
+            $this->collectTechnical($this->nestedFields($field) ?? [], [$field->handle()], [$field->display()], $found);
         }
 
         return $found;

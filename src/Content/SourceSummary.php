@@ -25,7 +25,7 @@ final class SourceSummary
                 continue;
             }
 
-            $text = $this->plainText($this->walker->leaves($field, $target->sourceValue($handle)));
+            $text = self::plainText($this->walker->leaves($field, $target->sourceValue($handle)));
 
             if (mb_strlen($text) > mb_strlen($longest)) {
                 $longest = $text;
@@ -36,9 +36,11 @@ final class SourceSummary
     }
 
     /**
+     * The leaves' text without placeholders, unescaped, with whitespace squished.
+     *
      * @param  list<Leaf>  $leaves
      */
-    private function plainText(array $leaves): string
+    public static function plainText(array $leaves): string
     {
         $texts = array_map(function (Leaf $leaf): string {
             $text = preg_replace('/'.Placeholders::IDS.'|<br\/>/', ' ', $leaf->text);
