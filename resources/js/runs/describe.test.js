@@ -171,6 +171,8 @@ describe('what the run translates', () => {
             what: '2 selected terms',
             sites: 'Greek, German',
         });
+        expect(describeScope({ taxonomies: ['topics'], globals: ['site_settings', 'footer'], sites: ['el'] }, siteName).what).toBe('topics, site_settings, footer');
+        expect(describeScope({ collections: ['*'], taxonomies: ['*'], globals: ['*'] }).what).toBe('All collections, All taxonomies, All global sets');
         expect(describeScope({}).what).toBe('Nothing selected');
     });
 

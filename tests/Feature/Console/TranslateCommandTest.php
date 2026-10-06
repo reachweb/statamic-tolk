@@ -26,6 +26,7 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Term;
 
 beforeEach(function () {
@@ -68,10 +69,12 @@ describe('validation', function () {
     })->with([
         'unknown site' => [['--collection' => ['articles'], '--site' => ['fr']], 'Unknown site [fr].'],
         'no site' => [['--collection' => ['articles']], 'Name the sites to translate into with --site.'],
-        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry, --taxonomy or --all.'],
-        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection, --entry or --taxonomy.'],
-        '--all with --taxonomy' => [['--all' => true, '--taxonomy' => ['topics'], '--site' => ['el']], '--all cannot be combined with --collection, --entry or --taxonomy.'],
+        'nothing named' => [['--site' => ['el']], 'Name what to translate with --collection, --entry, --taxonomy, --globals or --all.'],
+        '--all with --collection' => [['--all' => true, '--collection' => ['articles'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy or --globals.'],
+        '--all with --taxonomy' => [['--all' => true, '--taxonomy' => ['topics'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy or --globals.'],
+        '--all with --globals' => [['--all' => true, '--globals' => ['site_settings'], '--site' => ['el']], '--all cannot be combined with --collection, --entry, --taxonomy or --globals.'],
         'unknown taxonomy' => [['--taxonomy' => ['colours'], '--site' => ['el']], 'Taxonomy [colours] not found.'],
+        'unknown global set' => [['--globals' => ['colours'], '--site' => ['el']], 'Global set [colours] not found.'],
         'unknown source site' => [['--collection' => ['articles'], '--site' => ['el'], '--from' => 'fr'], 'Unknown site [fr].'],
         '--queue with --concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true], '--concurrency cannot be combined with --queue'],
         'invalid concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => '0'], 'Invalid concurrency [0]. Use a whole number of at least 1.'],
@@ -397,6 +400,52 @@ describe('terms', function () {
             ->and($output)->toContain('2 targets are in taxonomies excluded in the settings.')
             ->and($output)->toContain('Nothing to translate.')
             ->and(Term::find('topics::food')->in('el')->data()->all())->toBe([]);
+    });
+});
+
+describe('global sets', function () {
+    beforeEach(function () {
+        $this->makeGlobalSet('site_settings', ['en' => null, 'el' => 'en', 'de' => 'en'], [
+            'tagline' => ['type' => 'text', 'localizable' => true],
+            'footer' => ['type' => 'textarea', 'localizable' => true],
+            'phone' => ['type' => 'text'],
+        ], ['en' => ['tagline' => 'By the sea', 'footer' => 'Open all year.', 'phone' => '+30 1234']]);
+    });
+
+    it('translates a global set with --globals, after the entries, under each site', function () {
+        $this->fakeTranslations();
+
+        [$exitCode, $output] = translateCommand(['--entry' => [$this->hello->id()], '--globals' => ['site_settings'], '--site' => ['el', 'de']]);
+        $set = GlobalSet::findByHandle('site_settings');
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Targets: 4 (Greek, German).')
+            ->and($output)->toContain('Global sets → Greek')
+            ->and($output)->toMatch('/Hello → German.*\n(.*\n)*.*Site Settings → Greek/')
+            ->and($output)->not->toContain('failed')
+            ->and($set->in('el')->data()->all())->toBe(['tagline' => '[T] By the sea', 'footer' => '[T] Open all year.'])
+            ->and($set->in('de')->get('tagline'))->toBe('[T] By the sea')
+            ->and($set->in('en')->data()->all())->toBe(['tagline' => 'By the sea', 'footer' => 'Open all year.', 'phone' => '+30 1234']);
+
+        $calls = $this->modelCalls();
+        [$exitCode, $output] = translateCommand(['--globals' => ['site_settings'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Site Settings → Greek: skipped, nothing to do')
+            ->and($this->modelCalls())->toBe($calls);
+    });
+
+    it('reports a site the set has no origin for and translates nothing there', function () {
+        $this->fakeTranslations();
+        GlobalSet::findByHandle('site_settings')->sites(['en' => null, 'el' => 'en', 'de' => null])->save();
+
+        [$exitCode, $output] = translateCommand(['--globals' => ['site_settings'], '--site' => ['de']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('1 target is in a site its global set has no origin for.')
+            ->and($output)->toContain('Nothing to translate.')
+            ->and(GlobalSet::findByHandle('site_settings')->in('de')->data()->all())->toBe([]);
+        $this->assertNoModelCalls();
     });
 });
 

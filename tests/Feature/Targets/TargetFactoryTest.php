@@ -63,12 +63,9 @@ describe('fromReference', function () {
         targets()->fromReference('page::1');
     })->throws(InvalidTargetRef::class);
 
-    it('does not support the other content types yet', function (string $reference) {
-        targets()->fromReference($reference);
-    })->throws(NotSupportedYet::class)->with([
-        'globals::footer::el',
-        'nav::main::el',
-    ]);
+    it('does not support navigation yet', function () {
+        targets()->fromReference('nav::main::el');
+    })->throws(NotSupportedYet::class);
 });
 
 describe('forEntry', function () {
@@ -141,7 +138,7 @@ describe('fromDescription', function () {
         'no site' => [['type' => 'entry', 'source_id' => 'a']],
     ]);
 
-    it('does not support the other content types yet', function () {
-        targets()->fromDescription(['type' => 'globals', 'source_id' => 'footer', 'site' => 'el']);
+    it('does not support navigation yet', function () {
+        targets()->fromDescription(['type' => 'nav', 'source_id' => 'main', 'site' => 'el']);
     })->throws(NotSupportedYet::class);
 });

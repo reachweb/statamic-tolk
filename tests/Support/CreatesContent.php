@@ -158,11 +158,14 @@ trait CreatesContent
 
     /**
      * `$siteOrigins` maps each site to its origin site, or to null for a site
-     * without an origin, for example `['en' => null, 'el' => 'en']`.
+     * without an origin, for example `['en' => null, 'el' => 'en']`. With
+     * `$fields` null the set has no blueprint.
      */
-    protected function makeGlobalSet(string $handle, array $siteOrigins, array $fields, array $valuesBySite): GlobalSetContract
+    protected function makeGlobalSet(string $handle, array $siteOrigins, ?array $fields, array $valuesBySite): GlobalSetContract
     {
-        $this->makeBlueprint('globals', $handle, $fields);
+        if ($fields !== null) {
+            $this->makeBlueprint('globals', $handle, $fields);
+        }
 
         $set = GlobalSet::make($handle)
             ->title(Str::headline($handle))

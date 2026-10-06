@@ -22,6 +22,7 @@ use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\EntryTarget;
+use Reach\StatamicTolk\Targets\GlobalsTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\Planner;
@@ -31,6 +32,7 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Statamic\Facades\Term;
@@ -48,6 +50,9 @@ final readonly class RunPlanner
     public const string EXCLUDED_TAXONOMY = 'excluded_taxonomy';
 
     public const string SITE_NOT_IN_TAXONOMY = 'site_not_in_taxonomy';
+
+    // A site the others are translated from, which is left out without being counted.
+    private const string SOURCE = 'source';
 
     public function __construct(
         private EntryFamilies $families,
@@ -73,15 +78,16 @@ final readonly class RunPlanner
         }
 
         $options = $this->runOptions($request);
-        $skipped = $outOfScope = [];
-        $items = $this->entryItems($this->entryTargets($request, $skipped, $outOfScope), Mode::from($options['mode']) !== Mode::Review);
-        $items = [...$items, ...$this->termItems($request, count($items), $skipped, $outOfScope)];
-        $scope = [...$request->scope(), 'skipped' => $skipped, 'out_of_scope' => array_values($outOfScope)];
+        $notes = ['skipped' => [], 'out_of_scope' => [], 'explained' => []];
+        $items = $this->entryItems($this->entryTargets($request, $notes), Mode::from($options['mode']) !== Mode::Review);
+        $items = [...$items, ...$this->termItems($request, count($items), $notes)];
+        $items = [...$items, ...$this->globalItems($request, count($items), $notes)];
+        $scope = [...$request->scope(), 'skipped' => $notes['skipped'], 'out_of_scope' => array_values($notes['out_of_scope'])];
 
         return new PlannedRun(
             Run::make($request->driver, $scope, $options, $request->user),
             $items,
-            $skipped,
+            $notes['skipped'],
         );
     }
 
@@ -162,13 +168,12 @@ final readonly class RunPlanner
 
     /**
      * Every family × site target the user may edit, family by family, keyed by site. The other pairs are counted in
-     * $skipped; a root's own site is not a target at all.
+     * the notes; a root's own site is not a target at all.
      *
-     * @param  array<string, int>  $skipped
-     * @param  array<string, array>  $outOfScope  see noteOutOfScope()
+     * @param  array  $notes  see sitesFor()
      * @return list<array<string, array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}>>
      */
-    private function entryTargets(RunRequest $request, array &$skipped, array &$outOfScope): array
+    private function entryTargets(RunRequest $request, array &$notes): array
     {
         $collections = $this->containers($request->collections, Collection::class, 'Collection');
 
@@ -177,46 +182,25 @@ final readonly class RunPlanner
         }
 
         $excluded = $this->settings->excludedCollections();
-        $families = $explained = [];
+        $families = [];
 
         foreach ($this->families->roots($collections, $request->entryIds) as $root) {
             $collection = $root->collection();
             $family = [];
+            $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
+                $site === $root->locale() => self::SOURCE,
+                in_array($collection->handle(), $excluded, true) => self::EXCLUDED_COLLECTION,
+                ! $collection->sites()->contains($site) => self::SITE_NOT_IN_COLLECTION,
+                default => null,
+            });
 
-            foreach ($request->sites as $site) {
-                if ($site === $root->locale()) {
-                    continue;
-                }
-
-                if (in_array($collection->handle(), $excluded, true)) {
-                    self::count($skipped, self::EXCLUDED_COLLECTION);
-
-                    continue;
-                }
-
-                if (! $collection->sites()->contains($site)) {
-                    self::count($skipped, self::SITE_NOT_IN_COLLECTION);
-
-                    continue;
-                }
-
+            foreach ($sites as $site) {
                 $source = $this->source($root, $site, $request->sourceSite);
                 $target = $this->factory->forEntry($source, $site);
 
-                if ($request->user !== null && ! $target->authorize($request->user)) {
-                    self::count($skipped, RunItem::UNAUTHORIZED);
-
-                    continue;
+                if ($this->admits($request, $target, $collection->handle().'.'.$source->blueprint()->handle(), $notes)) {
+                    $family[$site] = compact('root', 'site', 'source', 'target');
                 }
-
-                $blueprint = $collection->handle().'.'.$source->blueprint()->handle();
-
-                if (! isset($explained[$blueprint])) {
-                    $explained[$blueprint] = true;
-                    $this->noteOutOfScope($target, $outOfScope);
-                }
-
-                $family[$site] = compact('root', 'site', 'source', 'target');
             }
 
             if ($family !== []) {
@@ -229,14 +213,13 @@ final readonly class RunPlanner
 
     /**
      * One item per term × site the user may edit, from index $offset on, term by term (§A11 "Terms"). The other pairs
-     * are counted in $skipped; a term's default site is the source and not a target at all. Terms have no chains and
+     * are counted in the notes; a term's default site is the source and not a target at all. Terms have no chains and
      * no tree, so the items depend on nothing.
      *
-     * @param  array<string, int>  $skipped
-     * @param  array<string, array>  $outOfScope  see noteOutOfScope()
+     * @param  array  $notes  see sitesFor()
      * @return list<RunItem>
      */
-    private function termItems(RunRequest $request, int $offset, array &$skipped, array &$outOfScope): array
+    private function termItems(RunRequest $request, int $offset, array &$notes): array
     {
         $taxonomies = $this->containers($request->taxonomies, Taxonomy::class, 'Taxonomy');
 
@@ -245,48 +228,117 @@ final readonly class RunPlanner
         }
 
         $excluded = $this->settings->excludedTaxonomies();
-        $items = $explained = [];
+        $items = [];
 
         foreach ($this->terms($taxonomies, $request->termIds) as $term) {
             $taxonomy = $term->taxonomy();
+            $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
+                $site === $term->locale() => self::SOURCE,
+                in_array($taxonomy->handle(), $excluded, true) => self::EXCLUDED_TAXONOMY,
+                ! $taxonomy->sites()->contains($site) => self::SITE_NOT_IN_TAXONOMY,
+                default => null,
+            });
 
-            foreach ($request->sites as $site) {
-                if ($site === $term->locale()) {
-                    continue;
-                }
-
-                if (in_array($taxonomy->handle(), $excluded, true)) {
-                    self::count($skipped, self::EXCLUDED_TAXONOMY);
-
-                    continue;
-                }
-
-                if (! $taxonomy->sites()->contains($site)) {
-                    self::count($skipped, self::SITE_NOT_IN_TAXONOMY);
-
-                    continue;
-                }
-
+            foreach ($sites as $site) {
                 $target = $this->factory->forTerm($term, $site);
 
-                if ($request->user !== null && ! $target->authorize($request->user)) {
-                    self::count($skipped, RunItem::UNAUTHORIZED);
-
-                    continue;
+                if ($this->admits($request, $target, $taxonomy->handle().'.'.$term->blueprint()->handle(), $notes)) {
+                    $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title());
                 }
-
-                $blueprint = $taxonomy->handle().'.'.$term->blueprint()->handle();
-
-                if (! isset($explained[$blueprint])) {
-                    $explained[$blueprint] = true;
-                    $this->noteOutOfScope($target, $outOfScope);
-                }
-
-                $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title());
             }
         }
 
         return $items;
+    }
+
+    /**
+     * One item per global set × site the user may edit, from index $offset on, set by set (§A11 "Global sets"). A site
+     * the set does not have or has no origin for, and every site of a set without a blueprint, are counted in the
+     * notes (GlobalsTarget's reasons); a site without an origin that other sites of the set are translated from is
+     * the source and not a target at all. Within a set, a site comes after the site it is translated from and its
+     * item waits for that site's item (chains: de_CH waits for de).
+     *
+     * @param  array  $notes  see sitesFor()
+     * @return list<RunItem>
+     */
+    private function globalItems(RunRequest $request, int $offset, array &$notes): array
+    {
+        $items = [];
+
+        foreach ($this->containers($request->globals, GlobalSet::class, 'Global set') as $handle) {
+            $set = GlobalSet::findByHandle($handle);
+            $origins = $set->origins();
+            $targets = $indexes = [];
+            $isSource = fn (string $site) => $origins->has($site) && $origins->get($site) === null && $origins->containsStrict($site);
+            $sites = $this->sitesFor($request, $notes, fn (string $site) => $isSource($site) ? self::SOURCE : GlobalsTarget::untranslatableReasonFor($set, $site));
+
+            foreach ($sites as $site) {
+                $target = $this->factory->forGlobalSet($set, $site);
+
+                if ($this->admits($request, $target, $handle, $notes)) {
+                    $targets[$site] = $target;
+                }
+            }
+
+            foreach (self::chainOrder($targets, fn (GlobalsTarget $target) => $target->sourceSite()) as $target) {
+                $item = new RunItem($offset + count($items), ContentType::GlobalSet, $handle, $target->targetSite(), $target->title());
+                $item->dependsOn = isset($indexes[$target->sourceSite()]) ? [$indexes[$target->sourceSite()]] : [];
+                $indexes[$target->targetSite()] = $item->index;
+                $items[] = $item;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * The requested sites that $leftOut() names no reason for. The others are counted in the notes' `skipped` under
+     * their reason, except a source site (SOURCE). The notes hold what build() reports, and the blueprints admits()
+     * has explained.
+     *
+     * @param  array{skipped: array<string, int>, out_of_scope: array<string, array>, explained: array<string, true>}  $notes
+     * @param  Closure(string): ?string  $leftOut
+     * @return list<string>
+     */
+    private function sitesFor(RunRequest $request, array &$notes, Closure $leftOut): array
+    {
+        $sites = [];
+
+        foreach ($request->sites as $site) {
+            $reason = $leftOut($site);
+
+            if ($reason === null) {
+                $sites[] = $site;
+            } elseif ($reason !== self::SOURCE) {
+                self::count($notes['skipped'], $reason);
+            }
+        }
+
+        return $sites;
+    }
+
+    /**
+     * Whether the run's user may edit $target; a target they may not is counted as unauthorized. The first target of
+     * each blueprint (a key unique within its content type) notes the blueprint's out-of-scope fields.
+     *
+     * @param  array  $notes  see sitesFor()
+     */
+    private function admits(RunRequest $request, Target $target, string $blueprint, array &$notes): bool
+    {
+        if ($request->user !== null && ! $target->authorize($request->user)) {
+            self::count($notes['skipped'], RunItem::UNAUTHORIZED);
+
+            return false;
+        }
+
+        $key = $target->type()->value.':'.$blueprint;
+
+        if (! isset($notes['explained'][$key])) {
+            $notes['explained'][$key] = true;
+            $this->noteOutOfScope($target, $notes['out_of_scope']);
+        }
+
+        return true;
     }
 
     /**
@@ -344,7 +396,7 @@ final readonly class RunPlanner
         $indexes = [];
 
         foreach ($families as $family) {
-            foreach ($this->chainOrder($family) as $target) {
+            foreach (self::chainOrder($family, fn (array $target) => $target['source']->locale()) as $target) {
                 $indexes[$target['root']->id().'|'.$target['site']] = count($targets);
                 $targets[] = $target;
             }
@@ -354,26 +406,31 @@ final readonly class RunPlanner
     }
 
     /**
-     * @param  array<string, array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}>  $family
-     * @return list<array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}>
+     * The values in chain order: each after the value of the site it is translated from, when that is one of them.
+     *
+     * @template T
+     *
+     * @param  array<string, T>  $bySite
+     * @param  Closure(T): string  $sourceSite
+     * @return list<T>
      */
-    private function chainOrder(array $family): array
+    private static function chainOrder(array $bySite, Closure $sourceSite): array
     {
         $ordered = [];
 
-        while ($family !== []) {
-            $next = array_key_first($family);
+        while ($bySite !== []) {
+            $next = array_key_first($bySite);
 
-            foreach ($family as $site => $target) {
-                if (! isset($family[$target['source']->locale()])) {
+            foreach ($bySite as $site => $value) {
+                if (! isset($bySite[$sourceSite($value)])) {
                     $next = $site;
 
                     break;
                 }
             }
 
-            $ordered[] = $family[$next];
-            unset($family[$next]);
+            $ordered[] = $bySite[$next];
+            unset($bySite[$next]);
         }
 
         return $ordered;
@@ -469,7 +526,7 @@ final readonly class RunPlanner
      * The named containers, or with [ALL] every one that has more than one site.
      *
      * @param  list<string>  $handles
-     * @param  class-string<Collection|Taxonomy>  $facade
+     * @param  class-string<Collection|Taxonomy|GlobalSet>  $facade
      * @param  string  $label  what an unknown handle is called in the error
      * @return list<string>
      */

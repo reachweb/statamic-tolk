@@ -22,6 +22,7 @@ use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -344,6 +345,92 @@ describe('terms', function () {
             ->and($progress->estimate->chars)->toBe(mb_strlen('HelloA short intro.Wellness'))
             ->and(app(RunRepository::class)->item($run, 1))->toMatchObject(['type' => ContentType::Term, 'status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do'])
             ->and(app(RunRepository::class)->item($run, 2)->status)->toBe(RunItemStatus::Pending)
+            ->and($this->modelCalls())->toBe($calls);
+    });
+});
+
+describe('global sets', function () {
+    beforeEach(function () {
+        $this->makeGlobalSet('site_settings', ['en' => null, 'el' => 'en', 'de' => 'en'], [
+            'tagline' => ['type' => 'text', 'localizable' => true],
+            'phone' => ['type' => 'text', 'display' => 'Phone'],
+        ], ['en' => ['tagline' => 'By the sea', 'phone' => '+30 1234']]);
+    });
+
+    it('adds one item per set and site after the term items, with the next indexes', function () {
+        $this->makeTaxonomy('topics', ['en', 'el', 'de'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food']]);
+
+        $planned = planRun(['sites' => ['el', 'de'], 'collections' => ['articles'], 'taxonomies' => ['topics'], 'globals' => ['site_settings']]);
+        $globals = array_slice($planned->items, 6);
+
+        expect(array_map(fn (RunItem $item) => $item->type, array_slice($planned->items, 4, 2)))->toBe([ContentType::Term, ContentType::Term])
+            ->and(array_map(fn (RunItem $item) => [$item->index, $item->type, $item->sourceId, $item->targetSite, $item->title], $globals))->toBe([
+                [6, ContentType::GlobalSet, 'site_settings', 'el', 'Site Settings'],
+                [7, ContentType::GlobalSet, 'site_settings', 'de', 'Site Settings'],
+            ])
+            ->and($globals[0])->toMatchObject(['stage' => 0, 'dependsOn' => [], 'status' => RunItemStatus::Pending])
+            ->and($globals[1]->dependsOn)->toBe([])
+            ->and($planned->skipped)->toBe([])
+            ->and($planned->run->scope['globals'])->toBe(['site_settings'])
+            ->and($planned->run->scope['out_of_scope'])->toBe([
+                ['container' => 'site_settings', 'handle' => 'phone', 'label' => 'Phone', 'type' => 'text', 'reason' => 'not_localizable'],
+            ]);
+    });
+
+    it('leaves the source site out and reports a site the set lacks, a site without an origin and a set without a blueprint', function () {
+        $fields = ['tagline' => ['type' => 'text', 'localizable' => true]];
+        $this->makeGlobalSet('footer', ['en' => null, 'el' => 'en'], $fields, ['en' => ['tagline' => 'Open all year.']]);
+        $this->makeGlobalSet('legal', ['en' => null, 'el' => 'en', 'de' => null], $fields, ['en' => ['tagline' => 'Terms apply.']]);
+        $this->makeGlobalSet('contact', ['en' => null, 'el' => 'en', 'de' => 'en'], null, ['en' => ['address' => 'Chania harbour']]);
+        $this->makeGlobalSet('brand', ['en' => null], $fields, ['en' => ['tagline' => 'Kyma Bay']]);
+        $label = fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite;
+
+        $named = planRun(['sites' => ['en', 'el', 'de'], 'globals' => ['site_settings', 'footer', 'legal', 'contact']]);
+        $all = planRun(['sites' => ['el', 'de'], 'globals' => ['*']]);
+        $single = planRun(['sites' => ['el'], 'globals' => ['brand']]);
+
+        expect(array_map($label, $named->items))->toBe(['site_settings→el', 'site_settings→de', 'footer→el', 'legal→el'])
+            ->and($named->skipped)->toBe(['site_not_in_global_set' => 1, 'no_origin' => 1, 'no_blueprint' => 2])
+            ->and(array_map($label, $all->items))->toEqualCanonicalizing(['site_settings→el', 'site_settings→de', 'footer→el', 'legal→el'])
+            ->and(collect($all->skipped)->sortKeys()->all())->toBe(['no_blueprint' => 2, 'no_origin' => 1, 'site_not_in_global_set' => 1])
+            ->and($single->items)->toBe([])
+            ->and($single->skipped)->toBe(['site_not_in_global_set' => 1]);
+    });
+
+    it('puts a site after the site it is translated from and makes it wait for that item', function () {
+        GlobalSet::findByHandle('site_settings')->sites(['en' => null, 'de' => 'el', 'el' => 'en'])->save();
+
+        $planned = planRun(['sites' => ['de', 'el'], 'globals' => ['site_settings']]);
+
+        expect(array_map(fn (RunItem $item) => [$item->targetSite, $item->dependsOn], $planned->items))->toBe([['el', []], ['de', [0]]]);
+    });
+
+    it('drops the variables a user may not edit, or in a site the user may not access, and counts them', function () {
+        $user = $this->signInWithPermissions(['access en site', 'access el site', 'edit site_settings globals']);
+
+        $planned = planRun(['sites' => ['el', 'de'], 'globals' => ['site_settings'], 'user' => $user]);
+
+        expect(array_map(fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite, $planned->items))->toBe(['site_settings→el'])
+            ->and($planned->skipped)->toBe(['unauthorized' => 1]);
+    });
+
+    it('refuses an unknown global set', function () {
+        planRun(['sites' => ['el'], 'globals' => ['colours']]);
+    })->throws(InvalidArgumentException::class, 'Global set [colours] not found.');
+
+    it('estimates the global sets with the entries and skips translated variables', function () {
+        $this->fakeTranslations();
+        $options = PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']);
+        app(TargetTranslator::class)->translate(app(TargetFactory::class)->forGlobalSet('site_settings', 'el'), $options, new ApplyOptions);
+        $calls = $this->modelCalls();
+        $run = storedRun(planRun(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'globals' => ['site_settings']]));
+
+        $progress = app(RunPlanner::class)->estimate($run, 0, 60_000);
+
+        expect($progress->estimate->segments)->toBe(5)
+            ->and(app(RunRepository::class)->item($run, 2))->toMatchObject(['type' => ContentType::GlobalSet, 'targetSite' => 'el', 'status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do'])
+            ->and(app(RunRepository::class)->item($run, 3)->status)->toBe(RunItemStatus::Pending)
             ->and($this->modelCalls())->toBe($calls);
     });
 });
