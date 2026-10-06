@@ -13,6 +13,7 @@ use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\GlobalsTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Statamic\Contracts\Entries\Collection as CollectionContract;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Contracts\Query\Builder;
 use Statamic\Contracts\Structures\Nav as NavContract;
@@ -128,9 +129,12 @@ final readonly class StatusScanner
      */
     private function entryTargets(CollectionContract $collection, string $site): array
     {
-        $roots = $this->families->roots([$collection->handle()], []);
+        $roots = collect($this->families->roots([$collection->handle()], []))->keyBy(fn (EntryContract $root) => (string) $root->id());
 
-        return array_map(fn (array $target) => fn () => $this->factory->fromDescription($target), $this->families->targets($roots, [$site]));
+        return array_map(
+            fn (array $target) => fn () => $this->factory->forEntry($roots[$target['source_id']], $target['site']),
+            $this->families->targets($roots->values()->all(), [$site]),
+        );
     }
 
     /**
@@ -138,7 +142,7 @@ final readonly class StatusScanner
      */
     private function termTargets(TaxonomyContract $taxonomy, string $site): array
     {
-        if (! in_array($site, $this->termSites($taxonomy), true)) {
+        if (! $taxonomy->sites()->skip(1)->contains($site)) {
             return [];
         }
 

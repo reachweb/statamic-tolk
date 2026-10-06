@@ -225,23 +225,23 @@ final class Audit
      */
     private function modelItems(AuditLevel $missingKey): array
     {
-        $items = [];
-        $models = [];
+        $items = $models = [];
+        $readers = [
+            'Translator model' => $this->settings->translatorModel(...),
+            'Reviewer model' => $this->settings->reviewerModel(...),
+            'Fallback model' => $this->settings->fallbackModel(...),
+        ];
 
-        foreach (['translator_model' => 'Translator model', 'reviewer_model' => 'Reviewer model', 'fallback_model' => 'Fallback model'] as $key => $label) {
+        foreach ($readers as $label => $read) {
             try {
-                $models[$key] = match ($key) {
-                    'translator_model' => $this->settings->translatorModel(),
-                    'reviewer_model' => $this->settings->reviewerModel(),
-                    'fallback_model' => $this->settings->fallbackModel(),
-                };
+                $models[] = $read();
             } catch (InvalidModelRef $exception) {
-                $models[$key] = false;
+                $models[] = false;
                 $items[] = $this->item(AuditLevel::Error, "The setting \"{$label}\" is not a model: {$exception->getMessage()} Choose a model in Tolk's settings.");
             }
         }
 
-        [$chosen, $reviewerChosen, $fallback] = array_values($models);
+        [$chosen, $reviewerChosen, $fallback] = $models;
 
         if ($chosen && ! $this->providers->isConfigured($chosen->provider)) {
             $items[] = $this->item($missingKey, "The translator model {$chosen} uses {$chosen->provider}, which has no API key, so every translation fails.");
@@ -432,7 +432,7 @@ final class Audit
         }
 
         $orphans = $set->sites()
-            ->filter(fn (string $site) => ! $set->origins()->containsStrict($site) && GlobalsTarget::untranslatableReasonFor($set, $site) === GlobalsTarget::NO_ORIGIN)
+            ->filter(fn (string $site) => GlobalsTarget::needsOrigin($set, $site))
             ->values()
             ->all();
 
@@ -448,8 +448,8 @@ final class Audit
     {
         $revisions = collect($this->scanner->containers(ContentType::Entry))
             ->map(fn (string $handle) => Collection::find($handle))
-            ->filter(fn ($collection) => $collection->revisionsEnabled())
-            ->map(fn ($collection) => $collection->title());
+            ->filter->revisionsEnabled()
+            ->map->title();
 
         $strategy = config('statamic.static_caching.strategy');
         $lanes = RunDispatcher::browserLanes();
@@ -474,18 +474,19 @@ final class Audit
      * The blueprints of the collections and taxonomies Tolk translates (StatusScanner::containers()), and of the
      * global sets among them that have one, with the context TranslatableFields::explain() needs (§A2).
      *
-     * @return list<array{type: string, label: string, container: string, blueprint: Blueprint, context: array}>
+     * @return list<array{type: string, name: string, container: string, blueprint: Blueprint, context: array}>
      */
     private function blueprints(): array
     {
         $excludedFields = $this->settings->excludedFields();
+        $context = fn (bool $autoTitle = false) => ['auto_title' => $autoTitle, 'excluded_fields' => $excludedFields];
         $blueprints = [];
 
         foreach ($this->scanner->containers(ContentType::Entry) as $handle) {
             $collection = Collection::find($handle);
 
             foreach ($collection->entryBlueprints() as $blueprint) {
-                $blueprints[] = ['type' => 'collection', 'label' => "Collection {$collection->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => ['auto_title' => $collection->autoGeneratesTitles(), 'excluded_fields' => $excludedFields]];
+                $blueprints[] = ['type' => 'collection', 'name' => "Collection {$collection->title()} › {$blueprint->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context($collection->autoGeneratesTitles())];
             }
         }
 
@@ -493,7 +494,7 @@ final class Audit
             $taxonomy = Taxonomy::find($handle);
 
             foreach ($taxonomy->termBlueprints() as $blueprint) {
-                $blueprints[] = ['type' => 'taxonomy', 'label' => "Taxonomy {$taxonomy->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => ['auto_title' => false, 'excluded_fields' => $excludedFields]];
+                $blueprints[] = ['type' => 'taxonomy', 'name' => "Taxonomy {$taxonomy->title()} › {$blueprint->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context()];
             }
         }
 
@@ -501,7 +502,7 @@ final class Audit
             $set = GlobalSet::find($handle);
 
             if ($blueprint = $set->blueprint()) {
-                $blueprints[] = ['type' => 'globals', 'label' => "Global set {$set->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => ['auto_title' => false, 'excluded_fields' => $excludedFields]];
+                $blueprints[] = ['type' => 'globals', 'name' => "Global set {$set->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context()];
             }
         }
 
@@ -551,16 +552,13 @@ final class Audit
      */
     private function blueprintItem(array $source, array $fields, array $names): array
     {
-        $blueprint = $source['blueprint'];
-        $name = $source['type'] === 'globals' ? $source['label'] : "{$source['label']} › {$blueprint->title()}";
-
         return [
-            ...$this->item(AuditLevel::Warning, $name.': '.implode(', ', $names).'.'),
+            ...$this->item(AuditLevel::Warning, $source['name'].': '.implode(', ', $names).'.'),
             'type' => $source['type'],
             'container' => $source['container'],
-            'namespace' => (string) $blueprint->namespace(),
-            'blueprint' => (string) $blueprint->handle(),
-            'name' => $name,
+            'namespace' => (string) $source['blueprint']->namespace(),
+            'blueprint' => (string) $source['blueprint']->handle(),
+            'name' => $source['name'],
             'fields' => $fields,
         ];
     }

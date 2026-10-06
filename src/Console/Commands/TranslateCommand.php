@@ -648,55 +648,48 @@ class TranslateCommand extends Command
      */
     private function selection(): array
     {
-        $collections = array_values(array_unique($this->option('collection')));
-        $entryIds = array_values(array_unique($this->option('entry')));
-        $taxonomies = array_values(array_unique($this->option('taxonomy')));
-        $globals = array_values(array_unique($this->option('globals')));
-        $navs = array_values(array_unique($this->option('nav')));
+        $selected = [];
+
+        foreach (['collection', 'entry', 'taxonomy', 'globals', 'nav'] as $option) {
+            $selected[$option] = array_values(array_unique($this->option($option)));
+        }
+
+        $named = array_merge(...array_values($selected)) !== [];
 
         if ($this->option('all')) {
-            if ($collections !== [] || $entryIds !== [] || $taxonomies !== [] || $globals !== [] || $navs !== []) {
+            if ($named) {
                 throw new InvalidArgumentException('--all cannot be combined with --collection, --entry, --taxonomy, --globals or --nav.');
             }
 
             return [[RunRequest::ALL], [], [RunRequest::ALL], [RunRequest::ALL], [RunRequest::ALL]];
         }
 
-        if ($collections === [] && $entryIds === [] && $taxonomies === [] && $globals === [] && $navs === []) {
+        if (! $named) {
             throw new InvalidArgumentException('Name what to translate with --collection, --entry, --taxonomy, --globals, --nav or --all.');
         }
 
-        foreach ($collections as $handle) {
-            if (Collection::find($handle) === null) {
-                throw new InvalidArgumentException("Collection [{$handle}] not found.");
+        $containers = [
+            'collection' => ['Collection', fn (string $handle) => Collection::find($handle)],
+            'taxonomy' => ['Taxonomy', fn (string $handle) => Taxonomy::find($handle)],
+            'globals' => ['Global set', fn (string $handle) => GlobalSet::findByHandle($handle)],
+            'nav' => ['Navigation', fn (string $handle) => Nav::findByHandle($handle)],
+        ];
+
+        foreach ($containers as $option => [$label, $find]) {
+            foreach ($selected[$option] as $handle) {
+                if ($find($handle) === null) {
+                    throw new InvalidArgumentException("{$label} [{$handle}] not found.");
+                }
             }
         }
 
-        foreach ($taxonomies as $handle) {
-            if (Taxonomy::find($handle) === null) {
-                throw new InvalidArgumentException("Taxonomy [{$handle}] not found.");
-            }
-        }
-
-        foreach ($globals as $handle) {
-            if (GlobalSet::findByHandle($handle) === null) {
-                throw new InvalidArgumentException("Global set [{$handle}] not found.");
-            }
-        }
-
-        foreach ($navs as $handle) {
-            if (Nav::findByHandle($handle) === null) {
-                throw new InvalidArgumentException("Navigation [{$handle}] not found.");
-            }
-        }
-
-        foreach ($entryIds as $id) {
+        foreach ($selected['entry'] as $id) {
             if (Entry::find($id) === null) {
                 throw TargetNotFound::entry($id);
             }
         }
 
-        return [$collections, $entryIds, $taxonomies, $globals, $navs];
+        return array_values($selected);
     }
 
     private function leftOut(string $reason, int $count): string

@@ -38,17 +38,7 @@ final class TranslatableFields
     public function explain(Blueprint $blueprint, array $context = []): array
     {
         return $blueprint->fields()->all()
-            ->map(function (Field $field) use ($context) {
-                $reason = $this->reason($field, $context);
-
-                return [
-                    'handle' => $field->handle(),
-                    'display' => $field->display(),
-                    'type' => $field->type(),
-                    'in_scope' => $reason === 'ok',
-                    'reason' => $reason,
-                ];
-            })
+            ->map(fn (Field $field) => $this->explained($field, $this->reason($field, $context)))
             ->values()
             ->all();
     }
@@ -62,21 +52,11 @@ final class TranslatableFields
     public function explainNested(Fields $fields): array
     {
         return $fields->all()
-            ->map(function (Field $field) {
-                $reason = match (true) {
-                    ! $this->registry->has($field->type()) => 'unsupported_fieldtype',
-                    $field->fieldtype()->config('tolk_translate') === false => 'disabled',
-                    default => 'ok',
-                };
-
-                return [
-                    'handle' => $field->handle(),
-                    'display' => $field->display(),
-                    'type' => $field->type(),
-                    'in_scope' => $reason === 'ok',
-                    'reason' => $reason,
-                ];
-            })
+            ->map(fn (Field $field) => $this->explained($field, match (true) {
+                ! $this->registry->has($field->type()) => 'unsupported_fieldtype',
+                $field->fieldtype()->config('tolk_translate') === false => 'disabled',
+                default => 'ok',
+            }))
             ->values()
             ->all();
     }
@@ -182,6 +162,20 @@ final class TranslatableFields
     public function holdsText(Field $field): bool
     {
         return ! $this->registry->for($field) instanceof TextHandler || TextHandler::holdsProse($field->fieldtype()->config());
+    }
+
+    /**
+     * @return array{handle: string, display: mixed, type: string, in_scope: bool, reason: string}
+     */
+    private function explained(Field $field, string $reason): array
+    {
+        return [
+            'handle' => $field->handle(),
+            'display' => $field->display(),
+            'type' => $field->type(),
+            'in_scope' => $reason === 'ok',
+            'reason' => $reason,
+        ];
     }
 
     // The first reason that applies wins. `not_localizable` comes last, so it means the field would be in scope if it were localizable (the audit relies on that).
