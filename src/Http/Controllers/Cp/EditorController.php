@@ -4,7 +4,6 @@ namespace Reach\StatamicTolk\Http\Controllers\Cp;
 
 use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use InvalidArgumentException;
@@ -168,7 +167,8 @@ class EditorController extends Controller
 
     /**
      * Translates the saved origin open in the editor, an entry or a term in its taxonomy's default site, into some of
-     * the sites its banner lists, as a run that starts at once (T8.13). Its creator follows it through the run routes §A14 allows them; the open form is not touched (D4).
+     * the sites its banner lists, as a run that starts at once (T8.13). Its creator follows it through the run routes
+     * §A14 allows them; the open form is not touched (D4).
      */
     public function push(
         EditorPushRequest $request,
@@ -186,7 +186,7 @@ class EditorController extends Controller
         $listed = array_column($payload['origin']['localizations'] ?? [], 'site');
 
         if ($payload['reason'] === EditorStatus::UNKNOWN_REFERENCE) {
-            $this->fail(404, 'unknown_reference', $term ? __('The term to translate was not found.') : __('The entry to translate was not found.'));
+            $this->unknownReference($reference);
         }
 
         if ($listed === []) {
@@ -202,11 +202,12 @@ class EditorController extends Controller
         }
 
         if ($payload['active_run'] !== null) {
-            throw new HttpResponseException(response()->json([
-                'message' => $term ? __('A translation of this term is already in progress.') : __('A translation of this entry is already in progress.'),
-                'code' => 'run_active',
-                'active_run' => $payload['active_run'],
-            ], 409));
+            $this->fail(
+                409,
+                'run_active',
+                $term ? __('A translation of this term is already in progress.') : __('A translation of this entry is already in progress.'),
+                data: ['active_run' => $payload['active_run']],
+            );
         }
 
         $item = $status->item($reference);
@@ -233,11 +234,11 @@ class EditorController extends Controller
             $this->fail(422, 'invalid_run', $exception->getMessage());
         }
 
-        if ($planned->items === [] && ($planned->skipped[RunItem::UNAUTHORIZED] ?? 0) > 0) {
-            throw new AuthorizationException;
-        }
-
         if ($planned->items === []) {
+            if (($planned->skipped[RunItem::UNAUTHORIZED] ?? 0) > 0) {
+                throw new AuthorizationException;
+            }
+
             $this->fail(422, 'nothing_to_translate', match (true) {
                 isset($planned->skipped[RunPlanner::EXCLUDED_COLLECTION]) => __('Entries of this collection are excluded from translation in the settings.'),
                 isset($planned->skipped[RunPlanner::EXCLUDED_TAXONOMY]) => __('Terms of this taxonomy are excluded from translation in the settings.'),
@@ -265,7 +266,7 @@ class EditorController extends Controller
         try {
             return $this->targets->fromReference($reference);
         } catch (InvalidTargetRef|TargetNotFound) {
-            $this->fail(404, 'unknown_reference', self::isTerm($reference) ? __('The term to translate was not found.') : __('The entry to translate was not found.'));
+            $this->unknownReference($reference);
         } catch (NotALocalization|NotSupportedYet $exception) {
             $this->fail(422, 'not_translatable', $exception->getMessage());
         }
@@ -281,6 +282,11 @@ class EditorController extends Controller
         } catch (InvalidTargetRef|TargetNotFound|NotALocalization|NotSupportedYet) {
             return null;
         }
+    }
+
+    private function unknownReference(string $reference): never
+    {
+        $this->fail(404, 'unknown_reference', self::isTerm($reference) ? __('The term to translate was not found.') : __('The entry to translate was not found.'));
     }
 
     // Messages name what the reference names; any reference that is not a term's reads as an entry's.

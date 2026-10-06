@@ -42,7 +42,6 @@ export function describePush(push, status) {
     const created = final ? (push.missing ?? []).filter((site) => localizations.get(site)?.exists) : [];
 
     return {
-        phase: push.phase,
         sites: sites.join(', '),
         progress,
         keepOpen: push.phase === 'running' && push.driver === 'browser',
@@ -187,20 +186,20 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
         } catch (error) {
             const current = store().containers[name];
 
+            // The container shows another item now: its own banner says what there is to say.
+            if (current?.reference !== reference) {
+                return null;
+            }
+
             // Another page started one meanwhile: follow that instead.
             if (error?.code === 'run_active' && error.data?.active_run) {
-                if (current?.reference === reference) {
-                    current.push = null;
-                }
-
-                await adopt(name, { active_run: error.data.active_run, origin: current?.status?.origin });
+                current.push = null;
+                await adopt(name, { active_run: error.data.active_run, origin: current.status?.origin });
 
                 return null;
             }
 
-            if (current?.reference === reference) {
-                current.push = { ...current.push, phase: 'error', error: describeError(error) };
-            }
+            current.push = { ...current.push, phase: 'error', error: describeError(error) };
 
             return null;
         }

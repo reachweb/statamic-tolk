@@ -1,4 +1,5 @@
 import { asMap } from '../api.js';
+import { isTermReference } from './banner.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { describeSummary, needsSetup } from './statuses.js';
 import { useEditorStore } from './store.js';
@@ -74,7 +75,11 @@ export function createFieldActions({
         const editor = store();
 
         if (!ctx || !sameValue(value, ctx.values.value[handle])) {
-            toast().error(__('This field is not part of the entry being translated.'));
+            toast().error(
+                isTermReference(editor.containers[BASE]?.reference)
+                    ? __('This field is not part of the term being translated.')
+                    : __('This field is not part of the entry being translated.'),
+            );
 
             return;
         }

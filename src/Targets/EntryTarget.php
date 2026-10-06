@@ -231,7 +231,6 @@ final class EntryTarget implements Target
         $warnings = $created ? $this->createLocalization($options) : [];
         $localization = $this->localization();
         $item = $this->working();
-        $hadWorkingCopy = $localization->revisionsEnabled() && $localization->hasWorkingCopy();
         $ref = $this->ref();
         [$writes, $skipped] = $this->writable($fields, $options);
         $values = $this->prepareWrites($item, $ref, $writes);
@@ -242,7 +241,7 @@ final class EntryTarget implements Target
                 $field->remove ? $item->remove($handle) : $item->set($handle, $values[$handle]);
             }
 
-            array_push($warnings, ...$this->saveChanges($item, $mirror, $hadWorkingCopy, $options));
+            array_push($warnings, ...$this->saveChanges($item, $mirror, $options));
             $this->confirmWrites($ref, $writes);
         }
 
@@ -311,7 +310,7 @@ final class EntryTarget implements Target
      *
      * @return list<string>
      */
-    private function saveChanges(EntryContract $item, bool $mirror, bool $hadWorkingCopy, ApplyOptions $options): array
+    private function saveChanges(EntryContract $item, bool $mirror, ApplyOptions $options): array
     {
         if (! $item->revisionsEnabled()) {
             if ($mirror) {
@@ -335,6 +334,7 @@ final class EntryTarget implements Target
             return [];
         }
 
+        $hadWorkingCopy = $item->hasWorkingCopy();
         $this->saveRevision($item->makeWorkingCopy(), $item, $options, $this->revisionMessage());
 
         if (! $options->publishChanges) {

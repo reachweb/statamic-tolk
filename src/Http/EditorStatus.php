@@ -23,7 +23,6 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
-use Statamic\Facades\Term;
 
 /**
  * The status payload of the editor banner for the entry or term open in the publish form: what it holds as a
@@ -97,16 +96,9 @@ final readonly class EditorStatus
 
         return match ($ref->type) {
             ContentType::Entry => Entry::find($ref->id),
-            ContentType::Term => $this->term($ref),
+            ContentType::Term => $this->targets->findTerm($ref),
             default => null,
         };
-    }
-
-    private function term(TargetRef $ref): ?TermContract
-    {
-        $term = Term::find($ref->id);
-
-        return $term !== null && $term->taxonomy()->sites()->contains($ref->site) ? $term->in($ref->site) : null;
     }
 
     private function target(EntryContract|TermContract $source, string $site): Target

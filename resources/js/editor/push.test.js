@@ -161,7 +161,7 @@ describe('describePush', () => {
             status(),
         );
 
-        expect(shown).toMatchObject({ phase: 'running', sites: 'Greek, German', keepOpen: true, failure: null, result: null, reload: false });
+        expect(shown).toMatchObject({ sites: 'Greek, German', keepOpen: true, failure: null, result: null, reload: false });
         expect(shown.progress).toMatchObject({ total: 2, finished: 1 });
         expect(describePush({ phase: 'running', driver: 'queue', sites: ['el'], state: null }, status()).keepOpen).toBe(false);
     });
@@ -314,6 +314,23 @@ describe('start', () => {
         expect(api.requests[1]).toEqual({ method: 'get', url: active.urls.state, data: undefined });
         expect(followers.made[0].options.urls).toEqual(active.urls);
         expect(store.container('base').push).toMatchObject({ phase: 'running', run: '01OTHER', driver: 'queue', missing: ['el'] });
+    });
+
+    it('leaves the run another page started alone when the form switched to another item meanwhile', async () => {
+        const active = { run: '01OTHER', driver: 'queue', lanes: 2, urls: runUrls('01OTHER') };
+        let refuse;
+        const { api, followers, pushes } = setup({
+            api: fakeApi({ post: () => new Promise((resolve, reject) => (refuse = reject)) }),
+        });
+
+        const started = pushes.start('base', { reference: REFERENCE, sites: ['el'], mode: 'missing' });
+        store.switched('base', 'entry::hello-el');
+        refuse(new ApiError({ status: 409, code: 'run_active', message: 'Already', data: { active_run: active } }));
+        await started;
+
+        expect(api.get).not.toHaveBeenCalled();
+        expect(followers.made).toEqual([]);
+        expect(store.container('base').push).toBeNull();
     });
 });
 

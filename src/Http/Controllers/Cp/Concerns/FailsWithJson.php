@@ -9,10 +9,12 @@ trait FailsWithJson
 {
     /**
      * Ends the request with a JSON error the CP scripts act on by its `code`; the message is sanitised.
+     *
+     * @param  array<string, mixed>  $data  more keys for the body
      */
-    private function fail(int $status, string $code, string $message, ?int $retryAfter = null): never
+    private function fail(int $status, string $code, string $message, ?int $retryAfter = null, array $data = []): never
     {
-        $body = ['message' => Sanitizer::message($message), 'code' => $code];
+        $body = ['message' => Sanitizer::message($message), 'code' => $code, ...$data];
         $headers = [];
 
         if ($retryAfter !== null) {
