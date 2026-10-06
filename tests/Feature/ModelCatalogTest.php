@@ -137,6 +137,13 @@ it('resolves the translator from the override, then the setting, then the first 
     expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('openai:gpt-6.1-sol'));
 });
 
+it('names the automatic translator and reviewer whatever the settings name', function () {
+    $this->withSettings(['translator_model' => 'gemini:gemini-3.5-flash-lite', 'reviewer_model' => 'gemini:gemini-3.8-flash']);
+
+    expect(modelCatalog()->automaticTranslator())->toEqual(modelRef('anthropic:claude-sonnet-5-5'))
+        ->and(modelCatalog()->automaticReviewer(modelRef('anthropic:claude-sonnet-5-5')))->toEqual(modelRef('openai:gpt-6.1-sol'));
+});
+
 it('throws when no provider is configured and nothing names a translator', function () {
     $this->withProviderKeys([]);
 
