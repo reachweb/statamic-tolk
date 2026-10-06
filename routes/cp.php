@@ -3,11 +3,17 @@
 use Illuminate\Support\Facades\Route;
 use Reach\StatamicTolk\Http\Controllers\Cp\EditorController;
 use Reach\StatamicTolk\Http\Controllers\Cp\ModelsController;
+use Reach\StatamicTolk\Http\Controllers\Cp\OverviewController;
 use Reach\StatamicTolk\Http\Controllers\Cp\ProvidersController;
 use Reach\StatamicTolk\Http\Controllers\Cp\RunsController;
 use Reach\StatamicTolk\Http\Controllers\Cp\SiteProfileController;
 
 Route::name('tolk.')->prefix('tolk')->group(function () {
+    Route::middleware('can:run bulk translations')->group(function () {
+        Route::get('/', [OverviewController::class, 'index'])->name('overview');
+        Route::post('overview/scan', [OverviewController::class, 'scan'])->name('overview.scan');
+    });
+
     Route::name('editor.')->prefix('editor')->middleware('can:translate content')->group(function () {
         Route::get('status', [EditorController::class, 'status'])->name('status');
         Route::post('plan', [EditorController::class, 'plan'])->name('plan');

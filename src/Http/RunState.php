@@ -5,13 +5,11 @@ namespace Reach\StatamicTolk\Http;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Reach\StatamicTolk\Ai\ModelCatalog;
-use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Pricing;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
-use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 
@@ -92,21 +90,7 @@ final readonly class RunState
      */
     public function models(Run $run): array
     {
-        $labels = [];
-
-        foreach ([$run->options['translator'] ?? null, $run->options['reviewer'] ?? null, ...array_keys($run->usage->usages)] as $reference) {
-            if (! is_string($reference) || isset($labels[$reference])) {
-                continue;
-            }
-
-            try {
-                $labels[$reference] = $this->catalog->label(ModelRef::fromString($reference));
-            } catch (InvalidModelRef) {
-                $labels[$reference] = $reference;
-            }
-        }
-
-        return $labels;
+        return $this->catalog->labels([$run->options['translator'] ?? null, $run->options['reviewer'] ?? null, ...array_keys($run->usage->usages)]);
     }
 
     /**

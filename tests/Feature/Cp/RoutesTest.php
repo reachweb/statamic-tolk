@@ -23,6 +23,8 @@ function tolkCpRoutes(): array
         'editor confirm' => ['tolk.editor.confirm', 'POST', 'tolk/editor/confirm', 'editor'],
         'editor baseline' => ['tolk.editor.baseline', 'POST', 'tolk/editor/baseline', 'editor'],
         'editor push' => ['tolk.editor.push', 'POST', 'tolk/editor/push', 'editor'],
+        'overview' => ['tolk.overview', 'GET', 'tolk', 'runs'],
+        'overview scan' => ['tolk.overview.scan', 'POST', 'tolk/overview/scan', 'runs'],
         'runs index' => ['tolk.runs.index', 'GET', 'tolk/runs', 'runs'],
         'runs store' => ['tolk.runs.store', 'POST', 'tolk/runs', 'runs'],
         'runs show' => ['tolk.runs.show', 'GET', 'tolk/runs/01MISSINGRUN', 'runs', $run],
@@ -74,7 +76,7 @@ dataset('tolk routes', tolkCpRoutes());
 function registeredTolkRoutes(): array
 {
     return collect(Router::getRoutes()->getRoutes())
-        ->filter(fn (Route $route) => str_starts_with($route->uri(), config('statamic.cp.route').'/tolk/'))
+        ->filter(fn (Route $route) => $route->uri() === config('statamic.cp.route').'/tolk' || str_starts_with($route->uri(), config('statamic.cp.route').'/tolk/'))
         ->values()
         ->all();
 }

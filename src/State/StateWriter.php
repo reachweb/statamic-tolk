@@ -11,7 +11,8 @@ use Reach\StatamicTolk\Targets\TargetRef;
 
 /**
  * Writes translation state. With `commit`, a method that changed state dispatches a git commit: the state lives under
- * content/, but no Statamic event fires for it.
+ * content/, but no Statamic event fires for it. For the same reason confirm() and baseline() make the Overview count the
+ * target's container again when they changed state.
  */
 final readonly class StateWriter
 {
@@ -20,6 +21,7 @@ final readonly class StateWriter
     public function __construct(
         private StateRepository $repository,
         private StatusResolver $resolver,
+        private OverviewCache $overview,
     ) {}
 
     public function recordPending(TargetRef $ref, string $sourceSite, string $handle, PendingState $pending, bool $commit = false): void
@@ -77,6 +79,10 @@ final readonly class StateWriter
 
             return $state;
         });
+
+        if ($report->changed()) {
+            $this->overview->bump($target->type(), $target->container());
+        }
 
         $this->commit($commit && $report->changed());
 
@@ -136,6 +142,10 @@ final readonly class StateWriter
 
             return $count > 0 ? $state->withSourceSite($sourceSite) : $state;
         });
+
+        if ($count > 0) {
+            $this->overview->bump($target->type(), $target->container());
+        }
 
         $this->commit($commit && $count > 0);
 
