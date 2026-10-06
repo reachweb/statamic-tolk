@@ -153,6 +153,10 @@ describe('what the run translates', () => {
         );
         expect(notLocalizableHint({ out_of_scope: [field('notes', 'summary', 'Summary', 'hidden')] })).toBeNull();
         expect(notLocalizableHint({})).toBeNull();
+        expect(notLocalizableHint({ out_of_scope: [field('notes', 'internal_note', 'Internal note')] }, { linked: true })).toBe(
+            'Internal note is not translated because it is not localizable.',
+        );
+        expect(notLocalizableHint({}, { linked: true })).toBeNull();
     });
 
     it('describes the scope: collections, selected entries and sites', () => {

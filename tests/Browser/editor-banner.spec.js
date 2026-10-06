@@ -21,7 +21,10 @@ test('the banner shows the counts of a Greek article', async ({ page, browserErr
     await expect(localization.locator('[data-tolk-part="manual"]')).toHaveText('6 fields edited by hand');
     await expect(localization.locator('[data-tolk-part="untracked"]')).toHaveText('6 untracked');
     await expect(localization.locator('[data-tolk-part]')).toHaveCount(2);
-    await expect(localization).toContainText('Internal note is not translated because it is not localizable. Run php please tolk:doctor for details.');
+    await expect(localization.locator('[data-tolk-not-localizable]')).toHaveText(
+        'Internal note is not translated because it is not localizable. Open the setup audit',
+    );
+    await expect(localization.locator('[data-tolk-audit-link]')).toHaveAttribute('href', new RegExp(`${cpUrl('tolk/audit')}#tolk-audit-localizable$`));
     await expect(banner(page).locator('[data-tolk-setup]')).toHaveCount(0);
 
     await localization.locator('[data-tolk-part="untracked"]').focus();

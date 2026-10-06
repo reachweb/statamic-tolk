@@ -102,6 +102,7 @@ class ServiceProvider extends AddonServiceProvider
             ->children([
                 $nav->item('Overview')->route('tolk.overview'),
                 $nav->item('Runs')->route('tolk.runs.index'),
+                $nav->item('Audit')->route('tolk.audit'),
             ]));
     }
 
@@ -134,6 +135,7 @@ class ServiceProvider extends AddonServiceProvider
             'multisite' => Site::multiEnabled() && Site::hasMultiple(),
             'fakeEngine' => FakeEngine::enabled(),
             'settingsUrl' => $this->settingsUrl(),
+            'auditUrl' => User::current()?->can('run bulk translations') ? cp_route('tolk.audit') : null,
         ]]);
     }
 

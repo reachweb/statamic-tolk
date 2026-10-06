@@ -207,19 +207,18 @@ describe('a localization', () => {
         });
     });
 
-    it('hints at text fields that are not localizable, and only at those', () => {
-        const banner = describeStatus(
-            payload({
-                localization: localization({ title: field('Title', 'untranslated') }, { untranslated: 1 }, {
-                    status: 'untranslated',
-                    out_of_scope: [
-                        { handle: 'teaser', label: 'Teaser', type: 'textarea', reason: 'not_localizable' },
-                        { handle: 'notes', label: 'Notes', type: 'text', reason: 'disabled' },
-                        { handle: 'kicker', label: 'Kicker', type: 'text', reason: 'not_localizable' },
-                    ],
-                }),
+    it('hints at text fields that are not localizable, and only at those, without the command when the page links the audit', () => {
+        const status = payload({
+            localization: localization({ title: field('Title', 'untranslated') }, { untranslated: 1 }, {
+                status: 'untranslated',
+                out_of_scope: [
+                    { handle: 'teaser', label: 'Teaser', type: 'textarea', reason: 'not_localizable' },
+                    { handle: 'notes', label: 'Notes', type: 'text', reason: 'disabled' },
+                    { handle: 'kicker', label: 'Kicker', type: 'text', reason: 'not_localizable' },
+                ],
             }),
-        );
+        });
+        const banner = describeStatus(status);
 
         expect(banner.localization.notLocalizable).toEqual([
             { handle: 'teaser', label: 'Teaser' },
@@ -228,6 +227,7 @@ describe('a localization', () => {
         expect(banner.localization.hint).toBe(
             'Teaser, Kicker are not translated because they are not localizable. Run php please tolk:doctor for details.',
         );
+        expect(describeStatus(status, { linked: true }).localization.hint).toBe('Teaser, Kicker are not translated because they are not localizable.');
     });
 
     it('has nothing to translate when no field is in scope', () => {

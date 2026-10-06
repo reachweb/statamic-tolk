@@ -95,7 +95,8 @@ const result = computed(() => describeResult(current.value));
 const scope = computed(() => describeScope(run.value.scope, siteName));
 const breakdown = computed(() => describeBreakdown(current.value.breakdown, siteName));
 const leftOut = computed(() => describeLeftOut(run.value.scope));
-const hint = computed(() => notLocalizableHint(run.value.scope));
+const auditUrl = Statamic.$config.get('tolk.auditUrl');
+const hint = computed(() => notLocalizableHint(run.value.scope, { linked: Boolean(auditUrl) }));
 const options = computed(() => describeOptions(run.value.options, props.models));
 const estimated = computed(() => describeEstimate(estimate.value, progress.value.total));
 const usage = computed(() => describeUsage(run.value, props.models));
@@ -271,7 +272,12 @@ function filterBy(value) {
                 </Table>
                 <Description v-if="breakdown.length === 0">{{ __('This run has nothing to translate.') }}</Description>
                 <Description v-for="note in leftOut" :key="note.reason" :data-tolk-left-out="note.reason">{{ note.text }}</Description>
-                <Description v-if="hint" data-tolk-not-localizable>{{ hint }}</Description>
+                <Description v-if="hint" data-tolk-not-localizable>
+                    {{ hint }}
+                    <Link v-if="auditUrl" :href="`${auditUrl}#tolk-audit-localizable`" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-audit-link>
+                        {{ __('Open the setup audit') }}
+                    </Link>
+                </Description>
             </Card>
 
             <Card class="space-y-3" data-tolk-settings>

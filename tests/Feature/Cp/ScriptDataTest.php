@@ -17,6 +17,7 @@ it('provides the addon\'s data to the CP script', function () {
         'multisite' => true,
         'fakeEngine' => false,
         'settingsUrl' => null,
+        'auditUrl' => null,
     ]);
 });
 
@@ -30,6 +31,7 @@ it('reads the values when the CP page renders, not at boot', function () {
         'multisite' => true,
         'fakeEngine' => true,
         'settingsUrl' => null,
+        'auditUrl' => null,
     ]);
 });
 
@@ -60,10 +62,20 @@ it('links the settings only for users who may edit them', function (array $permi
     'configure addons' => [['configure addons'], true],
 ]);
 
+it('links the audit only for users who may run bulk translations', function (array $permissions, bool $linked) {
+    $this->signInWithPermissions(['access cp', ...$permissions]);
+
+    expect(tolkScriptData()['auditUrl'])->toBe($linked ? cp_route('tolk.audit') : null);
+})->with([
+    'an editor' => [['translate content'], false],
+    'the settings and blueprints' => [['edit reachweb/statamic-tolk settings', 'configure fields'], false],
+    'run bulk translations' => [['run bulk translations'], true],
+]);
+
 it('includes the data in the CP page', function () {
     $this->signInAdmin();
 
     $this->get(cp_route('dashboard'))
         ->assertOk()
-        ->assertSee('"tolk":{"fieldtypes":["text","textarea","markdown","bard","replicator","grid","group","table","list","array"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).'}', false);
+        ->assertSee('"tolk":{"fieldtypes":["text","textarea","markdown","bard","replicator","grid","group","table","list","array"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).',"auditUrl":'.json_encode(cp_route('tolk.audit')).'}', false);
 });

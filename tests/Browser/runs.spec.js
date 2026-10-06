@@ -97,9 +97,8 @@ test('Cancel stops a run, which keeps what it saved and can be resumed', async (
     const { url } = await createRun(page, { sites: ['de'], collections: ['articles'] });
 
     await page.goto(url);
-    await expect(page.locator('[data-tolk-not-localizable]')).toHaveText(
-        'Internal note is not translated because it is not localizable. Run php please tolk:doctor for details.',
-    );
+    await expect(page.locator('[data-tolk-not-localizable]')).toHaveText('Internal note is not translated because it is not localizable. Open the setup audit');
+    await expect(page.locator('[data-tolk-audit-link]')).toHaveAttribute('href', new RegExp(`${cpUrl('tolk/audit')}#tolk-audit-localizable$`));
     expect(await warnsOnUnload(page)).toBe(false);
 
     await page.locator('[data-tolk-action="start"]').click();
