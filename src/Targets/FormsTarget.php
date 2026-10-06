@@ -7,19 +7,15 @@ use LogicException;
 use Reach\StatamicTolk\Content\Handlers\LangStringHandler;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
-use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\LangFiles;
-use Reach\StatamicTolk\Targets\Concerns\AppliesFields;
-use Reach\StatamicTolk\Translation\AssembledField;
-use Statamic\Contracts\Auth\User;
+use Reach\StatamicTolk\Targets\Concerns\WritesLangFile;
 use Statamic\Contracts\Forms\Form as FormContract;
 use Statamic\Facades\Form;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fields;
-use Throwable;
 
 /**
  * The texts of every form in one language, stored in `lang/{lang}.json` under the source text, as Laravel's JSON
@@ -29,24 +25,15 @@ use Throwable;
  */
 final class FormsTarget implements Target
 {
-    use AppliesFields;
+    use WritesLangFile;
 
     public const string CONTAINER = 'forms';
-
-    private const string FIELDTYPE = 'text';
 
     // The texts of a form field, in the order they are collected.
     private const array FIELD_TEXTS = ['display', 'instructions', 'placeholder'];
 
     /** @var ?array<string, array{places: list<string>, forms: list<string>}> */
     private ?array $texts = null;
-
-    /** @var list<string> */
-    private array $renderedSubjects = [];
-
-    private ?array $source = null;
-
-    private ?array $target = null;
 
     private ?Collection $fields = null;
 
@@ -59,16 +46,6 @@ final class FormsTarget implements Target
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
     ) {}
-
-    public function lang(): string
-    {
-        return $this->lang;
-    }
-
-    public function sourceLang(): string
-    {
-        return $this->sourceLang;
-    }
 
     /**
      * The file the texts are written to, such as `lang/de.json`.
@@ -110,9 +87,17 @@ final class FormsTarget implements Target
      */
     public function renderedSubjects(): array
     {
-        $this->texts();
+        $places = [];
 
-        return $this->renderedSubjects;
+        foreach (self::forms() as $form) {
+            foreach (self::emails($form->email()) as $email) {
+                if (self::rendered($email['subject'] ?? null)) {
+                    $places[] = "{$form->title()} › email subject";
+                }
+            }
+        }
+
+        return $places;
     }
 
     /**
@@ -129,30 +114,9 @@ final class FormsTarget implements Target
         ));
     }
 
-    // Null while the file does not exist.
-    public function ref(): ?TargetRef
-    {
-        return $this->exists() ? $this->targetRef() : null;
-    }
-
     public function type(): ContentType
     {
         return ContentType::Forms;
-    }
-
-    public function exists(): bool
-    {
-        return $this->files->exists($this->lang, LangFiles::JSON);
-    }
-
-    public function sourceSite(): string
-    {
-        return $this->sourceSite;
-    }
-
-    public function targetSite(): string
-    {
-        return $this->site;
     }
 
     public function container(): string
@@ -163,11 +127,6 @@ final class FormsTarget implements Target
     public function title(): string
     {
         return 'Forms';
-    }
-
-    public function editUrl(): ?string
-    {
-        return null;
     }
 
     // The form texts are named by both languages, not by sites.
@@ -190,14 +149,6 @@ final class FormsTarget implements Target
             ])]);
     }
 
-    public function explainFields(): array
-    {
-        return $this->fields()
-            ->map(fn (Field $field, string $handle) => ['handle' => $handle, 'display' => $field->display(), 'type' => self::FIELDTYPE, 'in_scope' => true, 'reason' => 'ok'])
-            ->values()
-            ->all();
-    }
-
     public function sourceHasValue(string $handle): bool
     {
         return $this->fields()->has($handle);
@@ -207,28 +158,6 @@ final class FormsTarget implements Target
     public function sourceValue(string $handle): mixed
     {
         return $this->sourceHasValue($handle) ? $handle : null;
-    }
-
-    // Languages do not chain.
-    public function sourceIsLocalization(): bool
-    {
-        return false;
-    }
-
-    public function hasOverride(string $handle): bool
-    {
-        return array_key_exists($handle, $this->target());
-    }
-
-    public function targetValue(string $handle): mixed
-    {
-        return $this->target()[$handle] ?? null;
-    }
-
-    // There is no publish form to show an inherited value in.
-    public function inheritedValue(string $handle): mixed
-    {
-        return null;
     }
 
     public function formFields(array $values, bool $source = false): Fields
@@ -247,52 +176,26 @@ final class FormsTarget implements Target
         ];
     }
 
-    // Form texts are translated from the CLI only (§A16).
-    public function authorize(User $user): bool
-    {
-        return false;
-    }
-
     public function fresh(): static
     {
         return new self($this->lang, $this->sourceLang, $this->site, $this->sourceSite, $this->files, $this->resolver, $this->stateWriter);
     }
 
-    /**
-     * Writes the translated texts into the JSON file, which LangFiles re-reads first, so every other key keeps its value
-     * and its place; new texts are appended. The `_json` LangTarget writes the same file, also inside
-     * ContentWriter::write(), so neither drops the other's keys.
-     *
-     * @param  list<AssembledField>  $fields
-     */
-    private function applyFresh(array $fields, ApplyOptions $options): ApplyResult
+    private function group(): string
     {
-        [$writes, $skipped] = $this->writable($this->keyByHandle($fields), $options);
-        $ref = $this->targetRef();
-        $created = false;
+        return LangFiles::JSON;
+    }
 
-        if ($writes !== []) {
-            $set = [];
+    private function targetRef(): TargetRef
+    {
+        return new TargetRef(ContentType::Forms, $this->lang);
+    }
 
-            foreach ($writes as $handle => $field) {
-                if (! $field->remove) {
-                    $set[$handle] = $field->value;
-                    $this->stateWriter->recordPending($ref, $this->sourceSite, $handle, $this->pending($field, $field->value));
-                }
-            }
-
-            $created = ! $this->exists();
-
-            try {
-                $this->files->write($this->lang, LangFiles::JSON, $set, $this->removedHandles($writes), []);
-            } catch (Throwable $exception) {
-                throw ApplyFailed::notWritten($this->name(), $exception);
-            }
-
-            $this->confirmWrites($ref, $writes);
-        }
-
-        return new ApplyResult(ref: $ref, created: $created, applied: array_keys($writes), skipped: $skipped);
+    // The JSON file keeps its order, and new texts are appended. The `_json` LangTarget writes the same file, also
+    // inside ContentWriter::write(), so neither drops the other's keys.
+    private function sourceShape(): array
+    {
+        return [];
     }
 
     /**
@@ -309,10 +212,9 @@ final class FormsTarget implements Target
         }
 
         $this->texts = [];
-        $this->renderedSubjects = [];
 
-        foreach (Form::all()->filter()->sortBy(fn (FormContract $form) => $form->handle()) as $form) {
-            foreach ($this->occurrences($form) as [$text, $place]) {
+        foreach (self::forms() as $form) {
+            foreach (self::occurrences($form) as [$text, $place]) {
                 if (! is_string($text) || preg_match('/\p{L}/u', $text) !== 1) {
                     continue;
                 }
@@ -326,9 +228,17 @@ final class FormsTarget implements Target
     }
 
     /**
+     * @return Collection<int, FormContract> by handle
+     */
+    private static function forms(): Collection
+    {
+        return Form::all()->filter()->sortBy(fn (FormContract $form) => $form->handle());
+    }
+
+    /**
      * @return list<array{0: mixed, 1: string}> each text of the form with its place, such as "Contact › Email › instructions"
      */
-    private function occurrences(FormContract $form): array
+    private static function occurrences(FormContract $form): array
     {
         $title = (string) $form->title();
         $occurrences = [[$form->title(), "{$title} › title"]];
@@ -346,13 +256,8 @@ final class FormsTarget implements Target
         }
 
         foreach (self::emails($form->email()) as $email) {
-            $subject = $email['subject'] ?? null;
-            $place = "{$title} › email subject";
-
-            if (is_string($subject) && str_contains($subject, '{{')) {
-                $this->renderedSubjects[] = $place;
-            } else {
-                $occurrences[] = [$subject, $place];
+            if (! self::rendered($email['subject'] ?? null)) {
+                $occurrences[] = [$email['subject'] ?? null, "{$title} › email subject"];
             }
         }
 
@@ -398,23 +303,14 @@ final class FormsTarget implements Target
         return array_values(array_filter(isset($email['to']) ? [$email] : $email, 'is_array'));
     }
 
+    // A subject with Antlers, which core renders before it looks for the translation.
+    private static function rendered(mixed $subject): bool
+    {
+        return is_string($subject) && str_contains($subject, '{{');
+    }
+
     private function inSourceJson(string $text): bool
     {
         return array_key_exists($text, $this->source());
-    }
-
-    private function targetRef(): TargetRef
-    {
-        return new TargetRef(ContentType::Forms, $this->lang);
-    }
-
-    private function source(): array
-    {
-        return $this->source ??= $this->files->read($this->sourceLang, LangFiles::JSON);
-    }
-
-    private function target(): array
-    {
-        return $this->target ??= $this->files->read($this->lang, LangFiles::JSON);
     }
 }

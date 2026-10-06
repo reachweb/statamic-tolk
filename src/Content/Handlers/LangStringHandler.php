@@ -52,9 +52,7 @@ final class LangStringHandler implements FieldHandler
             $variants[$index] = $condition.$this->block(substr($variant, strlen($condition)), self::tokenize(...), $hint, $translate, $context->with($index));
         }
 
-        $mapped = implode('|', $variants);
-
-        return $mapped === $value ? $value : $mapped;
+        return implode('|', $variants);
     }
 
     /**

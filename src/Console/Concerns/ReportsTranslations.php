@@ -129,10 +129,17 @@ trait ReportsTranslations
             return '<comment>nothing to do</comment>';
         }
 
+        return implode(', ', $plan->fieldHandles()).$this->planSizeNote($plan);
+    }
+
+    /**
+     * What the plan sends, in brackets: its segments, characters and the segments it reuses.
+     */
+    protected function planSizeNote(Plan $plan): string
+    {
         $size = $this->planSize($plan);
 
-        return implode(', ', $plan->fieldHandles())
-            .' ('.$this->count($size['segments'], 'segment').', '.$this->count($size['characters'], 'character')
+        return ' ('.$this->count($size['segments'], 'segment').', '.$this->count($size['characters'], 'character')
             .($size['reused'] > 0 ? ', '.$this->count($size['reused'], 'segment').' reused' : '').')';
     }
 

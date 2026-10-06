@@ -24,11 +24,30 @@ final readonly class StateWriter
 
     public function recordPending(TargetRef $ref, string $sourceSite, string $handle, PendingState $pending, bool $commit = false): void
     {
-        $this->repository->update($ref, fn (ItemState $state) => $state
-            ->withSourceSite($sourceSite)
-            ->withField($handle, $state->field($handle)->withPending($pending)));
-
+        $this->recordPendingFields($ref, $sourceSite, [$handle => $pending]);
         $this->commit($commit);
+    }
+
+    /**
+     * recordPending() for several fields of one target, in one update of its state.
+     *
+     * @param  array<string, PendingState>  $pending  by handle
+     */
+    public function recordPendingFields(TargetRef $ref, string $sourceSite, array $pending): void
+    {
+        if ($pending === []) {
+            return;
+        }
+
+        $this->repository->update($ref, function (ItemState $state) use ($sourceSite, $pending) {
+            $state = $state->withSourceSite($sourceSite);
+
+            foreach ($pending as $handle => $entry) {
+                $state = $state->withField((string) $handle, $state->field((string) $handle)->withPending($entry));
+            }
+
+            return $state;
+        });
     }
 
     /**
@@ -82,18 +101,17 @@ final readonly class StateWriter
 
         $fields = [];
 
+        // A field whose state is already its baseline would be skipped below, so it is left out before the update.
         foreach ($this->resolver->resolve($target)->fields as $handle => $field) {
-            if (($handles === null || in_array((string) $handle, $handles, true)) && $this->ownedByHuman($field, $includeMachine, $includeCopies)) {
+            if (($handles === null || in_array((string) $handle, $handles, true))
+                && $this->ownedByHuman($field, $includeMachine, $includeCopies)
+                && $field->state->baselined($field->sourceHash, $field->targetHash)->toArray() !== $field->state->toArray()) {
                 $fields[$handle] = $field;
             }
         }
 
-        if ($dryRun) {
-            return count(array_filter($fields, fn (FieldStatusInfo $field) => $field->state->baselined($field->sourceHash, $field->targetHash)->toArray() !== $field->state->toArray()));
-        }
-
-        if ($fields === []) {
-            return 0;
+        if ($dryRun || $fields === []) {
+            return count($fields);
         }
 
         $sourceSite = $target->sourceSite();

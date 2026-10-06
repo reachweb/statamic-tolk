@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\Support\Pruner;
 use Reach\StatamicTolk\Support\PruneReport;
@@ -57,7 +58,7 @@ class PruneCommand extends Command
 
     private function detail(string $label, int $count, string $noun): void
     {
-        $this->components->twoColumnDetail($label, $count === 1 ? "1 {$noun}" : number_format($count)." {$noun}s");
+        $this->components->twoColumnDetail($label, number_format($count).' '.Str::plural($noun, $count));
     }
 
     /**

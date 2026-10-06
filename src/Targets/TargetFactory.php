@@ -261,13 +261,7 @@ final class TargetFactory
     // A lang reference names the target language; the source is the default site's language.
     private function langFromReference(TargetRef $ref): LangTarget
     {
-        $sourceLang = (string) Site::default()->lang();
-
-        if ($ref->site === $sourceLang) {
-            throw NotALocalization::for((string) $ref);
-        }
-
-        return $this->forLang($ref->id, $ref->site, $sourceLang);
+        return $this->forLang($ref->id, $ref->site, $this->referenceSourceLang($ref, $ref->site));
     }
 
     // A translation file's source id is `{group}::{source language}`, and its site the target language (LangTarget::describe()).
@@ -281,13 +275,19 @@ final class TargetFactory
     // A forms reference names the target language; the source is the default site's language.
     private function formsFromReference(TargetRef $ref): FormsTarget
     {
+        return $this->forForms($ref->id, $this->referenceSourceLang($ref, $ref->id));
+    }
+
+    /**
+     * The source language of a lang or forms reference: the default site's, which the reference's language must not be.
+     *
+     * @throws NotALocalization
+     */
+    private function referenceSourceLang(TargetRef $ref, string $lang): string
+    {
         $sourceLang = (string) Site::default()->lang();
 
-        if ($ref->id === $sourceLang) {
-            throw NotALocalization::for((string) $ref);
-        }
-
-        return $this->forForms($ref->id, $sourceLang);
+        return $lang === $sourceLang ? throw NotALocalization::for((string) $ref) : $sourceLang;
     }
 
     /**

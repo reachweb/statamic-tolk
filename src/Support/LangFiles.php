@@ -56,7 +56,7 @@ final class LangFiles
 
     public function path(string $lang, string $group): string
     {
-        return lang_path($group === self::JSON ? "{$lang}.json" : "{$lang}/{$group}.php");
+        return lang_path(self::relative($lang, $group));
     }
 
     /**
@@ -64,7 +64,12 @@ final class LangFiles
      */
     public static function name(string $lang, string $group): string
     {
-        return 'lang/'.($group === self::JSON ? "{$lang}.json" : "{$lang}/{$group}.php");
+        return 'lang/'.self::relative($lang, $group);
+    }
+
+    private static function relative(string $lang, string $group): string
+    {
+        return $group === self::JSON ? "{$lang}.json" : "{$lang}/{$group}.php";
     }
 
     /**
@@ -93,7 +98,7 @@ final class LangFiles
             throw InvalidLangFile::unreadable(self::name($lang, $group));
         }
 
-        return $group === self::JSON ? $data : self::flatten($data);
+        return $group === self::JSON ? $data : Arr::dot($data);
     }
 
     /**
@@ -117,7 +122,7 @@ final class LangFiles
         $name = self::name($lang, $group);
         $path = $this->path($lang, $group);
 
-        $this->writeAtomically($path, $group === self::JSON ? self::json($values) : self::php(self::nest($values), $name), "the translation file {$name}");
+        $this->writeAtomically($path, $group === self::JSON ? self::json($values) : self::php(Arr::undot($values), $name), "the translation file {$name}");
 
         // A long-lived process with OPcache for the CLI would otherwise include the old file for a while.
         if (function_exists('opcache_invalidate')) {
@@ -136,38 +141,10 @@ final class LangFiles
         }
 
         try {
-            return $this->files->get($this->path($lang, $group)) === self::php(self::nest($this->read($lang, $group)), self::name($lang, $group));
+            return $this->files->get($this->path($lang, $group)) === self::php(Arr::undot($this->read($lang, $group)), self::name($lang, $group));
         } catch (InvalidLangFile) {
             return false;
         }
-    }
-
-    private static function flatten(array $values, string $prefix = ''): array
-    {
-        $flat = [];
-
-        foreach ($values as $key => $value) {
-            if (is_array($value) && $value !== []) {
-                foreach (self::flatten($value, $prefix.$key.'.') as $nestedKey => $nestedValue) {
-                    $flat[$nestedKey] = $nestedValue;
-                }
-            } else {
-                $flat[$prefix.$key] = $value;
-            }
-        }
-
-        return $flat;
-    }
-
-    private static function nest(array $flat): array
-    {
-        $nested = [];
-
-        foreach ($flat as $key => $value) {
-            Arr::set($nested, (string) $key, $value);
-        }
-
-        return $nested;
     }
 
     private static function json(array $values): string

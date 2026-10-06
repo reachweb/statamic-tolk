@@ -93,10 +93,8 @@ final readonly class TranslationEngine implements Engine
         $charsPerToken = $charsPerToken > 0 ? $charsPerToken : 3.0;
 
         $tokens = max((int) ceil($chars / $charsPerToken * self::OUTPUT_FACTOR), self::MIN_OUTPUT_TOKENS);
-        $cap = $tokens * max(1, $call->capMultiplier) + $this->catalog->reasoningHeadroom($call->model);
-        $max = $this->catalog->maxOutputTokens($call->model);
 
-        return $max === null ? $cap : min($cap, $max);
+        return $this->catalog->outputCap($call->model, $tokens * max(1, $call->capMultiplier));
     }
 
     private function ensureNotPaused(EngineCall $call): void

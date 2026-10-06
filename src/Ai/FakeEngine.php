@@ -29,7 +29,7 @@ final class FakeEngine implements Engine
 
     public function translate(EngineCall $call): EngineResult
     {
-        $this->delay();
+        self::delay();
 
         $texts = $this->texts($call, 'text');
 
@@ -44,7 +44,7 @@ final class FakeEngine implements Engine
 
     public function review(EngineCall $call): EngineResult
     {
-        $this->delay();
+        self::delay();
 
         $marked = array_filter($this->texts($call, 'source'), fn (string $source) => str_contains($source, self::REVIEW));
 
@@ -85,7 +85,7 @@ final class FakeEngine implements Engine
         return $texts;
     }
 
-    private function delay(): void
+    public static function delay(): void
     {
         $milliseconds = (int) config('tolk.fake_delay_ms', 300);
 
