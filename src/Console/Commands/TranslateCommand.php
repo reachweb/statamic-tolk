@@ -32,19 +32,21 @@ use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\GlobalsTarget;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Console\RunsInPlease;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Throwable;
 
 /**
- * Translates entries and terms through a run (§A12): the run is estimated and confirmed here, then translated by `tolk:work`
+ * Translates entries, terms and global sets through a run (§A12): the run is estimated and confirmed here, then translated by `tolk:work`
  * worker processes while this process applies what they translated, one item at a time (§A11). With one worker, or
  * when no process can be started, this process does both.
  */
@@ -79,6 +81,9 @@ class TranslateCommand extends Command
         RunPlanner::SITE_NOT_IN_COLLECTION => ['target is in a site its collection does not have', 'targets are in sites their collection does not have'],
         RunPlanner::EXCLUDED_TAXONOMY => ['target is in a taxonomy excluded in the settings', 'targets are in taxonomies excluded in the settings'],
         RunPlanner::SITE_NOT_IN_TAXONOMY => ['target is in a site its taxonomy does not have', 'targets are in sites their taxonomy does not have'],
+        GlobalsTarget::SITE_NOT_IN_SET => ['target is in a site its global set does not have', 'targets are in sites their global set does not have'],
+        GlobalsTarget::NO_ORIGIN => ['target is in a site its global set has no origin for', 'targets are in sites their global set has no origin for'],
+        GlobalsTarget::NO_BLUEPRINT => ['target is in a global set without a blueprint, so none of its fields is localizable', 'targets are in global sets without a blueprint, so none of their fields is localizable'],
         RunItem::UNAUTHORIZED => ['target is one you may not edit', 'targets are ones you may not edit'],
     ];
 
@@ -86,9 +91,10 @@ class TranslateCommand extends Command
         {--entry=* : Translate the family of this entry (any of its localizations names it)}
         {--collection=* : Translate every entry of this collection}
         {--taxonomy=* : Translate every term of this taxonomy}
+        {--globals=* : Translate this global set}
         {--all : Translate every collection that has more than one site}
         {--site=* : The site to translate into (required)}
-        {--from= : The site to translate a missing localization from, where the entry has one there (default: the origin; a term is always translated from the first site of its taxonomy)}
+        {--from= : The site to translate a missing localization from, where the entry has one there (default: the origin; a term is always translated from the first site of its taxonomy, and a global set from the origin it names for the site)}
         {--mode=missing : missing (only what is not translated yet), update (also outdated translations), all (everything again) or review (only review the existing machine translations)}
         {--force : Overwrite fields that were edited by hand (in mode review: review them too; they stay manual)}
         {--publish : Publish a new localization when its origin is published, instead of saving it as a draft}
@@ -103,7 +109,7 @@ class TranslateCommand extends Command
         {--dry-run : Show what would be translated, without calling the model or saving anything}
         {--yes : Translate without asking for confirmation}';
 
-    protected $description = 'Translate entries and terms into other sites';
+    protected $description = 'Translate entries, terms and global sets into other sites';
 
     private RunRepository $runs;
 
@@ -129,7 +135,7 @@ class TranslateCommand extends Command
             $mode = $this->mode();
             $review = $this->review($mode);
             $sourceSite = $this->sourceSite();
-            [$collections, $entryIds, $taxonomies] = $this->selection();
+            [$collections, $entryIds, $taxonomies, $globals] = $this->selection();
             $concurrency = $this->concurrency();
             $this->checkQueue();
             $options = PlanOptions::fromSettings($settings, $catalog, [
@@ -153,6 +159,7 @@ class TranslateCommand extends Command
                 sourceSite: $sourceSite,
                 collections: $collections,
                 taxonomies: $taxonomies,
+                globals: $globals,
                 entryIds: $entryIds,
                 options: [
                     'mode' => $mode->value,
@@ -663,24 +670,25 @@ class TranslateCommand extends Command
     }
 
     /**
-     * @return array{0: list<string>, 1: list<string>, 2: list<string>} the collections, the entry ids and the taxonomies
+     * @return array{0: list<string>, 1: list<string>, 2: list<string>, 3: list<string>} the collections, the entry ids, the taxonomies and the global sets
      */
     private function selection(): array
     {
         $collections = array_values(array_unique($this->option('collection')));
         $entryIds = array_values(array_unique($this->option('entry')));
         $taxonomies = array_values(array_unique($this->option('taxonomy')));
+        $globals = array_values(array_unique($this->option('globals')));
 
         if ($this->option('all')) {
-            if ($collections !== [] || $entryIds !== [] || $taxonomies !== []) {
-                throw new InvalidArgumentException('--all cannot be combined with --collection, --entry or --taxonomy.');
+            if ($collections !== [] || $entryIds !== [] || $taxonomies !== [] || $globals !== []) {
+                throw new InvalidArgumentException('--all cannot be combined with --collection, --entry, --taxonomy or --globals.');
             }
 
-            return [[RunRequest::ALL], [], []];
+            return [[RunRequest::ALL], [], [], []];
         }
 
-        if ($collections === [] && $entryIds === [] && $taxonomies === []) {
-            throw new InvalidArgumentException('Name what to translate with --collection, --entry, --taxonomy or --all.');
+        if ($collections === [] && $entryIds === [] && $taxonomies === [] && $globals === []) {
+            throw new InvalidArgumentException('Name what to translate with --collection, --entry, --taxonomy, --globals or --all.');
         }
 
         foreach ($collections as $handle) {
@@ -695,13 +703,19 @@ class TranslateCommand extends Command
             }
         }
 
+        foreach ($globals as $handle) {
+            if (GlobalSet::findByHandle($handle) === null) {
+                throw new InvalidArgumentException("Global set [{$handle}] not found.");
+            }
+        }
+
         foreach ($entryIds as $id) {
             if (Entry::find($id) === null) {
                 throw TargetNotFound::entry($id);
             }
         }
 
-        return [$collections, $entryIds, $taxonomies];
+        return [$collections, $entryIds, $taxonomies, $globals];
     }
 
     private function concurrency(): int

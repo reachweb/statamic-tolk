@@ -221,6 +221,7 @@ export function describeScope(scope, siteName = (handle) => handle) {
     const list = (key) => (Array.isArray(scope?.[key]) ? scope[key] : []);
     const collections = list('collections');
     const taxonomies = list('taxonomies');
+    const globals = list('globals');
     const entries = list('entry_ids').length;
     const terms = list('term_ids').length;
     const parts = [];
@@ -243,6 +244,12 @@ export function describeScope(scope, siteName = (handle) => handle) {
 
     if (terms > 0) {
         parts.push(__n(':count selected term|:count selected terms', terms));
+    }
+
+    if (globals.includes('*')) {
+        parts.push(__('All global sets'));
+    } else if (globals.length > 0) {
+        parts.push(globals.join(', '));
     }
 
     return {

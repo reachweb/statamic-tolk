@@ -16,8 +16,10 @@ use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Entry;
+use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
 use Statamic\Facades\Term;
 
@@ -33,7 +35,7 @@ final class TargetFactory
     ) {}
 
     /**
-     * The reference of an existing target; an entry or term reference must name a localization.
+     * The reference of an existing target; an entry, term or globals reference must name a localization.
      */
     public function fromReference(string|TargetRef $reference): Target
     {
@@ -42,6 +44,7 @@ final class TargetFactory
         return match ($ref->type) {
             ContentType::Entry => $this->entryFromReference($ref),
             ContentType::Term => $this->termFromReference($ref),
+            ContentType::GlobalSet => $this->globalsFromReference($ref),
             default => throw NotSupportedYet::contentType($ref->type),
         };
     }
@@ -92,6 +95,21 @@ final class TargetFactory
     }
 
     /**
+     * $set is the set or its handle. A site the set does not have or has no origin for gives a target that is not
+     * translatable (GlobalsTarget::untranslatableReason()), so callers can report it.
+     */
+    public function forGlobalSet(GlobalSetContract|string $set, string $site): GlobalsTarget
+    {
+        $set = $set instanceof GlobalSetContract ? $set : (GlobalSet::findByHandle($set) ?? throw TargetNotFound::globalSet($set));
+
+        if (Site::get($site) === null) {
+            throw UnknownSite::for($site);
+        }
+
+        return new GlobalsTarget($set->handle(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter, $set);
+    }
+
+    /**
      * The term of a term reference in the site it names; null when there is no such term or its taxonomy lacks the site.
      */
     public function findTerm(TargetRef $ref): ?TermContract
@@ -114,6 +132,7 @@ final class TargetFactory
         return match ($type) {
             ContentType::Entry => $this->forEntry((string) $sourceId, $site),
             ContentType::Term => $this->forTerm((string) $sourceId, $site),
+            ContentType::GlobalSet => $this->forGlobalSet((string) $sourceId, $site),
             default => throw NotSupportedYet::contentType($type),
         };
     }
@@ -136,5 +155,21 @@ final class TargetFactory
         }
 
         return $this->forTerm($term, $ref->site);
+    }
+
+    // As an entry or term reference names a localization, a globals reference names the variables of a site with an origin.
+    private function globalsFromReference(TargetRef $ref): GlobalsTarget
+    {
+        $set = GlobalSet::findByHandle($ref->id);
+
+        if ($set === null || ! $set->sites()->contains($ref->site)) {
+            throw TargetNotFound::globalSet($ref->id, $ref->site);
+        }
+
+        if (GlobalsTarget::untranslatableReasonFor($set, $ref->site) === GlobalsTarget::NO_ORIGIN) {
+            throw NotALocalization::for((string) $ref);
+        }
+
+        return $this->forGlobalSet($set, $ref->site);
     }
 }

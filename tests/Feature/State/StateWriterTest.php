@@ -18,6 +18,7 @@ use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Git;
+use Statamic\Facades\GlobalSet;
 use Statamic\Git\CommitJob;
 
 beforeEach(function () {
@@ -566,6 +567,24 @@ describe('deleted content', function () {
         $travel->delete();
 
         expect(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toBe(['term::topics::food::el']);
+    });
+
+    it('forgets the state of the variables of a site removed from a global set, and of every site of a deleted set', function () {
+        $this->makeGlobalSet('site_settings', ['en' => null, 'el' => 'en', 'de' => 'en'], ['tagline' => ['type' => 'text', 'localizable' => true]], ['en' => ['tagline' => 'By the sea']]);
+        $this->makeGlobalSet('footer', ['en' => null, 'el' => 'en'], ['tagline' => ['type' => 'text', 'localizable' => true]], ['en' => ['tagline' => 'Open all year.']]);
+        $references = fn () => array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false));
+
+        foreach (['globals::site_settings::el', 'globals::site_settings::de', 'globals::footer::el'] as $reference) {
+            app(StateRepository::class)->update(TargetRef::parse($reference), fn (ItemState $state) => $state->withField('tagline', StateFixtures::machine('By the sea', 'Δίπλα στη θάλασσα')));
+        }
+
+        GlobalSet::findByHandle('site_settings')->sites(['en' => null, 'el' => 'en'])->save();
+
+        expect($references())->toEqualCanonicalizing(['globals::site_settings::el', 'globals::footer::el']);
+
+        GlobalSet::findByHandle('site_settings')->delete();
+
+        expect($references())->toBe(['globals::footer::el']);
     });
 
     it('commits the forgotten state once, and nothing for content without state', function () {

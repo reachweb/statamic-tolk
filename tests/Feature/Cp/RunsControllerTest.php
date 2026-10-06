@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Statamic\Contracts\Auth\User as UserContract;
+use Statamic\Facades\GlobalSet;
 
 const RUN_NONCE = 'pageNonce123';
 
@@ -169,6 +170,7 @@ describe('store', function () {
         'unknown source site' => [['source_site' => 'fr'], 'fr'],
         'unknown collection' => [['collections' => ['news']], 'Collection [news] not found.'],
         'unknown entry' => [['collections' => null, 'entry_ids' => ['missing']], 'missing'],
+        'unknown global set' => [['collections' => null, 'globals' => ['footer']], 'Global set [footer] not found.'],
     ]);
 
     it('validates the request', function (array $body, string $field) {
@@ -256,6 +258,29 @@ describe('a browser run', function () {
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello')
             ->and($this->again->fresh()->in('el')->get('intro'))->toBe('[T] A third intro.');
         Event::assertDispatchedTimes(RunFinished::class, 1);
+    });
+
+    it('translates a global set into each site, with the edit page of its variables on each item', function () {
+        $this->fakeTranslations();
+        $this->signInAdmin();
+        $this->makeGlobalSet('site_settings', ['en' => null, 'el' => 'en', 'de' => 'en'], [
+            'tagline' => ['type' => 'text', 'localizable' => true],
+        ], ['en' => ['tagline' => 'By the sea']]);
+        $run = createdRun(['collections' => null, 'globals' => ['site_settings'], 'sites' => ['el', 'de']]);
+
+        runAction($run, 'start')->assertOk();
+        tick($run)->assertOk();
+        $applied = runAction($run, 'apply')->assertOk();
+        $set = GlobalSet::findByHandle('site_settings');
+
+        expect($applied->json('run.status'))->toBe('completed')
+            ->and($applied->json('counts.done'))->toBe(2)
+            ->and($set->in('el')->get('tagline'))->toBe('[T] By the sea')
+            ->and($set->in('de')->get('tagline'))->toBe('[T] By the sea')
+            ->and(array_map(fn (RunItem $item) => [$item->type->value, $item->reference, $item->editUrl], RunFixtures::items($run)))->toBe([
+                ['globals', 'globals::site_settings::el', $set->in('el')->editUrl()],
+                ['globals', 'globals::site_settings::de', $set->in('de')->editUrl()],
+            ]);
     });
 
     it('reports progress in its state: run, counts, a page of items, usage and cost', function () {
