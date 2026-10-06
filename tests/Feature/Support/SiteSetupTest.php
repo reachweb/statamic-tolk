@@ -68,6 +68,16 @@ describe('global sets', function () {
         expect($this->setup->globalSetsWithout('de', null)[0])->toMatchArray(['enabled' => true, 'origin' => 'en']);
     });
 
+    it('lists a site whose origin the set does not have though another is translated from it, and never offers a site translated from it', function () {
+        $this->makeGlobalSet('site_settings', ['de' => 'fr', 'el' => 'de'], [], []);
+        $this->makeGlobalSet('footer', ['en' => 'de', 'de' => 'fr', 'el' => 'en'], [], []);
+
+        expect($this->setup->globalSetsWithout('de', 'el'))->toBe([
+            ['handle' => 'site_settings', 'name' => 'Global set Site Settings', 'enabled' => true, 'origin' => null],
+            ['handle' => 'footer', 'name' => 'Global set Footer', 'enabled' => true, 'origin' => null],
+        ]);
+    });
+
     it('translates from the set\'s first other site when it does not have the preferred one, and from none when it has no other', function () {
         $this->makeGlobalSet('greek', ['el' => null], [], []);
         $this->makeGlobalSet('german', ['de' => null], [], []);

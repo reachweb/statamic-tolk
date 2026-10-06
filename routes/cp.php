@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Reach\StatamicTolk\Http\Controllers\Cp\AuditController;
 use Reach\StatamicTolk\Http\Controllers\Cp\EditorController;
 use Reach\StatamicTolk\Http\Controllers\Cp\ModelsController;
 use Reach\StatamicTolk\Http\Controllers\Cp\OverviewController;
@@ -12,7 +13,11 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
     Route::middleware('can:run bulk translations')->group(function () {
         Route::get('/', [OverviewController::class, 'index'])->name('overview');
         Route::post('overview/scan', [OverviewController::class, 'scan'])->name('overview.scan');
+        Route::get('audit', [AuditController::class, 'index'])->name('audit');
     });
+
+    // The settings ability and `configure fields`; AuditLocalizableRequest checks.
+    Route::post('audit/localizable', [AuditController::class, 'localizable'])->name('audit.localizable');
 
     Route::name('editor.')->prefix('editor')->middleware('can:translate content')->group(function () {
         Route::get('status', [EditorController::class, 'status'])->name('status');

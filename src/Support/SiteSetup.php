@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Support;
 
 use Reach\StatamicTolk\Targets\GlobalsTarget;
+use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Contracts\Taxonomies\TermRepository;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
@@ -74,9 +75,10 @@ final class SiteSetup
     }
 
     /**
-     * The global sets that are not enabled for $site, or that name no origin for it while no other site names it as
-     * theirs (GlobalsTarget::needsOrigin(), the sites the audit lists). `origin` is the site to translate from: $from, or
-     * the default site, when the set has it, and otherwise the set's first other site; null when it has none.
+     * The global sets that are not enabled for $site, or that have no origin for it while it is not the set's source
+     * (GlobalsTarget::needsOrigin(), the sites the audit lists). `origin` is the site to translate from: $from, or the
+     * default site, when the set has it, and otherwise the set's first other site; null when it has none. A site
+     * translated from $site, directly or through others, is never offered, since the two would wait for each other.
      *
      * @return list<array{handle: string, name: string, enabled: bool, origin: ?string}>
      */
@@ -92,7 +94,7 @@ final class SiteSetup
             }
 
             $preferred = $from ?? Site::default()->handle();
-            $others = $set->sites()->reject(fn (string $handle) => $handle === $site);
+            $others = $set->sites()->reject(fn (string $handle) => $handle === $site || $this->translatedFrom($set, $handle, $site));
 
             $sets[] = [
                 'handle' => $set->handle(),
@@ -132,5 +134,21 @@ final class SiteSetup
             ->map(fn ($collection) => ['handle' => $collection->handle(), 'name' => "Collection {$collection->title()}"])
             ->values()
             ->all();
+    }
+
+    private function translatedFrom(GlobalSetContract $set, string $handle, string $site): bool
+    {
+        $origins = $set->origins();
+        $seen = [];
+
+        while (($handle = $origins->get($handle)) !== null && ! isset($seen[$handle])) {
+            if ($handle === $site) {
+                return true;
+            }
+
+            $seen[$handle] = true;
+        }
+
+        return false;
     }
 }

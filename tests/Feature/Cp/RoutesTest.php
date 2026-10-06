@@ -25,6 +25,8 @@ function tolkCpRoutes(): array
         'editor push' => ['tolk.editor.push', 'POST', 'tolk/editor/push', 'editor'],
         'overview' => ['tolk.overview', 'GET', 'tolk', 'runs'],
         'overview scan' => ['tolk.overview.scan', 'POST', 'tolk/overview/scan', 'runs'],
+        'audit' => ['tolk.audit', 'GET', 'tolk/audit', 'runs'],
+        'audit localizable' => ['tolk.audit.localizable', 'POST', 'tolk/audit/localizable', 'blueprints'],
         'runs index' => ['tolk.runs.index', 'GET', 'tolk/runs', 'runs'],
         'runs store' => ['tolk.runs.store', 'POST', 'tolk/runs', 'runs'],
         'runs show' => ['tolk.runs.show', 'GET', 'tolk/runs/01MISSINGRUN', 'runs', $run],
@@ -67,6 +69,11 @@ function tolkCpRouteGroups(): array
         'settings' => [
             'allowed' => [['edit reachweb/statamic-tolk settings'], ['configure addons']],
             'denied' => [[], ['translate content', 'run bulk translations']],
+        ],
+        // The settings ability and Statamic's permission to edit blueprints, both (§A14).
+        'blueprints' => [
+            'allowed' => [['edit reachweb/statamic-tolk settings', 'configure fields'], ['configure addons', 'configure fields']],
+            'denied' => [[], ['edit reachweb/statamic-tolk settings'], ['configure addons', 'run bulk translations'], ['configure fields', 'run bulk translations']],
         ],
     ];
 }

@@ -199,9 +199,9 @@ export function describeLeftOut(scope) {
         }));
 }
 
-// The text fields that are not translated because they are not localizable (`run.scope.out_of_scope`), with the
-// command that explains it, so that "nothing was translated" has an explanation.
-export function notLocalizableHint(scope) {
+// The text fields that are not translated because they are not localizable (`run.scope.out_of_scope`), so that "nothing
+// was translated" has an explanation: the command that explains it, unless the page links them to the Audit page.
+export function notLocalizableHint(scope, { linked = false } = {}) {
     const fields = (Array.isArray(scope?.out_of_scope) ? scope.out_of_scope : []).filter((field) => field.reason === 'not_localizable');
 
     if (fields.length === 0) {
@@ -213,7 +213,7 @@ export function notLocalizableHint(scope) {
         .map((field) => (containers.size > 1 ? `${field.label || field.handle} (${field.container})` : field.label || field.handle))
         .join(', ');
 
-    return notLocalizableText(names, fields.length);
+    return notLocalizableText(names, fields.length, linked);
 }
 
 // What the run translates, for the runs list and the run page's title.

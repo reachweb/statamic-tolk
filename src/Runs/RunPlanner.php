@@ -271,10 +271,8 @@ final readonly class RunPlanner
 
         foreach ($this->containers($request->globals, GlobalSet::class, 'Global set') as $handle) {
             $set = GlobalSet::findByHandle($handle);
-            $origins = $set->origins();
             $targets = $indexes = [];
-            $isSource = fn (string $site) => $origins->has($site) && $origins->get($site) === null && $origins->containsStrict($site);
-            $sites = $this->sitesFor($request, $notes, fn (string $site) => $isSource($site) ? self::SOURCE : GlobalsTarget::untranslatableReasonFor($set, $site));
+            $sites = $this->sitesFor($request, $notes, fn (string $site) => GlobalsTarget::isSource($set, $site) ? self::SOURCE : GlobalsTarget::untranslatableReasonFor($set, $site));
 
             foreach ($sites as $site) {
                 $target = $this->factory->forGlobalSet($set, $site);

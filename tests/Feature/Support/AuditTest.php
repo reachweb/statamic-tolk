@@ -1,6 +1,9 @@
 <?php
 
 use Illuminate\Filesystem\Filesystem;
+use Reach\StatamicTolk\Enums\RunDriver;
+use Reach\StatamicTolk\Runs\RunPlanner;
+use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Audit;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
@@ -428,6 +431,16 @@ describe('sites of collections, taxonomies and global sets', function () {
             'warning: Global set Footer is not enabled for German (de), so it is not translated into it.',
             'warning: Global set Footer has no blueprint, so Statamic treats its values as text fields that are not localizable and Tolk translates none of them. Create a blueprint with localizable fields for it.',
         ]);
+    });
+    it('lists a global set site whose origin the set no longer has, as runs skip it, though another site is translated from it', function () {
+        $this->makeGlobalSet('site_settings', ['de' => 'fr', 'el' => 'de'], ['phone' => ['type' => 'text', 'localizable' => true]], []);
+        $this->makeGlobalSet('footer', ['de' => null, 'en' => 'de', 'el' => 'en'], ['phone' => ['type' => 'text', 'localizable' => true]], []);
+
+        expect(auditItems('content_sites'))->toBe([
+            'warning: Global set Site Settings is not enabled for English (en), so it is not translated into it.',
+            "warning: Global set Site Settings names no origin for German (de), so Tolk does not translate it. Choose the site to translate from as the origin in the set's sites.",
+        ])
+            ->and(app(RunPlanner::class)->build(new RunRequest(['el', 'de'], RunDriver::Browser, globals: ['site_settings', 'footer']))->skipped)->toBe(['no_origin' => 1]);
     });
 });
 

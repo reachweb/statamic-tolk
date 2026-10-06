@@ -149,7 +149,7 @@ describe('page', function () {
                     'scan' => cp_route('tolk.overview.scan'),
                     'store' => cp_route('tolk.runs.store'),
                     'runs' => cp_route('tolk.runs.index'),
-                    'audit' => null,
+                    'audit' => cp_route('tolk.audit'),
                 ]));
     });
 

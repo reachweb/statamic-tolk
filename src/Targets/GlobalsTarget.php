@@ -75,12 +75,22 @@ final class GlobalsTarget implements Target
     }
 
     /**
-     * Whether $site has no origin to be translated from and is not the origin of another site, which would make it
-     * the set's source: the sites the audit reports and tolk:site offers to give an origin.
+     * Whether $site is the set's source: it names no origin, and another site names it as theirs.
+     */
+    public static function isSource(GlobalSetContract $set, string $site): bool
+    {
+        $origins = $set->origins();
+
+        return $origins->has($site) && $origins->get($site) === null && $origins->containsStrict($site);
+    }
+
+    /**
+     * Whether $site has no origin to be translated from and is not the set's source: the sites runs skip as
+     * `no_origin`, which the audit reports and tolk:site offers to give an origin.
      */
     public static function needsOrigin(GlobalSetContract $set, string $site): bool
     {
-        return ! $set->origins()->containsStrict($site) && self::untranslatableReasonFor($set, $site) === self::NO_ORIGIN;
+        return ! self::isSource($set, $site) && self::untranslatableReasonFor($set, $site) === self::NO_ORIGIN;
     }
 
     public function untranslatableReason(): ?string
