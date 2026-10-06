@@ -32,6 +32,7 @@ function tolkCpRoutes(): array
         'runs retry' => ['tolk.runs.retry', 'POST', 'tolk/runs/01MISSINGRUN/retry', 'runs', $run],
         'runs take over' => ['tolk.runs.take-over', 'POST', 'tolk/runs/01MISSINGRUN/take-over', 'runs', $run],
         'models' => ['tolk.models.index', 'GET', 'tolk/models', 'models'],
+        'providers test' => ['tolk.providers.test', 'POST', 'tolk/providers/test', 'settings'],
     ];
 }
 
@@ -54,6 +55,11 @@ function tolkCpRouteGroups(): array
         'models' => [
             'allowed' => [['translate content'], ['run bulk translations']],
             'denied' => [[]],
+        ],
+        // The addon's settings ability, `editSettings` on the addon (core's AddonPolicy).
+        'settings' => [
+            'allowed' => [['edit reachweb/statamic-tolk settings'], ['configure addons']],
+            'denied' => [[], ['translate content', 'run bulk translations']],
         ],
     ];
 }

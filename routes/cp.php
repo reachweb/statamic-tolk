@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Reach\StatamicTolk\Http\Controllers\Cp\EditorController;
 use Reach\StatamicTolk\Http\Controllers\Cp\ModelsController;
+use Reach\StatamicTolk\Http\Controllers\Cp\ProvidersController;
 use Reach\StatamicTolk\Http\Controllers\Cp\RunsController;
 
 Route::name('tolk.')->prefix('tolk')->group(function () {
@@ -36,4 +37,7 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
     });
 
     Route::get('models', [ModelsController::class, 'index'])->name('models.index');
+
+    // The addon's settings ability (`editSettings`, §A14); ProviderTestRequest checks.
+    Route::post('providers/test', [ProvidersController::class, 'test'])->name('providers.test');
 });
