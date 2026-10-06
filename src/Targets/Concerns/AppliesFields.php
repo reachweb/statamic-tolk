@@ -13,8 +13,9 @@ use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\TargetResult;
 
 /**
- * The steps of Target::apply() that every target with a blueprint shares (§A11): the check of the fields against the
- * plan, the target_changed check, the normalisation, the pending entries before the save and the confirm after it.
+ * The steps of Target::apply() that the targets share (§A11): the check of the fields against the plan, the
+ * target_changed check, the normalisation of a target with a blueprint, the pending entries before the save and the
+ * confirm after it.
  * Writing the values and saving are each target's own, in applyFresh(). The using class holds the StatusResolver in
  * `$resolver` and the StateWriter in `$stateWriter`.
  */
@@ -88,20 +89,26 @@ trait AppliesFields
     /**
      * Normalises the values to write into $item (§A11 step 3) and records a pending entry for each before the save.
      *
-     * @param  object  $item  the entry, term or variables the values are written into
+     * @param  ?object  $item  the entry, term or variables the values are written into; null for a target without a
+     *                         blueprint, whose values are written as they are
      * @param  array<string, AssembledField>  $writes
      * @return array<string, mixed> the normalised values by handle; a field that is removed has none
      */
-    private function prepareWrites(object $item, TargetRef $ref, array $writes): array
+    private function prepareWrites(?object $item, TargetRef $ref, array $writes): array
     {
-        $values = $this->normalise($item, array_map(
+        $values = array_map(
             fn (AssembledField $field) => $field->value,
             array_filter($writes, fn (AssembledField $field) => ! $field->remove),
-        ));
+        );
+        $values = $item === null ? $values : $this->normalise($item, $values);
+
+        $pending = [];
 
         foreach ($values as $handle => $value) {
-            $this->stateWriter->recordPending($ref, $this->sourceSite(), $handle, $this->pending($writes[$handle], $value));
+            $pending[$handle] = $this->pending($writes[$handle], $value);
         }
+
+        $this->stateWriter->recordPendingFields($ref, $this->sourceSite(), $pending);
 
         return $values;
     }

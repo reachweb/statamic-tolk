@@ -8,7 +8,6 @@ use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use InvalidArgumentException;
-use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Concerns\ReportsTranslations;
@@ -526,11 +525,7 @@ class TranslateCommand extends Command
                 'Dry run: %s of %s would be %s (%s, %s). Nothing was sent or saved.',
                 number_format($targets),
                 $this->count(count($items), 'target'),
-                match (true) {
-                    $options->mode === Mode::Review => 'reviewed',
-                    $options->review => 'translated and reviewed',
-                    default => 'translated',
-                },
+                $this->outcomeVerb($options),
                 $this->count($estimate->segments, 'segment'),
                 $this->count($estimate->chars, 'character'),
             )
@@ -586,23 +581,14 @@ class TranslateCommand extends Command
      */
     private function header(int $targets, array $sites, PlanOptions $options, ModelCatalog $catalog): void
     {
-        $models = '';
-
-        foreach ($this->models($options) as $role => $model) {
-            $models .= "{$role}: {$catalog->label($model)} ({$model}). ";
-        }
-
         $this->line(sprintf(
             'Targets: %s (%s). %sMode: %s.',
             number_format($targets),
             implode(', ', array_map($this->siteName(...), $sites)),
-            $models,
+            $this->describeModels($options, $catalog),
             $options->mode->value,
         ));
-
-        if (FakeEngine::enabled()) {
-            $this->line('<comment>The fake engine is on: nothing is sent to a provider.</comment>');
-        }
+        $this->noteFakeEngine();
     }
 
     /**
@@ -631,12 +617,6 @@ class TranslateCommand extends Command
         }
 
         return $sites;
-    }
-
-    private function mode(): Mode
-    {
-        return Mode::tryFrom((string) $this->option('mode'))
-            ?? throw new InvalidArgumentException("Invalid mode [{$this->option('mode')}]. Use missing, update, all or review.");
     }
 
     /**

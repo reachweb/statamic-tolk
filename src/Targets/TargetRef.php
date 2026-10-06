@@ -82,11 +82,7 @@ final readonly class TargetRef implements Stringable
 
         $components = $this->components();
 
-        if (count($components) !== match ($this->type) {
-            ContentType::Term => 3,
-            ContentType::Forms => 1,
-            default => 2,
-        }) {
+        if (self::hasSite($this->type) && count($components) !== ($this->type === ContentType::Term ? 3 : 2)) {
             return false;
         }
 

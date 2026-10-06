@@ -8,16 +8,12 @@ use LogicException;
 use Reach\StatamicTolk\Content\Handlers\LangStringHandler;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
-use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\LangFiles;
-use Reach\StatamicTolk\Targets\Concerns\AppliesFields;
-use Reach\StatamicTolk\Translation\AssembledField;
-use Statamic\Contracts\Auth\User;
+use Reach\StatamicTolk\Targets\Concerns\WritesLangFile;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fields;
-use Throwable;
 
 /**
  * One Laravel translation file in one language, translated from the same group in the source language (§A16). Each
@@ -27,13 +23,7 @@ use Throwable;
  */
 final class LangTarget implements Target
 {
-    use AppliesFields;
-
-    private const string FIELDTYPE = 'text';
-
-    private ?array $source = null;
-
-    private ?array $target = null;
+    use WritesLangFile;
 
     private ?Collection $fields = null;
 
@@ -63,16 +53,6 @@ final class LangTarget implements Target
         return $this->group;
     }
 
-    public function lang(): string
-    {
-        return $this->lang;
-    }
-
-    public function sourceLang(): string
-    {
-        return $this->sourceLang;
-    }
-
     /**
      * The target file as the commands name it, such as `lang/de/messages.php`.
      */
@@ -94,30 +74,9 @@ final class LangTarget implements Target
             ->all();
     }
 
-    // Null while the file does not exist.
-    public function ref(): ?TargetRef
-    {
-        return $this->exists() ? $this->targetRef() : null;
-    }
-
     public function type(): ContentType
     {
         return ContentType::Lang;
-    }
-
-    public function exists(): bool
-    {
-        return $this->files->exists($this->lang, $this->group);
-    }
-
-    public function sourceSite(): string
-    {
-        return $this->sourceSite;
-    }
-
-    public function targetSite(): string
-    {
-        return $this->site;
     }
 
     public function container(): string
@@ -129,11 +88,6 @@ final class LangTarget implements Target
     public function title(): string
     {
         return basename(LangFiles::name($this->sourceLang, $this->group));
-    }
-
-    public function editUrl(): ?string
-    {
-        return null;
     }
 
     // A translation file is named by its group and both languages, not by sites.
@@ -157,14 +111,6 @@ final class LangTarget implements Target
             ])]);
     }
 
-    public function explainFields(): array
-    {
-        return $this->fields()
-            ->map(fn (Field $field, string $key) => ['handle' => $key, 'display' => $key, 'type' => self::FIELDTYPE, 'in_scope' => true, 'reason' => 'ok'])
-            ->values()
-            ->all();
-    }
-
     public function sourceHasValue(string $handle): bool
     {
         return is_string($this->source()[$handle] ?? null);
@@ -173,28 +119,6 @@ final class LangTarget implements Target
     public function sourceValue(string $handle): mixed
     {
         return $this->sourceHasValue($handle) ? $this->source()[$handle] : null;
-    }
-
-    // Languages do not chain.
-    public function sourceIsLocalization(): bool
-    {
-        return false;
-    }
-
-    public function hasOverride(string $handle): bool
-    {
-        return array_key_exists($handle, $this->target());
-    }
-
-    public function targetValue(string $handle): mixed
-    {
-        return $this->target()[$handle] ?? null;
-    }
-
-    // There is no publish form to show an inherited value in.
-    public function inheritedValue(string $handle): mixed
-    {
-        return null;
     }
 
     public function formFields(array $values, bool $source = false): Fields
@@ -213,51 +137,9 @@ final class LangTarget implements Target
         ];
     }
 
-    // Translation files are translated from the CLI only (§A16).
-    public function authorize(User $user): bool
-    {
-        return false;
-    }
-
     public function fresh(): static
     {
         return new self($this->group, $this->lang, $this->sourceLang, $this->site, $this->sourceSite, $this->files, $this->resolver, $this->stateWriter);
-    }
-
-    /**
-     * Writes the translated strings into the file, which LangFiles re-reads first, so every other key keeps its value.
-     * A string the source emptied is removed. There is no normalisation step: a string is not a blueprint's value.
-     *
-     * @param  list<AssembledField>  $fields
-     */
-    private function applyFresh(array $fields, ApplyOptions $options): ApplyResult
-    {
-        [$writes, $skipped] = $this->writable($this->keyByHandle($fields), $options);
-        $ref = $this->targetRef();
-        $created = false;
-
-        if ($writes !== []) {
-            $set = [];
-
-            foreach ($writes as $handle => $field) {
-                if (! $field->remove) {
-                    $set[$handle] = $field->value;
-                    $this->stateWriter->recordPending($ref, $this->sourceSite, $handle, $this->pending($field, $field->value));
-                }
-            }
-
-            $created = ! $this->exists();
-
-            try {
-                $this->files->write($this->lang, $this->group, $set, $this->removedHandles($writes), $this->source());
-            } catch (Throwable $exception) {
-                throw ApplyFailed::notWritten($this->name(), $exception);
-            }
-
-            $this->confirmWrites($ref, $writes);
-        }
-
-        return new ApplyResult(ref: $ref, created: $created, applied: array_keys($writes), skipped: $skipped);
     }
 
     private function targetRef(): TargetRef
@@ -265,13 +147,9 @@ final class LangTarget implements Target
         return new TargetRef(ContentType::Lang, $this->group, $this->lang);
     }
 
-    private function source(): array
+    // The written file follows the source's order and carries over its values that are not text.
+    private function sourceShape(): array
     {
-        return $this->source ??= $this->files->read($this->sourceLang, $this->group);
-    }
-
-    private function target(): array
-    {
-        return $this->target ??= $this->files->read($this->lang, $this->group);
+        return $this->source();
     }
 }

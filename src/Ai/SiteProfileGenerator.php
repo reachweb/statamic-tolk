@@ -4,7 +4,6 @@ namespace Reach\StatamicTolk\Ai;
 
 use Closure;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\FinishReason;
@@ -109,7 +108,7 @@ final readonly class SiteProfileGenerator
             instructions: $this->instructions(),
             providerOptions: $this->catalog->options($model),
             timeout: self::TIMEOUT,
-            maxTokens: $this->outputCap($model),
+            maxTokens: $this->catalog->outputCap($model, self::OUTPUT_TOKENS),
         );
 
         try {
@@ -148,7 +147,11 @@ final readonly class SiteProfileGenerator
         $home = $this->home($site->handle());
 
         $content = ['site' => ['name' => $site->name(), 'url' => $site->absoluteUrl()]];
-        $this->attempt($content, fn (array $content) => $home && ($entry = $this->entry($home, self::HOME_CHARS)) ? [...$content, 'home' => $entry] : null);
+        $entry = $home ? $this->entry($home, self::HOME_CHARS) : [];
+
+        if ($entry !== []) {
+            $this->attempt($content, fn (array $content) => [...$content, 'home' => $entry]);
+        }
 
         foreach (['globals' => $this->globals($site->handle()), 'navigation' => $this->navigation($site->handle())] as $key => $parts) {
             foreach ($parts as $part) {
@@ -205,13 +208,13 @@ final readonly class SiteProfileGenerator
     /**
      * Replaces the content with the closure's result when that stays within MAX_CHARS.
      *
-     * @param  Closure(array): ?array  $add
+     * @param  Closure(array): array  $add
      */
     private function attempt(array &$content, Closure $add): bool
     {
         $candidate = $add($content);
 
-        if ($candidate === null || mb_strlen($this->encode($candidate)) > self::MAX_CHARS) {
+        if (mb_strlen($this->encode($candidate)) > self::MAX_CHARS) {
             return false;
         }
 
@@ -344,14 +347,6 @@ final readonly class SiteProfileGenerator
         return mb_substr($text, 0, $chars);
     }
 
-    private function outputCap(ModelRef $model): int
-    {
-        $cap = self::OUTPUT_TOKENS + $this->catalog->reasoningHeadroom($model);
-        $max = $this->catalog->maxOutputTokens($model);
-
-        return $max === null ? $cap : min($cap, $max);
-    }
-
     /**
      * @return array{profile: string, terms: list<string>}
      */
@@ -425,12 +420,7 @@ final readonly class SiteProfileGenerator
      */
     private function fake(ModelRef $model, string $content, UsageSource $source): array
     {
-        $milliseconds = (int) config('tolk.fake_delay_ms', 300);
-
-        if ($milliseconds > 0) {
-            Sleep::for($milliseconds)->milliseconds();
-        }
-
+        FakeEngine::delay();
         $this->recorder->record($model, new Usage(calls: 1), $source);
         $name = Site::default()->name();
 

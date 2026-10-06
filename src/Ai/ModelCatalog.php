@@ -103,6 +103,18 @@ class ModelCatalog
     }
 
     /**
+     * The output tokens to allow a call that should answer in $tokens: those plus the model's reasoning headroom, at most
+     * its maximum output.
+     */
+    public function outputCap(ModelRef $model, int $tokens): int
+    {
+        $cap = $tokens + $this->reasoningHeadroom($model);
+        $max = $this->maxOutputTokens($model);
+
+        return $max === null ? $cap : min($cap, $max);
+    }
+
+    /**
      * @return array{input: float, output: float}|null
      */
     public function price(ModelRef $model): ?array

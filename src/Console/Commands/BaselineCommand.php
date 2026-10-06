@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Console\Concerns\SelectsContainers;
 use Reach\StatamicTolk\State\StateWriter;
@@ -68,7 +69,7 @@ class BaselineCommand extends Command
 
         $this->table(['Type', 'Handle', 'Site', $dryRun ? 'Fields to record' : 'Fields recorded'], $rows);
 
-        $fields = $total === 1 ? '1 field' : number_format($total).' fields';
+        $fields = number_format($total).' '.Str::plural('field', $total);
 
         if ($dryRun) {
             $this->components->info("Would record the origin of {$fields}. Nothing was written (--dry-run).");

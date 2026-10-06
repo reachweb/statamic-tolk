@@ -48,6 +48,6 @@ final readonly class PruneReport
      */
     public function orphaned(string $reason): array
     {
-        return array_values(array_column(array_filter($this->orphans, fn (array $orphan) => $orphan['reason'] === $reason), 'reference'));
+        return array_column(array_filter($this->orphans, fn (array $orphan) => $orphan['reason'] === $reason), 'reference');
     }
 }

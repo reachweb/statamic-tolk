@@ -16,15 +16,13 @@ use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
 use Reach\StatamicTolk\Runs\Estimator;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\LangFiles;
-use Reach\StatamicTolk\Support\Languages;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\LangTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
-use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\Planner;
+use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Console\RunsInPlease;
-use Statamic\Facades\Site;
 
 /**
  * Translates the app's Laravel translation files into the languages of other sites (§A16), one file at a time in this
@@ -64,8 +62,7 @@ class LangCommand extends Command
         Estimator $estimator,
     ): int {
         try {
-            $sourceSite = $this->sourceSite() ?? Site::default()->handle();
-            $sourceLang = (string) Site::get($sourceSite)->lang();
+            $sourceLang = $this->sourceLang();
             $langs = $this->languages($sourceLang);
             $groups = $this->groups($files, $sourceLang);
 
@@ -88,16 +85,15 @@ class LangCommand extends Command
 
         $this->startReport($options->review);
         $this->languagesHeader($targets, $options, $catalog);
-        $plans = $this->planLanguages($targets, $options, $planner);
 
         if ($this->option('dry-run')) {
-            $this->dryRunLanguages($targets, $plans, $options, $settings, $resolver, $estimator);
+            $this->dryRunLanguages($targets, $this->planLanguages($targets, $options, $planner), $options, $settings, $resolver, $estimator);
             $this->pluralNotes($targets, $sourceLang);
 
             return self::SUCCESS;
         }
 
-        if (! $this->rewritesConfirmed($targets, $plans, $files)) {
+        if (! $this->rewritesConfirmed($targets, $options, $planner, $files)) {
             $this->components->warn('Nothing was translated.');
 
             return self::SUCCESS;
@@ -115,19 +111,22 @@ class LangCommand extends Command
      * every such file that has something to do.
      *
      * @param  list<LangTarget>  $targets
-     * @param  list<Plan>  $plans
      */
-    private function rewritesConfirmed(array $targets, array $plans, LangFiles $files): bool
+    private function rewritesConfirmed(array $targets, PlanOptions $options, Planner $planner, LangFiles $files): bool
     {
+        if ($this->option('yes')) {
+            return true;
+        }
+
         $rewritten = [];
 
-        foreach ($targets as $index => $target) {
-            if (! $plans[$index]->isEmpty() && ! $files->keepsLayout($target->lang(), $target->group())) {
+        foreach ($targets as $target) {
+            if (! $files->keepsLayout($target->lang(), $target->group()) && ! $this->planLanguage($target, $options, $planner)->isEmpty()) {
                 $rewritten[] = $target->name();
             }
         }
 
-        if ($rewritten === [] || $this->option('yes')) {
+        if ($rewritten === []) {
             return true;
         }
 

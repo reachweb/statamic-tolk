@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Console\Concerns;
 
 use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\FakeEngine;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Enums\Mode;
@@ -14,8 +15,9 @@ use Reach\StatamicTolk\Translation\PlanOptions;
 use Statamic\Facades\Site;
 
 /**
- * The options tolk:translate, tolk:site, tolk:lang and tolk:forms share: --from, the review options, --concurrency,
- * --queue, and the check that every model the operation calls has a provider with a key.
+ * The options tolk:translate, tolk:site, tolk:lang and tolk:forms share: --from, --mode, the review options,
+ * --concurrency, --queue, the check that every model the operation calls has a provider with a key, and how the
+ * header and the dry run name the models and what the operation does.
  */
 trait ResolvesTranslationOptions
 {
@@ -90,6 +92,45 @@ trait ResolvesTranslationOptions
                 throw ProviderNotConfigured::for($model->provider);
             }
         }
+    }
+
+    private function mode(): Mode
+    {
+        return Mode::tryFrom((string) $this->option('mode'))
+            ?? throw new InvalidArgumentException("Invalid mode [{$this->option('mode')}]. Use missing, update, all or review.");
+    }
+
+    /**
+     * The models the operation calls for the header, as "Translator: {label} ({provider:model}). " per role.
+     */
+    private function describeModels(PlanOptions $options, ModelCatalog $catalog): string
+    {
+        $models = '';
+
+        foreach ($this->models($options) as $role => $model) {
+            $models .= "{$role}: {$catalog->label($model)} ({$model}). ";
+        }
+
+        return $models;
+    }
+
+    private function noteFakeEngine(): void
+    {
+        if (FakeEngine::enabled()) {
+            $this->line('<comment>The fake engine is on: nothing is sent to a provider.</comment>');
+        }
+    }
+
+    /**
+     * What the operation does to a target, as a dry run says it would be done.
+     */
+    private function outcomeVerb(PlanOptions $options): string
+    {
+        return match (true) {
+            $options->mode === Mode::Review => 'reviewed',
+            $options->review => 'translated and reviewed',
+            default => 'translated',
+        };
     }
 
     /**

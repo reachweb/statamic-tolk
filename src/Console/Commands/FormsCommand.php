@@ -24,7 +24,6 @@ use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Console\RunsInPlease;
 use Statamic\Facades\Form;
-use Statamic\Facades\Site;
 
 /**
  * Translates the texts of the site's forms into the languages of other sites (§A16), written to `lang/{lang}.json`
@@ -64,8 +63,7 @@ class FormsCommand extends Command
         StateRepository $state,
     ): int {
         try {
-            $sourceSite = $this->sourceSite() ?? Site::default()->handle();
-            $sourceLang = (string) Site::get($sourceSite)->lang();
+            $sourceLang = $this->sourceLang();
             $langs = $this->languages($sourceLang);
             $forms = $this->forms();
 
@@ -89,10 +87,9 @@ class FormsCommand extends Command
         $this->startReport($options->review);
         $this->languagesHeader($targets, $options, $catalog);
         $this->leftOut($targets[0]);
-        $plans = $this->planLanguages($targets, $options, $planner);
 
         if ($this->option('dry-run')) {
-            $this->dryRunLanguages($targets, $plans, $options, $settings, $resolver, $estimator);
+            $this->dryRunLanguages($targets, $this->planLanguages($targets, $options, $planner), $options, $settings, $resolver, $estimator);
             $this->unusedKeys($targets, $state);
             $this->templateHint();
 

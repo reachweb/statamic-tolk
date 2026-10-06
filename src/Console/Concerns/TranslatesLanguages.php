@@ -3,7 +3,6 @@
 namespace Reach\StatamicTolk\Console\Concerns;
 
 use InvalidArgumentException;
-use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Prompts\PromptContext;
 use Reach\StatamicTolk\Enums\FieldStatus;
@@ -47,6 +46,14 @@ trait TranslatesLanguages
     }
 
     /**
+     * The language of the --from site, else of the default site.
+     */
+    private function sourceLang(): string
+    {
+        return (string) Site::get($this->sourceSite() ?? Site::default()->handle())->lang();
+    }
+
+    /**
      * The languages to translate into, each once: sites that share a `lang()` share its files. Without site handles,
      * every language of a site other than the source language.
      *
@@ -74,12 +81,6 @@ trait TranslatesLanguages
         return array_values(array_unique($langs));
     }
 
-    private function mode(): Mode
-    {
-        return Mode::tryFrom((string) $this->option('mode'))
-            ?? throw new InvalidArgumentException("Invalid mode [{$this->option('mode')}]. Use missing, update, all or review.");
-    }
-
     /**
      * @param  ?list<string>  $fields  the keys to plan; null for every key
      */
@@ -104,7 +105,12 @@ trait TranslatesLanguages
      */
     private function planLanguages(array $targets, PlanOptions $options, Planner $planner): array
     {
-        return array_map(fn (LangTarget|FormsTarget $target) => $options->mode === Mode::Review ? $planner->planReview($target, $options) : $planner->plan($target, $options), $targets);
+        return array_map(fn (LangTarget|FormsTarget $target) => $this->planLanguage($target, $options, $planner), $targets);
+    }
+
+    private function planLanguage(LangTarget|FormsTarget $target, PlanOptions $options, Planner $planner): Plan
+    {
+        return $options->mode === Mode::Review ? $planner->planReview($target, $options) : $planner->plan($target, $options);
     }
 
     /**
@@ -116,7 +122,7 @@ trait TranslatesLanguages
     private function translateLanguages(array $targets, PlanOptions $options, TargetTranslator $translator): int
     {
         $apply = new ApplyOptions(overwriteManual: $options->overwriteManual);
-        $saved = 0;
+        $saved = false;
         $this->newLine();
 
         try {
@@ -124,7 +130,7 @@ trait TranslatesLanguages
                 $this->startTarget($target->name());
                 $result = $options->mode === Mode::Review ? $translator->review($target, $options, $apply) : $translator->translate($target, $options, $apply);
                 $this->reportResult($target->name(), $result);
-                $saved += $result->status === TargetResultStatus::Done ? 1 : 0;
+                $saved = $saved || $result->status === TargetResultStatus::Done;
             }
         } catch (ProviderRejected $exception) {
             $this->newLine();
@@ -132,7 +138,7 @@ trait TranslatesLanguages
 
             return self::FAILURE;
         } finally {
-            if ($saved > 0) {
+            if ($saved) {
                 GitListeners::commit(ContentWriter::COMMIT_MESSAGE);
             }
         }
@@ -182,11 +188,7 @@ trait TranslatesLanguages
             'Dry run: %s of %s would be %s (%s, %s). Nothing was sent or written.',
             number_format($files),
             $this->count(count($targets), 'file'),
-            match (true) {
-                $options->mode === Mode::Review => 'reviewed',
-                $options->review => 'translated and reviewed',
-                default => 'translated',
-            },
+            $this->outcomeVerb($options),
             $this->count($estimate->segments, 'segment'),
             $this->count($estimate->chars, 'character'),
         ));
@@ -198,11 +200,8 @@ trait TranslatesLanguages
             return '<comment>nothing to do</comment>';
         }
 
-        $size = $this->planSize($plan);
-
         return $this->count(count($plan->fieldHandles()), $this->keyNoun()).' to '.($options->mode === Mode::Review ? 'review' : 'translate')
-            .' ('.$this->count($size['segments'], 'segment').', '.$this->count($size['characters'], 'character')
-            .($size['reused'] > 0 ? ', '.$this->count($size['reused'], 'segment').' reused' : '').')';
+            .$this->planSizeNote($plan);
     }
 
     /**
@@ -212,16 +211,8 @@ trait TranslatesLanguages
     {
         $languages = app(Languages::class);
         $names = array_unique(array_map(fn (LangTarget|FormsTarget $target) => $languages->forSite($target->targetSite())->name, $targets));
-        $models = '';
 
-        foreach ($this->models($options) as $role => $model) {
-            $models .= "{$role}: {$catalog->label($model)} ({$model}). ";
-        }
-
-        $this->line(sprintf('Files: %s (%s). %sMode: %s.', number_format(count($targets)), implode(', ', $names), $models, $options->mode->value));
-
-        if (FakeEngine::enabled()) {
-            $this->line('<comment>The fake engine is on: nothing is sent to a provider.</comment>');
-        }
+        $this->line(sprintf('Files: %s (%s). %sMode: %s.', number_format(count($targets)), implode(', ', $names), $this->describeModels($options, $catalog), $options->mode->value));
+        $this->noteFakeEngine();
     }
 }
