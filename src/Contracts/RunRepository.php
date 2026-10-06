@@ -46,6 +46,11 @@ interface RunRepository
     public function stale(int $seconds): array;
 
     /**
+     * @return list<Run> the runs without activity (Run::lastActivityAt()) for that many days, which prune() deletes
+     */
+    public function inactive(int $days): array;
+
+    /**
      * Deletes the runs without activity for that many days and returns how many.
      */
     public function prune(int $olderThanDays): int;

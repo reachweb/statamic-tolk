@@ -32,49 +32,29 @@ final readonly class StateWriter
     }
 
     /**
-     * Persists the reconcile of §A5 for every in-scope field that has pending entries.
+     * Persists the reconcile of §A5 for every in-scope field that has pending entries. A dry run reports what it would
+     * change and writes nothing.
      */
-    public function confirm(Target $target, bool $commit = false): ConfirmReport
+    public function confirm(Target $target, bool $commit = false, bool $dryRun = false): ConfirmReport
     {
         $ref = $target->ref();
+        $stored = $ref === null ? null : $this->repository->get($ref);
 
-        if ($ref === null || ! $this->repository->get($ref)->hasPending()) {
+        if ($stored === null || ! $stored->hasPending()) {
             return new ConfirmReport;
         }
 
         $statuses = $this->resolver->resolve($target)->fields;
         $now = CarbonImmutable::now();
+
+        if ($dryRun) {
+            return $this->reconciled($stored, $statuses, $now)[1];
+        }
+
         $report = new ConfirmReport;
 
         $this->repository->update($ref, function (ItemState $state) use ($statuses, $now, &$report) {
-            $promoted = $baselined = $unresolved = $expired = [];
-
-            foreach ($statuses as $handle => $status) {
-                $field = $state->field($handle);
-
-                if ($field->pending === []) {
-                    continue;
-                }
-
-                $reconciled = $field->reconcile($status->targetHash, $now, $status->sourceTextHash);
-                $state = $state->withField($handle, $reconciled);
-
-                if ($field->savedPending($status->targetHash) !== null) {
-                    $promoted[] = $handle;
-                } elseif ($field->editedPending($status->targetHash, $status->sourceTextHash) !== null) {
-                    $baselined[] = $handle;
-                } else {
-                    if (count($reconciled->pending) < count($field->pending)) {
-                        $expired[] = $handle;
-                    }
-
-                    if ($reconciled->pending !== []) {
-                        $unresolved[] = $handle;
-                    }
-                }
-            }
-
-            $report = new ConfirmReport($promoted, $baselined, $unresolved, $expired);
+            [$state, $report] = $this->reconciled($state, $statuses, $now);
 
             return $state;
         });
@@ -86,12 +66,13 @@ final readonly class StateWriter
 
     /**
      * Records that a human owns the text of every manual field, checked against the current source, so later origin changes
-     * are detected. With $includeMachine, machine output is turned manual too ("mark as manual", D27). Returns how many
-     * fields changed.
+     * are detected. With $includeMachine, machine output is turned manual too ("mark as manual", D27), and with
+     * $includeCopies a copy of the source's text that nobody vouched for (§A6), which reads untranslated. Returns how many
+     * fields changed; a dry run counts them and writes nothing.
      *
      * @param  ?list<string>  $handles  null for every in-scope field
      */
-    public function baseline(Target $target, ?array $handles = null, bool $includeMachine = false, bool $commit = false): int
+    public function baseline(Target $target, ?array $handles = null, bool $includeMachine = false, bool $includeCopies = false, bool $commit = false, bool $dryRun = false): int
     {
         $ref = $target->ref();
 
@@ -102,9 +83,13 @@ final readonly class StateWriter
         $fields = [];
 
         foreach ($this->resolver->resolve($target)->fields as $handle => $field) {
-            if (($handles === null || in_array((string) $handle, $handles, true)) && $this->ownedByHuman($field, $includeMachine)) {
+            if (($handles === null || in_array((string) $handle, $handles, true)) && $this->ownedByHuman($field, $includeMachine, $includeCopies)) {
                 $fields[$handle] = $field;
             }
+        }
+
+        if ($dryRun) {
+            return count(array_filter($fields, fn (FieldStatusInfo $field) => $field->state->baselined($field->sourceHash, $field->targetHash)->toArray() !== $field->state->toArray()));
         }
 
         if ($fields === []) {
@@ -168,14 +153,54 @@ final readonly class StateWriter
     }
 
     /**
-     * A manual field, or with $includeMachine machine output or a copy of the source's text the target holds. A field the
-     * target inherits has no text to own.
+     * The reconcile of confirm() applied to a stored state.
+     *
+     * @param  array<string, FieldStatusInfo>  $statuses
+     * @return array{0: ItemState, 1: ConfirmReport}
      */
-    private function ownedByHuman(FieldStatusInfo $field, bool $includeMachine): bool
+    private function reconciled(ItemState $state, array $statuses, CarbonImmutable $now): array
+    {
+        $promoted = $baselined = $unresolved = $expired = [];
+
+        foreach ($statuses as $handle => $status) {
+            $field = $state->field($handle);
+
+            if ($field->pending === []) {
+                continue;
+            }
+
+            $reconciled = $field->reconcile($status->targetHash, $now, $status->sourceTextHash);
+            $state = $state->withField($handle, $reconciled);
+
+            if ($field->savedPending($status->targetHash) !== null) {
+                $promoted[] = $handle;
+            } elseif ($field->editedPending($status->targetHash, $status->sourceTextHash) !== null) {
+                $baselined[] = $handle;
+            } else {
+                if (count($reconciled->pending) < count($field->pending)) {
+                    $expired[] = $handle;
+                }
+
+                if ($reconciled->pending !== []) {
+                    $unresolved[] = $handle;
+                }
+            }
+        }
+
+        return [$state, new ConfirmReport($promoted, $baselined, $unresolved, $expired)];
+    }
+
+    /**
+     * A manual field, with $includeMachine also machine output or a copy of the source's text the target holds, and with
+     * $includeCopies such a copy. A field the target inherits has no text to own; an untranslated field with text of its
+     * own is a copy (StatusResolver).
+     */
+    private function ownedByHuman(FieldStatusInfo $field, bool $includeMachine, bool $includeCopies): bool
     {
         return $field->targetHash !== null && match ($field->status) {
             FieldStatus::Manual => true,
-            FieldStatus::Current, FieldStatus::Outdated, FieldStatus::Untranslated => $includeMachine,
+            FieldStatus::Current, FieldStatus::Outdated => $includeMachine,
+            FieldStatus::Untranslated => $includeMachine || $includeCopies,
             default => false,
         };
     }

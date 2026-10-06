@@ -4,12 +4,11 @@ namespace Reach\StatamicTolk\Console\Commands;
 
 use Illuminate\Console\Command;
 use InvalidArgumentException;
+use Reach\StatamicTolk\Console\Concerns\SelectsContainers;
 use Reach\StatamicTolk\Enums\ContentType;
-use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\State\ScanResult;
 use Reach\StatamicTolk\State\StatusScanner;
 use Statamic\Console\RunsInPlease;
-use Statamic\Facades\Site;
 
 /**
  * Counts, per container and site, the targets that are missing, untranslated, outdated, need attention or are current
@@ -18,15 +17,12 @@ use Statamic\Facades\Site;
 class StatusCommand extends Command
 {
     use RunsInPlease;
+    use SelectsContainers;
 
     /**
      * The budget of each scan; a container and site that take longer are scanned in several calls.
      */
     public const int BUDGET_MS = 1000;
-
-    private const array OPTIONS = ['collection' => ContentType::Entry, 'taxonomy' => ContentType::Term, 'globals' => ContentType::GlobalSet, 'nav' => ContentType::Nav];
-
-    private const array TYPES = ['entry' => 'Collection', 'term' => 'Taxonomy', 'globals' => 'Global set', 'nav' => 'Navigation'];
 
     protected $signature = 'tolk:status
         {--site=* : Show only this site (default: every site)}
@@ -41,7 +37,7 @@ class StatusCommand extends Command
     public function handle(StatusScanner $scanner): int
     {
         try {
-            $cells = $this->cells($scanner, $this->sites());
+            $cells = $this->cells($scanner);
         } catch (InvalidArgumentException $exception) {
             $this->components->error($exception->getMessage());
 
@@ -70,7 +66,7 @@ class StatusCommand extends Command
         $this->table(
             ['Type', 'Handle', 'Site', 'Missing', 'Untranslated', 'Outdated', 'Needs attention', 'Current', 'Untracked fields'],
             array_map(fn (array $row) => [
-                self::TYPES[$row['type']],
+                self::CONTAINER_TYPES[$row['type']],
                 $row['container'],
                 $row['site'],
                 ...array_map(number_format(...), array_values($row['counts'])),
@@ -92,38 +88,6 @@ class StatusCommand extends Command
     }
 
     /**
-     * Every container and site to scan, each container checked before anything is scanned.
-     *
-     * @param  list<string>  $sites  empty for every site
-     * @return list<array{type: ContentType, container: string, site: string}>
-     */
-    private function cells(StatusScanner $scanner, array $sites): array
-    {
-        $named = [];
-
-        foreach (array_keys(self::OPTIONS) as $option) {
-            $named[$option] = array_values(array_unique($this->option($option)));
-        }
-
-        $everything = array_merge(...array_values($named)) === [];
-        $cells = [];
-
-        foreach (self::OPTIONS as $option => $type) {
-            $containers = $everything ? $scanner->containers($type) : $named[$option];
-
-            foreach ($containers as $container) {
-                foreach ($scanner->sites($type, $container) as $site) {
-                    if ($sites === [] || in_array($site, $sites, true)) {
-                        $cells[] = compact('type', 'container', 'site');
-                    }
-                }
-            }
-        }
-
-        return $cells;
-    }
-
-    /**
      * @return array{counts: array<string, int>, untracked: int, scanned: int}
      */
     private function scan(StatusScanner $scanner, ContentType $type, string $container, string $site): array
@@ -135,21 +99,5 @@ class StatusCommand extends Command
         } while (! $result->isFinished());
 
         return array_diff_key($result->toArray(), ['cursor' => true]);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function sites(): array
-    {
-        $sites = array_values(array_unique($this->option('site')));
-
-        foreach ($sites as $site) {
-            if (Site::get($site) === null) {
-                throw UnknownSite::for($site);
-            }
-        }
-
-        return $sites;
     }
 }

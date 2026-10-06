@@ -681,7 +681,7 @@ it('finds running runs without progress for that long', function () {
         ->and($this->runs->stale(400))->toBe([]);
 });
 
-it('prunes the runs without activity for that many days and nothing else', function () {
+it('finds and prunes the runs without activity for that many days and nothing else', function () {
     $old = runRepoRun([runRepoItem(0)], RunStatus::Completed);
     $oldPending = runRepoRun([runRepoItem(0)], RunStatus::Pending);
     $active = runRepoRun([runRepoItem(0)]);
@@ -692,7 +692,9 @@ it('prunes the runs without activity for that many days and nothing else', funct
     $this->travel(11)->days();
     $recent = runRepoRun([runRepoItem(0)], RunStatus::Completed);
 
-    expect($this->runs->prune(30))->toBe(2)
+    expect(array_map(fn (Run $run) => $run->id, $this->runs->inactive(30)))->toEqualCanonicalizing([$old->id, $oldPending->id])
+        ->and($this->runs->inactive(32))->toBe([])
+        ->and($this->runs->prune(30))->toBe(2)
         ->and("{$this->root}/{$old->id}")->not->toBeDirectory()
         ->and("{$this->root}/{$oldPending->id}")->not->toBeDirectory()
         ->and($this->runs->find($old->id))->toBeNull()

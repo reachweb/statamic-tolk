@@ -206,10 +206,12 @@ function filterBy(value) {
 
         <Alert v-if="stalled" variant="warning" :heading="__('This run is not moving')" data-tolk-stalled>
             <div class="space-y-3">
-                <Text>{{ __('No queue worker has worked on this run for a while. Start a worker for the queue, or run it in this browser instead.') }}</Text>
+                <Text v-if="run.driver === 'cli'">{{ __('The command running this run has not worked on it for a while and may have stopped. Resume continues the run from here.') }}</Text>
+                <Text v-else>{{ __('No queue worker has worked on this run for a while. Start a worker for the queue, or run it in this browser instead.') }}</Text>
                 <div class="flex flex-wrap gap-2">
                     <Button size="sm" :text="__('Resume')" :loading="busy === 'resume'" :disabled="busy !== null" data-tolk-action="resume" @click="act('resume', follower.resume)" />
                     <Button
+                        v-if="actions.takeOver"
                         size="sm"
                         variant="primary"
                         :text="__('Run in this browser instead')"

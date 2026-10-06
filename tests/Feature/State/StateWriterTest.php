@@ -131,6 +131,26 @@ describe('confirm', function () {
             ->and($status->sourceChanged)->toBeFalse();
     });
 
+    it('reports what it would resolve and writes nothing in a dry run', function () {
+        $saved = $this->localize($this->origin, 'el', ['title' => 'Χαίρετε', 'body' => 'Χειροποίητο σώμα.']);
+        $stored = [
+            'title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Χαίρετε')),
+            'intro' => (new FieldState)->withPending(StateFixtures::pending('A short intro.', 'Μια εισαγωγή.', ['createdAt' => CarbonImmutable::now()->subDays(31)])),
+            'body' => (new FieldState)->withPending(StateFixtures::pending('', 'Σώμα.')),
+        ];
+        StateFixtures::store($saved, $stored);
+        $before = storedState($saved)->toArray();
+
+        $dryRun = writer()->confirm(writerTarget($this->origin), dryRun: true);
+        $unchanged = storedState($saved)->toArray();
+        $report = writer()->confirm(writerTarget($this->origin));
+
+        expect($dryRun)->toEqual(new ConfirmReport(promoted: ['title'], baselined: ['body'], expired: ['intro']))
+            ->and($unchanged)->toBe($before)
+            ->and($report)->toEqual($dryRun)
+            ->and(storedState($saved)->toArray())->not->toBe($before);
+    });
+
     it('keeps a delivery pending when the form saved a copy of the source\'s text instead', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Hello']);
         StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
@@ -368,6 +388,36 @@ describe('baseline', function () {
             ->and(storedState($localization)->field('title')->isBaseline())->toBeTrue()
             ->and($status->status)->toBe(FieldStatus::Manual)
             ->and($status->sourceChanged)->toBeFalse();
+    });
+
+    it('turns a copy of the source\'s text manual with $includeCopies, but not machine output', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Hello', 'intro' => 'Μια εισαγωγή.']);
+        StateFixtures::store($localization, ['intro' => StateFixtures::machine('A short intro.', 'Μια εισαγωγή.')]);
+
+        $count = writer()->baseline(writerTarget($this->origin), includeCopies: true);
+        $status = writerStatus($this->origin)->fields;
+
+        expect($count)->toBe(1)
+            ->and($status['title']->status)->toBe(FieldStatus::Manual)
+            ->and($status['title']->sourceChanged)->toBeFalse()
+            ->and($status['intro']->status)->toBe(FieldStatus::Current);
+    });
+
+    it('counts the fields it would change and writes nothing in a dry run', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Χειροποίητο', 'intro' => 'Χειροποίητη εισαγωγή.', 'body' => 'Hello']);
+        StateFixtures::store($localization, ['intro' => new FieldState(sourceHash: Fingerprint::of('A short intro.'))]);
+        $before = storedState($localization)->toArray();
+        Queue::fake();
+        switchGitOn();
+
+        $dryRun = writer()->baseline(writerTarget($this->origin), includeCopies: true, commit: true, dryRun: true);
+        $unchanged = storedState($localization)->toArray();
+        $count = writer()->baseline(writerTarget($this->origin), includeCopies: true);
+
+        expect($dryRun)->toBe(2)
+            ->and($count)->toBe(2)
+            ->and($unchanged)->toBe($before);
+        Queue::assertNotPushed(CommitJob::class);
     });
 
     it('confirms a saved delivery before it turns it manual', function () {

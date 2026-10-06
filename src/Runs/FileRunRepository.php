@@ -118,19 +118,25 @@ final class FileRunRepository implements RunRepository
             ->all();
     }
 
+    public function inactive(int $days): array
+    {
+        $cutoff = CarbonImmutable::now()->subDays($days);
+
+        return collect($this->runs())
+            ->filter(fn (Run $run) => $run->lastActivityAt()->lessThan($cutoff))
+            ->values()
+            ->all();
+    }
+
     public function prune(int $olderThanDays): int
     {
-        $cutoff = CarbonImmutable::now()->subDays($olderThanDays);
-        $pruned = 0;
+        $runs = $this->inactive($olderThanDays);
 
-        foreach ($this->runs() as $run) {
-            if ($run->lastActivityAt()->lessThan($cutoff)) {
-                $this->delete($run);
-                $pruned++;
-            }
+        foreach ($runs as $run) {
+            $this->delete($run);
         }
 
-        return $pruned;
+        return count($runs);
     }
 
     public function item(Run $run, int $index): ?RunItem

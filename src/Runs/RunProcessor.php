@@ -198,6 +198,38 @@ final readonly class RunProcessor
     }
 
     /**
+     * Stops a running run that made no progress for $seconds, the sweep of tolk:prune: it is aborted with $message, so
+     * its page offers Resume, or completed when no item is unfinished, and finalized, which commits what it saved. A run
+     * that progressed meanwhile is left alone.
+     *
+     * @return bool whether the run was stopped
+     */
+    public function stopStalled(Run $run, int $seconds, string $message): bool
+    {
+        $stopped = $this->locked($run, function () use ($run, $seconds, $message) {
+            $this->runs->save($run);
+
+            if ($run->status !== RunStatus::Running || ! $run->lastActivityAt()->lessThan(CarbonImmutable::now()->subSeconds($seconds))) {
+                return false;
+            }
+
+            if (self::unfinished($this->runs->counts($run)) > 0) {
+                $run->status = RunStatus::Aborted;
+                $run->error = $message;
+                $this->runs->save($run);
+            }
+
+            return true;
+        });
+
+        if ($stopped) {
+            $this->finalize($run);
+        }
+
+        return $stopped;
+    }
+
+    /**
      * Claims items and works on them until the deadline, starting units only before it, so the call returns at most one
      * provider timeout after the deadline. An item whose plan is finished is `translated`. The loop stops when nothing
      * can be claimed, after a transient provider failure, when the run stops running, and once $maxItems items finished

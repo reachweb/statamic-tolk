@@ -198,6 +198,8 @@ return [
     | stay above `http.timeout.web` plus 40 seconds.
     | `tick_seconds` is the window in which one web request may start new
     | units; `claim_ttl` is how long a queue or CLI worker holds an item.
+    | `tolk:prune` stops the runs that made no progress for `claim_ttl`
+    | seconds and deletes those without activity for `retention_days` days.
     | Monthly usage logs are kept under `usage.path`. The `file` driver
     | rewrites a run's index on every step, so it suits runs of up to a few
     | thousand items.

@@ -551,6 +551,21 @@ describe('a queue run', function () {
         expect(runState($run)->json('stalled'))->toBeTrue();
     });
 
+    it('is stalled as a CLI run only once it made no progress within the claim TTL, and never as a browser run', function () {
+        $this->signInAdmin();
+        $cli = RunFixtures::started(['driver' => RunDriver::Cli]);
+        $browser = RunFixtures::started();
+
+        $this->travel(31)->seconds();
+        $early = runState($cli)->json('stalled');
+
+        $this->travel(config('tolk.runs.claim_ttl'))->seconds();
+
+        expect($early)->toBeFalse()
+            ->and(runState($cli)->json('stalled'))->toBeTrue()
+            ->and(runState($browser)->json('stalled'))->toBeFalse();
+    });
+
     it('is taken over by the browser with a new generation, and the browser finishes it', function () {
         $this->fakeTranslations();
         $this->signInAdmin();
