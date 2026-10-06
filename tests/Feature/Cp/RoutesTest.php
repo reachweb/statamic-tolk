@@ -2,6 +2,10 @@
 
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as Router;
+use Reach\StatamicTolk\Ai\Agents\SiteProfileAgent;
+
+// Generating the site profile is the one route that calls a model without a body.
+beforeEach(fn () => SiteProfileAgent::fake(fn () => ['profile' => 'A website.', 'terms' => []]));
 
 /**
  * Every route of routes/cp.php: name, method, path below the CP route, the permission group that guards it, and the
@@ -33,6 +37,7 @@ function tolkCpRoutes(): array
         'runs take over' => ['tolk.runs.take-over', 'POST', 'tolk/runs/01MISSINGRUN/take-over', 'runs', $run],
         'models' => ['tolk.models.index', 'GET', 'tolk/models', 'models'],
         'providers test' => ['tolk.providers.test', 'POST', 'tolk/providers/test', 'settings'],
+        'site profile generate' => ['tolk.site-profile.generate', 'POST', 'tolk/site-profile/generate', 'settings'],
     ];
 }
 
