@@ -10,9 +10,9 @@ use Illuminate\Support\Sleep;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
-use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Concerns\ReportsTranslations;
+use Reach\StatamicTolk\Console\Concerns\ResolvesTranslationOptions;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -55,6 +55,7 @@ use Throwable;
 class TranslateCommand extends Command
 {
     use ReportsTranslations;
+    use ResolvesTranslationOptions;
     use RunsInPlease;
 
     /**
@@ -151,11 +152,7 @@ class TranslateCommand extends Command
                 'profile' => 'background',
             ]);
 
-            foreach ($this->models($options) as $model) {
-                if (! FakeEngine::enabled() && ! $providers->isConfigured($model->provider)) {
-                    throw ProviderNotConfigured::for($model->provider);
-                }
-            }
+            $this->checkProviders($options, $providers);
 
             $planned = $planner->build(new RunRequest(
                 sites: $sites,
@@ -640,38 +637,10 @@ class TranslateCommand extends Command
         return $sites;
     }
 
-    private function sourceSite(): ?string
-    {
-        $site = $this->option('from');
-
-        if ($site === null || $site === '') {
-            return null;
-        }
-
-        return Site::get($site) === null ? throw UnknownSite::for($site) : $site;
-    }
-
     private function mode(): Mode
     {
         return Mode::tryFrom((string) $this->option('mode'))
             ?? throw new InvalidArgumentException("Invalid mode [{$this->option('mode')}]. Use missing, update, all or review.");
-    }
-
-    /**
-     * @return ?bool null when the settings decide
-     */
-    private function review(Mode $mode): ?bool
-    {
-        if (! $this->option('no-review')) {
-            // Naming a reviewer asks for a review.
-            return $this->option('review') || $this->option('reviewer') ? true : null;
-        }
-
-        if ($this->option('review') || $this->option('reviewer') || $mode === Mode::Review) {
-            throw new InvalidArgumentException('--no-review cannot be combined with --review, --reviewer or --mode=review.');
-        }
-
-        return false;
     }
 
     /**
@@ -728,50 +697,6 @@ class TranslateCommand extends Command
         }
 
         return [$collections, $entryIds, $taxonomies, $globals, $navs];
-    }
-
-    private function concurrency(): int
-    {
-        $concurrency = $this->option('concurrency');
-
-        if ($concurrency === null) {
-            return max(1, (int) config('tolk.concurrency.cli'));
-        }
-
-        if ($this->option('queue')) {
-            throw new InvalidArgumentException('--concurrency cannot be combined with --queue, which runs tolk.concurrency.queue lanes.');
-        }
-
-        if (! ctype_digit((string) $concurrency) || (int) $concurrency < 1) {
-            throw new InvalidArgumentException("Invalid concurrency [{$concurrency}]. Use a whole number of at least 1.");
-        }
-
-        return (int) $concurrency;
-    }
-
-    /**
-     * Refuses --queue on a connection that runs jobs in the process that dispatches them, or never: every lane would run
-     * inside this command, one after another, sleeping through each wait.
-     */
-    private function checkQueue(): void
-    {
-        if ($this->option('queue') && ! RunDispatcher::hasWorker()) {
-            throw new InvalidArgumentException(sprintf(
-                'The queue connection [%s] has no worker, so --queue would run the whole run inside this command. Leave out --queue to translate with worker processes (--concurrency).',
-                RunDispatcher::connection(),
-            ));
-        }
-    }
-
-    /**
-     * @return array<string, ModelRef> the models the operation calls, by role
-     */
-    private function models(PlanOptions $options): array
-    {
-        return array_filter([
-            'Translator' => $options->mode === Mode::Review ? null : $options->translator,
-            'Reviewer' => $options->reviewer,
-        ]);
     }
 
     private function leftOut(string $reason, int $count): string

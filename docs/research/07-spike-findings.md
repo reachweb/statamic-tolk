@@ -518,3 +518,13 @@ Read in core's source at `v6.35.0` (`Fields\Blueprint`, `Fields\Fields`, `Fields
 - `Collection::entryBlueprints()` is Blink-cached per request (`collection-entry-blueprints-{handle}`) and `BlueprintRepository::save()` does not clear that key, so changing the cached object in place is what keeps the rest of the request consistent. `Taxonomy::termBlueprints()` is not cached and rereads the files, whose cache `save()` clears.
 - A prefixed import labels its fields from the prefixed handle when they have no `display` (`seo_` + `description` reads "Seo Description").
 - Statamic's permission for editing blueprints and fieldsets is `configure fields` (`CorePermissions`, `FieldsetPolicy`).
+
+### Enabling a site for content (T9.7)
+
+Read in core's source at `v6.35.0` (`Entries\Collection`, `Taxonomies\Taxonomy`, `Taxonomies\Term`, `Globals\GlobalSet`, `Structures\CollectionStructure`, `CollectionsController`, `TaxonomiesController`, `GlobalsController`) and run in Pest and in the sandbox with the fake engine, 2026-10-06.
+
+- The CP changes a container's sites with `sites([...])` and `save()`. For a taxonomy, `TaxonomiesController::update()` also clears the `terms::{handle}` Stache store when the sites changed and the term repository is the Stache one. `SiteSetup::enable()` does the same. In Pest, terms in the new site were found and translated without the clear too.
+- `Term::taxonomy()` Blink-caches the taxonomy as `taxonomy-{handle}`, and `Taxonomy::save()` does not forget that key. `Collection::save()` does forget its keys (`flushStartingWith("collection-{handle}")`). With a file cache store, `Taxonomy::find()` returns a new instance after the save, so the cached one keeps the old sites. In Pest, `RunPlanner` skipped a term as `site_not_in_taxonomy` right after the site was added; a second command call in the same process translated it. `SiteSetup::enable()` forgets the key.
+- `CollectionStructure::in($site)` Blink-caches its tree, including null for a site the collection does not have. A run does not see that stale null: the planner does not read trees, and `RunProcessor` calls `ContentWriter::refreshStache()` (which renews every Blink store) before it plans an item. A structured collection enabled for a new site gets its tree.
+- `Collection::routes()` resolves a string route for every site and an array per site, with null for a missing site. So a per-site map without the site reads as `route($site) === null` while another site has a route. A collection without any route has none for every site and is not warned about.
+- `GlobalSet::sites()` takes `site => origin`, and `origins()->put($site, $origin)->all()` keeps the other sites' origins. `save()` creates the variables of a new site (`saveOrDeleteLocalizations()`).
