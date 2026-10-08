@@ -97,6 +97,29 @@ describe('entries', function () {
             ->and($result)->toEqual(statusScanner()->scan(ContentType::Entry, 'articles', 'el', null, 10_000));
     });
 
+    it('loads the roots of more than one chunk as it resolves them, and counts each target once', function () {
+        foreach (range(1, StatusScanner::CHUNK + 5) as $number) {
+            $this->makeEntry('articles', 'en', ['title' => "More {$number}"], "more-{$number}");
+        }
+
+        $sliced = statusScanner()->scan(ContentType::Entry, 'articles', 'el', null, 0);
+        $chunks = 1;
+
+        while (! $sliced->isFinished()) {
+            $sliced = $sliced->add(statusScanner()->scan(ContentType::Entry, 'articles', 'el', $sliced->cursor, 0));
+            $chunks++;
+        }
+
+        expect($chunks)->toBe(StatusScanner::CHUNK + 10)
+            ->and($sliced)->toEqual(statusScanner()->scan(ContentType::Entry, 'articles', 'el', null, 10_000))
+            ->and($sliced->toArray())->toBe([
+                'counts' => ['missing' => StatusScanner::CHUNK + 6, 'untranslated' => 1, 'outdated' => 1, 'attention' => 1, 'current' => 1],
+                'untracked' => 1,
+                'scanned' => StatusScanner::CHUNK + 10,
+                'cursor' => null,
+            ]);
+    });
+
     it('lists the sites a family\'s root is not in, and finds no targets in the site every root is in', function () {
         expect(statusScanner()->sites(ContentType::Entry, 'articles'))->toBe(['el', 'de'])
             ->and(statusScanner()->scan(ContentType::Entry, 'articles', 'en', null, 10_000))->toEqual(ScanResult::empty());

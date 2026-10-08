@@ -6,6 +6,7 @@ use Carbon\CarbonInterval;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Exceptions\InvalidLangFile;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
 use Reach\StatamicTolk\Exceptions\RunNotFound;
@@ -85,6 +86,8 @@ final readonly class Pruner
                 $reason = $this->inSiteLeftOut($ref) ? null : PruneReport::DELETED;
             } catch (InvalidTarget|UnknownSite) {
                 // The content exists in a site that the configuration leaves out now; its state is kept for its return.
+            } catch (InvalidLangFile) {
+                // A translation file that cannot be read now still holds the translations its state describes.
             }
 
             if ($reason !== null) {

@@ -569,3 +569,46 @@ Each lock removed in turn (five runs each): without the run repository's lock (`
 | Browser into `el`, CLI into `de`, the same collections, 10:22:57–10:23:03 | 17 done, 2 skipped `nothing_to_do` | 19 done | every check passed |
 
 The checks: each of the 13 articles and 6 pages has exactly one localization file per site (no `slug.1.md`); `Entry::query()` by collection and site returns exactly the ids in those files, and `Entry::find()` finds each one; every origin's `in($site)` is its file; the Greek and German page trees hold all 6 pages, each under the localization of its origin's parent, with Home's localization as the root. A run that comes second to a target skips it as edited meanwhile when it planned it before the other run saved it, and as nothing to do when it planned it afterwards. The sandbox was reset afterwards and the watcher set back to `auto`.
+
+### Failure modes and limits (T12.2)
+
+Run on 2026-10-08 with PHP 8.4.25, Laravel 13.34.0 and Statamic 6.35.0: in Pest, and in the sandbox with the fake engine (`fake_delay_ms` 300), the `file` cache and headless Chromium (Playwright 1.63.0).
+
+**The Pest test** (`tests/Feature/FailureModesTest.php`, 15 tests). Each scenario goes through the entry point a user meets: the CLI's `TargetTranslator`, the editor's `plan`, `unit` and `confirm` requests, or a browser run's `store`, `start`, `tick` and `apply` requests. Model calls go through the real `TranslationEngine` with the SDK's agent fakes, or through Anthropic's HTTP API faked with `Http::fake()` where the error mapping matters (529 overloaded with `retry-after: 3`).
+
+- A Bard field of 300 paragraphs (301 segments with the title) goes out in four units of 80, 80, 80 and 61 segments (`batch.max_segments`), every segment once and in document order, although the fake answers each unit in reverse order; the saved field has the 300 paragraphs in order and reads current. In the editor the field is delivered by the request of its last unit, also when the units run in reverse order.
+- A paragraph of 11,199 characters, longer than both budgets (`web` 6,000, `background` 10,000), is a unit of its own between its neighbours' units.
+- A paragraph whose bold text's placeholders the model drops every time is sent three times (the answer and two repairs), then delivered in the source language with its mark, with the warning `Body: "Book a room today." was left untranslated (invalid).`; saved, the field reads outdated (`incomplete`), and Update sends only that paragraph.
+- A provider that answers 529 every time: a browser run's item waits 3 seconds ten times, then fails with `provider_unavailable` at the 11th request; the run ends `completed_with_errors` with nothing saved, no state, no usage and no commit, and no request slept. The CLI's translator sleeps ten times (`Sleep::fake(syncWithCarbon: true)`) and fails the same way.
+- A tick while the provider is paused for 30 seconds answers `wait: 30` at once, makes no HTTP request and does not sleep; the item waits with `available_at` 30 seconds ahead and is translated after the pause.
+- A plan lost from the cache (`Cache::flush()`) after the first of three units is planned again and translated from its first unit; one lost after translating sends the item back to `pending` at apply (`returned: 1`) and it is translated again. Either way the localization exists once and reads current.
+- Two runs over the same entry: the run that translated it before the other saved it skips it as `target_changed` and leaves content and state byte for byte as the first run wrote them; a run planned after the save skips it as `nothing_to_do` without a model call.
+- With git on, a run over an entry of a revision-enabled collection whose published localization gets a working copy, a new localization created as a draft with a revision, a term, a global set and a navigation dispatches exactly one commit, "Content translated".
+
+The tests passed at once apart from the expected order of the editor's spawned units. Each of these mutations fails at least one of them: a tick without the limit of one unit, Statamic's git listeners left on during writes (eight commits instead of one), no `target_changed` check, a lost plan at apply failing the item instead of returning it, a sleep in the processor's wait, and an incomplete field reading current.
+
+**One provider call per web request.** D24 and the acceptance criteria say every request makes at most one provider call, but a browser run's `tick` translated until `runs.tick_seconds` (5 s), so with quick units one tick made several calls (three in `RunsControllerTest`'s three-item run). `RunProcessor::translate()` now takes `$maxUnits`, and the tick passes 1. Items with nothing to translate cost no unit, so a tick still works through them until its deadline; a request lasts at most `runs.tick_seconds` plus one provider timeout, as before. Queue lanes and CLI workers are not web requests and run units until their deadlines. The editor's requests already made at most one call each, also when a unit timed out and split, needed a repair or a retry for a missing id, and was reviewed (asserted per request). The browser scenarios that drive runs (runs, bulk action, editor push, overview, terms; 15) pass with the one-unit tick.
+
+**The Overview at a few thousand entries.** 3,013 English articles in the sandbox, 1,000 of them with a Greek localization (written as files for the measurement and deleted afterwards), Stache warm. Each Overview slice is a request, so each was measured in a fresh process: the cell's target list, then a slice of `OverviewScanner::BUDGET_MS` (1,500 ms).
+
+| | Target list per slice | Slice | Targets per slice | Slices for the Greek cell | `tolk:status --collection=articles` |
+| --- | --- | --- | --- | --- | --- |
+| Every root loaded (before) | ~520 ms | ~2.2 s | ~450 | 7, 17 s in all | 18.7–19.6 s |
+| One `Entry::find()` per target (tried) | ~330 ms | ~1.84 s | ~340 | 9, 19 s | |
+| Ids from the index, roots loaded 50 at a time, the target built from the loaded root (now) | ~330 ms | ~1.84 s | ~630 | 5, 10 s | 9.2–9.5 s |
+
+- `Entry::find()` costs about 1 ms per call at this size, also for an entry loaded just before: the Stache answers `where('id', …)` by filtering the whole id index. A `whereIn('id', …)` of 300 ids costs 69 ms in all. So one find per target made the scan slower, and the ~330 ms of the target list are mostly the index loads every query of the request needs anyway.
+- `EntryTarget` used to find its root again by id; `TargetFactory::forLoadedEntry()` hands it the root the scan just loaded, which gave most of the gain (440 → 630 targets per slice). Its `fresh()`, which `apply()` works on, still loads the entry anew.
+- What is left per target (about 2.4 ms at 3,000 entries) is mostly Statamic's own lookups during resolution (the localization through `in()`, its origin), which also filter whole indexes, so it still grows with the collection.
+- `tolk:status` on the demo content takes 0.35–0.62 s (three runs).
+
+**A real queue.** The sandbox switched to `QUEUE_CONNECTION=database` on a temporary SQLite file (`DB_DATABASE`, `php artisan migrate`; the skeleton's jobs migration was already there, so `make:queue-table` was not needed), `php artisan queue:work --sleep=1` started from a Playwright script, which then used the articles listing's Translate… action on ten articles, Start on the run page, and `kill -9` on the worker once three items were translated. `runs.execution: auto` chose the queue driver. Each run was stalled exactly `runs.claim_ttl` (300 s) after the kill, the page showing the notice with Resume and "Run in this browser instead":
+
+| Run | Killed at | Stalled notice | Finished with | Result |
+| --- | --- | --- | --- | --- |
+| Ten articles into Greek | 3 translated, 1 translating, 4 pending (2 skipped: the demo's hand-translated Greek articles) | 300 s later | Resume, with a new worker started | completed 4.4 s later: 8 done, 2 skipped |
+| The same ten into German | 3 translated, 1 translating, 6 pending | 300 s later | Run in this browser instead, no worker | completed 1.9 s later: 10 done |
+
+Every localization the runs created holds the fake engine's `[el]` or `[de]` title, and the two hand-translated Greek articles kept theirs. The item the killed worker held was handed out again once its claim had expired, which is why the notice and the claim TTL coincide; a worker that dies therefore costs up to `runs.claim_ttl` before the page offers anything. `.env` was restored and the temporary database deleted afterwards.
+
+**Measurements with real providers.** The sandbox has no provider keys, so the time to translate the longest demo article per model tier at editor concurrency 1, 2 and 4, and the duration of the longest single request, are deferred to T13.4. `batch.*`, `http.timeout.web` and `concurrency.*` keep their defaults.

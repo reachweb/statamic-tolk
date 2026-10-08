@@ -7,6 +7,7 @@ use InvalidArgumentException;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\NotSupportedYet;
+use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
@@ -20,6 +21,7 @@ use Statamic\Contracts\Structures\Nav as NavContract;
 use Statamic\Contracts\Taxonomies\Taxonomy as TaxonomyContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
 use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
@@ -33,6 +35,11 @@ use Statamic\Facades\Term;
  */
 final readonly class StatusScanner
 {
+    /**
+     * Roots loaded by one query while a scan resolves entry targets.
+     */
+    public const int CHUNK = 50;
+
     public function __construct(
         private EntryFamilies $families,
         private TargetFactory $factory,
@@ -132,12 +139,26 @@ final readonly class StatusScanner
      */
     private function entryTargets(CollectionContract $collection, string $site): array
     {
-        $roots = collect($this->families->roots([$collection->handle()], []))->keyBy(fn (EntryContract $root) => (string) $root->id());
+        if (! $collection->sites()->contains($site)) {
+            return [];
+        }
 
-        return array_map(
-            fn (array $target) => fn () => $this->factory->forEntry($roots[$target['source_id']], $target['site']),
-            $this->families->targets($roots->values()->all(), [$site]),
-        );
+        $ids = $this->families->rootIdsOutside($collection, $site);
+        $loaded = [];
+
+        // Listed from the index and loaded a chunk at a time as they are resolved, so a slice loads only the roots it
+        // resolves. One query per root would cost more: Entry::find() filters the whole id index (T12.2).
+        $root = function (int $index) use ($ids, &$loaded): EntryContract {
+            if (! isset($loaded[$ids[$index]])) {
+                $loaded = Entry::query()->whereIn('id', array_slice($ids, $index, self::CHUNK))->get()
+                    ->keyBy(fn (EntryContract $entry) => (string) $entry->id())
+                    ->all();
+            }
+
+            return $loaded[$ids[$index]] ?? throw TargetNotFound::entry($ids[$index]);
+        };
+
+        return array_map(fn (int $index) => fn () => $this->factory->forLoadedEntry($root($index), $site), array_keys($ids));
     }
 
     /**

@@ -238,19 +238,21 @@ describe('estimate', function () {
 });
 
 describe('a browser run', function () {
-    it('starts, and finishes a three-item run with alternating tick and apply calls', function () {
+    it('starts, and finishes a three-item run with a tick per unit and an apply call', function () {
         Event::fake([RunFinished::class]);
         $this->fakeTranslations();
         $this->signInAdmin();
         $run = createdRun();
 
         $started = runAction($run, 'start')->assertOk();
+        $reports = [tick($run)->assertOk()->json('report'), tick($run)->assertOk()->json('report')];
         $ticked = tick($run)->assertOk();
         $applied = runAction($run, 'apply')->assertOk();
 
         expect($started->json('run.status'))->toBe('running')
             ->and($started->json('counts.pending'))->toBe(3)
-            ->and($ticked->json('report'))->toBe(['units' => 3, 'items' => 3, 'remains' => false, 'wait' => null])
+            ->and($reports)->toBe(array_fill(0, 2, ['units' => 1, 'items' => 1, 'remains' => true, 'wait' => 0]))
+            ->and($ticked->json('report'))->toBe(['units' => 1, 'items' => 1, 'remains' => false, 'wait' => null])
             ->and($ticked->json('counts.translated'))->toBe(3)
             ->and($applied->json('report'))->toBe(['items' => 3, 'returned' => 0, 'remains' => false, 'wait' => null])
             ->and($applied->json('run.status'))->toBe('completed')
@@ -269,12 +271,11 @@ describe('a browser run', function () {
         $run = createdRun(['collections' => null, 'globals' => ['site_settings'], 'sites' => ['el', 'de']]);
 
         runAction($run, 'start')->assertOk();
-        tick($run)->assertOk();
-        $applied = runAction($run, 'apply')->assertOk();
+        $applied = driveRun($run);
         $set = GlobalSet::findByHandle('site_settings');
 
-        expect($applied->json('run.status'))->toBe('completed')
-            ->and($applied->json('counts.done'))->toBe(2)
+        expect($applied['run']['status'])->toBe('completed')
+            ->and($applied['counts']['done'])->toBe(2)
             ->and($set->in('el')->get('tagline'))->toBe('[T] By the sea')
             ->and($set->in('de')->get('tagline'))->toBe('[T] By the sea')
             ->and(array_map(fn (RunItem $item) => [$item->type->value, $item->reference, $item->editUrl], RunFixtures::items($run)))->toBe([
@@ -355,6 +356,7 @@ describe('a browser run', function () {
         $held = $this->runs->claimNext($run, $owner, 300);
 
         $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'edit articles entries']);
+        tick($run, 1, RUN_NONCE, ['worker' => $owner, 'worker_id' => $owner])->assertOk();
         tick($run, 1, RUN_NONCE, ['worker' => $owner, 'worker_id' => $owner])->assertOk();
         $items = RunFixtures::items($run);
 
@@ -602,8 +604,8 @@ describe('authorization', function () {
 
         runState($run)->assertOk();
         tick($run)->assertOk();
-        runAction($run, 'apply')->assertOk()->assertJsonPath('counts.done', 3);
-        runAction($run, 'cancel')->assertOk();
+        runAction($run, 'apply')->assertOk()->assertJsonPath('counts.done', 1);
+        runAction($run, 'cancel')->assertOk()->assertJsonPath('run.status', 'cancelled');
 
         runAction($run, 'start')->assertForbidden();
         runAction($run, 'retry')->assertForbidden();

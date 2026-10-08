@@ -62,21 +62,17 @@ final class TargetFactory
      */
     public function forEntry(EntryContract|string $source, string $site): EntryTarget
     {
-        $entry = $source instanceof EntryContract ? $source : (Entry::find($source) ?? throw TargetNotFound::entry($source));
+        return $this->entryTarget($source instanceof EntryContract ? $source : (Entry::find($source) ?? throw TargetNotFound::entry($source)), $site);
+    }
 
-        if (Site::get($site) === null) {
-            throw UnknownSite::for($site);
-        }
-
-        if ($entry->locale() === $site) {
-            throw InvalidTarget::sameSite((string) $entry->id(), $site);
-        }
-
-        if (! $entry->collection()->sites()->contains($site)) {
-            throw InvalidTarget::siteNotInCollection($entry->collectionHandle(), $site);
-        }
-
-        return new EntryTarget((string) $entry->id(), $site, $this->translatableFields, $this->summary, $this->settings, $this->walker, $this->resolver, $this->stateWriter);
+    /**
+     * As forEntry(), for an entry the caller has just loaded, such as a root of the status scan: the target reads that
+     * instance instead of finding the entry again, which filters the whole id index (T12.2). Its fresh(), which apply()
+     * works on (§A11), loads the entry anew.
+     */
+    public function forLoadedEntry(EntryContract $entry, string $site): EntryTarget
+    {
+        return $this->entryTarget($entry, $site, loaded: true);
     }
 
     /**
@@ -196,6 +192,33 @@ final class TargetFactory
             ContentType::Lang => $this->langFromDescription((string) $sourceId, $site),
             ContentType::Forms => $this->forForms($site, (string) $sourceId),
         };
+    }
+
+    private function entryTarget(EntryContract $entry, string $site, bool $loaded = false): EntryTarget
+    {
+        if (Site::get($site) === null) {
+            throw UnknownSite::for($site);
+        }
+
+        if ($entry->locale() === $site) {
+            throw InvalidTarget::sameSite((string) $entry->id(), $site);
+        }
+
+        if (! $entry->collection()->sites()->contains($site)) {
+            throw InvalidTarget::siteNotInCollection($entry->collectionHandle(), $site);
+        }
+
+        return new EntryTarget(
+            (string) $entry->id(),
+            $site,
+            $this->translatableFields,
+            $this->summary,
+            $this->settings,
+            $this->walker,
+            $this->resolver,
+            $this->stateWriter,
+            $loaded ? $entry : null,
+        );
     }
 
     private function entryFromReference(TargetRef $ref): EntryTarget

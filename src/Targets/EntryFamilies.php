@@ -46,6 +46,28 @@ final class EntryFamilies
     }
 
     /**
+     * The ids of the collection's roots in sites other than $site, in the order of roots(), read from the index without
+     * loading the entries.
+     *
+     * @return list<string>
+     */
+    public function rootIdsOutside(CollectionContract $collection, string $site): array
+    {
+        $ids = $this->rootQuery($collection->handle())->pluck('site', 'id')
+            ->reject(fn (string $rootSite) => $rootSite === $site)
+            ->keys()
+            ->map(fn (int|string $id) => (string) $id)
+            ->all();
+        $positions = $this->treePositions($collection);
+
+        if ($positions !== []) {
+            usort($ids, fn (string $a, string $b) => ($positions[$a] ?? PHP_INT_MAX) <=> ($positions[$b] ?? PHP_INT_MAX));
+        }
+
+        return $ids;
+    }
+
+    /**
      * The sites the collection's roots are in, each once, read from the index without loading the entries.
      *
      * @return list<string>
