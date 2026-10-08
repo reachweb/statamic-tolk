@@ -215,9 +215,10 @@ describe('refusals', function () {
         $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'view articles entries']);
         pushEntry($this->hello, ['sites' => ['el']])->assertForbidden();
 
-        // German is not listed for a user without access to it.
+        // German is refused to a user without access to it, before the request is validated (T12.3).
         $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
-        pushEntry($this->hello, ['sites' => ['de']])->assertUnprocessable()->assertJsonPath('code', 'invalid_sites');
+        pushEntry($this->hello, ['sites' => ['de']])->assertForbidden();
+        pushEntry($this->hello, ['sites' => ['el', 'de'], 'mode' => 'review'])->assertForbidden();
 
         $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'edit articles entries']);
         pushEntry($this->hello, ['sites' => ['el']])->assertForbidden();

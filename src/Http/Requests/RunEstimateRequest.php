@@ -2,9 +2,7 @@
 
 namespace Reach\StatamicTolk\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class RunEstimateRequest extends FormRequest
+class RunEstimateRequest extends RunStateRequest
 {
     public function rules(): array
     {

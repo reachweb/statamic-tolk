@@ -52,16 +52,19 @@ class RunsController extends Controller
         private readonly RunState $state,
     ) {}
 
+    /**
+     * The recent runs the user may see.
+     */
     public function index(): Response
     {
         return Inertia::render('tolk::Runs/Index', [
-            'runs' => array_map($this->state->summary(...), $this->runs->recent(self::RECENT)),
+            'runs' => array_map($this->state->summary(...), RunStateRequest::visible($this->runs->recent(self::RECENT), User::current())),
         ]);
     }
 
-    public function show(RunStateRequest $request, string $run): Response
+    public function show(RunStateRequest $request): Response
     {
-        $stored = $this->runs->find($run) ?? abort(404);
+        $stored = $request->run() ?? abort(404);
 
         return Inertia::render('tolk::Runs/Show', [
             'state' => $this->stateOf($stored, $request),
@@ -100,23 +103,23 @@ class RunsController extends Controller
 
     public function state(RunFollowRequest $request): JsonResponse
     {
-        return response()->json($this->stateOf($this->followed($request), $request));
+        return response()->json($this->stateOf($this->found($request), $request));
     }
 
     /**
      * Estimates the next items within about ESTIMATE_BUDGET_MS. `from` 0 starts over; any other index than where the
      * last call stopped returns the stored progress.
      */
-    public function estimate(RunEstimateRequest $request, string $run, RunPlanner $planner): JsonResponse
+    public function estimate(RunEstimateRequest $request, RunPlanner $planner): JsonResponse
     {
-        $progress = $planner->estimate($this->find($run), (int) $request->validated('from'), self::ESTIMATE_BUDGET_MS);
+        $progress = $planner->estimate($this->found($request), (int) $request->validated('from'), self::ESTIMATE_BUDGET_MS);
 
         return response()->json($progress->toArray());
     }
 
-    public function start(RunStateRequest $request, string $run, RunDispatcher $dispatcher): JsonResponse
+    public function start(RunStateRequest $request, RunDispatcher $dispatcher): JsonResponse
     {
-        $stored = $this->find($run);
+        $stored = $this->found($request);
         $dispatcher->start($stored);
 
         return response()->json($this->stateOf($stored, $request));
@@ -129,7 +132,7 @@ class RunsController extends Controller
      */
     public function tick(RunTickRequest $request, RunProcessor $processor): JsonResponse
     {
-        $run = $this->followed($request);
+        $run = $this->found($request);
         $report = new WorkReport;
 
         if ($run->driver === RunDriver::Browser) {
@@ -148,7 +151,7 @@ class RunsController extends Controller
      */
     public function apply(RunFollowRequest $request, RunProcessor $processor): JsonResponse
     {
-        $run = $this->followed($request);
+        $run = $this->found($request);
         $report = new ApplyReport;
 
         if ($run->driver === RunDriver::Browser) {
@@ -161,15 +164,15 @@ class RunsController extends Controller
 
     public function cancel(RunFollowRequest $request, RunProcessor $processor): JsonResponse
     {
-        $run = $this->followed($request);
+        $run = $this->found($request);
         $processor->cancel($run);
 
         return response()->json($this->stateOf($run, $request));
     }
 
-    public function resume(RunStateRequest $request, string $run, RunProcessor $processor, RunDispatcher $dispatcher): JsonResponse
+    public function resume(RunStateRequest $request, RunProcessor $processor, RunDispatcher $dispatcher): JsonResponse
     {
-        $stored = $this->find($run);
+        $stored = $this->found($request);
 
         if (! $processor->resume($stored)) {
             $this->fail(409, 'not_resumable', __('Only a cancelled, aborted or running run can be resumed.'));
@@ -183,9 +186,9 @@ class RunsController extends Controller
     /**
      * Puts the failed items back, with the items their failure skipped, and runs the run again.
      */
-    public function retry(RunStateRequest $request, string $run, RunProcessor $processor, RunDispatcher $dispatcher): JsonResponse
+    public function retry(RunStateRequest $request, RunProcessor $processor, RunDispatcher $dispatcher): JsonResponse
     {
-        $stored = $this->find($run);
+        $stored = $this->found($request);
         $retried = $processor->retry($stored);
 
         if ($retried > 0) {
@@ -198,20 +201,15 @@ class RunsController extends Controller
     /**
      * Moves a queue run to this browser, for a site whose queue has no worker; the page then starts its lanes.
      */
-    public function takeOver(RunStateRequest $request, string $run, RunDispatcher $dispatcher): JsonResponse
+    public function takeOver(RunStateRequest $request, RunDispatcher $dispatcher): JsonResponse
     {
-        $stored = $this->find($run);
+        $stored = $this->found($request);
         $dispatcher->takeOver($stored);
 
         return response()->json($this->stateOf($stored, $request));
     }
 
-    private function find(string $id): Run
-    {
-        return $this->runs->find($id) ?? $this->notFound();
-    }
-
-    private function followed(RunFollowRequest $request): Run
+    private function found(RunStateRequest $request): Run
     {
         return $request->run() ?? $this->notFound();
     }

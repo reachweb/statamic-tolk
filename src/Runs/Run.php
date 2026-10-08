@@ -67,6 +67,18 @@ final class Run
         );
     }
 
+    /**
+     * The sites the run translates into, and the site it translates from when it names one.
+     *
+     * @return list<string>
+     */
+    public function sites(): array
+    {
+        $sites = [...(array) ($this->scope['sites'] ?? []), $this->scope['source_site'] ?? null];
+
+        return array_values(array_unique(array_filter($sites, fn ($site) => is_string($site) && $site !== '')));
+    }
+
     public function lastActivityAt(): CarbonImmutable
     {
         return collect([$this->createdAt, $this->startedAt, $this->progressedAt, $this->finishedAt, $this->finalizedAt])

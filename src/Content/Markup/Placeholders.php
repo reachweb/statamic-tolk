@@ -19,6 +19,9 @@ final class Placeholders
     // An inline link or image destination, or a reference definition, that is not an atom.
     private const string RAW_DESTINATION = '/\]\((?!\s*'.self::ATOM.')|^ {0,3}\[[^\]\n]+\]:(?!\s*'.self::ATOM.')/m';
 
+    // A web or email address in the text, which a Markdown field with `automatic_links` turns into a link (T12.3).
+    private const string BARE_ADDRESS = '/(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
+
     /**
      * @return array{pairs: list<string>, atoms: list<string>, breaks: int}
      */
@@ -127,6 +130,10 @@ final class Placeholders
             $problems[] = 'a link destination is not a placeholder';
         }
 
+        if ($kind === SegmentKind::Markdown && self::addsAddresses($source, $translated)) {
+            $problems[] = 'it adds or changes a web or email address';
+        }
+
         if (mb_strlen($translated) > 4 * mb_strlen($source) + 200) {
             $problems[] = 'it is too long';
         }
@@ -191,6 +198,29 @@ final class Placeholders
     {
         return substr_count($translated, '&lt;') > substr_count($source, '&lt;')
             || substr_count($translated, '&gt;') > substr_count($source, '&gt;');
+    }
+
+    /**
+     * Whether the translation holds an address more often than the source does. Trailing punctuation is not part of an
+     * address, as for the autolink extension.
+     */
+    private static function addsAddresses(string $source, string $translated): bool
+    {
+        $addresses = function (string $text): array {
+            preg_match_all(self::BARE_ADDRESS, $text, $matches);
+
+            return array_count_values(array_map(fn (string $address) => mb_strtolower(rtrim($address, '.,:;!?\'")*_~]')), $matches[0]));
+        };
+
+        $known = $addresses($source);
+
+        foreach ($addresses($translated) as $address => $count) {
+            if ($count > ($known[$address] ?? 0)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function blank(string $text): bool
