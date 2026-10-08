@@ -269,6 +269,7 @@ it('rejects a 429 that reports a spend cap or quota and does not pause', functio
 ]);
 
 it('pauses and throws ProviderPaused on a server error, an overload and an error inside a 200 response', function (string $provider, int $status, array $headers, int $seconds) {
+    $this->freezeTime();
     ProviderFixtures::fake($provider, ProviderFixtures::error($provider, $status, 'api_error', 'Internal error.'), $status, $headers);
 
     $exception = engineFailure($provider);
