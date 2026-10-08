@@ -114,9 +114,11 @@ final class FileStateRepository implements StateRepository
         }
     }
 
+    // An update holds this lock for a few milliseconds, so a waiter tries again sooner than Laravel's 250: the editor's
+    // parallel unit requests record their fields in the same target's state.
     private function lock(TargetRef $ref): Lock
     {
-        return Cache::store(config('tolk.cache_store'))->lock('tolk:state:'.sha1((string) $ref), 10);
+        return Cache::store(config('tolk.cache_store'))->lock('tolk:state:'.sha1((string) $ref), 10)->betweenBlockedAttemptsSleepFor(10);
     }
 
     private function root(): string
