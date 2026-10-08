@@ -35,7 +35,7 @@ it('makes one small structured call with the provider\'s fast model', function (
         ->and(data_get($body, $maxTokens))->toBeLessThanOrEqual(64)
         ->and($body)->not->toHaveKey('temperature');
 })->with([
-    'anthropic' => ['anthropic', 'claude-haiku-4-5', 'Claude Haiku 4.5', 'max_tokens'],
+    'anthropic' => ['anthropic', 'claude-haiku-5-5', 'Claude Haiku 5.5', 'max_tokens'],
     'openai' => ['openai', 'gpt-6-luna', 'GPT-6 Luna', 'max_output_tokens'],
     'gemini' => ['gemini', 'gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite', 'generation_config.max_output_tokens'],
 ]);
@@ -80,8 +80,8 @@ it('answers a rejected key with ok false and a readable message', function () {
         ->assertOk()
         ->assertExactJson([
             'ok' => false,
-            'model' => 'anthropic:claude-haiku-4-5',
-            'label' => 'Claude Haiku 4.5',
+            'model' => 'anthropic:claude-haiku-5-5',
+            'label' => 'Claude Haiku 5.5',
             'error' => 'Anthropic refused the API key (HTTP 401): invalid x-api-key',
         ]);
 

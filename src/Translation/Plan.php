@@ -19,6 +19,7 @@ final readonly class Plan
      * @param  array<string, array{field: string, index: int, kind: string, text: string, label: string, hint: ?string, max_length: ?int, before: ?string, after: ?string, translation: ?string}>  $segments
      * @param  list<array{id: string, segment_ids: list<string>, chars: int}>  $batches
      * @param  array<string, string>  $skipped  in-scope fields that are not planned, with the reason
+     * @param  array<string, list<string>>  $notes  what the handlers noticed about fields that are not planned, such as a source they leave untouched
      */
     public function __construct(
         public string $id,
@@ -33,6 +34,7 @@ final readonly class Plan
         public array $segments,
         public array $batches,
         public array $skipped,
+        public array $notes = [],
     ) {}
 
     /**
@@ -110,6 +112,7 @@ final readonly class Plan
             'segments' => $this->segments,
             'batches' => $this->batches,
             'skipped' => $this->skipped,
+            'notes' => $this->notes,
         ];
     }
 
@@ -128,6 +131,17 @@ final readonly class Plan
             segments: $data['segments'] ?? [],
             batches: $data['batches'] ?? [],
             skipped: $data['skipped'] ?? [],
+            notes: $data['notes'] ?? [],
         );
+    }
+
+    /**
+     * The notes of every field, as warnings of the plan's result.
+     *
+     * @return list<string>
+     */
+    public function noteList(): array
+    {
+        return array_values(array_unique(array_merge([], ...array_values($this->notes))));
     }
 }

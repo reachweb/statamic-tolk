@@ -299,6 +299,7 @@ export function createTranslations({
                 planned: Array.isArray(plan.fields) ? plan.fields : [],
                 skipped: { ...editedInForm(plan.skipped), ...summary.skipped },
                 planSkipped: otherPlanSkips(plan.skipped),
+                warnings: [...new Set([...(Array.isArray(plan.warnings) ? plan.warnings : []), ...(summary.warnings ?? [])])],
                 cancelled: controller.signal.aborted,
             };
 

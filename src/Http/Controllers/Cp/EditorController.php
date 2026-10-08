@@ -67,7 +67,7 @@ class EditorController extends Controller
     public function plan(EditorPlanRequest $request, EditorTranslation $translation, Settings $settings, ModelCatalog $catalog): JsonResponse
     {
         $user = User::current();
-        $target = $this->authorized($this->localization($request->validated('reference')), $user);
+        $target = $this->included($this->authorized($this->localization($request->validated('reference')), $user), $settings);
         $options = $this->options($settings, $catalog, $user, [
             'mode' => $request->validated('mode'),
             'overwriteManual' => $request->boolean('overwrite_manual'),
@@ -87,7 +87,7 @@ class EditorController extends Controller
     public function review(EditorReviewRequest $request, EditorTranslation $translation, Settings $settings, ModelCatalog $catalog): JsonResponse
     {
         $user = User::current();
-        $target = $this->authorized($this->localization($request->validated('reference')), $user);
+        $target = $this->included($this->authorized($this->localization($request->validated('reference')), $user), $settings);
         // Only mode review keeps a reviewer override while the review setting is off.
         $options = $this->options($settings, $catalog, $user, [
             'mode' => Mode::Review,
@@ -189,6 +189,10 @@ class EditorController extends Controller
             $this->unknownReference($reference);
         }
 
+        if ($payload['reason'] === EditorStatus::EXCLUDED) {
+            $this->fail(422, 'nothing_to_translate', self::excludedMessage($term));
+        }
+
         if ($listed === []) {
             $this->fail(422, 'not_an_origin', $term ? __('This term has no translations to update from here.') : __('This entry has no translations to update from here.'));
         }
@@ -239,11 +243,7 @@ class EditorController extends Controller
                 throw new AuthorizationException;
             }
 
-            $this->fail(422, 'nothing_to_translate', match (true) {
-                isset($planned->skipped[RunPlanner::EXCLUDED_COLLECTION]) => __('Entries of this collection are excluded from translation in the settings.'),
-                isset($planned->skipped[RunPlanner::EXCLUDED_TAXONOMY]) => __('Terms of this taxonomy are excluded from translation in the settings.'),
-                default => __('There is nothing to translate into these sites.'),
-            });
+            $this->fail(422, 'nothing_to_translate', __('There is nothing to translate into these sites.'));
         }
 
         $run = $runs->create($planned->run, $planned->items);
@@ -259,6 +259,25 @@ class EditorController extends Controller
         } catch (NoProviderConfigured|MissingDefaultModel $exception) {
             $this->fail(422, 'no_translator', $exception->getMessage());
         }
+    }
+
+    /**
+     * The settings keep the target's collection or taxonomy out of every translation, the editor's included.
+     */
+    private function included(Target $target, Settings $settings): Target
+    {
+        if ($settings->excludes($target->type(), $target->container())) {
+            $this->fail(422, 'not_translatable', self::excludedMessage($target->type() === ContentType::Term));
+        }
+
+        return $target;
+    }
+
+    private static function excludedMessage(bool $term): string
+    {
+        return $term
+            ? __('Terms of this taxonomy are excluded from translation in the settings.')
+            : __('Entries of this collection are excluded from translation in the settings.');
     }
 
     private function localization(string $reference): Target

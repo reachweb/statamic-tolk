@@ -180,7 +180,7 @@ it('sends the corrections schema to the reviewer\'s model', function (string $pr
             'reason' => ['type' => 'string'],
         ]);
 })->with([
-    'anthropic' => ['anthropic', 'claude-haiku-4-5', 'output_config.format.schema'],
+    'anthropic' => ['anthropic', 'claude-haiku-5-5', 'output_config.format.schema'],
     'openai' => ['openai', 'gpt-6-luna', 'text.format.schema'],
     'gemini' => ['gemini', 'gemini-3.5-flash-lite', 'response_format.schema'],
 ]);

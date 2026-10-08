@@ -79,7 +79,7 @@ it('saves what Settings reads, with booleans as booleans and no providers key', 
     $this->signInWithPermissions(['access cp', 'edit reachweb/statamic-tolk settings']);
 
     $this->patchJson(cp_route('addons.settings.update', 'statamic-tolk'), tolkSettingsForm([
-        'translator_model' => ' anthropic:claude-haiku-4-5 ',
+        'translator_model' => ' anthropic:claude-haiku-5-5 ',
         'review_enabled' => true,
         'reviewer_model' => 'gemini:gemini-3.8-flash',
         'fallback_model' => '',
@@ -99,7 +99,7 @@ it('saves what Settings reads, with booleans as booleans and no providers key', 
     $settings = app(Settings::class)->fresh();
 
     expect($stored)->not->toHaveKey('providers')
-        ->and($stored['translator_model'])->toBe('anthropic:claude-haiku-4-5')
+        ->and($stored['translator_model'])->toBe('anthropic:claude-haiku-5-5')
         ->and($stored)->not->toHaveKey('fallback_model')
         ->and($stored['review_enabled'])->toBeTrue()
         ->and($stored['offer_on_create'])->toBeFalse()
@@ -109,7 +109,7 @@ it('saves what Settings reads, with booleans as booleans and no providers key', 
         ->and($stored['glossary'][0])->toHaveKey('id')->toMatchArray(['term' => 'Kyma Bay', 'do_not_translate' => true])
         ->and($stored['glossary'][0])->not->toHaveKey('site')
         ->and($stored['glossary'][1]['site'])->toBe('de')
-        ->and($settings->translatorModel())->toEqual(new ModelRef('anthropic', 'claude-haiku-4-5'))
+        ->and($settings->translatorModel())->toEqual(new ModelRef('anthropic', 'claude-haiku-5-5'))
         ->and($settings->reviewerModel())->toEqual(new ModelRef('gemini', 'gemini-3.8-flash'))
         ->and($settings->fallbackModel())->toBeNull()
         ->and($settings->languageInstructions('el'))->toBe(['formality' => Formality::Informal, 'instructions' => 'Use the monotonic system.'])

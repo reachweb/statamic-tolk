@@ -171,6 +171,20 @@ describe('plan', function () {
             ->assertJsonPath('code', 'not_translatable');
     });
 
+    it('refuses a localization of a collection the settings exclude', function () {
+        $this->signInAdmin();
+        $this->withSettings(['excluded_collections' => ['articles']]);
+
+        editorPlan($this->greek)
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'not_translatable')
+            ->assertJsonPath('message', 'Entries of this collection are excluded from translation in the settings.');
+        $this->postJson(cp_route('tolk.editor.review'), ['reference' => $this->greek->reference(), 'values' => ['title' => 'Γεια']])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'not_translatable');
+        $this->assertNoModelCalls();
+    });
+
     it('forbids a user who cannot edit the localization', function () {
         $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'view articles entries']);
 

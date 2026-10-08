@@ -451,3 +451,25 @@ describe('failures', function () {
             ->and($this->origin->fresh()->in('el')->get('title'))->toBe('Γεια σας');
     });
 });
+
+it('reports what the handlers noticed about a field they leave untouched, with and without other work', function () {
+    $this->makeCollection('stories', ['en', 'el'], [
+        'title' => ['type' => 'text', 'localizable' => true],
+        'content' => ['type' => 'bard', 'localizable' => true, 'display' => 'Content', 'sets' => ['quote' => ['display' => 'Quote', 'fields' => [
+            ['handle' => 'text', 'field' => ['type' => 'textarea', 'display' => 'Text']],
+        ]]]],
+    ]);
+    $legacy = [['type' => 'text', 'text' => '<p>Welcome to our hotel.</p>'], ['type' => 'quote', 'text' => 'Lovely stay']];
+    $note = 'Content (content) is stored in the Bard format of Statamic 2 and was left untouched. Saving it once in the control panel converts it.';
+    $this->fakeTranslations();
+
+    $done = translateTarget($this->makeEntry('stories', 'en', ['title' => 'Legacy', 'content' => $legacy], 'legacy'));
+    $skipped = translateTarget($this->makeEntry('stories', 'en', ['content' => $legacy], 'only-legacy'));
+
+    expect($done->status)->toBe(TargetResultStatus::Done)
+        ->and($done->fields)->toBe(['title' => TargetResult::APPLIED, 'content' => 'not_applicable'])
+        ->and($done->warnings)->toBe([$note])
+        ->and($skipped->status)->toBe(TargetResultStatus::Skipped)
+        ->and($skipped->reason)->toBe(TargetResult::NOTHING_TO_DO)
+        ->and($skipped->warnings)->toBe([$note]);
+});

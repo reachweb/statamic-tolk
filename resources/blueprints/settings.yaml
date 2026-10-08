@@ -193,7 +193,7 @@ tabs:
             field:
               type: list
               display: 'Excluded fields'
-              instructions: 'Fields that are never translated, wherever they appear. Enter each field by its handle, for example `internal_note`.'
+              instructions: 'Top-level fields that are never translated, in every blueprint. Enter each field by its handle, for example `internal_note`. For a field inside a Replicator, Grid or Bard set, switch off its "Translate automatically" option instead.'
               default: []
   providers:
     display: Providers

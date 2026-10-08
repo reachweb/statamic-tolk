@@ -101,7 +101,7 @@ final readonly class TargetTranslator
     private function runPlan(Plan $plan, Target $target, ApplyOptions $apply, Closure $record): TargetResult
     {
         if ($plan->isEmpty()) {
-            return new TargetResult(TargetResultStatus::Skipped, $target->ref(), fields: $plan->skipped, reason: TargetResult::NOTHING_TO_DO);
+            return new TargetResult(TargetResultStatus::Skipped, $target->ref(), fields: $plan->skipped, warnings: $plan->noteList(), reason: TargetResult::NOTHING_TO_DO);
         }
 
         $this->store->put($plan);

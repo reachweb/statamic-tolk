@@ -408,6 +408,6 @@ describe('the plan', function () {
 
         expect($restored)->toEqual($plan)
             ->and($restored->toArray())->toBe($plan->toArray())
-            ->and(array_keys($plan->toArray()))->toBe(['id', 'kind', 'reference', 'target', 'user_id', 'source_site', 'target_site', 'options', 'document', 'fields', 'segments', 'batches', 'skipped']);
+            ->and(array_keys($plan->toArray()))->toBe(['id', 'kind', 'reference', 'target', 'user_id', 'source_site', 'target_site', 'options', 'document', 'fields', 'segments', 'batches', 'skipped', 'notes']);
     });
 });

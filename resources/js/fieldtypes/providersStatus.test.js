@@ -59,9 +59,9 @@ describe('providerRows', () => {
 
 describe('describeResult', () => {
     it('names the model and the time of a success', () => {
-        expect(describeResult({ ok: true, model: 'anthropic:claude-haiku-4-5', label: 'Claude Haiku 4.5', latency_ms: 412, fake: false })).toEqual({
+        expect(describeResult({ ok: true, model: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5', latency_ms: 412, fake: false })).toEqual({
             ok: true,
-            text: 'Claude Haiku 4.5 answered in 412 ms.',
+            text: 'Claude Haiku 5.5 answered in 412 ms.',
         });
     });
 

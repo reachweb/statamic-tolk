@@ -8,7 +8,7 @@ function translate(key, replacements = {}) {
 const catalog = {
     anthropic: [
         { value: 'anthropic:claude-sonnet-5-5', label: 'Claude Sonnet 5.5', tier: 'quality', configured: true },
-        { value: 'anthropic:claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'fast', configured: true },
+        { value: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5', tier: 'fast', configured: true },
     ],
     openai: [{ value: 'openai:gpt-6.1-sol', label: 'GPT-6.1 Sol', tier: 'quality', configured: false }],
 };
@@ -44,7 +44,7 @@ describe('selectOptions', () => {
         expect(selectOptions(meta, null)).toEqual([
             { value: AUTOMATIC, label: 'Automatic (Claude Sonnet 5.5)', note: null, disabled: false },
             { value: 'anthropic:claude-sonnet-5-5', label: 'Claude Sonnet 5.5', note: 'Quality', disabled: false },
-            { value: 'anthropic:claude-haiku-4-5', label: 'Claude Haiku 4.5', note: 'Fast', disabled: false },
+            { value: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5', note: 'Fast', disabled: false },
             { value: 'openai:gpt-6.1-sol', label: 'GPT-6.1 Sol', note: 'No API key', disabled: true },
         ]);
     });
@@ -85,7 +85,7 @@ describe('chosen', () => {
     });
 
     it('stores a model of the catalog', () => {
-        expect(chosen('anthropic:claude-haiku-4-5', options)).toBe('anthropic:claude-haiku-4-5');
+        expect(chosen('anthropic:claude-haiku-5-5', options)).toBe('anthropic:claude-haiku-5-5');
     });
 
     it('ignores a model without an API key', () => {

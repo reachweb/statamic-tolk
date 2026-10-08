@@ -328,6 +328,20 @@ describe('translate', () => {
         expect(t.running('base')).toBe(false);
     });
 
+    it('shows what the plan noticed about fields it left out with the warnings of the units', async () => {
+        mount();
+        const note = 'Content (content) is stored in the Bard format of Statamic 2 and was left untouched.';
+        const api = fakeApi(planResponse({ skipped: { content: 'not_applicable' }, warnings: [note] }));
+        const fill = vi.fn(async () => ({ stale: false, applied: [], skipped: {}, repeated: [] }));
+        const run = vi.fn(async () => summary({ warnings: [note, 'Introduction: "A short intro." was left untranslated (invalid).'] }));
+        const t = translations({ api, run, fill });
+
+        const result = await t.translate('base', { mode: 'missing' });
+
+        expect(result.warnings).toEqual([note, 'Introduction: "A short intro." was left untranslated (invalid).']);
+        expect(result.planSkipped).toEqual({ content: 'not_applicable' });
+    });
+
     it('sends the requested fields, the overwrite flag, the translator and the review switch', async () => {
         mount();
         const api = fakeApi();

@@ -397,6 +397,20 @@ describe('routes', function () {
             ->where('runs', fn ($runs) => collect($runs)->pluck('id')->all() === [$german->id]));
     });
 
+    it('refuses a bulk action into a site the user may not access', function () {
+        securityUser(['run bulk translations'], site: false);
+        $before = count(app(RunRepository::class)->recent(10));
+
+        $this->postJson(cp_route('collections.entries.actions.run', 'articles'), [
+            'action' => 'tolk_translate',
+            'selections' => [$this->origin->id()],
+            'context' => ['collection' => 'articles'],
+            'values' => ['sites' => ['el'], 'mode' => 'missing'],
+        ])->assertUnprocessable()->assertJsonValidationErrors('sites');
+
+        expect(app(RunRepository::class)->recent(10))->toHaveCount($before);
+    });
+
     it('leaves the targets a user may not edit out of a run they create', function () {
         securityUser(['run bulk translations'], edit: false);
 

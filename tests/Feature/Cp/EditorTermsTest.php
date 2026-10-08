@@ -125,6 +125,18 @@ describe('status', function () {
             ->and(termStatus('term::labels::new::el')->assertOk()->json('reason'))->toBe('unknown_reference');
     });
 
+    it('answers excluded for a taxonomy the settings exclude', function () {
+        $this->signInAdmin();
+        $this->withSettings(['excluded_taxonomies' => ['topics']]);
+
+        expect(termStatus(FOOD_EL)->assertOk()->json('reason'))->toBe('excluded')
+            ->and(termStatus(FOOD_EN)->assertOk()->json('reason'))->toBe('excluded');
+        test()->postJson(cp_route('tolk.editor.plan'), ['reference' => FOOD_EL, 'mode' => 'missing'])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'not_translatable')
+            ->assertJsonPath('message', 'Terms of this taxonomy are excluded from translation in the settings.');
+    });
+
     it('forbids a user without access to the site or without the permission to edit the terms', function () {
         termEditor(['en', 'de']);
 

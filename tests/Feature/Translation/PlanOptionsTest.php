@@ -63,7 +63,7 @@ it('lets overrides win over the settings, with model references and the mode as 
         'fields' => ['title'],
         'skip' => ['intro' => 'edited_in_form'],
         'translator' => 'gemini:gemini-3.5-flash-lite',
-        'fallback' => ModelRef::fromString('anthropic:claude-haiku-4-5'),
+        'fallback' => ModelRef::fromString('anthropic:claude-haiku-5-5'),
         'profile' => 'background',
         'strict' => false,
         'userId' => 'user-1',
@@ -74,7 +74,7 @@ it('lets overrides win over the settings, with model references and the mode as 
         ->and($options->fields)->toBe(['title'])
         ->and($options->skip)->toBe(['intro' => 'edited_in_form'])
         ->and((string) $options->translator)->toBe('gemini:gemini-3.5-flash-lite')
-        ->and((string) $options->fallback)->toBe('anthropic:claude-haiku-4-5')
+        ->and((string) $options->fallback)->toBe('anthropic:claude-haiku-5-5')
         ->and($options->profile)->toBe('background')
         ->and($options->strict)->toBeFalse()
         ->and($options->userId)->toBe('user-1');

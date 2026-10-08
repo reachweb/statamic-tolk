@@ -96,4 +96,4 @@ The notes never fail a field or stop a run. They are listed with the item on the
 
 ## How much context costs
 
-The instructions are sent with every request, so a long profile, long instructions and a large glossary cost input tokens on every request. Anthropic caches them when they are long enough (from 512 tokens on Sonnet 5.5, 4,096 on Haiku 4.5), which makes the repeats cheaper; the estimates do not count on it. Keep the glossary to the terms that matter: names, products and the words the model gets wrong.
+The instructions are sent with every request, so a long profile, long instructions and a large glossary cost input tokens on every request. Anthropic caches them when they are long enough (from 512 tokens on Sonnet 5.5 and Haiku 5.5), which makes the repeats cheaper; the estimates do not count on it. Keep the glossary to the terms that matter: names, products and the words the model gets wrong.

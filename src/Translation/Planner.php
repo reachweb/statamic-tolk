@@ -52,12 +52,20 @@ final readonly class Planner
         $fields = [];
         $segments = [];
         $skipped = [];
+        $notes = [];
 
         foreach ($target->fields() as $handle => $field) {
             $status = $resolved->fields[$handle];
 
             if (($reason = $this->skipReason($target, $options, $handle, $status->status)) !== null) {
                 $skipped[$handle] = $reason;
+
+                // A source the handlers leave untouched, such as Bard data in the format of Statamic 2, has no text to
+                // plan; what they noticed about it is passed on with the result.
+                if ($status->status === FieldStatus::NotApplicable && $target->sourceHasValue($handle)) {
+                    $this->walker->leaves($field, $target->sourceValue($handle));
+                    $notes[$handle] = $this->walker->warnings();
+                }
 
                 continue;
             }
@@ -68,7 +76,7 @@ final readonly class Planner
             $fields[$handle] = $this->field($handle, $status, $leaves, $known, $segments);
         }
 
-        return $this->make(UnitKind::Translate, $target, $options, $fields, $segments, $segments, $skipped);
+        return $this->make(UnitKind::Translate, $target, $options, $fields, $segments, $segments, $skipped, array_filter($notes));
     }
 
     /**
@@ -127,7 +135,7 @@ final readonly class Planner
      * @param  array<string, array>  $segments  the plan's segments
      * @param  array<string, array{text: string, translation?: ?string}>  $batched  the same segments as batching sees them
      */
-    private function make(UnitKind $kind, Target $target, PlanOptions $options, array $fields, array $segments, array $batched, array $skipped): Plan
+    private function make(UnitKind $kind, Target $target, PlanOptions $options, array $fields, array $segments, array $batched, array $skipped, array $notes = []): Plan
     {
         $batches = $this->batchPlanner->plan($batched, $this->budget($options, $batched), (int) config('tolk.batch.max_segments'));
 
@@ -144,6 +152,7 @@ final readonly class Planner
             segments: $this->withNeighbours($fields, $segments, $batches),
             batches: $batches,
             skipped: $skipped,
+            notes: $notes,
         );
     }
 

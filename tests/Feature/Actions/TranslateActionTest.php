@@ -245,22 +245,28 @@ describe('running', function () {
         Queue::assertNotPushed(WorkRun::class);
     });
 
-    it('leaves the targets the user may not edit out of the run', function () {
+    it('refuses a site the user may not access instead of leaving its targets out of the run', function () {
         $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'edit articles entries']);
 
-        runTranslateAction([$this->hello])->assertOk();
+        runTranslateAction([$this->hello])->assertUnprocessable()->assertJsonValidationErrors('sites');
+        runTranslateAction([$this->hello], ['sites' => ['fr']])->assertUnprocessable()->assertJsonValidationErrors('sites');
+
+        expect(app(RunRepository::class)->recent(10))->toBe([]);
+
+        runTranslateAction([$this->hello], ['sites' => ['el']])->assertOk();
 
         expect(array_map(fn (RunItem $item) => $item->targetSite, RunFixtures::items(onlyRun())))->toBe(['el'])
-            ->and(onlyRun()->scope['skipped'])->toBe([RunItem::UNAUTHORIZED => 1]);
+            ->and(onlyRun()->scope['skipped'])->toBe([]);
     });
 
     it('reports the error and does not redirect when no run could be created', function () {
         $this->signInAdmin();
+        $this->withProviderKeys();
 
-        $response = runTranslateAction([$this->hello], ['sites' => ['fr']])->assertOk();
+        $response = runTranslateAction([$this->hello])->assertOk();
 
         expect($response->json())->toMatchArray(['success' => false])
-            ->and($response->json('message'))->toContain('fr')
+            ->and($response->json('message'))->toContain('No AI provider is configured')
             ->and($response->json())->not->toHaveKey('redirect')
             ->and(app(RunRepository::class)->recent(10))->toBe([]);
     });

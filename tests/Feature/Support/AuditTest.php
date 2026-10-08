@@ -142,7 +142,7 @@ describe('providers and models', function () {
             'translator_model' => 'anthropic:claude-sonnet-5-5',
             'review_enabled' => true,
             'reviewer_model' => 'gemini:gemini-3.8-flash',
-            'fallback_model' => 'anthropic:claude-haiku-4-5',
+            'fallback_model' => 'anthropic:claude-haiku-5-5',
         ]);
 
         expect(auditItems('providers'))->toBe([
@@ -151,7 +151,7 @@ describe('providers and models', function () {
             'ok: Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5).',
             'error: The reviewer model gemini:gemini-3.8-flash uses gemini, which has no API key, so every review fails.',
             'ok: Reviewer: Gemini 3.8 Flash (gemini:gemini-3.8-flash). Review is on by default.',
-            'warning: The fallback model anthropic:claude-haiku-4-5 uses anthropic, which has no API key, so Tolk ignores it.',
+            'warning: The fallback model anthropic:claude-haiku-5-5 uses anthropic, which has no API key, so Tolk ignores it.',
         ]);
     });
 

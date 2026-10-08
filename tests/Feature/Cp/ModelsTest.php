@@ -36,7 +36,7 @@ it('returns the resolved defaults', function () {
 it('returns the defaults the settings name', function () {
     $this->withSettings([
         'translator_model' => 'gemini:gemini-3.8-flash',
-        'reviewer_model' => 'anthropic:claude-haiku-4-5',
+        'reviewer_model' => 'anthropic:claude-haiku-5-5',
         'fallback_model' => 'openai:gpt-6-luna',
     ]);
 
@@ -44,7 +44,7 @@ it('returns the defaults the settings name', function () {
         ->assertOk()
         ->assertJsonPath('defaults', [
             'translator' => 'gemini:gemini-3.8-flash',
-            'reviewer' => 'anthropic:claude-haiku-4-5',
+            'reviewer' => 'anthropic:claude-haiku-5-5',
             'fallback' => 'openai:gpt-6-luna',
         ]);
 });

@@ -182,6 +182,19 @@ it('is not translatable in a single-site collection', function () {
         ->assertJsonPath('origin', null);
 });
 
+it('is not translatable in a collection the settings exclude, as a localization or an origin', function () {
+    $this->signInAdmin();
+    $this->withSettings(['excluded_collections' => ['articles']]);
+
+    editorStatus($this->localize($this->origin, 'el'))
+        ->assertOk()
+        ->assertJsonPath('translatable', false)
+        ->assertJsonPath('reason', EditorStatus::EXCLUDED)
+        ->assertJsonPath('localization', null)
+        ->assertJsonPath('origin', null);
+    editorStatus($this->origin)->assertOk()->assertJsonPath('reason', EditorStatus::EXCLUDED);
+});
+
 it('is not translatable for an unknown reference', function (string $reference) {
     $this->signInAdmin();
 

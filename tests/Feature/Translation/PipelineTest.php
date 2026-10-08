@@ -367,6 +367,32 @@ describe('missing and invalid translations', function () {
 });
 
 describe('glossary', function () {
+    it('passes on what the handlers noticed about a source they leave untouched', function () {
+        $this->makeCollection('stories', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'content' => ['type' => 'bard', 'localizable' => true, 'display' => 'Content', 'sets' => ['quote' => ['display' => 'Quote', 'fields' => [
+                ['handle' => 'text', 'field' => ['type' => 'textarea', 'display' => 'Text']],
+            ]]]],
+        ]);
+        $legacy = [['type' => 'text', 'text' => '<p>Welcome to our hotel.</p>'], ['type' => 'quote', 'text' => 'Lovely stay']];
+        $note = 'Content (content) is stored in the Bard format of Statamic 2 and was left untouched. Saving it once in the control panel converts it.';
+        $story = $this->makeEntry('stories', 'en', ['title' => 'Legacy', 'content' => $legacy], 'legacy');
+        $this->fakeTranslations();
+
+        // Without text to plan, the field is left out of the plan with a note.
+        $plan = pipelinePlan($story);
+
+        expect($plan->skipped)->toBe(['content' => 'not_applicable'])
+            ->and($plan->notes)->toBe(['content' => [$note]])
+            ->and($plan->noteList())->toBe([$note])
+            ->and(Plan::fromArray($plan->toArray())->notes)->toBe($plan->notes)
+            ->and(pipelinePlan($this->origin)->notes)->toBe([]);
+
+        pipelineRun($plan);
+
+        expect(tolkPipeline()->assemble($plan, pipelineTarget($story), 'title')->warnings)->toBe([]);
+    });
+
     it('adds glossary notes to the warnings of an accepted translation without failing it', function () {
         $this->withSettings(['glossary' => [
             ['id' => 'g1', 'term' => 'Example', 'do_not_translate' => true],

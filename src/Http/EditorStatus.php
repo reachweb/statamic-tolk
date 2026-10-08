@@ -36,6 +36,8 @@ final readonly class EditorStatus
 
     public const string NO_ACCESS = 'no_access';
 
+    public const string EXCLUDED = 'excluded';
+
     /**
      * The types of reference item() resolves: the content with a publish form to deliver into (§A13).
      */
@@ -74,6 +76,10 @@ final readonly class EditorStatus
 
         if ($this->sitesOf($item)->count() < 2) {
             return $this->payload(self::SINGLE_SITE);
+        }
+
+        if ($this->excluded($item)) {
+            return $this->payload(self::EXCLUDED);
         }
 
         $localization = $target === null ? null : $this->localization($target, $source);
@@ -117,6 +123,14 @@ final readonly class EditorStatus
     private function sitesOf(EntryContract|TermContract $item): Collection
     {
         return $item instanceof EntryContract ? $item->collection()->sites() : $item->taxonomy()->sites();
+    }
+
+    // The settings keep the item's collection or taxonomy out of every translation, the editor's included.
+    private function excluded(EntryContract|TermContract $item): bool
+    {
+        return $item instanceof EntryContract
+            ? $this->settings->excludes(ContentType::Entry, $item->collectionHandle())
+            : $this->settings->excludes(ContentType::Term, $item->taxonomyHandle());
     }
 
     private function localization(Target $target, EntryContract|TermContract $source): array

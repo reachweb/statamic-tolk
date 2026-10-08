@@ -66,7 +66,7 @@ afterEach(() => {
 const catalog = () => ({
     anthropic: [
         { value: 'anthropic:claude-sonnet-5-5', label: 'Claude Sonnet 5.5', tier: 'quality', configured: true },
-        { value: 'anthropic:claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'fast', configured: true },
+        { value: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5', tier: 'fast', configured: true },
     ],
     openai: [{ value: 'openai:gpt-6-luna', label: 'GPT-6 Luna', tier: 'fast', configured: false }],
     gemini: [{ value: 'gemini:gemini-3.8-flash', label: 'Gemini 3.8 Flash', tier: 'quality', configured: true }],
@@ -121,7 +121,7 @@ describe('modelOptions', () => {
     it('lists the models of configured providers in catalog order and marks the default', () => {
         expect(modelOptions(catalog(), { defaultModel: 'anthropic:claude-sonnet-5-5' })).toEqual([
             { value: 'anthropic:claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (default)' },
-            { value: 'anthropic:claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+            { value: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5' },
             { value: 'gemini:gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
         ]);
     });
@@ -129,7 +129,7 @@ describe('modelOptions', () => {
     it('lists every model while the fake engine answers', () => {
         expect(modelOptions(catalog(), { fakeEngine: true }).map((option) => option.value)).toEqual([
             'anthropic:claude-sonnet-5-5',
-            'anthropic:claude-haiku-4-5',
+            'anthropic:claude-haiku-5-5',
             'openai:gpt-6-luna',
             'gemini:gemini-3.8-flash',
         ]);
@@ -138,7 +138,7 @@ describe('modelOptions', () => {
     it('adds extra values once, labelled by their reference, and skips empty ones', () => {
         const options = modelOptions(catalog(), {
             defaultModel: 'openai:gpt-custom',
-            extra: ['openai:gpt-custom', null, 'anthropic:claude-haiku-4-5', 'gemini:gemini-exp', 'gemini:gemini-exp'],
+            extra: ['openai:gpt-custom', null, 'anthropic:claude-haiku-5-5', 'gemini:gemini-exp', 'gemini:gemini-exp'],
         });
 
         expect(options.slice(3)).toEqual([
@@ -159,8 +159,8 @@ describe('initialModel', () => {
     const options = modelOptions(catalog());
 
     it('picks the remembered model while it is offered', () => {
-        expect(initialModel(options, { remembered: 'anthropic:claude-haiku-4-5', defaultModel: 'anthropic:claude-sonnet-5-5' })).toBe(
-            'anthropic:claude-haiku-4-5',
+        expect(initialModel(options, { remembered: 'anthropic:claude-haiku-5-5', defaultModel: 'anthropic:claude-sonnet-5-5' })).toBe(
+            'anthropic:claude-haiku-5-5',
         );
     });
 
