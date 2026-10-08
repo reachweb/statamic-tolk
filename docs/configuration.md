@@ -47,7 +47,7 @@ See [Context and glossary](context-and-glossary.md#the-glossary).
 
 | Key | Field | Default | Meaning |
 | --- | --- | --- | --- |
-| `excluded_collections` | Excluded collections | none | Entries of these collections are left out of bulk translations: the listing action is hidden for them, runs, the origin view's Translate into… and the commands leave them out with a warning, and the Overview and `tolk:status` do not list them. The banner in an entry's form still works. |
+| `excluded_collections` | Excluded collections | none | Entries of these collections are never translated: the banner, the offer and the field actions do not appear in their forms, the listing action is hidden for them, runs, the origin view's Translate into… and the commands leave them out with a warning, and the Overview and `tolk:status` do not list them. |
 | `excluded_taxonomies` | Excluded taxonomies | none | The same, for the terms of these taxonomies. |
 | `excluded_fields` | Excluded fields | none | Field handles that are never translated, in every blueprint of entries, terms and global sets. This applies to top-level fields; for a field inside a Replicator, Grid or Bard set, switch off its **Translate automatically** option instead (below). |
 
@@ -121,7 +121,7 @@ Tolk never changes the app's `ai.*` config. It builds its own provider connectio
 
 | Provider | Quality (the default) | Fast |
 | --- | --- | --- |
-| Anthropic | `claude-sonnet-5-5` (Claude Sonnet 5.5) | `claude-haiku-4-5` (Claude Haiku 4.5) |
+| Anthropic | `claude-sonnet-5-5` (Claude Sonnet 5.5) | `claude-haiku-5-5` (Claude Haiku 5.5) |
 | OpenAI | `gpt-6.1-sol` (GPT-6.1 Sol) | `gpt-6-luna` (GPT-6 Luna) |
 | Gemini | `gemini-3.8-flash` (Gemini 3.8 Flash) | `gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) |
 
@@ -136,6 +136,8 @@ Each entry has these keys:
 | `max_output_tokens` | The model's output limit. |
 | `reasoning_headroom` | Output tokens reserved for the model's thinking with these options; `0` when it does not think. |
 | `price.input`, `price.output` | USD per million tokens, for the estimates and the usage figures. Without a price the cost reads "unknown". |
+
+Claude Haiku 5.5 is priced by prompt length; the catalog holds its rate for prompts up to 100,000 tokens, which Tolk's requests stay well below. Gemini 3.8 Flash is priced at its rate from January 2027, so until then the estimates for it are about twice the cost.
 
 A published config holds the whole catalog, so add or change models in it:
 

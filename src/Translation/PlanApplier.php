@@ -27,7 +27,8 @@ final readonly class PlanApplier
      */
     public function apply(Plan $plan, Target $target, ApplyOptions $options): TargetResult
     {
-        $assembled = $failed = $unchanged = $corrections = $warnings = [];
+        $assembled = $failed = $unchanged = $corrections = [];
+        $warnings = $plan->noteList();
 
         foreach ($plan->fieldHandles() as $handle) {
             try {

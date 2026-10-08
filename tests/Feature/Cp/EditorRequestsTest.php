@@ -50,7 +50,7 @@ it('refuses an invalid review request', function (array $body, string $error) {
 })->with([
     'values that are not a map' => [['values' => 'title'], 'values'],
     'overwrite flag that is not a boolean' => [['overwrite_manual' => 'sometimes'], 'overwrite_manual'],
-    'reviewer without a provider' => [['reviewer' => 'claude-haiku-4-5'], 'reviewer'],
+    'reviewer without a provider' => [['reviewer' => 'claude-haiku-5-5'], 'reviewer'],
     'reviewer that is not a string' => [['reviewer' => ['openai:gpt-6-luna']], 'reviewer'],
 ]);
 
@@ -75,7 +75,7 @@ it('accepts a translator outside the catalog only from a user who may edit the s
         ->assertUnprocessable()
         ->assertOnlyJsonValidationErrors(['translator']);
 
-    $this->postJson(cp_route('tolk.editor.plan'), [...$body, 'translator' => 'anthropic:claude-haiku-4-5'])->assertJsonMissingValidationErrors();
+    $this->postJson(cp_route('tolk.editor.plan'), [...$body, 'translator' => 'anthropic:claude-haiku-5-5'])->assertJsonMissingValidationErrors();
 
     $this->signInWithPermissions(['access cp', 'translate content', 'edit reachweb/statamic-tolk settings']);
 

@@ -107,7 +107,8 @@ class TranslateAction extends Action
                 'display' => __('Translate into'),
                 'options' => $sites,
                 'default' => array_values(array_diff(array_keys($sites), $sources)),
-                'validate' => ['required'],
+                // `in` checks each value of a checkboxes field only together with `array` (§A14).
+                'validate' => ['required', 'array', 'in:'.implode(',', array_keys($sites))],
             ],
             'mode' => [
                 'type' => 'select',

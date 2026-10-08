@@ -10,3 +10,4 @@
 /playwright.config.js export-ignore
 /.env.browser.example export-ignore
 /pint.json export-ignore
+*.test.js export-ignore

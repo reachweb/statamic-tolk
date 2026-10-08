@@ -85,7 +85,7 @@ it('groups the catalog by provider for model selects', function () {
     expect(modelCatalog()->grouped())->toBe([
         'anthropic' => [
             ['value' => 'anthropic:claude-sonnet-5-5', 'label' => 'Claude Sonnet 5.5', 'tier' => 'quality', 'configured' => false],
-            ['value' => 'anthropic:claude-haiku-4-5', 'label' => 'Claude Haiku 4.5', 'tier' => 'fast', 'configured' => false],
+            ['value' => 'anthropic:claude-haiku-5-5', 'label' => 'Claude Haiku 5.5', 'tier' => 'fast', 'configured' => false],
         ],
         'openai' => [
             ['value' => 'openai:gpt-6.1-sol', 'label' => 'GPT-6.1 Sol', 'tier' => 'quality', 'configured' => true],
@@ -101,7 +101,7 @@ it('returns the first model of a tier as the default', function (string $provide
     expect(modelCatalog()->default($provider, $tier))->toEqual(modelRef($expected));
 })->with([
     ['anthropic', Tier::Quality, 'anthropic:claude-sonnet-5-5'],
-    ['anthropic', Tier::Fast, 'anthropic:claude-haiku-4-5'],
+    ['anthropic', Tier::Fast, 'anthropic:claude-haiku-5-5'],
     ['openai', Tier::Quality, 'openai:gpt-6.1-sol'],
     ['openai', Tier::Fast, 'openai:gpt-6-luna'],
     ['gemini', Tier::Quality, 'gemini:gemini-3.8-flash'],
@@ -110,7 +110,7 @@ it('returns the first model of a tier as the default', function (string $provide
 
 it('uses catalog order when a tier has several models', function () {
     config(['tolk.models.anthropic' => [
-        ['id' => 'claude-haiku-4-5', 'tier' => 'fast'],
+        ['id' => 'claude-haiku-5-5', 'tier' => 'fast'],
         ['id' => 'claude-opus-5-5', 'tier' => 'quality'],
         ['id' => 'claude-sonnet-5-5', 'tier' => 'quality'],
     ]]);
@@ -176,7 +176,7 @@ it('resolves the reviewer from the override, then the setting', function () {
     $settings = $this->withSettings(['reviewer_model' => 'gemini:gemini-3.8-flash']);
     $translator = modelRef('anthropic:claude-sonnet-5-5');
 
-    expect(modelCatalog()->resolveReviewer($settings, $translator, modelRef('anthropic:claude-haiku-4-5')))->toEqual(modelRef('anthropic:claude-haiku-4-5'))
+    expect(modelCatalog()->resolveReviewer($settings, $translator, modelRef('anthropic:claude-haiku-5-5')))->toEqual(modelRef('anthropic:claude-haiku-5-5'))
         ->and(modelCatalog()->resolveReviewer($settings, $translator))->toEqual(modelRef('gemini:gemini-3.8-flash'));
 });
 
@@ -211,8 +211,8 @@ it('resolves the fallback model from the setting', function () {
     expect(modelCatalog()->resolveFallback($this->withSettings(), $translator))->toBeNull()
         ->and(modelCatalog()->resolveFallback($this->withSettings(['fallback_model' => 'openai:gpt-6.1-sol']), $translator))
         ->toEqual(modelRef('openai:gpt-6.1-sol'))
-        ->and(modelCatalog()->resolveFallback($this->withSettings(['fallback_model' => 'anthropic:claude-haiku-4-5']), $translator))
-        ->toEqual(modelRef('anthropic:claude-haiku-4-5'));
+        ->and(modelCatalog()->resolveFallback($this->withSettings(['fallback_model' => 'anthropic:claude-haiku-5-5']), $translator))
+        ->toEqual(modelRef('anthropic:claude-haiku-5-5'));
 });
 
 it('resolves no fallback when it is the translator', function () {

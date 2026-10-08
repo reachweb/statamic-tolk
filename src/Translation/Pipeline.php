@@ -167,10 +167,6 @@ final readonly class Pipeline
             return $this->reviewed($plan->id, $planned, $field, $sourceValue, $segments, $resolved);
         }
 
-        if ($planned['clear']) {
-            return $this->cleared($plan->id, $planned, $field, $sourceValue);
-        }
-
         $sourceTexts = array_column($segments, 'text');
 
         // The same source value with another walk means the blueprint changed since planning.
@@ -178,7 +174,14 @@ final readonly class Pipeline
             throw SourceChanged::field($handle);
         }
 
-        $texts = $hashes = $failed = $warnings = [];
+        // What the handlers noticed on the walk, such as a Bard field in a format they leave untouched.
+        $warnings = $this->walker->warnings();
+
+        if ($planned['clear']) {
+            return $this->cleared($plan->id, $planned, $field, $sourceValue, $warnings);
+        }
+
+        $texts = $hashes = $failed = [];
 
         foreach ($segments as $id => $segment) {
             $translation = $resolved['translations'][$id] ?? null;
@@ -631,7 +634,7 @@ final readonly class Pipeline
      * A field whose source lost its text: the override is removed when the source value is empty, and the source value
      * is copied when it only has no text (§A7).
      */
-    private function cleared(string $planId, array $planned, Field $field, mixed $sourceValue): AssembledField
+    private function cleared(string $planId, array $planned, Field $field, mixed $sourceValue, array $warnings): AssembledField
     {
         $remove = in_array(Fingerprint::canonical($sourceValue), [null, '', []], true);
 
@@ -647,6 +650,7 @@ final readonly class Pipeline
             identical: ! $remove,
             incomplete: false,
             translator: null,
+            warnings: $warnings,
         );
     }
 

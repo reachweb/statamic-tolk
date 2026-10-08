@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\Access\Authorizable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Reach\StatamicTolk\Ai\ModelRef;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Formality;
 use Statamic\Facades\Addon;
 
@@ -160,6 +161,18 @@ class Settings
     public function excludedTaxonomies(): array
     {
         return $this->handles('excluded_taxonomies');
+    }
+
+    /**
+     * Whether the settings keep the entries of this collection, or the terms of this taxonomy, out of every translation.
+     */
+    public function excludes(ContentType $type, string $container): bool
+    {
+        return match ($type) {
+            ContentType::Entry => in_array($container, $this->excludedCollections(), true),
+            ContentType::Term => in_array($container, $this->excludedTaxonomies(), true),
+            default => false,
+        };
     }
 
     /**

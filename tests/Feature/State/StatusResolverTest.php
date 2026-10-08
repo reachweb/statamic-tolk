@@ -318,7 +318,7 @@ describe('pending entries', function () {
     it('promotes the older of two pending entries when that one was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
         $older = StateFixtures::pending('Hello', 'Γεια', ['createdAt' => CarbonImmutable::now()->startOfSecond()->subHours(2)]);
-        $newer = StateFixtures::pending('Hello', 'Χαίρετε', ['translator' => 'anthropic:claude-haiku-4-5']);
+        $newer = StateFixtures::pending('Hello', 'Χαίρετε', ['translator' => 'anthropic:claude-haiku-5-5']);
         StateFixtures::store($localization, ['title' => (new FieldState)->withPending($older)->withPending($newer)]);
 
         $field = statusOf($this->origin)->fields['title'];

@@ -170,7 +170,7 @@ describe('the page', () => {
             month: '2026-10',
             models: {
                 'openai:gpt-6.1-sol': { input: 1000, output: 500, calls: 2, cost: 0.007, sources: { run: {}, cli: {} } },
-                'anthropic:claude-haiku-4-5': { input: 10, output: 5, calls: 1, cost: 0.001, sources: { editor: {} } },
+                'anthropic:claude-haiku-5-5': { input: 10, output: 5, calls: 1, cost: 0.001, sources: { editor: {} } },
             },
             labels: { 'openai:gpt-6.1-sol': 'GPT-6.1 Sol' },
         };
@@ -179,7 +179,7 @@ describe('the page', () => {
             month: '2026-10',
             rows: [
                 { reference: 'openai:gpt-6.1-sol', model: 'GPT-6.1 Sol', calls: 2, input: 1000, output: 500, cost: 0.007, sources: ['run', 'cli'] },
-                { reference: 'anthropic:claude-haiku-4-5', model: 'anthropic:claude-haiku-4-5', calls: 1, input: 10, output: 5, cost: 0.001, sources: ['editor'] },
+                { reference: 'anthropic:claude-haiku-5-5', model: 'anthropic:claude-haiku-5-5', calls: 1, input: 10, output: 5, cost: 0.001, sources: ['editor'] },
             ],
             calls: 3,
             cost: 0.008,

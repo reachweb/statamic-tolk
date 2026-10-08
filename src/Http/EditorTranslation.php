@@ -112,6 +112,7 @@ final readonly class EditorTranslation
             'fields' => $plan->fieldHandles(),
             'skipped' => $plan->skipped,
             'ready' => $ready,
+            'warnings' => $plan->noteList(),
             'reviewer' => $plan->options->reviewer?->__toString(),
         ];
     }

@@ -179,7 +179,7 @@ it('reads what the settings page saves', function () {
     $this->makeTaxonomy('tags', ['en', 'el']);
 
     $values = PublishForm::make(Addon::get(Settings::PACKAGE)->settingsBlueprint())->submit([
-        'translator_model' => 'anthropic:claude-haiku-4-5',
+        'translator_model' => 'anthropic:claude-haiku-5-5',
         'review_enabled' => true,
         'reviewer_model' => null,
         'fallback_model' => null,
@@ -209,7 +209,7 @@ it('reads what the settings page saves', function () {
         ->and($stored['offer_on_create'])->toBeFalse()
         ->and($stored['language_instructions'][0]['site'])->toBe('de')
         ->and($stored['glossary'][0])->not->toHaveKey('site')
-        ->and($settings->translatorModel())->toEqual(new ModelRef('anthropic', 'claude-haiku-4-5'))
+        ->and($settings->translatorModel())->toEqual(new ModelRef('anthropic', 'claude-haiku-5-5'))
         ->and($settings->reviewEnabled())->toBeTrue()
         ->and($settings->reviewerModel())->toBeNull()
         ->and($settings->newLocalizationStatus())->toBe('mirror')

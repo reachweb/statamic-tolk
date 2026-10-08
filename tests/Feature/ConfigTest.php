@@ -64,13 +64,13 @@ it('pins every default', function () {
                     'price' => ['input' => 2.0, 'output' => 10.0],
                 ],
                 [
-                    'id' => 'claude-haiku-4-5',
-                    'label' => 'Claude Haiku 4.5',
+                    'id' => 'claude-haiku-5-5',
+                    'label' => 'Claude Haiku 5.5',
                     'tier' => 'fast',
-                    'options' => [],
-                    'max_output_tokens' => 64000,
+                    'options' => ['thinking' => ['type' => 'between_tools']],
+                    'max_output_tokens' => 128000,
                     'reasoning_headroom' => 0,
-                    'price' => ['input' => 1.0, 'output' => 5.0],
+                    'price' => ['input' => 0.1, 'output' => 0.5],
                 ],
             ],
             'openai' => [

@@ -98,7 +98,7 @@ it('accepts an empty value or any provider:model reference', function (mixed $va
     'null' => [null, null],
     'empty' => ['', null],
     'blank' => ['  ', null],
-    'catalog model' => ['anthropic:claude-haiku-4-5', 'anthropic:claude-haiku-4-5'],
+    'catalog model' => ['anthropic:claude-haiku-5-5', 'anthropic:claude-haiku-5-5'],
     'model outside the catalog' => ['openai:gpt-7', 'openai:gpt-7'],
     'padded' => [' gemini:gemini-3.8-flash ', 'gemini:gemini-3.8-flash'],
 ]);
