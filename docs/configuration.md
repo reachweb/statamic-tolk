@@ -1,0 +1,223 @@
+# Configuration
+
+Tolk has two kinds of configuration:
+
+- **Settings**, for editors, on the settings page in the Control Panel: models, review, the context sent with every translation, the glossary and what is left out. They are stored in `resources/addons/statamic-tolk.yaml`.
+- **The developer config**, `config/tolk.php`: the model catalog, timeouts, batch sizes, concurrency, drivers and paths. Publish it with `php artisan vendor:publish --tag=tolk-config` when you need to change a value.
+
+API keys belong to neither: they come from `.env` only (see [Installation](installation.md#api-keys)).
+
+## Settings
+
+Open the settings page under **Tools › Addons › Tolk** (`cp/addons/statamic-tolk/settings`). It needs the **Tolk settings** permission or **Configure addons**. Every setting is read fresh on each request, so queue workers and the command's worker processes pick up a change without a restart.
+
+### General
+
+| Key | Field | Default | Meaning |
+| --- | --- | --- | --- |
+| `translator_model` | Translator model | Automatic | The model that translates. Automatic is the quality model of the first provider with an API key, in the order Anthropic, OpenAI, Gemini. |
+| `review_enabled` | Review translations | off | A second model checks every translation and applies its corrections (see [Review](review.md)). Roughly doubles the time and the cost of a translation. Every translation can still turn review on or off for itself. |
+| `reviewer_model` | Reviewer model | Automatic | The model that reviews. Automatic is the quality model of another provider with an API key, or the translator when there is no other. Shown only while review is on; its value is kept while it is hidden, because a single translation can still ask for a review. |
+| `fallback_model` | Fallback model | none | Takes over a request after the translator failed it `retry.max_attempts` times in a row with a temporary error (a rate limit, an overloaded or unreachable provider). Ignored when its provider has no key, when it is the translator, or when its provider is the one that is paused. |
+| `new_localization_status` | New localizations | Draft | Whether the localizations Tolk creates server-side (runs, the origin view's Translate into…, the command line) are drafts (`draft`) or published when their origin is (`mirror`, "Same as origin"; only when the user may publish and every field was translated completely). It is the default of the **New localizations** choice where there is one. Existing localizations keep their status. A localization's own form saves nothing by itself, so this does not apply there. |
+| `offer_on_create` | Offer to translate new localizations | on | When an editor creates a localization in the entry form, Tolk offers to fill it with a translation (see [The editor](editor.md#the-offer)). |
+| `strict_fields` | Strict fields | off | When part of a field cannot be translated (the model refuses it, or keeps returning invalid text), the field is normally saved with that part in the source language, flagged, and tried again on the next update. With this on, the whole field is left untranslated instead. See [Statuses](statuses.md#fields-left-partly-untranslated). |
+
+The three model fields list the catalog grouped by provider, with each model marked **Quality** or **Fast**. Models of a provider without a key are disabled. To use a model that is not listed, type it as `provider:model`, for example `anthropic:claude-opus-5-5`; the provider must be `anthropic`, `openai` or `gemini`.
+
+### Context
+
+| Key | Field | Default | Meaning |
+| --- | --- | --- | --- |
+| `site_profile` | Site profile | empty | A short description of the organisation, what it offers, its audience and its tone, sent with every translation. **Generate** writes one from the default site's content with the translator model. |
+| `instructions` | Instructions | empty | Instructions for every translation (tone, spelling, units). Any language. |
+| `language_instructions` | Language instructions | none | One row per language: `site` (the site whose language it is), `formality` (`default`, `formal` or `informal`) and `instructions` for that language only. |
+
+How the context reaches the model, and how to write it, is in [Context and glossary](context-and-glossary.md).
+
+### Glossary
+
+| Key | Field | Default | Meaning |
+| --- | --- | --- | --- |
+| `glossary` | Glossary | none | Terms translated the same way every time, or not at all. Each row has `term`, `site` (empty for every language), `translation`, `do_not_translate` and `note`. |
+
+See [Context and glossary](context-and-glossary.md#the-glossary).
+
+### Content
+
+| Key | Field | Default | Meaning |
+| --- | --- | --- | --- |
+| `excluded_collections` | Excluded collections | none | Entries of these collections are left out of bulk translations: the listing action is hidden for them, runs, the origin view's Translate into… and the commands leave them out with a warning, and the Overview and `tolk:status` do not list them. The banner in an entry's form still works. |
+| `excluded_taxonomies` | Excluded taxonomies | none | The same, for the terms of these taxonomies. |
+| `excluded_fields` | Excluded fields | none | Field handles that are never translated, in every blueprint of entries, terms and global sets. This applies to top-level fields; for a field inside a Replicator, Grid or Bard set, switch off its **Translate automatically** option instead (below). |
+
+### Providers
+
+`providers` (Providers) shows, for Anthropic, OpenAI and Gemini, whether a key is set, which variable it comes from and which variables to set, with **Test connection**: one small request to the provider's fast model, with a 20-second timeout, answered with the time it took or a readable error. The field stores nothing.
+
+### What the settings page refuses
+
+- A glossary row needs a term, and a translation or **Do not translate**.
+- The same term twice for one language, or twice for every language, is refused on the later row. "The same" means equal after trimming spaces: terms that differ only in case are separate rows. A row for one language may override the row for every language with the same term.
+- Each language has at most one language instruction row, and the row needs a site.
+- Formality is `default`, `formal` or `informal`; New localizations is `draft` or `mirror`; a model is a `provider:model` reference.
+
+## Per-field options
+
+Tolk adds two options to the settings of every field whose fieldtype it can translate (Text, Textarea, Markdown, Bard, Replicator, Grid, Group, Table, List, Array, and any fieldtype an addon registers, see [Extending](extending.md)). They are in the blueprint editor, in the field's settings:
+
+| Option | Label | Default | Meaning |
+| --- | --- | --- | --- |
+| `tolk_translate` | Translate automatically | on | Off: Tolk never translates this field. On a field inside a Replicator, Grid, Group or Bard set this is the way to leave it out, since nested fields have no `localizable` flag. |
+| `tolk_hint` | Translation hint | empty | Guidance sent to the model with this field's text, for example "product name, keep in English" or "button label, at most three words". |
+
+A top-level field is translated only when it is **localizable**. A field that is not localizable is shared by every site, so Tolk leaves it alone. `tolk:doctor` and the Audit page list the text fields that are not localizable and can make them localizable for you. The other rules (which fieldtypes, `slug`, generated titles, hidden and computed fields) are in [Content types](content-types.md#which-fields-are-translated).
+
+In YAML the options look like this:
+
+```yaml
+-
+  handle: product_code
+  field:
+    type: text
+    localizable: true
+    tolk_translate: false
+-
+  handle: tagline
+  field:
+    type: text
+    localizable: true
+    tolk_hint: 'Short marketing line, at most eight words'
+```
+
+## Environment variables
+
+| Variable | Meaning |
+| --- | --- |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | The Laravel AI SDK's keys, which Tolk uses. |
+| `TOLK_ANTHROPIC_API_KEY`, `TOLK_OPENAI_API_KEY`, `TOLK_GEMINI_API_KEY` | Keys for Tolk only, used before the SDK's (`providers.*.key`). |
+| `TOLK_FAKE_ENGINE` | `true` turns on the fake engine (`fake_engine`), in the `local` and `testing` environments only. |
+
+## The developer config
+
+`config/tolk.php`, read with `config('tolk.…')`. The defaults suit a small to medium site on shared hosting; most sites change nothing.
+
+### Providers
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `providers.anthropic.key` | `env('TOLK_ANTHROPIC_API_KEY')` | A key for Tolk only. Empty: `config('ai.providers.anthropic.key')` (`ANTHROPIC_API_KEY`). |
+| `providers.anthropic.url` | `null` | Another API address, for example a proxy. Empty: `config('ai.providers.anthropic.url')`. |
+| `providers.openai.key` | `env('TOLK_OPENAI_API_KEY')` | As above, for OpenAI (`OPENAI_API_KEY`). |
+| `providers.openai.url` | `null` | As above, for OpenAI. |
+| `providers.gemini.key` | `env('TOLK_GEMINI_API_KEY')` | As above, for Gemini (`GEMINI_API_KEY`). |
+| `providers.gemini.url` | `null` | As above, for Gemini. |
+
+Tolk never changes the app's `ai.*` config. It builds its own provider connections, named `tolk_anthropic`, `tolk_openai` and `tolk_gemini`, so do not define connections with those names in `config/ai.php`. OpenAI requests are sent with `store: false`.
+
+### The model catalog
+
+`models.anthropic`, `models.openai` and `models.gemini` list the models offered per provider. The defaults:
+
+| Provider | Quality (the default) | Fast |
+| --- | --- | --- |
+| Anthropic | `claude-sonnet-5-5` (Claude Sonnet 5.5) | `claude-haiku-4-5` (Claude Haiku 4.5) |
+| OpenAI | `gpt-6.1-sol` (GPT-6.1 Sol) | `gpt-6-luna` (GPT-6 Luna) |
+| Gemini | `gemini-3.8-flash` (Gemini 3.8 Flash) | `gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) |
+
+Each entry has these keys:
+
+| Key | Meaning |
+| --- | --- |
+| `id` | The provider's model id. |
+| `label` | The name shown in the CP and the commands. |
+| `tier` | `quality` or `fast`. The first model of a tier is the provider's default for it; Automatic uses the quality one. |
+| `options` | Provider options merged into every request, such as reasoning settings. Never put `output_config` (Anthropic), `text` (OpenAI) or `response_format` (Gemini) here: each would replace the structured output format Tolk relies on. Never add `temperature`, `top_p` or `top_k`. |
+| `max_output_tokens` | The model's output limit. |
+| `reasoning_headroom` | Output tokens reserved for the model's thinking with these options; `0` when it does not think. |
+| `price.input`, `price.output` | USD per million tokens, for the estimates and the usage figures. Without a price the cost reads "unknown". |
+
+A published config holds the whole catalog, so add or change models in it:
+
+```php
+'models' => [
+    'anthropic' => [
+        [
+            'id' => 'claude-sonnet-5-5',
+            'label' => 'Claude Sonnet 5.5',
+            'tier' => 'quality',
+            'options' => ['thinking' => ['type' => 'between_tools']],
+            'max_output_tokens' => 128000,
+            'reasoning_headroom' => 0,
+            'price' => ['input' => 2.0, 'output' => 10.0],
+        ],
+        // …
+    ],
+    // …
+],
+```
+
+A model may also be used without a catalog entry, typed as `provider:model` in the settings (or in `--translator`); it then gets no options, no known output limit and no price. Only users who may edit the settings may choose a model outside the catalog for a single translation.
+
+### Requests and batches
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `http.timeout.web` | `45` | Seconds a provider call may take for the editor and for runs driven by the browser or a queue. Keep it below your web server's and proxy's timeouts (often 60 seconds). |
+| `http.timeout.background` | `180` | Seconds a provider call may take for the command line. |
+| `batch.max_chars.web` | `6000` | Source characters per request for the editor and browser or queue runs. |
+| `batch.max_chars.background` | `10000` | Source characters per request for the command line. |
+| `batch.min_chars` | `1200` | The editor splits an entry into parallel requests of at least this many characters, so a short entry is one request and a long one fills in faster. |
+| `batch.max_segments` | `80` | Pieces of text per request. |
+
+A request that times out with several pieces of text is split in two and sent again, so a timeout costs time but loses nothing. Lower the batch sizes when requests keep timing out (see [Troubleshooting](troubleshooting.md#requests-time-out)).
+
+### Retries and concurrency
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `retry.max_attempts` | `3` | Temporary failures of one request before the fallback model takes it over. |
+| `retry.base_delay_ms` | `1000` | The first wait after a temporary failure, when the provider names none. |
+| `retry.max_delay_ms` | `20000` | The longest wait; the waits grow exponentially in between. |
+| `concurrency.editor` | `4` | Parallel requests from one open entry form. |
+| `concurrency.browser` | `2` | Lanes of a run driven by its run page. Each lane holds a PHP worker for as long as the page is open, plus one for saving, so keep this low on shared hosting. |
+| `concurrency.queue` | `4` | Lane jobs of a run on the queue. |
+| `concurrency.cli` | `4` | Worker processes of `tolk:translate` and `tolk:site` (`--concurrency` overrides it). |
+
+A rate limit or an overloaded provider pauses every request to that provider for the time it asks for, so higher concurrency does not make Tolk hammer a provider that pushes back.
+
+### Translation state
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `state.driver` | `file` | Where the state is stored. `file` is the only driver in this version. |
+| `state.path` | `base_path('content/tolk')` | The state's folder. Keep it under `content/`, so it is committed with the content. |
+
+### Runs and usage
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `runs.driver` | `file` | Where runs are stored. `file` is the only driver in this version; it rewrites a run's index on every step, so it suits runs of up to a few thousand items. |
+| `runs.path` | `storage_path('statamic/tolk/runs')` | The runs' folder. |
+| `runs.retention_days` | `30` | `tolk:prune` deletes runs without activity for this many days. |
+| `runs.tick_seconds` | `5` | How long one request of a browser-driven run may keep working on items. It starts at most one provider call, so a request lasts at most about this plus `http.timeout.web`. |
+| `runs.claim_ttl` | `300` | Seconds a queue or command-line worker holds an item before another may take it over. `tolk:prune` stops runs that made no progress for this long. |
+| `runs.execution` | `auto` | How runs started in the CP are driven: `auto` (on the queue when the queue connection has a worker, so not `sync`, `deferred`, `background` or `null`; otherwise by the run page), `queue` or `browser`. |
+| `runs.queue.connection` | `null` | The queue connection for runs; `null` is the app's default. |
+| `runs.queue.name` | `null` | The queue name for runs; `null` is the connection's default. |
+| `usage.path` | `storage_path('statamic/tolk/usage')` | The monthly usage files the Overview reads. |
+
+How runs work, and what the queue connection's `retry_after` must be, is in [Bulk translations and runs](bulk-and-runs.md).
+
+### Saving, cache and the rest
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `write.lock_seconds` | `120` | Content is saved by one process at a time, under a global lock held for at most this long. |
+| `write.wait_seconds` | `60` | How long a save waits for that lock. |
+| `cache_store` | `null` | The cache store for plans, locks, pauses and the Overview's counts; `null` is the app's default store. It must support locks. On several servers use one they share (`redis`, `database`): a `file` cache is local to one server. |
+| `plan_ttl` | `7200` | Seconds a translation plan and its results stay in the cache. An editor who leaves a translation half done for longer starts it again. |
+| `fieldtypes` | `[]` | Handlers for more fieldtypes, as `'fieldtype handle' => HandlerClass::class` (see [Extending](extending.md)). |
+| `tokens.chars_per_token` | `3` | Characters per token, for the estimates. |
+| `fake_engine` | `env('TOLK_FAKE_ENGINE', false)` | A deterministic engine for development and tests that calls no provider and returns `[lang] text`, for example `[de] Welcome`. It works only in the `local` and `testing` environments and is ignored everywhere else. Source text containing `[[review]]`, `[[invalid]]` or `[[refuse]]` makes it return a review correction, invalid text or a refusal. |
+| `fake_delay_ms` | `300` | How long the fake engine takes per request. |
