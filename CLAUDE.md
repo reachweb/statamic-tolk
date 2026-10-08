@@ -52,7 +52,8 @@ A line marked *(Tn.n)* describes something that task builds; until then it does 
 - Prefer Boost's documentation search over memory for Laravel and `laravel/ai` APIs; when it and the installed source disagree, the source in `vendor/` wins.
 - Before working on the AI engine, read `vendor/laravel/ai/resources/boost/skills/ai-sdk-development/SKILL.md`.
 - Before working on the CP, read `vendor/statamic/cms/resources/boost/guidelines/core.blade.php`.
-- The sandbox's `boost.json` selects Claude Code and the `statamic/cms` guidelines. After a `composer update` there, `php artisan boost:update` refreshes its `CLAUDE.md` section and `.claude/skills/`.
+- The addon ships its own Boost guideline for host apps, `resources/boost/guidelines/core.blade.php`, a single file that Boost renders through Blade and appends as `=== reachweb/statamic-tolk/core rules ===`: keep every `{{ }}` inside `@verbatim`, and keep it in step with `docs/`. `tests/Feature/BoostGuidelineTest.php` renders it as Boost does and holds it to every command, event, permission and per-field option.
+- The sandbox's `boost.json` selects Claude Code and the `statamic/cms` and `reachweb/statamic-tolk` guidelines. After a `composer update` there, or a change to the addon's guideline, `php artisan boost:update` refreshes its `CLAUDE.md` sections and `.claude/skills/`; commit the result there.
 
 ## Architecture
 
