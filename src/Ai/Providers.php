@@ -27,6 +27,19 @@ class Providers
     }
 
     /**
+     * Fails when a call to the provider cannot be made: it has no key, and the fake engine, which answers for every
+     * provider, is off.
+     *
+     * @throws ProviderNotConfigured
+     */
+    public function ensureCallable(string $provider): void
+    {
+        if (! FakeEngine::enabled() && ! $this->isConfigured($provider)) {
+            throw ProviderNotConfigured::for($provider);
+        }
+    }
+
+    /**
      * What the settings show about a provider's key, never any part of it: whether there is one, where it comes from
      * (`addon` for Tolk's own override, `ai` for config/ai.php, null without one) and the variables that set them.
      *
@@ -115,16 +128,11 @@ class Providers
         foreach (['addon' => "tolk.providers.{$provider}.{$key}", 'ai' => "ai.providers.{$provider}.{$key}"] as $source => $path) {
             $value = config($path);
 
-            if (self::filled($value)) {
+            if (is_string($value) && trim($value) !== '') {
                 return ['value' => trim($value), 'source' => $source];
             }
         }
 
         return ['value' => null, 'source' => null];
-    }
-
-    private static function filled(mixed $value): bool
-    {
-        return is_string($value) && trim($value) !== '';
     }
 }

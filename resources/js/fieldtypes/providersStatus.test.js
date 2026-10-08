@@ -28,7 +28,6 @@ describe('providerRows', () => {
         expect(anthropic).toEqual({
             provider: 'anthropic',
             label: 'Anthropic',
-            configured: true,
             badge: { text: 'Configured', color: 'green' },
             source: 'The key comes from config/ai.php, which Tolk shares with the rest of the site.',
             hint: null,
@@ -41,7 +40,6 @@ describe('providerRows', () => {
         const gemini = providerRows(meta)[2];
 
         expect(gemini).toMatchObject({
-            configured: false,
             badge: { text: 'No API key', color: 'default' },
             source: null,
             hint: 'Add GEMINI_API_KEY to the .env file, or TOLK_GEMINI_API_KEY to give Tolk a key of its own.',

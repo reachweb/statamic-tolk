@@ -61,8 +61,7 @@ export function needsSetup(status) {
     return !(defaults.providers_configured || defaults.fake_engine) || !defaults.translator;
 }
 
-// `linked`: the banner links the fields that are not localizable to the Audit page, so the hint does not name the command.
-export function describe(status, { linked = false } = {}) {
+export function describe(status) {
     if (status?.translatable !== true) {
         return { visible: false, reason: status?.reason ?? null, setup: false, translator: null, localization: null, origin: null };
     }
@@ -74,12 +73,12 @@ export function describe(status, { linked = false } = {}) {
         reason: null,
         setup,
         translator: status.defaults?.translator ?? null,
-        localization: status.localization ? describeLocalization(status.localization, setup, linked) : null,
+        localization: status.localization ? describeLocalization(status.localization, setup) : null,
         origin: status.origin ? describeOrigin(status.origin, setup) : null,
     };
 }
 
-function describeLocalization(block, setup, linked) {
+function describeLocalization(block, setup) {
     const counts = block.counts ?? {};
     const parts = countParts(counts);
     const fields = Object.entries(block.fields ?? {});
@@ -100,7 +99,7 @@ function describeLocalization(block, setup, linked) {
         incomplete,
         incompleteNote: incomplete.length ? incompleteNote(incomplete) : null,
         notLocalizable,
-        hint: notLocalizable.length ? notLocalizableText(labels(notLocalizable), notLocalizable.length, linked) : null,
+        hint: notLocalizable.length ? notLocalizableText(labels(notLocalizable), notLocalizable.length) : null,
         translate: !setup && (counts.untranslated ?? 0) > 0,
         update: !setup && (counts.outdated ?? 0) > 0,
     };
@@ -128,16 +127,12 @@ function incompleteNote(fields) {
     );
 }
 
-// The joined names of `count` fields that are not localizable, with the command that explains it unless the page links
-// them to the Audit page; the run page names fields of several containers.
-export function notLocalizableText(names, count, linked = false) {
-    return __n(
-        linked
-            ? ':fields is not translated because it is not localizable.|:fields are not translated because they are not localizable.'
-            : ':fields is not translated because it is not localizable. Run php please tolk:doctor for details.|:fields are not translated because they are not localizable. Run php please tolk:doctor for details.',
-        count,
-        { fields: names },
-    );
+// The joined names of `count` fields that are not localizable; the run page names fields of several containers. The
+// pages follow it with a link to the Audit page, or with the command that explains it.
+export function notLocalizableText(names, count) {
+    return __n(':fields is not translated because it is not localizable.|:fields are not translated because they are not localizable.', count, {
+        fields: names,
+    });
 }
 
 function labels(fields) {

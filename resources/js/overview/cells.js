@@ -46,6 +46,12 @@ export function createCellLoader({ scan, onChange = () => {}, concurrency = CONC
         }
     }
 
+    // Drops the queue; a request already on its way is not reported.
+    function stop() {
+        generation++;
+        queue = [];
+    }
+
     function enqueue(cells, fresh) {
         for (const cell of cells) {
             queue.push({ cell, fresh, generation });
@@ -58,8 +64,7 @@ export function createCellLoader({ scan, onChange = () => {}, concurrency = CONC
     return {
         // `cells`: `{ key, type, container, site }` each. `fresh` counts again instead of taking cached cells.
         load(cells, { fresh = false } = {}) {
-            generation++;
-            queue = [];
+            stop();
             enqueue(cells, fresh);
         },
 
@@ -68,10 +73,7 @@ export function createCellLoader({ scan, onChange = () => {}, concurrency = CONC
             enqueue([cell], false);
         },
 
-        stop() {
-            generation++;
-            queue = [];
-        },
+        stop,
 
         get active() {
             return active;

@@ -3,7 +3,6 @@
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
-use Reach\StatamicTolk\Ai\Agents\SiteProfileAgent;
 use Reach\StatamicTolk\Ai\SiteProfileGenerator;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\Settings;
@@ -19,32 +18,13 @@ beforeEach(function () {
     $this->makeEntry('tours', 'en', ['title' => 'Samaria Gorge', 'body' => 'A full day walk with Acme Tours guides.']);
 });
 
-/**
- * Fakes the agent and keeps the user message and the model of each prompt.
- *
- * @return object{prompts: list<string>, models: list<string>}
- */
-function fakeSiteProfile(array $answer = ['profile' => 'Acme Tours runs walking tours on Crete.', 'terms' => ['Acme Tours']]): object
-{
-    $seen = (object) ['prompts' => [], 'models' => []];
-
-    SiteProfileAgent::fake(function (string $prompt, $attachments, $provider, string $model) use ($seen, $answer) {
-        $seen->prompts[] = $prompt;
-        $seen->models[] = $model;
-
-        return $answer;
-    });
-
-    return $seen;
-}
-
 function generateSiteProfile(array $body = []): TestResponse
 {
     return test()->postJson(cp_route('tolk.site-profile.generate'), $body);
 }
 
 it('writes a profile from the site\'s content with the translator of the settings, and saves nothing', function () {
-    $seen = fakeSiteProfile([
+    $seen = $this->fakeSiteProfile([
         'profile' => 'Acme Tours runs walking tours on Crete. Book at https://acme.test/book now.',
         'terms' => ['Acme Tours', '<b>Samaria Pass</b>', 'https://acme.test'],
     ]);
@@ -63,7 +43,7 @@ it('writes a profile from the site\'s content with the translator of the setting
 });
 
 it('records the call in the usage log as the editor\'s', function () {
-    fakeSiteProfile();
+    $this->fakeSiteProfile();
 
     generateSiteProfile()->assertOk();
 
@@ -75,7 +55,7 @@ it('records the call in the usage log as the editor\'s', function () {
 });
 
 it('uses the translator the form holds, saved or not, and its automatic choice when it is empty', function (array $body, string $model) {
-    $seen = fakeSiteProfile();
+    $seen = $this->fakeSiteProfile();
     $this->withSettings(['translator_model' => 'gemini:gemini-3.8-flash']);
 
     generateSiteProfile($body)->assertOk()->assertJsonPath('model', $model);
@@ -90,7 +70,7 @@ it('uses the translator the form holds, saved or not, and its automatic choice w
 ]);
 
 it('refuses a translator that is not a model reference', function (mixed $model) {
-    fakeSiteProfile();
+    $this->fakeSiteProfile();
 
     generateSiteProfile(['model' => $model])
         ->assertUnprocessable()
@@ -100,7 +80,7 @@ it('refuses a translator that is not a model reference', function (mixed $model)
 })->with(['claude', 'anthropic:', 'nobody:model']);
 
 it('answers 422 when the saved translator is not a model reference', function () {
-    fakeSiteProfile();
+    $this->fakeSiteProfile();
     $this->withSettings(['translator_model' => 'claude']);
 
     generateSiteProfile()->assertUnprocessable()->assertJson(['code' => 'invalid_model'])->assertJsonPath('message', fn (string $message) => str_contains($message, 'claude'));
@@ -109,7 +89,7 @@ it('answers 422 when the saved translator is not a model reference', function ()
 });
 
 it('answers 422 when the translator\'s provider has no key, or no provider has one', function () {
-    fakeSiteProfile();
+    $this->fakeSiteProfile();
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
 
     generateSiteProfile(['model' => 'openai:gpt-6.1-sol'])
@@ -125,7 +105,7 @@ it('answers 422 when the translator\'s provider has no key, or no provider has o
 });
 
 it('answers 422 when the catalog has no model for the automatic choice', function () {
-    fakeSiteProfile();
+    $this->fakeSiteProfile();
     config(['tolk.models.anthropic' => [config('tolk.models.anthropic.1')]]);
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
 
@@ -148,7 +128,7 @@ it('answers 422 with a readable message when the provider rejects the call, with
 });
 
 it('answers 422 when the answer holds no profile', function () {
-    fakeSiteProfile(['profile' => 'https://acme.test', 'terms' => ['Acme']]);
+    $this->fakeSiteProfile(['profile' => 'https://acme.test', 'terms' => ['Acme']]);
 
     generateSiteProfile()
         ->assertUnprocessable()
@@ -188,7 +168,7 @@ it('answers with the fake engine without calling a model or needing a key', func
 });
 
 it('needs the addon\'s settings ability', function () {
-    $seen = fakeSiteProfile();
+    $seen = $this->fakeSiteProfile();
 
     $this->signInWithPermissions(['access cp', 'translate content', 'run bulk translations']);
     generateSiteProfile()->assertForbidden();

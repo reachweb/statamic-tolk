@@ -11,24 +11,7 @@ use Statamic\Facades\YAML;
  */
 function tolkSettingsForm(array $values = []): array
 {
-    return [
-        'translator_model' => null,
-        'review_enabled' => false,
-        'reviewer_model' => null,
-        'fallback_model' => null,
-        'new_localization_status' => 'draft',
-        'offer_on_create' => true,
-        'strict_fields' => false,
-        'site_profile' => '',
-        'instructions' => '',
-        'language_instructions' => [],
-        'glossary' => [],
-        'excluded_collections' => [],
-        'excluded_taxonomies' => [],
-        'excluded_fields' => [],
-        'providers' => null,
-        ...$values,
-    ];
+    return [...Settings::DEFAULTS, 'providers' => null, ...$values];
 }
 
 function tolkGlossaryRow(array $values): array
