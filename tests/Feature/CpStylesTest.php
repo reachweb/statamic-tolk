@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\File;
-use Symfony\Component\Finder\SplFileInfo;
+use Reach\StatamicTolk\Tests\Support\TemplateStrings;
 
 /**
  * The classes in the `utilities` layer of core's CP stylesheet.
@@ -71,12 +71,7 @@ it('lets no dark or hover colour of the CP scripts lose to a class of core on th
 
     $findings = [];
 
-    foreach (File::allFiles(dirname(__DIR__, 2).'/resources/js') as $file) {
-        /** @var SplFileInfo $file */
-        if (! in_array($file->getExtension(), ['vue', 'js'], true) || str_ends_with($file->getFilename(), '.test.js')) {
-            continue;
-        }
-
+    foreach (TemplateStrings::cpScripts() as $file) {
         preg_match_all('/class="([^"]+)"|\'([^\'\n]*:[^\'\n]*)\'|"([^"\n]*:[^"\n]*)"/', $file->getContents(), $matches, PREG_SET_ORDER);
 
         foreach ($matches as $match) {

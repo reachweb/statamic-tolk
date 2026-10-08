@@ -1,7 +1,10 @@
 import { nextTick, reactive } from 'vue';
 
-// The open state of one of the addon's modals. Core's `Modal` finishes a close 300 ms after it starts, and one opened
-// again meanwhile closes itself when that stale close finishes (T10.3), so each opening mounts a fresh modal:
+// How long core's `Modal` takes to close once it starts to.
+export const CORE_CLOSE_MS = 300;
+
+// The open state of one of the addon's modals. Core's `Modal` finishes a close `CORE_CLOSE_MS` after it starts, and one
+// opened again meanwhile closes itself when that stale close finishes (T10.3), so each opening mounts a fresh modal:
 //
 //     <Modal v-if="modal.open" open @dismissed="modal.dismissed()" @update:open="modal.closed($event)">
 //
@@ -24,12 +27,14 @@ export function createModal() {
         },
 
         hide() {
+            reopen = false;
+
             if (!closing) {
                 modal.open = false;
             }
         },
 
-        // Esc or a click outside: core closes the modal in 300 ms and then reports it through `update:open`.
+        // Esc or a click outside: core closes the modal in `CORE_CLOSE_MS` and then reports it through `update:open`.
         dismissed() {
             closing = true;
         },

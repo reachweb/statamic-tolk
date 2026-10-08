@@ -211,16 +211,11 @@ class RunsController extends Controller
 
     private function found(RunStateRequest $request): Run
     {
-        return $request->run() ?? $this->notFound();
+        return $request->run() ?? $this->fail(404, 'run_not_found', __('This run no longer exists.'));
     }
 
     private function stateOf(Run $run, RunStateRequest $request): array
     {
         return $this->state->for($run, $request->page(), $request->perPage(), $request->status());
-    }
-
-    private function notFound(): never
-    {
-        $this->fail(404, 'run_not_found', __('This run no longer exists.'));
     }
 }

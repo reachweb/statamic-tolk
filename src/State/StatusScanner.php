@@ -139,18 +139,14 @@ final readonly class StatusScanner
      */
     private function entryTargets(CollectionContract $collection, string $site): array
     {
-        if (! $collection->sites()->contains($site)) {
-            return [];
-        }
-
         $ids = $this->families->rootIdsOutside($collection, $site);
         $loaded = [];
 
         // Listed from the index and loaded a chunk at a time as they are resolved, so a slice loads only the roots it
         // resolves. One query per root would cost more: Entry::find() filters the whole id index (T12.2).
-        $root = function (int $index) use ($ids, &$loaded): EntryContract {
+        $root = function (int $index) use ($collection, $ids, &$loaded): EntryContract {
             if (! isset($loaded[$ids[$index]])) {
-                $loaded = Entry::query()->whereIn('id', array_slice($ids, $index, self::CHUNK))->get()
+                $loaded = Entry::query()->where('collection', $collection->handle())->whereIn('id', array_slice($ids, $index, self::CHUNK))->get()
                     ->keyBy(fn (EntryContract $entry) => (string) $entry->id())
                     ->all();
             }

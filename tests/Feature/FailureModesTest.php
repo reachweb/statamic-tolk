@@ -308,7 +308,7 @@ describe('an unavailable provider', function () {
     beforeEach(function () {
         $this->origin = failingArticle('hello', [failingParagraph('Breakfast is served until ten.')]);
         // Overloaded, again and again.
-        Http::fake([ProviderFixtures::HOSTS['anthropic'] => Http::response(ProviderFixtures::error('anthropic', 529, 'overloaded_error', 'Overloaded'), 529, ['retry-after' => '3'])]);
+        ProviderFixtures::fake('anthropic', ProviderFixtures::error('anthropic', 529, 'overloaded_error', 'Overloaded'), 529, ['retry-after' => '3']);
     });
 
     it('retries an entry of a browser run whose provider stays down and fails it in the end, saving nothing', function () {

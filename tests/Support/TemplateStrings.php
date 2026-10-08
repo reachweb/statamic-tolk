@@ -2,6 +2,9 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use Illuminate\Support\Facades\File;
+use Symfony\Component\Finder\SplFileInfo;
+
 /**
  * A simple reading of a Vue single-file component's template for `tests/Feature/StringsTest.php`: the text a user sees
  * that does not go through `__()` or `__n()`, buttons without a name, and badges without text. It is a heuristic, not
@@ -20,10 +23,26 @@ final class TemplateStrings
 
     private const string LITERAL = '(?:\'(?:[^\'\\\\\n]|\\\\.)*\'|"(?:[^"\\\\\n]|\\\\.)*"|`(?:[^`\\\\]|\\\\.)*`)';
 
+    // The first argument of `__()` or `__n()`, with the call.
+    private const string TRANSLATED = '/\b__n?\(\s*'.self::LITERAL.'/s';
+
     /**
      * Bound attributes that hold classes and styles, not text.
      */
     private const array STYLE_ATTRIBUTES = [':class', ':style', 'v-bind:class', 'v-bind:style'];
+
+    /**
+     * The CP's scripts and components, without their tests.
+     *
+     * @return list<SplFileInfo>
+     */
+    public static function cpScripts(): array
+    {
+        return collect(File::allFiles(dirname(__DIR__, 2).'/resources/js'))
+            ->filter(fn (SplFileInfo $file) => in_array($file->getExtension(), ['vue', 'js'], true) && ! str_ends_with($file->getFilename(), '.test.js'))
+            ->values()
+            ->all();
+    }
 
     /**
      * @return list<string> one line per finding: "{line}: {what}"
@@ -69,7 +88,7 @@ final class TemplateStrings
             $blank = fn (array $match) => preg_replace('/[^\n]/', ' ', $match[0]);
             $code = preg_replace_callback('/(?<![:\'"`\\\\])\/\/[^\n]*|\/\*.*?\*\//s', $blank, $code);
             $code = preg_replace_callback('/\bnew\s+\w*Error\(\s*'.self::LITERAL.'/s', $blank, $code);
-            $code = preg_replace_callback('/\b__n?\(\s*'.self::LITERAL.'/s', $blank, $code);
+            $code = preg_replace_callback(self::TRANSLATED, $blank, $code);
 
             preg_match_all('/'.self::LITERAL.'/s', $code, $literals, PREG_OFFSET_CAPTURE);
 
@@ -118,8 +137,8 @@ final class TemplateStrings
             }
 
             if (preg_match('/\G<(\/?)([A-Za-z][\w.:-]*)/', $source, $match, 0, $i) === 1) {
-                [$tag, $i] = self::tag($source, $i, $match);
-                $nodes[] = $tag;
+                $nodes[] = $tag = self::tag($source, $i, $match);
+                $i = $tag['end'];
 
                 continue;
             }
@@ -153,7 +172,7 @@ final class TemplateStrings
     }
 
     /**
-     * @return array{0: array, 1: int} the tag and the position after it
+     * @return array{kind: string, at: int, name: string, closing: bool, selfClosing: bool, attributes: list<array{name: string, value: ?string}>, end: int} the tag, `end` the position after it
      */
     private static function tag(string $source, int $at, array $match): array
     {
@@ -198,7 +217,7 @@ final class TemplateStrings
             $attributes[] = ['name' => $name, 'value' => $value];
         }
 
-        return [[
+        return [
             'kind' => 'tag',
             'at' => $at,
             'name' => $match[2],
@@ -206,7 +225,7 @@ final class TemplateStrings
             'selfClosing' => $selfClosing,
             'attributes' => $attributes,
             'end' => $i,
-        ], $i];
+        ];
     }
 
     /**
@@ -293,7 +312,7 @@ final class TemplateStrings
      */
     private static function literals(string $expression): array
     {
-        $expression = preg_replace('/\b__n?\(\s*'.self::LITERAL.'/s', '__(', $expression);
+        $expression = preg_replace(self::TRANSLATED, '__(', $expression);
 
         preg_match_all('/'.self::LITERAL.'/s', $expression, $matches);
 

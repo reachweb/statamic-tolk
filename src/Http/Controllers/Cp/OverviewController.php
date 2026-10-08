@@ -17,6 +17,7 @@ use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Requests\OverviewScanRequest;
 use Reach\StatamicTolk\Http\Requests\RunStateRequest;
 use Reach\StatamicTolk\Http\RunState;
+use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\OverviewScanner;
 use Reach\StatamicTolk\State\StatusScanner;
@@ -50,7 +51,7 @@ class OverviewController extends Controller
             'providers' => $providers->statuses(),
             'fakeEngine' => FakeEngine::enabled(),
             'usage' => ['month' => $month, 'models' => $models, 'labels' => $catalog->labels(array_keys($models))],
-            'runs' => array_map($state->summary(...), array_slice(RunStateRequest::visible($runs->recent(RunsController::RECENT), User::current()), 0, self::RECENT_RUNS)),
+            'runs' => array_map($state->summary(...), $this->recentRuns($runs)),
             'urls' => [
                 'scan' => cp_route('tolk.overview.scan'),
                 'store' => cp_route('tolk.runs.store'),
@@ -77,6 +78,23 @@ class OverviewController extends Controller
         }
 
         return response()->json([...$totals->toArray(), 'cached' => $cached !== null]);
+    }
+
+    /**
+     * The latest runs the user may see. Most users see every run, so the runs list's longer list is read only when the
+     * latest hold one they may not.
+     *
+     * @return list<Run>
+     */
+    private function recentRuns(RunRepository $runs): array
+    {
+        $user = User::current();
+        $latest = $runs->recent(self::RECENT_RUNS);
+        $visible = RunStateRequest::visible($latest, $user);
+
+        return count($visible) === count($latest)
+            ? $visible
+            : array_slice(RunStateRequest::visible($runs->recent(RunsController::RECENT), $user), 0, self::RECENT_RUNS);
     }
 
     /**

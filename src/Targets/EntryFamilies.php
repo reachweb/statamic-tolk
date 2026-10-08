@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Targets;
 
+use Closure;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Statamic\Contracts\Entries\Collection as CollectionContract;
@@ -40,31 +41,31 @@ final class EntryFamilies
 
         return collect($roots)
             ->groupBy(fn (EntryContract $root) => $root->collectionHandle())
-            ->flatMap(fn ($group) => $this->inTreeOrder($group->all()))
+            ->flatMap(fn ($group) => $this->inTreeOrder($group->first()->collection(), $group->all(), fn (EntryContract $root) => (string) $root->id()))
             ->values()
             ->all();
     }
 
     /**
-     * The ids of the collection's roots in sites other than $site, in the order of roots(), read from the index without
+     * The ids of the collection's roots that are targets in $site, as in targets(): none when the collection is not
+     * available in $site, else the roots in the other sites. In the order of roots(), read from the index without
      * loading the entries.
      *
      * @return list<string>
      */
     public function rootIdsOutside(CollectionContract $collection, string $site): array
     {
+        if (! $collection->sites()->contains($site)) {
+            return [];
+        }
+
         $ids = $this->rootQuery($collection->handle())->pluck('site', 'id')
             ->reject(fn (string $rootSite) => $rootSite === $site)
             ->keys()
             ->map(fn (int|string $id) => (string) $id)
             ->all();
-        $positions = $this->treePositions($collection);
 
-        if ($positions !== []) {
-            usort($ids, fn (string $a, string $b) => ($positions[$a] ?? PHP_INT_MAX) <=> ($positions[$b] ?? PHP_INT_MAX));
-        }
-
-        return $ids;
+        return $this->inTreeOrder($collection, $ids, fn (string $id) => $id);
     }
 
     /**
@@ -107,19 +108,22 @@ final class EntryFamilies
     }
 
     /**
-     * @param  list<EntryContract>  $roots  of one collection
-     * @return list<EntryContract>
+     * @template T
+     *
+     * @param  list<T>  $roots  of the collection
+     * @param  Closure(T): string  $id
+     * @return list<T>
      */
-    private function inTreeOrder(array $roots): array
+    private function inTreeOrder(CollectionContract $collection, array $roots, Closure $id): array
     {
-        $positions = $this->treePositions($roots[0]->collection());
+        $positions = $this->treePositions($collection);
 
         if ($positions === []) {
             return $roots;
         }
 
         // Stable: roots that are in no tree keep their order, after the others.
-        usort($roots, fn (EntryContract $a, EntryContract $b) => ($positions[(string) $a->id()] ?? PHP_INT_MAX) <=> ($positions[(string) $b->id()] ?? PHP_INT_MAX));
+        usort($roots, fn ($a, $b) => ($positions[$id($a)] ?? PHP_INT_MAX) <=> ($positions[$id($b)] ?? PHP_INT_MAX));
 
         return $roots;
     }

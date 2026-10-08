@@ -27,6 +27,7 @@ use Reach\StatamicTolk\Support\Sanitizer;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Reach\StatamicTolk\Tests\Support\TemplateStrings;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\SegmentValidator;
 use Statamic\Contracts\Auth\User as UserContract;
@@ -560,8 +561,7 @@ describe('model output', function () {
 });
 
 it('never renders HTML from data in the Control Panel scripts', function () {
-    $files = collect(File::allFiles(dirname(__DIR__, 2).'/resources/js'))
-        ->filter(fn (SplFileInfo $file) => in_array($file->getExtension(), ['vue', 'js'], true) && ! str_ends_with($file->getFilename(), '.test.js'));
+    $files = collect(TemplateStrings::cpScripts());
 
     $offending = $files
         ->filter(fn (SplFileInfo $file) => preg_match('/\bv-html\b|\.(?:inner|outer)HTML\b|insertAdjacentHTML|document\.write/', $file->getContents()) === 1)

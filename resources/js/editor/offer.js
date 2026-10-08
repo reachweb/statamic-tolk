@@ -1,4 +1,5 @@
 import { watch } from 'vue';
+import { CORE_CLOSE_MS } from '../modal.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { describe } from './statuses.js';
 import { useEditorStore } from './store.js';
@@ -42,10 +43,10 @@ export function describeOffer(status) {
     };
 }
 
-// How long after `localization.created` the offer opens at the earliest. Core's origin picker starts its 300 ms close
-// before it creates the localization, and a modal that opens before that close has finished loses its Esc key: core
-// keeps the Esc bindings in a stack, and a closing modal pops whatever is on top (T12.4).
-export const PICKER_CLOSE_MS = 350;
+// How long after `localization.created` the offer opens at the earliest. Core's origin picker starts its close
+// (`CORE_CLOSE_MS`) before it creates the localization, and a modal that opens before that close has finished loses its
+// Esc key: core keeps the Esc bindings in a stack, and a closing modal pops whatever is on top (T12.4).
+export const PICKER_CLOSE_MS = CORE_CLOSE_MS + 50;
 
 // The offer after creating a localization in the publish form (§A13). Core emits `localization.created` once the form
 // shows the new localization, and the banner's watcher has already run its switch, which resets the store. So the
