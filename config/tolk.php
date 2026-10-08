@@ -65,7 +65,7 @@ return [
                 'id' => 'claude-haiku-5-5',
                 'label' => 'Claude Haiku 5.5',
                 'tier' => 'fast',
-                'options' => ['thinking' => ['type' => 'between_tools']],
+                'options' => ['thinking' => ['type' => 'disabled']],
                 'max_output_tokens' => 128000,
                 'reasoning_headroom' => 0,
                 // Anthropic's rate for prompts up to 100,000 tokens (0.5 / 2.5 above that); Tolk's batches stay far below.
@@ -99,7 +99,7 @@ return [
                 'tier' => 'quality',
                 'options' => ['thinking_level' => 'low'],
                 'max_output_tokens' => 65536,
-                'reasoning_headroom' => 4000,
+                'reasoning_headroom' => 0,
                 // Google charges 0.75 / 3.75 until 2026-12-31; this is the price from 2027-01-01.
                 'price' => ['input' => 1.5, 'output' => 7.5],
             ],
@@ -136,7 +136,7 @@ return [
 
     'batch' => [
         'max_chars' => [
-            'web' => 6000,
+            'web' => 4000,
             'background' => 10000,
         ],
         'min_chars' => 1200,

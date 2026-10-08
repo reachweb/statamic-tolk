@@ -19,14 +19,21 @@ use Reach\StatamicTolk\Translation\Plan;
 final readonly class Estimator
 {
     /**
-     * Output characters per source character: a translation is usually longer than its source.
+     * Output tokens per source token: a translation is longer than its source, and German or Greek take more tokens per
+     * character than English (1.25 to 1.7 on four models in T13.4).
      */
-    public const float OUTPUT_RATIO = 1.15;
+    public const float OUTPUT_RATIO = 1.5;
 
     /**
-     * Review output tokens per segment token: the reviewer returns only the segments it corrects.
+     * Output tokens per segment for the JSON around its translation (15 to 26 in T13.4).
      */
-    public const float REVIEW_OUTPUT_RATIO = 0.1;
+    public const int SEGMENT_OUTPUT_TOKENS = 20;
+
+    /**
+     * Review output tokens per segment token: the reviewer returns only the segments it corrects, but each in full and
+     * with a reason. Correcting one segment in nine, as in T13.4, took this much.
+     */
+    public const float REVIEW_OUTPUT_RATIO = 1.0;
 
     public function __construct(
         private PromptBuilder $prompts,
@@ -63,7 +70,7 @@ final readonly class Estimator
             if ($translates) {
                 $translation = $translation->add(new Usage(
                     input: $this->tokens($system + $this->userChars($plan, $ids, $this->translationSegment(...))),
-                    output: $this->tokens($batchChars * self::OUTPUT_RATIO),
+                    output: $this->tokens($batchChars * self::OUTPUT_RATIO) + count($ids) * self::SEGMENT_OUTPUT_TOKENS,
                 ));
             }
 

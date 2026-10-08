@@ -33,7 +33,7 @@ The banner says **Translation is not set up yet** when no provider has an API ke
 
 A request that times out with several pieces of text is split and sent again, so a timeout costs time but loses nothing. When it keeps happening:
 
-- **Lower the batch size**: `batch.max_chars.web` (the editor and CP runs, default 6,000 characters) or `batch.max_chars.background` (the command line, 10,000). Smaller requests finish faster.
+- **Lower the batch size**: `batch.max_chars.web` (the editor and CP runs, default 4,000 characters) or `batch.max_chars.background` (the command line, 10,000). Smaller requests finish faster.
 - **Raise the timeout**: `http.timeout.web` (45 seconds) or `http.timeout.background` (180). Keep `http.timeout.web` below your web server's and proxy's timeouts (often 60 seconds), and on a queue below the connection's `retry_after` minus 40 seconds.
 - **Use a faster model**: the fast models of each provider answer much sooner.
 

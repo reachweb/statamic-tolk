@@ -23,6 +23,7 @@ final class PromptBuilder
         'Keep leading and trailing whitespace, line breaks and Markdown syntax where they are.',
         'When a segment has `max_length`, the translation must not exceed that many characters.',
         '`field` and `hint` say what the text is used for (a page title, a button label, an SEO description). Match that register.',
+        'Address the reader the same way in every segment: as the language instructions say, or else in the form that is usual for this kind of website in the target language.',
         'If a segment should not be translated at all (a code, an identifier, a name), return its text unchanged.',
         'Return only the structured result.',
     ];

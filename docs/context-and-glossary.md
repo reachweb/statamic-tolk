@@ -55,7 +55,7 @@ Do not repeat what Tolk already tells the model (keep formatting, keep links). P
 One row per language, on the **Context** tab:
 
 - **Site**: the site whose language the row is for. Each site can have one row.
-- **Formality**: *Default* leaves it to the model, *Formal* or *Informal* tells it how to address the reader (German Sie or du, Greek εσείς or εσύ).
+- **Formality**: *Formal* or *Informal* tells the model how to address the reader (German Sie or du, Greek εσείς or εσύ). With *Default* it uses the form usual for this kind of website in that language. Either way it keeps one form of address throughout.
 - **Instructions** for this language only, for example "Use the monotonic system. Write prices as 120 €." for Greek.
 
 ## The glossary

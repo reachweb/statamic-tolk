@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { Badge, Button, Card, Description, Icon, Text, injectPublishContext } from '@statamic/cms/ui';
 import ChangesModal from './ChangesModal.vue';
 import OriginPush from './OriginPush.vue';
@@ -106,8 +106,15 @@ function translate(mode) {
     translations.translate(name, { mode });
 }
 
+// Undo removes its own button without changing the phase.
 async function undo() {
+    const held = focus.holds();
     const result = await translations.undo(name);
+
+    if (held) {
+        await nextTick();
+        focus.restore();
+    }
 
     if (result?.kept.length) {
         Statamic.$toast.info(keptMessage(result.kept, state.value?.status));

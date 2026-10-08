@@ -16,7 +16,17 @@ const isConfirm = (response) => response.url().includes('/tolk/editor/confirm');
 const ARTICLE = 'fake-engine-markers';
 const ARTICLE_ID = '3e1bef1b-a083-4fc6-9326-825405cb50eb';
 const MARKED = '[[review]] This paragraph asks the fake reviewer for a correction, so the review step has something to change.';
-const REVIEWER = 'claude-sonnet-5-5';
+// The models the sandbox picks when the settings name none: Claude Sonnet 5.5 for both without provider keys; with keys,
+// the reviewer is another provider's quality model.
+const { translator: TRANSLATOR_REF, reviewer: REVIEWER_REF } = JSON.parse(
+    tinker(
+        "$catalog = app(\\Reach\\StatamicTolk\\Ai\\ModelCatalog::class); $translator = $catalog->automaticTranslator(); echo json_encode(['translator' => (string) $translator, 'reviewer' => (string) $catalog->automaticReviewer($translator)]);",
+    )
+        .split('\n')
+        .at(-1),
+);
+const TRANSLATOR = TRANSLATOR_REF.split(':')[1];
+const REVIEWER = REVIEWER_REF.split(':')[1];
 
 test.beforeEach(() => {
     reset();
@@ -69,7 +79,7 @@ test('Translate with Review after translating reports the correction, lists it w
     expect((await planned).postDataJSON()).toMatchObject({ review: true, reviewer: null });
 
     await expect(reviewed(page)).toHaveText(`Reviewed with ${REVIEWER}: 1 correction.`);
-    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${REVIEWER}\\.$`));
+    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${TRANSLATOR}\\.$`));
 
     await action(page, 'view-changes').click();
     await expect(changes(page).locator('[data-tolk-change]')).toHaveCount(1);
@@ -96,8 +106,8 @@ test('Translate with Review after translating reports the correction, lists it w
     const state = entryState(greekId());
     const stored = entryFile('articles', 'el', ARTICLE);
 
-    expect(state.fields.body.reviewer).toBe(`anthropic:${REVIEWER}`);
-    expect(state.fields.title.reviewer).toBe(`anthropic:${REVIEWER}`);
+    expect(state.fields.body.reviewer).toBe(REVIEWER_REF);
+    expect(state.fields.title.reviewer).toBe(REVIEWER_REF);
     expect(JSON.stringify(stored.body)).toContain(`[el, reviewed] ${MARKED}`);
     expect(browserErrors()).toEqual([]);
 });
@@ -109,7 +119,7 @@ test('Review on the filled form corrects it, Undo puts the translation back, and
     await openGreek(page);
 
     await action(page, 'translate').click();
-    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${REVIEWER}\\.$`));
+    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${TRANSLATOR}\\.$`));
     await expect(reviewed(page)).toHaveCount(0);
     await expect(page.locator('#field_title')).toHaveValue('[el] [[review]] Fake engine markers');
 
@@ -136,6 +146,6 @@ test('Review on the filled form corrects it, Undo puts the translation back, and
 
     expect(status.localization.fields.title).toMatchObject({ status: 'current' });
     expect(entryFile('articles', 'el', ARTICLE).title).toBe('[el, reviewed] [[review]] Fake engine markers');
-    expect(entryState(greekId()).fields.title).toMatchObject({ reviewer: `anthropic:${REVIEWER}`, translator: `anthropic:${REVIEWER}` });
+    expect(entryState(greekId()).fields.title).toMatchObject({ reviewer: REVIEWER_REF, translator: TRANSLATOR_REF });
     expect(browserErrors()).toEqual([]);
 });

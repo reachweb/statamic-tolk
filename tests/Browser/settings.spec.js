@@ -47,12 +47,13 @@ test('The settings page saves the translator, the reviewer, a glossary and a lan
     await openSettings(page);
     await expect(field(page, 'reviewer_model')).toBeHidden();
 
-    await choose(page, 'translator_model', /GPT-6 Luna/);
+    // Anchored: with provider keys in the sandbox, an "Automatic (…)" option can name the same model.
+    await choose(page, 'translator_model', /^GPT-6 Luna/);
 
     // The reviewer shows while review is on, and keeps its value once review is off again.
     await page.locator('#field_review_enabled').click();
     await expect(field(page, 'reviewer_model')).toBeVisible();
-    await choose(page, 'reviewer_model', /Gemini 3\.8 Flash/);
+    await choose(page, 'reviewer_model', /^Gemini 3\.8 Flash/);
     await page.locator('#field_review_enabled').click();
     await expect(field(page, 'reviewer_model')).toBeHidden();
 
@@ -132,7 +133,8 @@ test('Generate fills the site profile and Test connection shows a result, both w
     await page.getByRole('tab', { name: 'Providers' }).click();
     const anthropic = page.locator('[data-tolk-provider="anthropic"]');
 
-    await expect(anthropic.locator('[data-tolk-provider-status]')).toHaveText('No API key');
+    // The fake engine answers whether or not the sandbox has a key.
+    await expect(anthropic.locator('[data-tolk-provider-status]')).toHaveText(/^(No API key|Configured)$/);
     await anthropic.locator('[data-tolk-provider-test]').click();
     await expect(anthropic.locator('[data-tolk-provider-result="ok"]')).toContainText('The fake engine answered for');
 

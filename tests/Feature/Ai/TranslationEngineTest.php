@@ -151,18 +151,28 @@ it('sizes the output cap from the source, the multiplier, the headroom and the c
 })->with([
     'floor' => ['anthropic:claude-sonnet-5-5', 100, 1, 2048],
     'floor, doubled' => ['anthropic:claude-sonnet-5-5', 100, 2, 4096],
-    'from the source' => ['anthropic:claude-sonnet-5-5', 9000, 1, 9000],
-    'from the source, doubled' => ['anthropic:claude-sonnet-5-5', 9000, 2, 18000],
+    'from the source, and 32 tokens per segment' => ['anthropic:claude-sonnet-5-5', 9000, 1, 9032],
+    'from the source, doubled' => ['anthropic:claude-sonnet-5-5', 9000, 2, 18064],
     'with headroom' => ['openai:gpt-6.1-sol', 100, 1, 6048],
-    'with headroom, doubled' => ['openai:gpt-6.1-sol', 9000, 2, 22000],
+    'with headroom, doubled' => ['openai:gpt-6.1-sol', 9000, 2, 22064],
     'catalog cap' => ['gemini:gemini-3.8-flash', 40000, 2, 65536],
-    'unknown model: no headroom, no cap' => ['anthropic:claude-custom', 100000, 2, 200000],
+    'unknown model: no headroom, no cap' => ['anthropic:claude-custom', 100000, 2, 200064],
 ]);
+
+// 80 short strings, as tolk:lang sends them: every model stopped at 2,048 tokens with `length` in T13.4, and needed
+// up to 2,618.
+it('reserves output for the JSON around every segment, so a batch of short strings fits', function () {
+    $segments = array_map(fn (int $i) => ['id' => "s{$i}", 'field' => 'Label', 'kind' => 'plain', 'text' => 'Save changes '.$i], range(1, 80));
+    $chars = array_sum(array_map(fn (array $segment) => mb_strlen($segment['text']), $segments));
+
+    expect(app(TranslationEngine::class)->outputCap(engineCall(overrides: ['segments' => $segments])))->toBe($chars + 80 * 32)
+        ->and($chars + 80 * 32)->toBeGreaterThan(2618);
+});
 
 it('reads tokens.chars_per_token for the cap', function () {
     config(['tolk.tokens.chars_per_token' => 4]);
 
-    expect(app(TranslationEngine::class)->outputCap(engineCall(overrides: ['segments' => engineSegments(12000)])))->toBe(9000);
+    expect(app(TranslationEngine::class)->outputCap(engineCall(overrides: ['segments' => engineSegments(12000)])))->toBe(9032);
 });
 
 it('translates through each provider and reports its usage', function (string $provider, array $usage) {
