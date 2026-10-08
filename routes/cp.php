@@ -11,7 +11,8 @@ use Reach\StatamicTolk\Http\Controllers\Cp\SiteProfileController;
 
 Route::name('tolk.')->prefix('tolk')->group(function () {
     Route::middleware('can:run bulk translations')->group(function () {
-        Route::get('/', [OverviewController::class, 'index'])->name('overview');
+        // Not `/`: for a page the nav does not list, such as a run's, the CP marks the nav child whose URL is its prefix.
+        Route::get('overview', [OverviewController::class, 'index'])->name('overview');
         Route::post('overview/scan', [OverviewController::class, 'scan'])->name('overview.scan');
         Route::get('audit', [AuditController::class, 'index'])->name('audit');
     });

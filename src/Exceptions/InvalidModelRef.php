@@ -10,8 +10,8 @@ final class InvalidModelRef extends InvalidArgumentException
 {
     public static function for(string $reference): self
     {
-        $providers = Arr::join(ModelRef::PROVIDERS, ', ', ' or ');
+        $providers = Arr::join(ModelRef::PROVIDERS, ', ', ' '.__('or').' ');
 
-        return new self("Invalid model reference [{$reference}]. Use provider:model, where the provider is {$providers}.");
+        return new self(__('Invalid model reference [:reference]. Use provider:model, where the provider is :providers.', ['reference' => $reference, 'providers' => $providers]));
     }
 }

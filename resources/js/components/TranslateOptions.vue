@@ -6,6 +6,7 @@ import { offersEnabled } from '../editor/offer.js';
 import { initialModel, modelOptions, options, rememberedModel, REVIEWER_PREFERENCE, stateActions } from '../editor/options.js';
 import { useEditorStore } from '../editor/store.js';
 import { reviewable } from '../editor/translate.js';
+import { createModal } from '../modal.js';
 
 const props = defineProps({
     containerName: { type: String, required: true },
@@ -14,7 +15,7 @@ const props = defineProps({
 
 const store = useEditorStore();
 const term = computed(() => isTermReference(store.containers[props.containerName]?.reference));
-const open = ref(false);
+const modal = createModal();
 const loading = ref(false);
 const failure = ref(null);
 const models = ref(null);
@@ -55,7 +56,7 @@ async function show() {
     reviewAfter.value = props.status?.defaults?.review === true;
     failure.value = null;
     offering.value = offersEnabled();
-    open.value = true;
+    modal.show();
     loading.value = true;
 
     try {
@@ -71,7 +72,7 @@ async function show() {
 }
 
 function translate() {
-    open.value = false;
+    modal.hide();
     options.translate(props.containerName, {
         model: model.value,
         defaultModel: defaultModel.value,
@@ -84,7 +85,7 @@ function translate() {
 }
 
 function review() {
-    open.value = false;
+    modal.hide();
     options.review(props.containerName, {
         reviewer: reviewer.value,
         defaultReviewer: defaultReviewer.value,
@@ -97,7 +98,7 @@ async function changeState(protect) {
 
     try {
         if ((await options.baseline(props.containerName, { protect })) !== null) {
-            open.value = false;
+            modal.hide();
         }
     } finally {
         changingState.value = false;
@@ -116,7 +117,15 @@ async function toggleOffers(enabled) {
 <template>
     <Button size="sm" variant="ghost" icon="sliders-horizontal" :text="__('Options')" data-tolk-action="options" @click="show" />
 
-    <Modal v-model:open="open" :title="__('Translation options')" icon="sliders-horizontal" data-tolk-options>
+    <Modal
+        v-if="modal.open"
+        open
+        :title="__('Translation options')"
+        icon="sliders-horizontal"
+        data-tolk-options
+        @dismissed="modal.dismissed()"
+        @update:open="modal.closed($event)"
+    >
         <div class="space-y-6">
             <div class="space-y-4">
                 <Field
@@ -203,7 +212,7 @@ async function toggleOffers(enabled) {
 
         <template #footer>
             <div class="flex items-center justify-end gap-3 pt-3 pb-1">
-                <Button variant="ghost" :text="__('Close')" data-tolk-options-action="close" @click="open = false" />
+                <Button variant="ghost" :text="__('Close')" data-tolk-options-action="close" @click="modal.hide()" />
                 <Button v-if="canReview" :text="__('Review')" :disabled="loading || !reviewer" data-tolk-options-action="review" @click="review" />
                 <Button variant="primary" :text="__('Translate')" :disabled="loading || !model" data-tolk-options-action="translate" @click="translate" />
             </div>

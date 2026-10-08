@@ -252,8 +252,8 @@ final class NavTarget implements Target
         $site = Site::get($this->site)?->name() ?? $this->site;
 
         return array_map(fn (array $branch) => $branch['kept']
-            ? "The navigation item {$branch['name']} has no link in {$site}: its entry has no localization there, so only its title and the items below it were kept."
-            : "The navigation item {$branch['name']} was left out: its entry has no localization in {$site}.",
+            ? __('The navigation item :item has no link in :site: its entry has no localization there, so only its title and the items below it were kept.', ['item' => $branch['name'], 'site' => $site])
+            : __('The navigation item :item was left out: its entry has no localization in :site.', ['item' => $branch['name'], 'site' => $site]),
             $this->mapped()['unmapped']);
     }
 

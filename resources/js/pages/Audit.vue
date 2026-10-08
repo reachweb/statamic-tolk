@@ -89,7 +89,7 @@ async function makeLocalizable() {
         </Header>
 
         <Card class="flex items-start gap-3" data-tolk-audit-summary :data-tolk-audit-level="overall.level">
-            <Icon :name="level(overall.level).icon" :class="['mt-0.5 size-5 shrink-0', level(overall.level).class]" />
+            <Icon :name="level(overall.level).icon" :class="['mt-0.5 size-5 shrink-0', level(overall.level).class]" aria-hidden="true" />
             <Text>{{ overall.text }}</Text>
         </Card>
 
@@ -102,7 +102,7 @@ async function makeLocalizable() {
             :data-tolk-check-level="check.level"
         >
             <div class="flex flex-wrap items-center gap-2">
-                <Icon :name="level(check.level).icon" :class="['size-4 shrink-0', level(check.level).class]" />
+                <Icon :name="level(check.level).icon" :class="['size-4 shrink-0', level(check.level).class]" aria-hidden="true" />
                 <Heading size="lg" :level="2">{{ check.title }}</Heading>
                 <Badge :text="level(check.level).label" :color="level(check.level).color" />
             </div>
@@ -121,7 +121,7 @@ async function makeLocalizable() {
                     >
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <div class="flex items-center gap-2">
-                                <Icon :name="level(item.level).icon" :class="['size-4 shrink-0', level(item.level).class]" />
+                                <Icon :name="level(item.level).icon" :class="['size-4 shrink-0', level(item.level).class]" role="img" :aria-label="level(item.level).label" />
                                 <Text class="font-medium">{{ item.name }}</Text>
                             </div>
                             <a v-if="item.edit_url" :href="item.edit_url" class="text-sm text-blue-600 hover:underline dark:text-blue-400" data-tolk-blueprint-link>
@@ -183,7 +183,7 @@ async function makeLocalizable() {
                     </div>
 
                     <div v-else class="flex items-start gap-2">
-                        <Icon :name="level(item.level).icon" :class="['mt-0.5 size-4 shrink-0', level(item.level).class]" />
+                        <Icon :name="level(item.level).icon" :class="['mt-0.5 size-4 shrink-0', level(item.level).class]" role="img" :aria-label="level(item.level).label" />
                         <Text>{{ item.text }}</Text>
                     </div>
                 </li>

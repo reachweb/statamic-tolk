@@ -38,7 +38,7 @@ function contentFile(path) {
 }
 
 async function openOverview(page) {
-    await page.goto(cpUrl('tolk'));
+    await page.goto(cpUrl('tolk/overview'));
     await expect(page.locator('[data-tolk-overview]')).toBeVisible();
 }
 

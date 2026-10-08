@@ -16,6 +16,6 @@ final class SourceChanged extends RuntimeException
 
     public static function field(string $handle): self
     {
-        return new self("The source of the field [{$handle}] changed after its translation was planned.", $handle);
+        return new self(__('The source of the field [:handle] changed after its translation was planned.', ['handle' => $handle]), $handle);
     }
 }

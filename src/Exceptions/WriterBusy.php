@@ -11,6 +11,6 @@ final class WriterBusy extends RuntimeException
 {
     public static function waited(int $seconds): self
     {
-        return new self("Another process is saving content; the write lock was not free within {$seconds} seconds.");
+        return new self(__('Another process is saving content; the write lock was not free within :seconds seconds.', ['seconds' => $seconds]));
     }
 }

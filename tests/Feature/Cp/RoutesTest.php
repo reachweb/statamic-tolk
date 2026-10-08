@@ -23,7 +23,7 @@ function tolkCpRoutes(): array
         'editor confirm' => ['tolk.editor.confirm', 'POST', 'tolk/editor/confirm', 'editor'],
         'editor baseline' => ['tolk.editor.baseline', 'POST', 'tolk/editor/baseline', 'editor'],
         'editor push' => ['tolk.editor.push', 'POST', 'tolk/editor/push', 'editor'],
-        'overview' => ['tolk.overview', 'GET', 'tolk', 'runs'],
+        'overview' => ['tolk.overview', 'GET', 'tolk/overview', 'runs'],
         'overview scan' => ['tolk.overview.scan', 'POST', 'tolk/overview/scan', 'runs'],
         'audit' => ['tolk.audit', 'GET', 'tolk/audit', 'runs'],
         'audit localizable' => ['tolk.audit.localizable', 'POST', 'tolk/audit/localizable', 'blueprints'],

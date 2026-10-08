@@ -64,7 +64,7 @@ final readonly class PlanApplier
                 fields: $this->ordered($target, $plan->skipped + $failed),
                 warnings: $warnings,
                 reason: TargetResult::FIELDS_FAILED,
-                error: self::FIELDS_FAILED_MESSAGE,
+                error: __(self::FIELDS_FAILED_MESSAGE),
             );
         }
 
@@ -95,7 +95,7 @@ final readonly class PlanApplier
             corrections: $corrections,
             warnings: [...$warnings, ...$applied->warnings],
             reason: $reason,
-            error: $status === TargetResultStatus::Failed ? self::FIELDS_FAILED_MESSAGE : null,
+            error: $status === TargetResultStatus::Failed ? __(self::FIELDS_FAILED_MESSAGE) : null,
         );
     }
 

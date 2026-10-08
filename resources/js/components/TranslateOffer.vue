@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { Button, Checkbox, Modal, Text } from '@statamic/cms/ui';
+import { Button, Checkbox, Description, Modal, Text } from '@statamic/cms/ui';
 import { describeOffer, offers } from '../editor/offer.js';
 import { modelName } from '../editor/statuses.js';
 
@@ -42,7 +42,7 @@ function notNow() {
                 )
             }}
         </Text>
-        <Text v-if="offer.translator" variant="subtle" data-tolk-offer-model>{{ __('Model: :model', { model: modelName(offer.translator) }) }}</Text>
+        <Description v-if="offer.translator" data-tolk-offer-model>{{ __('Model: :model', { model: modelName(offer.translator) }) }}</Description>
         <Checkbox v-model="dontOfferAgain" :label="__('Don\'t offer again')" />
 
         <template #footer>

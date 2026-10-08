@@ -96,12 +96,12 @@ final readonly class Glossary
                 if ($row['do_not_translate'] && ! str_contains($translation, $term)) {
                     $notes[] = [
                         'level' => self::WARNING,
-                        'message' => "the glossary keeps \"{$row['term']}\" untranslated, but the translation does not contain it.",
+                        'message' => __('the glossary keeps ":term" untranslated, but the translation does not contain it.', ['term' => $row['term']]),
                     ];
                 } elseif ($row['usage'] !== null && preg_match($row['usage'], $translation) !== 1) {
                     $notes[] = [
                         'level' => self::INFO,
-                        'message' => "the glossary translates \"{$row['term']}\" as \"{$row['translation']}\", but the translation does not seem to use it.",
+                        'message' => __('the glossary translates ":term" as ":translation", but the translation does not seem to use it.', ['term' => $row['term'], 'translation' => $row['translation']]),
                     ];
                 }
             }

@@ -1,7 +1,7 @@
 import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
-import { createOffers, describeOffer, OFFER_PREFERENCE, offersEnabled, shouldOffer } from './offer.js';
+import { createOffers, describeOffer, OFFER_PREFERENCE, offersEnabled, PICKER_CLOSE_MS, shouldOffer } from './offer.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 
@@ -80,8 +80,8 @@ function status({ untranslated = 2, offer = true, translator = 'anthropic:claude
 
 const originStatus = () => ({ ...status(), localization: null, origin: { localizations: [] } });
 
-function offers() {
-    const created = createOffers({ store: () => store, registry, translations, preferences: () => preferences, toast: () => toast });
+function offers(options = { openAfterMs: 0 }) {
+    const created = createOffers({ store: () => store, registry, translations, preferences: () => preferences, toast: () => toast, ...options });
     created.listen(events);
 
     return created;
@@ -183,6 +183,81 @@ describe('after localization.created', () => {
         await nextTick();
 
         expect(base().phase).toBe('offer');
+    });
+
+    describe("behind core's origin picker", () => {
+        // A clock that moves only when told to, and timers that fire when it reaches them.
+        function fakeTime() {
+            const time = { now: 10_000, timers: [] };
+
+            time.clock = () => time.now;
+            time.wait = (callback, ms) => time.timers.push({ at: time.now + ms, callback });
+            time.advance = (ms) => {
+                time.now += ms;
+                time.timers.filter(({ at }) => at <= time.now).forEach((timer) => {
+                    time.timers.splice(time.timers.indexOf(timer), 1);
+                    timer.callback();
+                });
+            };
+
+            return time;
+        }
+
+        it('opens no earlier than the picker has closed, so the offer keeps its Esc key', async () => {
+            const time = fakeTime();
+            offers({ clock: time.clock, wait: time.wait });
+            const ctx = mount();
+
+            swap(ctx);
+            create();
+            time.advance(100);
+            base().status = status();
+            await nextTick();
+
+            expect(base()).toMatchObject({ created: true, phase: 'idle' });
+            expect(time.timers.map(({ at }) => at)).toEqual([10_000 + PICKER_CLOSE_MS]);
+            expect(PICKER_CLOSE_MS).toBeGreaterThan(300);
+
+            time.advance(PICKER_CLOSE_MS - 101);
+            expect(base().phase).toBe('idle');
+
+            time.advance(1);
+            expect(base().phase).toBe('offer');
+        });
+
+        it('opens at once when the status took longer than the picker', async () => {
+            const time = fakeTime();
+            offers({ clock: time.clock, wait: time.wait });
+            const ctx = mount();
+
+            swap(ctx);
+            create();
+            time.advance(PICKER_CLOSE_MS + 50);
+            base().status = status();
+            await nextTick();
+
+            expect(base().phase).toBe('offer');
+            expect(time.timers).toEqual([]);
+        });
+
+        it('does not open when the editor moved on or started translating meanwhile', async () => {
+            const time = fakeTime();
+            offers({ clock: time.clock, wait: time.wait });
+            const ctx = mount();
+
+            swap(ctx);
+            base().status = status();
+            create();
+            store.setPhase('base', 'planning');
+            time.advance(PICKER_CLOSE_MS);
+            expect(base().phase).toBe('planning');
+
+            store.setPhase('base', 'idle');
+            create();
+            swap(ctx, 'entry::el');
+            time.advance(PICKER_CLOSE_MS);
+            expect(base().phase).toBe('idle');
+        });
     });
 
     it('offers at once when the status is already there', () => {

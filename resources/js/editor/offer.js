@@ -42,6 +42,11 @@ export function describeOffer(status) {
     };
 }
 
+// How long after `localization.created` the offer opens at the earliest. Core's origin picker starts its 300 ms close
+// before it creates the localization, and a modal that opens before that close has finished loses its Esc key: core
+// keeps the Esc bindings in a stack, and a closing modal pops whatever is on top (T12.4).
+export const PICKER_CLOSE_MS = 350;
+
 // The offer after creating a localization in the publish form (§A13). Core emits `localization.created` once the form
 // shows the new localization, and the banner's watcher has already run its switch, which resets the store. So the
 // offer waits for the new item's status, and it waits for the switch too in case the event came first.
@@ -51,6 +56,9 @@ export function createOffers({
     translations = sharedTranslations,
     preferences = () => Statamic.$preferences,
     toast = () => Statamic.$toast,
+    openAfterMs = PICKER_CLOSE_MS,
+    clock = () => Date.now(),
+    wait = (callback, ms) => setTimeout(callback, ms),
 } = {}) {
     let waiter = null;
     let listening = false;
@@ -76,8 +84,9 @@ export function createOffers({
         stopWaiting();
 
         const editor = store();
+        const notBefore = clock() + openAfterMs;
 
-        if (settle(editor, name, reference)) {
+        if (settle(editor, name, reference, notBefore)) {
             return;
         }
 
@@ -88,7 +97,7 @@ export function createOffers({
                 return [container?.reference, container?.status];
             },
             () => {
-                if (settle(editor, name, reference)) {
+                if (settle(editor, name, reference, notBefore)) {
                     stop();
 
                     if (waiter === stop) {
@@ -102,7 +111,7 @@ export function createOffers({
     }
 
     // True once there is nothing left to wait for.
-    function settle(editor, name, reference) {
+    function settle(editor, name, reference, notBefore) {
         const container = editor.containers[name];
 
         if (container?.reference !== reference) {
@@ -116,11 +125,26 @@ export function createOffers({
             return false;
         }
 
-        if (container.phase === 'idle' && shouldOffer(container.status, preferences())) {
-            editor.setPhase(name, 'offer');
-        }
+        offer(editor, name, reference, notBefore);
 
         return true;
+    }
+
+    // Opens the offer once core's picker has closed, while the form still shows the new localization and nothing runs.
+    function offer(editor, name, reference, notBefore) {
+        const delay = notBefore - clock();
+
+        if (delay > 0) {
+            wait(() => offer(editor, name, reference, notBefore), delay);
+
+            return;
+        }
+
+        const container = editor.containers[name];
+
+        if (container?.reference === reference && container.phase === 'idle' && shouldOffer(container.status, preferences())) {
+            editor.setPhase(name, 'offer');
+        }
     }
 
     function stopWaiting() {

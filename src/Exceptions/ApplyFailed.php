@@ -13,7 +13,7 @@ final class ApplyFailed extends RuntimeException
      */
     public static function vetoed(string $target): self
     {
-        return new self("Saving [{$target}] was cancelled by a listener.");
+        return new self(__('Saving [:target] was cancelled by a listener.', ['target' => $target]));
     }
 
     public static function notWritten(string $file, Throwable $previous): self

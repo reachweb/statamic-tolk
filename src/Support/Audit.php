@@ -60,15 +60,15 @@ final class Audit
     public function run(): array
     {
         return [
-            $this->check('sites', 'Sites', 'Tolk translates content from one site into its localizations in the others, so it needs multi-site with at least two sites.', $this->siteItems()),
-            $this->check('providers', 'Providers and models', 'Translating needs an API key for at least one provider, and every model chosen in the settings must use a provider that has one.', $this->providerItems()),
-            $this->check('queue', 'Queue', 'Runs started in the Control Panel run as queue jobs when the queue connection has a worker, and are driven by the open run page otherwise. Each queue job must end before the connection hands it to another worker (retry_after).', $this->queueItems()),
-            $this->check('cache', 'Cache', 'Plans, locks and progress live in one cache store, which must support locks and be shared by web requests, queue workers and the command line.', $this->cacheItems()),
-            $this->check('state', 'Translation state', 'Tolk keeps what it knows about each translated field in files next to the content, which it must be able to write and which belong in version control with the content.', $this->stateItems()),
-            $this->check(self::LOCALIZABLE, 'Localizable fields', 'A text field that is not localizable is shared by every site, so Tolk does not translate it. Run php please tolk:doctor --fix-localizable to make these fields localizable, blueprint by blueprint.', $this->notLocalizable()),
-            $this->check(self::TECHNICAL_FIELDS, 'Nested fields that look like data', 'These nested fields are translated, but their handles suggest identifiers, links or code. If one holds data rather than text, switch off "Translate automatically" in its field settings.', $this->technicalFields()),
-            $this->check('content_sites', 'Sites of collections, taxonomies and global sets', 'Content is translated only into the sites its collection, taxonomy or global set is enabled for, and a global set translates each site from the origin it names for it.', $this->contentSiteItems()),
-            $this->check('information', 'How Tolk works on this site', 'Information only.', $this->informationItems()),
+            $this->check('sites', __('Sites'), __('Tolk translates content from one site into its localizations in the others, so it needs multi-site with at least two sites.'), $this->siteItems()),
+            $this->check('providers', __('Providers and models'), __('Translating needs an API key for at least one provider, and every model chosen in the settings must use a provider that has one.'), $this->providerItems()),
+            $this->check('queue', __('Queue'), __('Runs started in the Control Panel run as queue jobs when the queue connection has a worker, and are driven by the open run page otherwise. Each queue job must end before the connection hands it to another worker (retry_after).'), $this->queueItems()),
+            $this->check('cache', __('Cache'), __('Plans, locks and progress live in one cache store, which must support locks and be shared by web requests, queue workers and the command line.'), $this->cacheItems()),
+            $this->check('state', __('Translation state'), __('Tolk keeps what it knows about each translated field in files next to the content, which it must be able to write and which belong in version control with the content.'), $this->stateItems()),
+            $this->check(self::LOCALIZABLE, __('Localizable fields'), __('A text field that is not localizable is shared by every site, so Tolk does not translate it. Run php please tolk:doctor --fix-localizable to make these fields localizable, blueprint by blueprint.'), $this->notLocalizable()),
+            $this->check(self::TECHNICAL_FIELDS, __('Nested fields that look like data'), __('These nested fields are translated, but their handles suggest identifiers, links or code. If one holds data rather than text, switch off "Translate automatically" in its field settings.'), $this->technicalFields()),
+            $this->check('content_sites', __('Sites of collections, taxonomies and global sets'), __('Content is translated only into the sites its collection, taxonomy or global set is enabled for, and a global set translates each site from the origin it names for it.'), $this->contentSiteItems()),
+            $this->check('information', __('How Tolk works on this site'), __('Information only.'), $this->informationItems()),
         ];
     }
 
@@ -100,12 +100,9 @@ final class Audit
             }
 
             if ($fields !== []) {
-                $items[] = $this->blueprintItem($source, $fields, array_map(fn (array $field) => sprintf(
-                    $field['fieldset'] === null ? '%s (%s)' : '%s (%s, from the fieldset %s)',
-                    $field['label'],
-                    $field['handle'],
-                    $field['fieldset'],
-                ), $fields));
+                $items[] = $this->blueprintItem($source, $fields, array_map(fn (array $field) => $field['fieldset'] === null
+                    ? "{$field['label']} ({$field['handle']})"
+                    : __(':label (:handle, from the fieldset :fieldset)', ['label' => $field['label'], 'handle' => $field['handle'], 'fieldset' => $field['fieldset']]), $fields));
             }
         }
 
@@ -169,16 +166,16 @@ final class Audit
     private function siteItems(): array
     {
         if (! Site::multiEnabled()) {
-            return [$this->item(AuditLevel::Error, 'Multi-site is off (statamic.system.multisite), so there is no site to translate into.')];
+            return [$this->item(AuditLevel::Error, __('Multi-site is off (statamic.system.multisite), so there is no site to translate into.'))];
         }
 
         $names = Site::all()->map(fn ($site) => $this->siteName($site->handle()))->values();
 
         if ($names->count() < 2) {
-            return [$this->item(AuditLevel::Error, "{$names->first()} is the only site. Add a site for each language under Sites in the Control Panel.")];
+            return [$this->item(AuditLevel::Error, __(':site is the only site. Add a site for each language under Sites in the Control Panel.', ['site' => $names->first()]))];
         }
 
-        return [$this->item(AuditLevel::Ok, sprintf('%d sites: %s. %s is the default site.', $names->count(), $names->implode(', '), Site::default()->name()))];
+        return [$this->item(AuditLevel::Ok, __(':count sites: :sites. :default is the default site.', ['count' => $names->count(), 'sites' => $names->implode(', '), 'default' => Site::default()->name()]))];
     }
 
     private function providerItems(): array
@@ -189,22 +186,22 @@ final class Audit
         $configured = $this->providers->configured();
 
         if ($fake) {
-            $items[] = $this->item(AuditLevel::Warning, 'The fake engine is on (TOLK_FAKE_ENGINE): nothing is sent to a provider, and every translation is the source text marked with its language.');
+            $items[] = $this->item(AuditLevel::Warning, __('The fake engine is on (TOLK_FAKE_ENGINE): nothing is sent to a provider, and every translation is the source text marked with its language.'));
         } elseif (filter_var(config('tolk.fake_engine'), FILTER_VALIDATE_BOOL)) {
-            $items[] = $this->item(AuditLevel::Warning, 'TOLK_FAKE_ENGINE is set, but the fake engine runs only in the local and testing environments, so it is off here. Remove the setting.');
+            $items[] = $this->item(AuditLevel::Warning, __('TOLK_FAKE_ENGINE is set, but the fake engine runs only in the local and testing environments, so it is off here. Remove the setting.'));
         }
 
         $items[] = $configured === []
             ? $this->item($missingKey, $fake
-                ? 'No provider has an API key, so only the fake engine can translate.'
-                : 'No provider has an API key. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY in .env.')
-            : $this->item(AuditLevel::Ok, 'API keys: '.implode(', ', $configured).'.');
+                ? __('No provider has an API key, so only the fake engine can translate.')
+                : __('No provider has an API key. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY in .env.'))
+            : $this->item(AuditLevel::Ok, __('API keys: :providers.', ['providers' => implode(', ', $configured)]));
 
         foreach (ModelRef::PROVIDERS as $provider) {
             $name = $this->providers->name($provider);
 
             if (config("ai.providers.{$name}") !== null) {
-                $items[] = $this->item(AuditLevel::Error, "config/ai.php configures a provider named {$name}. Tolk builds a provider of that name itself, and the Laravel AI SDK refuses to build one the app configures, so every translation with {$provider} fails. Rename it.");
+                $items[] = $this->item(AuditLevel::Error, __('config/ai.php configures a provider named :name. Tolk builds a provider of that name itself, and the Laravel AI SDK refuses to build one the app configures, so every translation with :provider fails. Rename it.', ['name' => $name, 'provider' => $provider]));
             }
         }
 
@@ -212,7 +209,7 @@ final class Audit
             try {
                 $this->catalog->default($provider, Tier::Quality);
             } catch (MissingDefaultModel $exception) {
-                $items[] = $this->item(AuditLevel::Error, $exception->getMessage().' Tolk uses it whenever no model is chosen in the settings. Add one to tolk.models in config/tolk.php.');
+                $items[] = $this->item(AuditLevel::Error, __(':message Tolk uses it whenever no model is chosen in the settings. Add one to tolk.models in config/tolk.php.', ['message' => $exception->getMessage()]));
             }
         }
 
@@ -227,24 +224,24 @@ final class Audit
     {
         $items = $models = [];
         $readers = [
-            'Translator model' => $this->settings->translatorModel(...),
-            'Reviewer model' => $this->settings->reviewerModel(...),
-            'Fallback model' => $this->settings->fallbackModel(...),
+            [__('Translator model'), $this->settings->translatorModel(...)],
+            [__('Reviewer model'), $this->settings->reviewerModel(...)],
+            [__('Fallback model'), $this->settings->fallbackModel(...)],
         ];
 
-        foreach ($readers as $label => $read) {
+        foreach ($readers as [$label, $read]) {
             try {
                 $models[] = $read();
             } catch (InvalidModelRef $exception) {
                 $models[] = false;
-                $items[] = $this->item(AuditLevel::Error, "The setting \"{$label}\" is not a model: {$exception->getMessage()} Choose a model in Tolk's settings.");
+                $items[] = $this->item(AuditLevel::Error, __('The setting ":setting" is not a model: :message Choose a model in Tolk\'s settings.', ['setting' => $label, 'message' => $exception->getMessage()]));
             }
         }
 
         [$chosen, $reviewerChosen, $fallback] = $models;
 
         if ($chosen && ! $this->providers->isConfigured($chosen->provider)) {
-            $items[] = $this->item($missingKey, "The translator model {$chosen} uses {$chosen->provider}, which has no API key, so every translation fails.");
+            $items[] = $this->item($missingKey, __('The translator model :model uses :provider, which has no API key, so every translation fails.', ['model' => (string) $chosen, 'provider' => $chosen->provider]));
         }
 
         try {
@@ -258,17 +255,25 @@ final class Audit
             return $items;
         }
 
-        $items[] = $this->item(AuditLevel::Ok, 'Translator: '.$this->modelName($translator).($chosen ? '.' : ', the default, because no translator model is chosen.'));
+        $items[] = $this->item(AuditLevel::Ok, $chosen
+            ? __('Translator: :model.', ['model' => $this->modelName($translator)])
+            : __('Translator: :model, the default, because no translator model is chosen.', ['model' => $this->modelName($translator)]));
 
         if ($reviewerChosen !== false) {
             $review = $this->settings->reviewEnabled();
 
             if ($reviewerChosen && ! $this->providers->isConfigured($reviewerChosen->provider)) {
-                $items[] = $this->item($review ? $missingKey : AuditLevel::Warning, "The reviewer model {$reviewerChosen} uses {$reviewerChosen->provider}, which has no API key, so every review fails.".($review ? '' : ' Review is off by default, but an operation that asks for one fails.'));
+                $replace = ['model' => (string) $reviewerChosen, 'provider' => $reviewerChosen->provider];
+                $items[] = $review
+                    ? $this->item($missingKey, __('The reviewer model :model uses :provider, which has no API key, so every review fails.', $replace))
+                    : $this->item(AuditLevel::Warning, __('The reviewer model :model uses :provider, which has no API key, so every review fails. Review is off by default, but an operation that asks for one fails.', $replace));
             }
 
             try {
-                $items[] = $this->item(AuditLevel::Ok, 'Reviewer: '.$this->modelName($this->catalog->resolveReviewer($this->settings, $translator)).'. Review is '.($review ? 'on' : 'off').' by default.');
+                $replace = ['model' => $this->modelName($this->catalog->resolveReviewer($this->settings, $translator))];
+                $items[] = $this->item(AuditLevel::Ok, $review
+                    ? __('Reviewer: :model. Review is on by default.', $replace)
+                    : __('Reviewer: :model. Review is off by default.', $replace));
             } catch (MissingDefaultModel) {
                 // Reported with the providers.
             }
@@ -276,9 +281,9 @@ final class Audit
 
         if ($fallback) {
             $items[] = match (true) {
-                ! $this->providers->isConfigured($fallback->provider) => $this->item(AuditLevel::Warning, "The fallback model {$fallback} uses {$fallback->provider}, which has no API key, so Tolk ignores it."),
-                (string) $fallback === (string) $translator => $this->item(AuditLevel::Warning, "The fallback model {$fallback} is the translator model, so Tolk ignores it."),
-                default => $this->item(AuditLevel::Ok, 'Fallback: '.$this->modelName($fallback).'.'),
+                ! $this->providers->isConfigured($fallback->provider) => $this->item(AuditLevel::Warning, __('The fallback model :model uses :provider, which has no API key, so Tolk ignores it.', ['model' => (string) $fallback, 'provider' => $fallback->provider])),
+                (string) $fallback === (string) $translator => $this->item(AuditLevel::Warning, __('The fallback model :model is the translator model, so Tolk ignores it.', ['model' => (string) $fallback])),
+                default => $this->item(AuditLevel::Ok, __('Fallback: :model.', ['model' => $this->modelName($fallback)])),
             };
         }
 
@@ -292,10 +297,10 @@ final class Audit
         $driver = $config['driver'] ?? null;
 
         if (! is_string($driver)) {
-            return [$this->item(AuditLevel::Error, "The queue connection [{$connection}] is not configured in config/queue.php.")];
+            return [$this->item(AuditLevel::Error, __('The queue connection [:connection] is not configured in config/queue.php.', ['connection' => $connection]))];
         }
 
-        $items = [$this->item(AuditLevel::Ok, 'Queue connection: '.$this->named($connection, $driver).'.')];
+        $items = [$this->item(AuditLevel::Ok, __('Queue connection: :connection.', ['connection' => $this->named($connection, $driver)]))];
 
         try {
             $runDriver = RunDispatcher::resolveDriver();
@@ -305,9 +310,9 @@ final class Audit
         }
 
         $items[] = match (true) {
-            $runDriver === RunDriver::Queue && ! RunDispatcher::hasWorker() => $this->item(AuditLevel::Error, "tolk.runs.execution is queue, but the connection [{$connection}] has no worker of its own, so a run would be worked through inside the request that starts it. Use a queue with a worker, or set tolk.runs.execution to auto or browser."),
-            $runDriver === RunDriver::Queue => $this->item(AuditLevel::Ok, "Runs started in the Control Panel run as queue jobs on {$connection}. Keep a queue worker running."),
-            $runDriver === RunDriver::Browser => $this->item(AuditLevel::Ok, 'Runs started in the Control Panel are driven by their run page, which must stay open until the run ends.'),
+            $runDriver === RunDriver::Queue && ! RunDispatcher::hasWorker() => $this->item(AuditLevel::Error, __('tolk.runs.execution is queue, but the connection [:connection] has no worker of its own, so a run would be worked through inside the request that starts it. Use a queue with a worker, or set tolk.runs.execution to auto or browser.', ['connection' => $connection])),
+            $runDriver === RunDriver::Queue => $this->item(AuditLevel::Ok, __('Runs started in the Control Panel run as queue jobs on :connection. Keep a queue worker running.', ['connection' => $connection])),
+            $runDriver === RunDriver::Browser => $this->item(AuditLevel::Ok, __('Runs started in the Control Panel are driven by their run page, which must stay open until the run ends.')),
             default => null,
         };
 
@@ -316,13 +321,13 @@ final class Audit
             $timeout = (int) config('tolk.http.timeout.web');
 
             if ($driver === 'sqs' && ! isset($config['retry_after'])) {
-                $items[] = $this->item(AuditLevel::Warning, 'The SQS connection sets no retry_after, so Tolk assumes '.WorkRun::RETRY_AFTER." seconds. Set retry_after on the connection to the queue's visibility timeout.");
+                $items[] = $this->item(AuditLevel::Warning, __('The SQS connection sets no retry_after, so Tolk assumes :seconds seconds. Set retry_after on the connection to the queue\'s visibility timeout.', ['seconds' => WorkRun::RETRY_AFTER]));
             }
 
             $items[] = match (true) {
-                $retryAfter <= $timeout + 20 => $this->item(AuditLevel::Error, sprintf('retry_after is %d seconds, which leaves no room for a provider call of up to %d seconds (tolk.http.timeout.web): the queue would hand a run\'s job to a second worker while the first still works on it. Raise retry_after to at least %d seconds.', $retryAfter, $timeout, $timeout + 40)),
-                $retryAfter < $timeout + 40 => $this->item(AuditLevel::Warning, sprintf('retry_after is %d seconds, so each job of a run starts provider calls for only %d seconds and the queue gets more jobs. Raise retry_after to at least %d seconds.', $retryAfter, WorkRun::deadlineSeconds(), $timeout + 40)),
-                default => $this->item(AuditLevel::Ok, sprintf('retry_after is %d seconds, enough for a provider call of up to %d seconds (tolk.http.timeout.web).', $retryAfter, $timeout)),
+                $retryAfter <= $timeout + 20 => $this->item(AuditLevel::Error, __('retry_after is :seconds seconds, which leaves no room for a provider call of up to :timeout seconds (tolk.http.timeout.web): the queue would hand a run\'s job to a second worker while the first still works on it. Raise retry_after to at least :minimum seconds.', ['seconds' => $retryAfter, 'timeout' => $timeout, 'minimum' => $timeout + 40])),
+                $retryAfter < $timeout + 40 => $this->item(AuditLevel::Warning, __('retry_after is :seconds seconds, so each job of a run starts provider calls for only :deadline seconds and the queue gets more jobs. Raise retry_after to at least :minimum seconds.', ['seconds' => $retryAfter, 'deadline' => WorkRun::deadlineSeconds(), 'minimum' => $timeout + 40])),
+                default => $this->item(AuditLevel::Ok, __('retry_after is :seconds seconds, enough for a provider call of up to :timeout seconds (tolk.http.timeout.web).', ['seconds' => $retryAfter, 'timeout' => $timeout])),
             };
         }
 
@@ -335,26 +340,28 @@ final class Audit
         $config = config("cache.stores.{$name}");
 
         if (! is_array($config)) {
-            return [$this->item(AuditLevel::Error, "The cache store [{$name}] is not configured in config/cache.php.")];
+            return [$this->item(AuditLevel::Error, __('The cache store [:store] is not configured in config/cache.php.', ['store' => $name]))];
         }
 
-        $label = $this->named($name, is_string($config['driver'] ?? null) ? $config['driver'] : 'no driver');
+        $label = $this->named($name, is_string($config['driver'] ?? null) ? $config['driver'] : __('no driver'));
 
         if (in_array($config['driver'] ?? null, self::UNSHARED_CACHES, true)) {
-            return [$this->item(AuditLevel::Error, "The cache store {$label} is not shared between web requests, queue workers and the command line, so they lose each other's plans and do not keep each other from saving at once. Use a store such as file, database or redis (tolk.cache_store).")];
+            return [$this->item(AuditLevel::Error, __('The cache store :store is not shared between web requests, queue workers and the command line, so they lose each other\'s plans and do not keep each other from saving at once. Use a store such as file, database or redis (tolk.cache_store).', ['store' => $label]))];
         }
 
         try {
             $store = Cache::store($name)->getStore();
         } catch (Throwable $exception) {
-            return [$this->item(AuditLevel::Error, "The cache store {$label} cannot be used: ".Sanitizer::message($exception->getMessage()))];
+            return [$this->item(AuditLevel::Error, __('The cache store :store cannot be used: :message', ['store' => $label, 'message' => Sanitizer::message($exception->getMessage())]))];
         }
 
         if (! $store instanceof LockProvider) {
-            return [$this->item(AuditLevel::Error, "The cache store {$label} does not support locks, which keep two processes from saving content at once. Use a store such as file, database or redis (tolk.cache_store).")];
+            return [$this->item(AuditLevel::Error, __('The cache store :store does not support locks, which keep two processes from saving content at once. Use a store such as file, database or redis (tolk.cache_store).', ['store' => $label]))];
         }
 
-        return [$this->item(AuditLevel::Ok, "Cache store: {$label}, with locks.".(($config['driver'] ?? null) === 'file' ? ' A file cache is shared only by the processes of one server.' : ''))];
+        return [$this->item(AuditLevel::Ok, ($config['driver'] ?? null) === 'file'
+            ? __('Cache store: :store, with locks. A file cache is shared only by the processes of one server.', ['store' => $label])
+            : __('Cache store: :store, with locks.', ['store' => $label]))];
     }
 
     private function stateItems(): array
@@ -364,11 +371,11 @@ final class Audit
         $path = rtrim((string) config('tolk.state.path'), '/\\');
 
         if ($driver !== 'file') {
-            $items[] = $this->item(AuditLevel::Error, sprintf('The state driver [%s] does not exist. Tolk keeps state with the file driver (tolk.state.driver).', is_scalar($driver) ? $driver : get_debug_type($driver)));
+            $items[] = $this->item(AuditLevel::Error, __('The state driver [:driver] does not exist. Tolk keeps state with the file driver (tolk.state.driver).', ['driver' => is_scalar($driver) ? (string) $driver : get_debug_type($driver)]));
         }
 
         if ($path === '') {
-            return [...$items, $this->item(AuditLevel::Error, 'No folder is set for the state files (tolk.state.path).')];
+            return [...$items, $this->item(AuditLevel::Error, __('No folder is set for the state files (tolk.state.path).'))];
         }
 
         $existing = $path;
@@ -378,8 +385,8 @@ final class Audit
         }
 
         $items[] = is_dir($existing) && is_writable($existing)
-            ? $this->item(AuditLevel::Ok, 'State files: '.$this->relativePath($path).'.')
-            : $this->item(AuditLevel::Error, 'Tolk cannot write the state files to '.$this->relativePath($path).'. Make the folder writable, or set another one (tolk.state.path).');
+            ? $this->item(AuditLevel::Ok, __('State files: :path.', ['path' => $this->relativePath($path)]))
+            : $this->item(AuditLevel::Error, __('Tolk cannot write the state files to :path. Make the folder writable, or set another one (tolk.state.path).', ['path' => $this->relativePath($path)]));
 
         if (config('statamic.git.enabled')) {
             $tracked = collect(config('statamic.git.paths'))
@@ -387,8 +394,8 @@ final class Audit
                 ->contains(fn (string $tracked) => str_starts_with($path.'/', rtrim($this->absolutePath($tracked), '/\\').'/'));
 
             $items[] = $tracked
-                ? $this->item(AuditLevel::Ok, "Statamic's git integration tracks the state files, so they are committed with the content.")
-                : $this->item(AuditLevel::Warning, "Statamic's git integration does not track ".$this->relativePath($path).', so the state is not committed with the content it describes. Add the folder to statamic.git.paths.');
+                ? $this->item(AuditLevel::Ok, __('Statamic\'s git integration tracks the state files, so they are committed with the content.'))
+                : $this->item(AuditLevel::Warning, __('Statamic\'s git integration does not track :path, so the state is not committed with the content it describes. Add the folder to statamic.git.paths.', ['path' => $this->relativePath($path)]));
         }
 
         return $items;
@@ -399,9 +406,9 @@ final class Audit
         $items = [];
 
         $containers = [
-            'Collection' => Collection::all()->reject(fn ($collection) => in_array($collection->handle(), $this->settings->excludedCollections(), true)),
-            'Taxonomy' => Taxonomy::all()->reject(fn ($taxonomy) => in_array($taxonomy->handle(), $this->settings->excludedTaxonomies(), true)),
-            'Global set' => GlobalSet::all(),
+            'collection' => Collection::all()->reject(fn ($collection) => in_array($collection->handle(), $this->settings->excludedCollections(), true)),
+            'taxonomy' => Taxonomy::all()->reject(fn ($taxonomy) => in_array($taxonomy->handle(), $this->settings->excludedTaxonomies(), true)),
+            'globals' => GlobalSet::all(),
         ];
 
         foreach ($containers as $type => $all) {
@@ -409,10 +416,13 @@ final class Audit
                 $missing = Site::all()->keys()->diff($container->sites())->values()->all();
 
                 if ($missing !== []) {
-                    $items[] = $this->item(AuditLevel::Warning, sprintf('%s %s is not enabled for %s, so it is not translated into %s.', $type, $container->title(), $this->siteNames($missing), count($missing) === 1 ? 'it' : 'them'));
+                    $replace = ['container' => $this->containerName($type, $container->title()), 'sites' => $this->siteNames($missing)];
+                    $items[] = $this->item(AuditLevel::Warning, count($missing) === 1
+                        ? __(':container is not enabled for :sites, so it is not translated into it.', $replace)
+                        : __(':container is not enabled for :sites, so it is not translated into them.', $replace));
                 }
 
-                if ($type === 'Global set' && $container->sites()->count() > 1) {
+                if ($type === 'globals' && $container->sites()->count() > 1) {
                     array_push($items, ...$this->globalSetItems($container));
                 }
             }
@@ -428,7 +438,7 @@ final class Audit
     private function globalSetItems(GlobalSetContract $set): array
     {
         if ($set->blueprint() === null) {
-            return [$this->item(AuditLevel::Warning, "Global set {$set->title()} has no blueprint, so Statamic treats its values as text fields that are not localizable and Tolk translates none of them. Create a blueprint with localizable fields for it.")];
+            return [$this->item(AuditLevel::Warning, __('Global set :title has no blueprint, so Statamic treats its values as text fields that are not localizable and Tolk translates none of them. Create a blueprint with localizable fields for it.', ['title' => $set->title()]))];
         }
 
         $orphans = $set->sites()
@@ -436,12 +446,15 @@ final class Audit
             ->values()
             ->all();
 
-        return $orphans === [] ? [] : [$this->item(AuditLevel::Warning, sprintf(
-            'Global set %s names no origin for %s, so Tolk does not translate %s. Choose the site to translate from as the origin in the set\'s sites.',
-            $set->title(),
-            $this->siteNames($orphans),
-            count($orphans) === 1 ? 'it' : 'them',
-        ))];
+        if ($orphans === []) {
+            return [];
+        }
+
+        $replace = ['title' => $set->title(), 'sites' => $this->siteNames($orphans)];
+
+        return [$this->item(AuditLevel::Warning, count($orphans) === 1
+            ? __('Global set :title names no origin for :sites, so Tolk does not translate it. Choose the site to translate from as the origin in the set\'s sites.', $replace)
+            : __('Global set :title names no origin for :sites, so Tolk does not translate them. Choose the site to translate from as the origin in the set\'s sites.', $replace))];
     }
 
     private function informationItems(): array
@@ -456,17 +469,19 @@ final class Audit
 
         return [
             $this->item(AuditLevel::Ok, $revisions->isEmpty()
-                ? 'Revisions: off for the collections Tolk translates, so translations are saved directly.'
-                : 'Revisions: on for '.$revisions->implode(', ').'. A new localization gets a revision, translations of a published localization go to its working copy, and "publish changes" (--publish-changes) publishes them only when it had no working copy before.'),
+                ? __('Revisions: off for the collections Tolk translates, so translations are saved directly.')
+                : __('Revisions: on for :collections. A new localization gets a revision, translations of a published localization go to its working copy, and "publish changes" (--publish-changes) publishes them only when it had no working copy before.', ['collections' => $revisions->implode(', ')])),
             $this->item(AuditLevel::Ok, match (true) {
-                ! config('statamic.git.enabled') => 'Git integration: off. Commit the state files together with the content.',
-                (bool) config('statamic.git.automatic') => 'Git integration: on, with automatic commits. Tolk saves without Statamic\'s commit listener and dispatches one commit ("'.ContentWriter::COMMIT_MESSAGE.'") once a run or command has saved content.',
-                default => 'Git integration: on, without automatic commits. Commit translated content and the state files yourself.',
+                ! config('statamic.git.enabled') => __('Git integration: off. Commit the state files together with the content.'),
+                (bool) config('statamic.git.automatic') => __('Git integration: on, with automatic commits. Tolk saves without Statamic\'s commit listener and dispatches one commit (":commit") once a run or command has saved content.', ['commit' => ContentWriter::COMMIT_MESSAGE]),
+                default => __('Git integration: on, without automatic commits. Commit translated content and the state files yourself.'),
             }),
             $this->item(AuditLevel::Ok, is_string($strategy) && $strategy !== '' && $strategy !== 'null'
-                ? "Static caching: {$strategy}. Tolk saves content with Statamic's events, so your invalidation rules clear cached pages as after a save in the Control Panel."
-                : 'Static caching: off.'),
-            $this->item(AuditLevel::Ok, sprintf('A run driven by the browser keeps %d PHP workers busy while its page is open: %d %s (tolk.concurrency.browser) and the apply loop.', $lanes + 1, $lanes, $lanes === 1 ? 'lane' : 'lanes')),
+                ? __('Static caching: :strategy. Tolk saves content with Statamic\'s events, so your invalidation rules clear cached pages as after a save in the Control Panel.', ['strategy' => $strategy])
+                : __('Static caching: off.')),
+            $this->item(AuditLevel::Ok, $lanes === 1
+                ? __('A run driven by the browser keeps :workers PHP workers busy while its page is open: :lanes lane (tolk.concurrency.browser) and the apply loop.', ['workers' => $lanes + 1, 'lanes' => $lanes])
+                : __('A run driven by the browser keeps :workers PHP workers busy while its page is open: :lanes lanes (tolk.concurrency.browser) and the apply loop.', ['workers' => $lanes + 1, 'lanes' => $lanes])),
         ];
     }
 
@@ -486,7 +501,7 @@ final class Audit
             $collection = Collection::find($handle);
 
             foreach ($collection->entryBlueprints() as $blueprint) {
-                $blueprints[] = ['type' => 'collection', 'name' => "Collection {$collection->title()} › {$blueprint->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context($collection->autoGeneratesTitles())];
+                $blueprints[] = ['type' => 'collection', 'name' => __('Collection :title › :blueprint', ['title' => $collection->title(), 'blueprint' => $blueprint->title()]), 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context($collection->autoGeneratesTitles())];
             }
         }
 
@@ -494,7 +509,7 @@ final class Audit
             $taxonomy = Taxonomy::find($handle);
 
             foreach ($taxonomy->termBlueprints() as $blueprint) {
-                $blueprints[] = ['type' => 'taxonomy', 'name' => "Taxonomy {$taxonomy->title()} › {$blueprint->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context()];
+                $blueprints[] = ['type' => 'taxonomy', 'name' => __('Taxonomy :title › :blueprint', ['title' => $taxonomy->title(), 'blueprint' => $blueprint->title()]), 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context()];
             }
         }
 
@@ -502,7 +517,7 @@ final class Audit
             $set = GlobalSet::find($handle);
 
             if ($blueprint = $set->blueprint()) {
-                $blueprints[] = ['type' => 'globals', 'name' => "Global set {$set->title()}", 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context()];
+                $blueprints[] = ['type' => 'globals', 'name' => $this->containerName('globals', $set->title()), 'container' => $handle, 'blueprint' => $blueprint, 'context' => $context()];
             }
         }
 
@@ -553,7 +568,7 @@ final class Audit
     private function blueprintItem(array $source, array $fields, array $names): array
     {
         return [
-            ...$this->item(AuditLevel::Warning, $source['name'].': '.implode(', ', $names).'.'),
+            ...$this->item(AuditLevel::Warning, __(':blueprint: :fields.', ['blueprint' => $source['name'], 'fields' => implode(', ', $names)])),
             'type' => $source['type'],
             'container' => $source['container'],
             'namespace' => (string) $source['blueprint']->namespace(),
@@ -577,6 +592,15 @@ final class Audit
     private function item(AuditLevel $level, string $text): array
     {
         return ['level' => $level->value, 'text' => $text];
+    }
+
+    private function containerName(string $type, string $title): string
+    {
+        return match ($type) {
+            'collection' => __('Collection :title', ['title' => $title]),
+            'taxonomy' => __('Taxonomy :title', ['title' => $title]),
+            default => __('Global set :title', ['title' => $title]),
+        };
     }
 
     // A queue connection or cache store with its driver, when its name is not the driver's.

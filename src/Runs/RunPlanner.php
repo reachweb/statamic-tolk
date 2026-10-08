@@ -530,11 +530,10 @@ final readonly class RunPlanner
                 $dependsOn[] = $parentIndex;
 
                 if ($parentIndex === null) {
-                    $item->warnings[] = sprintf(
-                        'Its parent page, %s, has no localization in %s, so this page will be placed at the top level.',
-                        $parent->value('title') ?? $parent->slug(),
-                        Site::get($site)->name(),
-                    );
+                    $item->warnings[] = __('Its parent page, :parent, has no localization in :site, so this page will be placed at the top level.', [
+                        'parent' => $parent->value('title') ?? $parent->slug(),
+                        'site' => Site::get($site)->name(),
+                    ]);
                 }
             }
         }

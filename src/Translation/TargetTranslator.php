@@ -149,7 +149,7 @@ final readonly class TargetTranslator
         };
 
         $message = $exception instanceof TransientProviderFailure
-            ? "The AI provider [{$exception->provider}] was still unavailable after ".self::MAX_WAITS.' waits.'
+            ? __('The AI provider [:provider] was still unavailable after :waits waits.', ['provider' => $exception->provider, 'waits' => self::MAX_WAITS])
             : $exception->getMessage();
 
         return TargetResult::failed($reason, $message, $target->fresh()->ref());
