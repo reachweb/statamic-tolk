@@ -32,6 +32,12 @@ final readonly class TranslationEngine implements Engine
      */
     private const int OUTPUT_FACTOR = 3;
 
+    /**
+     * Output tokens reserved per segment for the JSON around its translation, which took 15 to 26 per segment in the
+     * T13.4 measurements: 80 short strings need more than twice what their characters suggest.
+     */
+    private const int SEGMENT_OUTPUT_TOKENS = 32;
+
     public function __construct(
         private ModelCatalog $catalog,
         private PromptBuilder $prompts,
@@ -92,7 +98,10 @@ final readonly class TranslationEngine implements Engine
         $charsPerToken = (float) config('tolk.tokens.chars_per_token', 3);
         $charsPerToken = $charsPerToken > 0 ? $charsPerToken : 3.0;
 
-        $tokens = max((int) ceil($chars / $charsPerToken * self::OUTPUT_FACTOR), self::MIN_OUTPUT_TOKENS);
+        $tokens = max(
+            (int) ceil($chars / $charsPerToken * self::OUTPUT_FACTOR) + count($call->segments) * self::SEGMENT_OUTPUT_TOKENS,
+            self::MIN_OUTPUT_TOKENS,
+        );
 
         return $this->catalog->outputCap($call->model, $tokens * max(1, $call->capMultiplier));
     }

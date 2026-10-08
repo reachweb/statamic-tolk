@@ -87,13 +87,13 @@ function promptSegment(string $id, string $text, array $keys = []): array
     return ['id' => $id, 'field' => 'Body', 'kind' => 'plain', ...$keys, 'text' => $text];
 }
 
-it('counts the system prompt and the user JSON of every batch as input, and 115% of the text as output', function () {
+it('counts the system prompt and the user JSON of every batch as input, and 150% of the text plus 20 tokens a segment as output', function () {
     $plan = estimatePlan(['Hello world', 'Where to stay in Athens'], batches: [['s1'], ['s2']]);
     $system = systemPrompt();
     $input = (int) ceil(promptChars($system, [promptSegment('s1', 'Hello world')]) / 3)
         + (int) ceil(promptChars($system, [promptSegment('s2', 'Where to stay in Athens')]) / 3);
-    // ceil(11 × 1.15 / 3) + ceil(23 × 1.15 / 3)
-    $output = 5 + 9;
+    // ceil(11 × 1.5 / 3) + 20 + ceil(23 × 1.5 / 3) + 20
+    $output = 6 + 20 + 12 + 20;
 
     $estimate = estimate($plan);
 
@@ -114,7 +114,7 @@ it('honours the configured characters per token', function () {
     config(['tolk.tokens.chars_per_token' => 0]);
 
     expect($four->inputTokens)->toBeLessThan($three->inputTokens)
-        ->and($four->outputTokens)->toBe((int) ceil(38 * 1.15 / 4))
+        ->and($four->outputTokens)->toBe((int) ceil(38 * 1.5 / 4) + 20)
         ->and($four->chars)->toBe($three->chars)
         ->and(estimate($plan))->toEqual($three);
 });
@@ -161,7 +161,7 @@ it('estimates nothing for a plan without batches', function () {
         ->and(estimate($plan)->cost)->toBe(0.0);
 });
 
-it('adds a review call per batch: twice the text plus the review system prompt in, a tenth of the text out', function () {
+it('adds a review call per batch: twice the text plus the review system prompt in, the text out', function () {
     $texts = ['Hello world', 'Where to stay in Athens'];
     $reviewer = new ModelRef('openai', 'gpt-6.1-sol');
     $without = estimate(estimatePlan($texts));
@@ -170,8 +170,8 @@ it('adds a review call per batch: twice the text plus the review system prompt i
         ['id' => 's1', 'field' => 'Body', 'kind' => 'plain', 'source' => 'Hello world', 'translation' => 'Hello world'],
         ['id' => 's2', 'field' => 'Body', 'kind' => 'plain', 'source' => 'Where to stay in Athens', 'translation' => 'Where to stay in Athens'],
     ]) / 3);
-    // ceil(34 × 0.1 / 3)
-    $output = 2;
+    // ceil(34 × 1.0 / 3)
+    $output = 12;
 
     expect($with->segments)->toBe($without->segments)
         ->and($with->chars)->toBe($without->chars)
@@ -193,8 +193,8 @@ it('estimates only the review calls of a review plan, with the translations unde
     expect($estimate->segments)->toBe(1)
         ->and($estimate->chars)->toBe(11)
         ->and($estimate->inputTokens)->toBe($input)
-        ->and($estimate->outputTokens)->toBe(1)
-        ->and($estimate->cost)->toEqualWithDelta(app(Pricing::class)->cost(new ModelRef('openai', 'gpt-6.1-sol'), new Usage($input, 1)), 1e-12);
+        ->and($estimate->outputTokens)->toBe(4)
+        ->and($estimate->cost)->toEqualWithDelta(app(Pricing::class)->cost(new ModelRef('openai', 'gpt-6.1-sol'), new Usage($input, 4)), 1e-12);
 });
 
 it('has no cost when a model that is called has no price', function () {

@@ -97,11 +97,11 @@ describe('anthropic', function () {
         expect(ProviderFixtures::prompt('anthropic')->data()['max_tokens'])->toBe(64000);
     });
 
-    it('sends between_tools thinking and no effort for the fast model too', function () {
+    it('sends disabled thinking and no effort for the fast model', function () {
         $body = ProviderFixtures::prompt('anthropic', 'fast')->data();
 
         expect($body['model'])->toBe('claude-haiku-5-5')
-            ->and($body['thinking'])->toBe(['type' => 'between_tools'])
+            ->and($body['thinking'])->toBe(['type' => 'disabled'])
             ->and($body['output_config'])->toBe(['format' => ProviderFixtures::anthropicFormat()]);
     });
 

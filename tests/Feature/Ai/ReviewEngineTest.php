@@ -223,9 +223,9 @@ it('sizes the output cap from the translations, the multiplier, the headroom and
     ReviewAgent::assertPrompted(fn (AgentPrompt $prompt) => $prompt->agent->maxTokens === $expected);
 })->with([
     'floor' => ['anthropic:claude-sonnet-5-5', 9000, 100, 1, 2048],
-    'from the translations' => ['anthropic:claude-sonnet-5-5', 100, 9000, 1, 9000],
-    'from the translations, doubled' => ['anthropic:claude-sonnet-5-5', 100, 9000, 2, 18000],
-    'with headroom' => ['openai:gpt-6.1-sol', 100, 9000, 1, 13000],
+    'from the translations, and 32 tokens per segment' => ['anthropic:claude-sonnet-5-5', 100, 9000, 1, 9032],
+    'from the translations, doubled' => ['anthropic:claude-sonnet-5-5', 100, 9000, 2, 18064],
+    'with headroom' => ['openai:gpt-6.1-sol', 100, 9000, 1, 13032],
     'catalog cap' => ['gemini:gemini-3.8-flash', 100, 40000, 2, 65536],
 ]);
 
