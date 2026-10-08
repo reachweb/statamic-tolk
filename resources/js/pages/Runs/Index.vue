@@ -10,7 +10,7 @@ defineProps({
 
 <template>
     <div class="mx-auto max-w-page space-y-6" data-tolk-runs>
-        <Head :title="__('Translations')" />
+        <Head :title="__('Translation runs')" />
         <Header :title="__('Translation runs')" icon="dictionary-language-book" />
 
         <Card v-if="runs.length === 0" data-tolk-runs-empty>

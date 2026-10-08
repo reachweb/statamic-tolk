@@ -99,7 +99,7 @@ test('the banner\'s hint and the Translations nav item lead to the audit', async
     await expect(check(page, 'localizable')).toBeInViewport();
     await expect(article(page).locator('[data-tolk-field="internal_note"]')).toBeVisible();
 
-    await page.goto(cpUrl('tolk'));
+    await page.goto(cpUrl('tolk/overview'));
     await page.getByRole('link', { name: 'Audit', exact: true }).click();
     await expect(page.locator('[data-tolk-audit]')).toBeVisible();
     expect(new URL(page.url()).pathname).toBe(cpUrl('tolk/audit'));

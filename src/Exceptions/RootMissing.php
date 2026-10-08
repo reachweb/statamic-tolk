@@ -17,6 +17,6 @@ final class RootMissing extends RuntimeException
 
     public static function for(?string $rootId, string $rootTitle, string $siteName): self
     {
-        return new self("Translate {$rootTitle} into {$siteName} first.", $rootId);
+        return new self(__('Translate :title into :site first.', ['title' => $rootTitle, 'site' => $siteName]), $rootId);
     }
 }

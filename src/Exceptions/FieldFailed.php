@@ -24,6 +24,6 @@ final class FieldFailed extends RuntimeException
     {
         $parts = implode(', ', array_map(fn (string $id, string $reason) => "{$id} ({$reason})", array_keys($reasons), $reasons));
 
-        return new self("The field [{$handle}] could not be translated completely: {$parts}.", $handle, $reasons);
+        return new self(__('The field [:handle] could not be translated completely: :parts.', ['handle' => $handle, 'parts' => $parts]), $handle, $reasons);
     }
 }

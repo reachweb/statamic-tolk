@@ -188,7 +188,7 @@ final readonly class Pipeline
                 $failed[$id] = $reason = $resolved['failed'][$id] ?? UnitOutcome::MISSING;
                 $texts[] = $segment['text'];
                 $hashes[] = null;
-                $warnings[] = "{$segment['label']}: \"{$this->excerpt($segment)}\" was left untranslated ({$reason}).";
+                $warnings[] = __(':label: ":text" was left untranslated (:reason).', ['label' => $segment['label'], 'text' => $this->excerpt($segment), 'reason' => $reason]);
 
                 continue;
             }

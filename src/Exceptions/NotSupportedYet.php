@@ -9,6 +9,6 @@ final class NotSupportedYet extends LogicException
 {
     public static function contentType(ContentType $type): self
     {
-        return new self("Translating content of the type [{$type->value}] is not supported yet.");
+        return new self(__('Translating content of the type [:type] is not supported yet.', ['type' => $type->value]));
     }
 }

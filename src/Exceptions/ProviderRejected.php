@@ -21,8 +21,8 @@ final class ProviderRejected extends RuntimeException
     {
         $message = match (true) {
             $error->code === ProviderError::NOT_CONFIGURED => $error->message,
-            $error->status === 404 => "The AI provider [{$model->provider}] does not offer the model [{$model->model}] ({$error->describe()}): {$error->message}",
-            default => "The AI provider [{$model->provider}] rejected the request ({$error->describe()}): {$error->message}",
+            $error->status === 404 => __('The AI provider [:provider] does not offer the model [:model] (:status): :message', ['provider' => $model->provider, 'model' => $model->model, 'status' => $error->describe(), 'message' => $error->message]),
+            default => __('The AI provider [:provider] rejected the request (:status): :message', ['provider' => $model->provider, 'status' => $error->describe(), 'message' => $error->message]),
         };
 
         return new self($message, $model->provider, $error->status, $error->code);

@@ -5,6 +5,7 @@ import ProgressBar from './ProgressBar.vue';
 import { isTermReference } from '../editor/banner.js';
 import { describePush, PUSHING, pushChoices, pushes, updateSites } from '../editor/push.js';
 import { useEditorStore } from '../editor/store.js';
+import { createModal } from '../modal.js';
 
 const props = defineProps({
     containerName: { type: String, required: true },
@@ -22,7 +23,7 @@ const shown = computed(() => describePush(push.value, props.status));
 const pushing = computed(() => PUSHING.includes(push.value?.phase));
 const buttons = computed(() => !pushing.value && (props.origin.translateInto || props.origin.update));
 const choices = computed(() => pushChoices(props.origin));
-const open = ref(false);
+const modal = createModal();
 const selected = ref([]);
 const newStatus = ref('draft');
 const review = ref(false);
@@ -33,7 +34,7 @@ function choose() {
     selected.value = choices.value.map((choice) => choice.site);
     newStatus.value = props.status?.defaults?.new_status === 'mirror' ? 'mirror' : 'draft';
     review.value = props.status?.defaults?.review === true;
-    open.value = true;
+    modal.show();
 }
 
 function toggle(site, checked) {
@@ -41,7 +42,7 @@ function toggle(site, checked) {
 }
 
 function translateInto() {
-    open.value = false;
+    modal.hide();
     pushes.start(props.containerName, {
         reference: props.reference,
         sites: choices.value.map((choice) => choice.site).filter((site) => selected.value.includes(site)),
@@ -56,6 +57,20 @@ function update() {
     pushes.start(props.containerName, { reference: props.reference, sites: updateSites(props.origin), mode: 'update' });
 }
 
+// What a screen reader announces as the run moves on.
+const announcement = computed(() => {
+    switch (push.value?.phase) {
+        case 'starting':
+            return __('Starting the translation…');
+        case 'running':
+            return shown.value.failure ? __('The translations stopped: :message', { message: shown.value.failure }) : __('Translating into :sites…', { sites: shown.value.sites });
+        case 'error':
+            return shown.value?.error ?? '';
+        default:
+            return shown.value?.result?.text ?? '';
+    }
+});
+
 function reload() {
     window.location.reload();
 }
@@ -63,6 +78,7 @@ function reload() {
 
 <template>
     <div class="space-y-2 ps-6" data-tolk-push>
+        <p class="sr-only" aria-live="polite" data-tolk-push-announcement>{{ announcement }}</p>
         <div v-if="buttons" class="flex flex-wrap items-center gap-2 pt-1" data-tolk-push-actions>
             <Button v-if="origin.translateInto" variant="primary" size="sm" :disabled="dirty" data-tolk-action="translate-into" @click="choose">
                 {{ __('Translate into…') }}
@@ -97,7 +113,7 @@ function reload() {
                 }}
             </Description>
             <div v-if="shown.failure" class="flex flex-wrap items-center gap-2" data-tolk-push-failure>
-                <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" />
+                <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" aria-hidden="true" />
                 <Text variant="danger">{{ __('The translations stopped: :message', { message: shown.failure }) }}</Text>
                 <Button size="sm" data-tolk-action="push-resume" @click="pushes.resume(containerName)">{{ __('Try again') }}</Button>
             </div>
@@ -117,7 +133,7 @@ function reload() {
                     <a v-if="item.editUrl" :href="item.editUrl" class="text-sm font-medium underline">{{ item.site }}</a>
                     <Text v-else variant="strong">{{ item.site }}</Text>
                     <Badge :text="item.statusLabel" :color="item.statusColor" />
-                    <Text v-if="item.error || item.reason" variant="subtle">{{ item.error ?? item.reason }}</Text>
+                    <Description v-if="item.error || item.reason">{{ item.error ?? item.reason }}</Description>
                 </li>
             </ul>
             <Description v-if="shown.reload">{{ __('Reload the page to see the new localizations in the Sites panel.') }}</Description>
@@ -128,12 +144,20 @@ function reload() {
         </div>
 
         <div v-if="push?.phase === 'error'" class="flex flex-wrap items-center gap-2" data-tolk-push-phase="error">
-            <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" />
+            <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" aria-hidden="true" />
             <Text variant="danger" data-tolk-push-error>{{ shown.error }}</Text>
             <Button size="sm" variant="ghost" data-tolk-action="push-close" @click="pushes.dismiss(containerName)">{{ __('Close') }}</Button>
         </div>
 
-        <Modal v-model:open="open" :title="__('Translate into other languages')" icon="dictionary-language-book" data-tolk-push-modal>
+        <Modal
+            v-if="modal.open"
+            open
+            :title="__('Translate into other languages')"
+            icon="dictionary-language-book"
+            data-tolk-push-modal
+            @dismissed="modal.dismissed()"
+            @update:open="modal.closed($event)"
+        >
             <div class="space-y-6">
                 <Text>
                     {{
@@ -167,7 +191,7 @@ function reload() {
 
             <template #footer>
                 <div class="flex items-center justify-end gap-3 pt-3 pb-1">
-                    <Button variant="ghost" :text="__('Cancel')" data-tolk-push-action="close" @click="open = false" />
+                    <Button variant="ghost" :text="__('Cancel')" data-tolk-push-action="close" @click="modal.hide()" />
                     <Button variant="primary" :text="__('Translate')" :disabled="selected.length === 0" data-tolk-push-action="translate" @click="translateInto" />
                 </div>
             </template>

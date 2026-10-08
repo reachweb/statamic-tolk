@@ -278,7 +278,7 @@ final class EntryTarget implements Target
             }
 
             $localization->slug("{$slug}-{$suffix}");
-            $warnings[] = "The slug \"{$slug}\" is already used in {$this->siteName()}, so the new localization got \"{$slug}-{$suffix}\".";
+            $warnings[] = __('The slug ":slug" is already used in :site, so the new localization got ":new".', ['slug' => $slug, 'site' => $this->siteName(), 'new' => "{$slug}-{$suffix}"]);
         }
 
         $this->save($localization, $options);
@@ -342,11 +342,11 @@ final class EntryTarget implements Target
 
         // publish() publishes the whole working copy, which may hold somebody else's changes that nobody approved.
         if ($hadWorkingCopy) {
-            return ["The {$this->siteName()} localization already had unpublished changes, so the translation was added to them and not published."];
+            return [__('The :site localization already had unpublished changes, so the translation was added to them and not published.', ['site' => $this->siteName()])];
         }
 
         if ($options->user !== null && ! $options->user->can('publish', $item)) {
-            return ['The translation was saved as unpublished changes: the user who started it may not publish this entry.'];
+            return [__('The translation was saved as unpublished changes: the user who started it may not publish this entry.')];
         }
 
         $this->publish($item, $options);
@@ -382,7 +382,7 @@ final class EntryTarget implements Target
 
     private function revisionMessage(): string
     {
-        return 'Translated from '.(Site::get($this->sourceSite())?->name() ?? $this->sourceSite()).' with Tolk';
+        return __('Translated from :site with Tolk', ['site' => Site::get($this->sourceSite())?->name() ?? $this->sourceSite()]);
     }
 
     /**

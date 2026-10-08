@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head, Link } from '@statamic/cms/inertia';
 import {
     Alert,
@@ -20,6 +20,7 @@ import {
 } from '@statamic/cms/ui';
 import { localizableUrl } from '../../audit/checks.js';
 import ProgressBar from '../../components/ProgressBar.vue';
+import { createFocusKeeper } from '../../focus.js';
 import {
     describeBreakdown,
     describeEstimate,
@@ -109,6 +110,11 @@ const countParts = computed(() =>
     ITEM_STATUSES.filter((key) => progress.value.counts[key] > 0).map((key) => ({ key, text: `${formatNumber(progress.value.counts[key])} ${itemStatusLabel(key).toLowerCase()}` })),
 );
 const filters = computed(() => [{ label: __('All items'), value: 'all' }, ...ITEM_STATUSES.map((key) => ({ label: itemStatusLabel(key), value: key }))]);
+const root = ref(null);
+const focus = createFocusKeeper(() => root.value);
+
+// Cancel leaves with the running run.
+watch(status, () => focus.changing());
 
 const created = computed(() => {
     const by = run.value.created_by?.name;
@@ -118,6 +124,7 @@ const created = computed(() => {
 });
 
 async function act(name, action) {
+    const focused = focus.holds();
     busy.value = name;
 
     try {
@@ -130,6 +137,10 @@ async function act(name, action) {
         Statamic.$toast.error(error.message);
     } finally {
         busy.value = null;
+
+        if (focused) {
+            nextTick(focus.restore);
+        }
     }
 }
 
@@ -150,7 +161,7 @@ function filterBy(value) {
 </script>
 
 <template>
-    <div class="mx-auto max-w-page space-y-6" data-tolk-run :data-tolk-run-status="status">
+    <div ref="root" class="mx-auto max-w-page space-y-6" data-tolk-run :data-tolk-run-status="status">
         <Head :title="__('Translation run')" />
 
         <Header :title="__('Translation run')" icon="dictionary-language-book">

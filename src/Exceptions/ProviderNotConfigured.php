@@ -12,6 +12,6 @@ final class ProviderNotConfigured extends RuntimeException
         $variable = Providers::variable($provider);
         $override = Providers::variable($provider, addon: true);
 
-        return new self("The AI provider [{$provider}] has no API key. Set {$variable} or {$override} in .env.");
+        return new self(__('The AI provider [:provider] has no API key. Set :variable or :override in .env.', ['provider' => $provider, 'variable' => $variable, 'override' => $override]));
     }
 }

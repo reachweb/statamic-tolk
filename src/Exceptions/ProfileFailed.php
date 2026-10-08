@@ -18,16 +18,16 @@ final class ProfileFailed extends RuntimeException
             return new self(ProviderRejected::from($model, $error)->getMessage());
         }
 
-        return new self("The AI provider [{$model->provider}] could not write the site profile ({$error->describe()}): {$error->message}");
+        return new self(__('The AI provider [:provider] could not write the site profile (:status): :message', ['provider' => $model->provider, 'status' => $error->describe(), 'message' => $error->message]));
     }
 
     public static function cutOff(ModelRef $model): self
     {
-        return new self("The answer of [{$model}] was cut off before it held a site profile. Try again, or try another model.");
+        return new self(__('The answer of [:model] was cut off before it held a site profile. Try again, or try another model.', ['model' => (string) $model]));
     }
 
     public static function noProfile(ModelRef $model): self
     {
-        return new self("The answer of [{$model}] held no site profile. Try again, or try another model.");
+        return new self(__('The answer of [:model] held no site profile. Try again, or try another model.', ['model' => (string) $model]));
     }
 }

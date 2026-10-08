@@ -373,7 +373,7 @@ final class FileRunRepository implements RunRepository
 
             $item->status = RunItemStatus::Failed;
             $item->claim = null;
-            $item->error = 'No worker finished this item in '.RunItem::MAX_ATTEMPTS.' attempts.';
+            $item->error = __('No worker finished this item in :attempts attempts.', ['attempts' => RunItem::MAX_ATTEMPTS]);
             $changed[$i] = $item;
         }
 

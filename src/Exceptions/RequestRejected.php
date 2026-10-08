@@ -18,7 +18,7 @@ final class RequestRejected extends RuntimeException
 
     public static function from(string $provider, ProviderError $error): self
     {
-        return new self("The AI provider [{$provider}] rejected the request ({$error->describe()}): {$error->message}", $provider, $error->status);
+        return new self(__('The AI provider [:provider] rejected the request (:status): :message', ['provider' => $provider, 'status' => $error->describe(), 'message' => $error->message]), $provider, $error->status);
     }
 
     public function tooLarge(): bool

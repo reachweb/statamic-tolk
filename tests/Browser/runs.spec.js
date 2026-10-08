@@ -139,7 +139,7 @@ test('the Translations nav item leads the admin to the overview, and its Runs it
     await expect(item).toBeVisible();
     await item.click();
     await expect(page.locator('[data-tolk-overview]')).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe(cpUrl('tolk'));
+    expect(new URL(page.url()).pathname).toBe(cpUrl('tolk/overview'));
 
     await page.getByRole('link', { name: 'Runs', exact: true }).click();
     await expect(page.locator('[data-tolk-runs-empty]')).toBeVisible();

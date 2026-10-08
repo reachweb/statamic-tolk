@@ -117,10 +117,9 @@ final readonly class Pruner
     private function stopStalledRuns(bool $dryRun): array
     {
         $seconds = max(1, (int) config('tolk.runs.claim_ttl'));
-        $message = sprintf(
-            'The run made no progress for more than %s and was stopped. Resume continues it.',
-            CarbonInterval::seconds($seconds)->cascade()->forHumans(),
-        );
+        $message = __('The run made no progress for more than :duration and was stopped. Resume continues it.', [
+            'duration' => CarbonInterval::seconds($seconds)->cascade()->forHumans(),
+        ]);
         $stopped = [];
 
         foreach ($this->runs->stale($seconds) as $run) {

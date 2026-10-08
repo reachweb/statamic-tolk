@@ -719,7 +719,7 @@ final readonly class RunProcessor
         $seconds = max(1, $failure->seconds);
 
         if ($item->waits >= self::MAX_WAITS) {
-            $message = "The AI provider [{$failure->provider}] was still unavailable after ".self::MAX_WAITS.' waits.';
+            $message = __('The AI provider [:provider] was still unavailable after :waits waits.', ['provider' => $failure->provider, 'waits' => self::MAX_WAITS]);
             $this->fail($run, $item, $message, TargetResult::PROVIDER_UNAVAILABLE, $items);
 
             if ($this->countUnavailable($run) >= self::MAX_UNAVAILABLE_ITEMS) {

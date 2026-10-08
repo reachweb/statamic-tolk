@@ -9,6 +9,6 @@ final class MissingDefaultModel extends LogicException
 {
     public static function for(string $provider, Tier $tier): self
     {
-        return new self("The model catalog (tolk.models) has no {$tier->value} model for [{$provider}].");
+        return new self(__('The model catalog (tolk.models) has no :tier model for [:provider].', ['tier' => $tier->value, 'provider' => $provider]));
     }
 }
