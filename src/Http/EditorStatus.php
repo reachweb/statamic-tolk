@@ -36,6 +36,11 @@ final readonly class EditorStatus
 
     public const string NO_ACCESS = 'no_access';
 
+    /**
+     * The types of reference item() resolves: the content with a publish form to deliver into (§A13).
+     */
+    public const array TYPES = [ContentType::Entry, ContentType::Term];
+
     public function __construct(
         private TargetFactory $targets,
         private StatusResolver $resolver,

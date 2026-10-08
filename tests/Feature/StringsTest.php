@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\File;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -36,19 +35,6 @@ use Symfony\Component\Finder\SplFileInfo;
 const STRINGS_ALLOWED = [];
 
 /**
- * The CP's scripts and components, without their tests.
- *
- * @return list<SplFileInfo>
- */
-function cpScripts(): array
-{
-    return collect(File::allFiles(dirname(__DIR__, 2).'/resources/js'))
-        ->filter(fn (SplFileInfo $file) => in_array($file->getExtension(), ['vue', 'js'], true) && ! str_ends_with($file->getFilename(), '.test.js'))
-        ->values()
-        ->all();
-}
-
-/**
  * @param  Closure(string, SplFileInfo): list<string>  $scan
  * @return list<string>
  */
@@ -56,7 +42,7 @@ function scanCp(Closure $scan): array
 {
     $findings = [];
 
-    foreach (cpScripts() as $file) {
+    foreach (TemplateStrings::cpScripts() as $file) {
         foreach ($scan($file->getContents(), $file) as $finding) {
             $findings[] = "{$file->getRelativePathname()}:{$finding}";
         }
@@ -121,7 +107,7 @@ describe('the heuristic', function () {
 });
 
 it('finds no text outside __() and no unnamed button or badge in the templates of resources/js', function () {
-    expect(cpScripts())->not->toHaveCount(0)
+    expect(TemplateStrings::cpScripts())->not->toHaveCount(0)
         ->and(scanCp(fn (string $contents, SplFileInfo $file) => $file->getExtension() === 'vue' ? TemplateStrings::findings($contents) : []))->toBe([]);
 });
 

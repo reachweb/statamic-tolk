@@ -54,6 +54,19 @@ describe('createModal', () => {
         expect(modal.open).toBe(false);
     });
 
+    it('stays closed when hidden after an opening that met a close', async () => {
+        const modal = createModal();
+        modal.show();
+        modal.dismissed();
+        modal.show();
+
+        modal.hide();
+        modal.closed(false);
+        await nextTick();
+
+        expect(modal.open).toBe(false);
+    });
+
     it('ignores core reporting the modal as open', () => {
         const modal = createModal();
         modal.show();

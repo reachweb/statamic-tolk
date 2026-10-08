@@ -247,7 +247,7 @@ final readonly class RunProcessor
         };
 
         // claimNext() refreshes the run and hands out nothing while it is not running, so a cancel or an abort ends the loop.
-        while (CarbonImmutable::now()->lessThan($deadline)) {
+        while ($mayStartUnit()) {
             $item = $this->runs->claimNext($run, $workerId, $claimTtl);
 
             if ($item === null) {
@@ -257,7 +257,7 @@ final readonly class RunProcessor
             $options ??= $this->runPlanner->planOptions($run);
             $wait = $this->work($run, $item, $options, $mayStartUnit, $claimTtl, $units, $items);
 
-            if ($wait !== null || $run->status !== RunStatus::Running || ($maxItems !== null && $items >= $maxItems) || ! $mayStartUnit()) {
+            if ($wait !== null || $run->status !== RunStatus::Running || ($maxItems !== null && $items >= $maxItems)) {
                 break;
             }
         }

@@ -91,10 +91,7 @@ const card = ref(null);
 const focus = createFocusKeeper(() => card.value?.$el ?? null, { modals: BANNER_MODALS });
 
 // Translate, Update, Retry and Translate into… leave with the phase they start.
-watch(
-    () => [phase.value, state.value?.push?.phase],
-    () => focus.changing(),
-);
+watch([phase, () => state.value?.push?.phase], () => focus.changing());
 
 const colors = {
     untranslated: 'amber',

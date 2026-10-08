@@ -15,7 +15,7 @@ class RunFollowRequest extends RunStateRequest
         $creator = $this->run()?->createdBy['id'] ?? null;
 
         $permitted = $user->can('run bulk translations')
-            || ($creator !== null && $creator === (string) $user->id() && $user->can('translate content'));
+            || ($creator === (string) $user->id() && $user->can('translate content'));
 
         return $permitted && parent::authorize();
     }

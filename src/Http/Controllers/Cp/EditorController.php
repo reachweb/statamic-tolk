@@ -18,7 +18,6 @@ use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
-use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
@@ -57,11 +56,6 @@ class EditorController extends Controller
 {
     use FailsWithJson;
     use RaisesTimeLimit;
-
-    /**
-     * The types EditorStatus serves; a reference of any other type is never resolved, so it reads no file (T12.3).
-     */
-    private const array EDITOR_TYPES = [ContentType::Entry, ContentType::Term];
 
     public function __construct(private readonly TargetFactory $targets) {}
 
@@ -275,16 +269,17 @@ class EditorController extends Controller
             $this->unknownReference($reference);
         }
 
-        // Only entries and terms have a publish form to deliver into (§A13); runs and commands translate the rest.
-        if (! in_array($ref->type, self::EDITOR_TYPES, true)) {
+        // Only entries and terms have a publish form to deliver into (§A13); runs and commands translate the rest. A
+        // reference of another type is never resolved, so it reads no file (T12.3).
+        if (! in_array($ref->type, EditorStatus::TYPES, true)) {
             $this->fail(422, 'not_translatable', __('Only entries and terms are translated in the editor.'));
         }
 
         try {
             return $this->targets->fromReference($ref);
-        } catch (InvalidTargetRef|TargetNotFound) {
+        } catch (TargetNotFound) {
             $this->unknownReference($reference);
-        } catch (NotALocalization|NotSupportedYet $exception) {
+        } catch (NotALocalization $exception) {
             $this->fail(422, 'not_translatable', $exception->getMessage());
         }
     }
@@ -298,8 +293,8 @@ class EditorController extends Controller
         try {
             $ref = TargetRef::parse($reference);
 
-            return in_array($ref->type, self::EDITOR_TYPES, true) ? $this->targets->fromReference($ref) : null;
-        } catch (InvalidTargetRef|TargetNotFound|NotALocalization|NotSupportedYet) {
+            return in_array($ref->type, EditorStatus::TYPES, true) ? $this->targets->fromReference($ref) : null;
+        } catch (InvalidTargetRef|TargetNotFound|NotALocalization) {
             return null;
         }
     }
