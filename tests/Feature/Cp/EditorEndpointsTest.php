@@ -3,16 +3,22 @@
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Reach\StatamicTolk\Ai\EngineCall;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Throttle;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\StateWriter;
+use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\ApplyOptions;
+use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
+use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
@@ -117,6 +123,29 @@ describe('plan', function () {
         expect($response->json('units'))->toBe([])
             ->and($response->json('fields'))->toBe(['subtitle'])
             ->and($response->json('ready'))->toBe(['subtitle' => ['value' => null, 'meta' => null, 'sync' => true]])
+            ->and($this->modelCalls())->toBe($calls);
+    });
+
+    it('passes on what the handlers noticed about a field it delivers at once', function () {
+        $this->makeCollection('stories', ['en', 'el'], [
+            'content' => ['type' => 'bard', 'localizable' => true, 'display' => 'Content', 'sets' => ['quote' => ['display' => 'Quote', 'fields' => [
+                ['handle' => 'text', 'field' => ['type' => 'textarea', 'display' => 'Text']],
+            ]]]],
+        ]);
+        $story = $this->makeEntry('stories', 'en', ['content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome to our hotel.']]]]], 'story');
+        $this->fakeTranslations();
+        $options = PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']);
+        app(TargetTranslator::class)->translate(app(TargetFactory::class)->forEntry($story, 'el'), $options, new ApplyOptions);
+        // The origin's text is now in the Bard format of Statamic 2, which the handler leaves as it is.
+        $story->set('content', [['type' => 'text', 'text' => '<p>Welcome to our hotel.</p>'], ['type' => 'quote', 'text' => 'Lovely stay']])->save();
+        $calls = $this->modelCalls();
+        $this->signInAdmin();
+
+        $response = editorPlan($story->in('el'), ['mode' => 'update'])->assertOk();
+
+        expect($response->json('units'))->toBe([])
+            ->and(array_keys($response->json('ready')))->toBe(['content'])
+            ->and($response->json('warnings'))->toBe(['Content (content) is stored in the Bard format of Statamic 2 and was left untouched. Saving it once in the control panel converts it.'])
             ->and($this->modelCalls())->toBe($calls);
     });
 

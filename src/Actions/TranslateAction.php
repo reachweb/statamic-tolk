@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Actions;
 
 use Illuminate\Support\Collection;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Runs\RunDispatcher;
 use Reach\StatamicTolk\Runs\RunPlanner;
@@ -162,8 +163,8 @@ class TranslateAction extends Action
         $settings = app(Settings::class);
 
         return $this->sitesOf($item)->count() > 1 && match (true) {
-            $item instanceof Entry => ! in_array($item->collectionHandle(), $settings->excludedCollections(), true),
-            $item instanceof Term => ! in_array($item->taxonomyHandle(), $settings->excludedTaxonomies(), true),
+            $item instanceof Entry => ! $settings->excludes(ContentType::Entry, $item->collectionHandle()),
+            $item instanceof Term => ! $settings->excludes(ContentType::Term, $item->taxonomyHandle()),
             default => false,
         };
     }

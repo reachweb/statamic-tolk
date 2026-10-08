@@ -278,6 +278,33 @@ describe('translate', function () {
             ->and($this->modelCalls())->toBe($calls);
     });
 
+    it('keeps what the handlers noticed on an item with nothing to do, whether the estimate or the work skips it', function () {
+        $this->fakeTranslations();
+        $this->makeCollection('stories', ['en', 'el'], [
+            'content' => ['type' => 'bard', 'localizable' => true, 'display' => 'Content', 'sets' => ['quote' => ['display' => 'Quote', 'fields' => [
+                ['handle' => 'text', 'field' => ['type' => 'textarea', 'display' => 'Text']],
+            ]]]],
+        ]);
+        $story = $this->makeEntry('stories', 'en', ['content' => [['type' => 'text', 'text' => '<p>Welcome to our hotel.</p>'], ['type' => 'quote', 'text' => 'Lovely stay']]], 'legacy');
+        $note = 'Content (content) is stored in the Bard format of Statamic 2 and was left untouched. Saving it once in the control panel converts it.';
+        $estimated = RunFixtures::pending(['entryIds' => [$story->id()]]);
+        $worked = RunFixtures::started(['entryIds' => [$story->id()]]);
+
+        app(RunPlanner::class)->estimate($estimated, 0, 60_000);
+        RunFixtures::translate($worked);
+
+        foreach ([$estimated, $worked] as $run) {
+            expect(RunFixtures::items($run)[0])->toMatchObject([
+                'status' => RunItemStatus::Skipped,
+                'reason' => 'nothing_to_do',
+                'fields' => ['content' => 'not_applicable'],
+                'warnings' => [$note],
+            ]);
+        }
+
+        $this->assertNoModelCalls();
+    });
+
     it('confirms the target\'s pending state before planning it', function () {
         $this->fakeTranslations();
         $localization = $this->localize($this->hello, 'el', ['title' => '[T] Hello', 'intro' => '[T] A short intro.']);

@@ -637,8 +637,8 @@ final readonly class RunPlanner
         return $this->estimator->forPlan($plan, $contexts[$item->targetSite] ??= PromptContext::fromSettings($this->settings, $item->targetSite));
     }
 
-    // Read again right before the write: a worker may have taken the item while it was planned. The fields say why
-    // each was left out, as when translating skips the item.
+    // Read again right before the write: a worker may have taken the item while it was planned. It is skipped as when
+    // translating skips it.
     private function skipUnclaimed(Run $run, int $index, Plan $plan): void
     {
         $item = $this->runs->item($run, $index);
@@ -647,9 +647,7 @@ final readonly class RunPlanner
             return;
         }
 
-        $item->status = RunItemStatus::Skipped;
-        $item->reason = TargetResult::NOTHING_TO_DO;
-        $item->fields = $plan->skipped;
+        $item->skipNothingToDo($plan);
 
         try {
             $this->runs->saveItem($run, $item);

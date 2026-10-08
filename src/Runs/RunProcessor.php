@@ -675,10 +675,7 @@ final readonly class RunProcessor
         }
 
         if ($plan->isEmpty()) {
-            $item->status = RunItemStatus::Skipped;
-            $item->reason = TargetResult::NOTHING_TO_DO;
-            $item->fields = $plan->skipped;
-            $item->warnings = array_values(array_unique([...$item->warnings, ...$plan->noteList()]));
+            $item->skipNothingToDo($plan);
             $this->runs->saveItem($run, $item);
 
             return null;
