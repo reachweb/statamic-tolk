@@ -1,7 +1,7 @@
 <?php
 
 beforeEach(function () {
-    $this->signInWithPermissions(['access cp', 'translate content']);
+    $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'access de site']);
 });
 
 it('requires the identifying fields of each editor request', function (string $route, string $method, array $required) {

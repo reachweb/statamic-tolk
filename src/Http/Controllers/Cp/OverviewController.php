@@ -15,6 +15,7 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Requests\OverviewScanRequest;
+use Reach\StatamicTolk\Http\Requests\RunStateRequest;
 use Reach\StatamicTolk\Http\RunState;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\OverviewScanner;
@@ -24,6 +25,7 @@ use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
+use Statamic\Facades\User;
 
 /**
  * The Overview (§A13): what is translated into which site, per container, with the buttons that create runs, and the
@@ -48,7 +50,7 @@ class OverviewController extends Controller
             'providers' => $providers->statuses(),
             'fakeEngine' => FakeEngine::enabled(),
             'usage' => ['month' => $month, 'models' => $models, 'labels' => $catalog->labels(array_keys($models))],
-            'runs' => array_map($state->summary(...), $runs->recent(self::RECENT_RUNS)),
+            'runs' => array_map($state->summary(...), array_slice(RunStateRequest::visible($runs->recent(RunsController::RECENT), User::current()), 0, self::RECENT_RUNS)),
             'urls' => [
                 'scan' => cp_route('tolk.overview.scan'),
                 'store' => cp_route('tolk.runs.store'),

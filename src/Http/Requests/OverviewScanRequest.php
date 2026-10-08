@@ -5,7 +5,7 @@ namespace Reach\StatamicTolk\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Reach\StatamicTolk\Enums\ContentType;
-use Statamic\Facades\Site;
+use Reach\StatamicTolk\Http\Requests\Concerns\ChecksSiteAccess;
 
 /**
  * One slice of an Overview cell: the content type, the container's handle, the target site and the cursor `scan`
@@ -14,13 +14,13 @@ use Statamic\Facades\Site;
  */
 class OverviewScanRequest extends FormRequest
 {
+    use ChecksSiteAccess;
+
     public const array TYPES = [ContentType::Entry, ContentType::Term, ContentType::GlobalSet, ContentType::Nav];
 
     public function authorize(): bool
     {
-        $site = is_string($this->input('site')) ? Site::get($this->input('site')) : null;
-
-        return $site === null || $this->user()->can('view', $site);
+        return self::mayAccessSites($this->user(), [$this->input('site')]);
     }
 
     public function rules(): array

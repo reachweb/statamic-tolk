@@ -47,6 +47,7 @@ use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
@@ -56,6 +57,11 @@ class EditorController extends Controller
 {
     use FailsWithJson;
     use RaisesTimeLimit;
+
+    /**
+     * The types EditorStatus serves; a reference of any other type is never resolved, so it reads no file (T12.3).
+     */
+    private const array EDITOR_TYPES = [ContentType::Entry, ContentType::Term];
 
     public function __construct(private readonly TargetFactory $targets) {}
 
@@ -264,28 +270,35 @@ class EditorController extends Controller
     private function localization(string $reference): Target
     {
         try {
-            $target = $this->targets->fromReference($reference);
+            $ref = TargetRef::parse($reference);
+        } catch (InvalidTargetRef) {
+            $this->unknownReference($reference);
+        }
+
+        // Only entries and terms have a publish form to deliver into (§A13); runs and commands translate the rest.
+        if (! in_array($ref->type, self::EDITOR_TYPES, true)) {
+            $this->fail(422, 'not_translatable', __('Only entries and terms are translated in the editor.'));
+        }
+
+        try {
+            return $this->targets->fromReference($ref);
         } catch (InvalidTargetRef|TargetNotFound) {
             $this->unknownReference($reference);
         } catch (NotALocalization|NotSupportedYet $exception) {
             $this->fail(422, 'not_translatable', $exception->getMessage());
         }
-
-        // A navigation has no publish form to deliver into (§A13); runs translate it.
-        if ($target->type() === ContentType::Nav) {
-            $this->fail(422, 'not_translatable', __('Navigation is translated in runs, not in the editor.'));
-        }
-
-        return $target;
     }
 
     /**
-     * Null when the reference names no localization: confirm and baseline then only return the status.
+     * Null when the reference names no localization of an entry or a term: confirm and baseline then only return the
+     * status.
      */
     private function localizationOrNull(string $reference): ?Target
     {
         try {
-            return $this->targets->fromReference($reference);
+            $ref = TargetRef::parse($reference);
+
+            return in_array($ref->type, self::EDITOR_TYPES, true) ? $this->targets->fromReference($ref) : null;
         } catch (InvalidTargetRef|TargetNotFound|NotALocalization|NotSupportedYet) {
             return null;
         }

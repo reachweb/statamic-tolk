@@ -5,10 +5,21 @@ namespace Reach\StatamicTolk\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Http\Requests\Concerns\ChecksSiteAccess;
 use Reach\StatamicTolk\Support\Settings;
 
+/**
+ * A site the user may not access is refused; one the banner does not list fails in the controller.
+ */
 class EditorPushRequest extends FormRequest
 {
+    use ChecksSiteAccess;
+
+    public function authorize(): bool
+    {
+        return self::mayAccessSites($this->user(), (array) $this->input('sites', []));
+    }
+
     public function rules(): array
     {
         return [

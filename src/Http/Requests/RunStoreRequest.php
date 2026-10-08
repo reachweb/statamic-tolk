@@ -5,17 +5,26 @@ namespace Reach\StatamicTolk\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Http\Requests\Concerns\ChecksSiteAccess;
 use Reach\StatamicTolk\Http\Rules\CatalogModel;
 use Reach\StatamicTolk\Http\Rules\ModelReference;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Settings;
 
 /**
- * A RunRequest in snake_case: the sites, what to translate (at least one list) and the options.
+ * A RunRequest in snake_case: the sites, what to translate (at least one list) and the options. A site the user may not
+ * access is refused; an unknown one fails in the planner.
  */
 class RunStoreRequest extends FormRequest
 {
+    use ChecksSiteAccess;
+
     public const array SCOPE = ['collections', 'taxonomies', 'globals', 'navs', 'entry_ids', 'term_ids'];
+
+    public function authorize(): bool
+    {
+        return self::mayAccessSites($this->user(), [...(array) $this->input('sites', []), $this->input('source_site')]);
+    }
 
     public function rules(): array
     {

@@ -194,13 +194,17 @@ describe('store', function () {
         storeRun(['options' => ['translator' => 'openai:gpt-6-luna']])->assertCreated();
     });
 
-    it('counts the targets the user may not edit as unauthorized', function () {
+    it('counts the targets the user may not edit as unauthorized, and refuses a site the user may not access', function () {
+        $this->makeCollection('stories', ['en', 'el', 'de'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeEntry('stories', 'en', ['title' => 'Once'], 'once');
         $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'edit articles entries']);
 
-        $run = createdRun(['sites' => ['el', 'de']]);
+        $run = createdRun(['collections' => ['articles', 'stories']]);
 
         expect(RunFixtures::items($run))->toHaveCount(3)
-            ->and($run->scope['skipped'])->toBe(['unauthorized' => 3]);
+            ->and($run->scope['skipped'])->toBe(['unauthorized' => 1]);
+        storeRun(['sites' => ['el', 'de']])->assertForbidden();
+        storeRun(['source_site' => 'de'])->assertForbidden();
     });
 });
 
