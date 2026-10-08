@@ -102,6 +102,10 @@ Every text of Tolk's CP interface is the English key of a `__()` call, as Statam
 
 The output of the commands, log lines, the prompts sent to the models and git commit messages stay in English, as Statamic's own commands do.
 
+## Laravel Boost
+
+Tolk ships a guideline for [Laravel Boost](https://laravel.com/docs/boost), so that an AI agent working on your site knows what Tolk does, where it keeps things, which commands exist and what not to touch. With Boost installed, `php artisan boost:update` offers Tolk among the packages with guidelines; pick it, or add `reachweb/statamic-tolk` to `packages` in `boost.json` and run the command again. Boost then writes a `=== reachweb/statamic-tolk/core rules ===` section into your agent's guidelines file.
+
 ## Next steps
 
 - [Configuration](configuration.md): models, review, instructions, glossary and the developer config.
