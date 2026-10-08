@@ -7,6 +7,8 @@ use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\State\Concerns\ReadsStoredValues;
+use Reach\StatamicTolk\Translation\Plan;
+use Reach\StatamicTolk\Translation\TargetResult;
 
 /**
  * One target of a run (§A12). The RunRepository keeps the claim and updates the object it is given.
@@ -64,6 +66,18 @@ final class RunItem
     public function describe(): array
     {
         return ['type' => $this->type->value, 'source_id' => $this->sourceId, 'site' => $this->targetSite];
+    }
+
+    /**
+     * Skips the item for a plan with nothing to translate: the fields say why each was left out, and the plan's notes
+     * join the planner's warnings.
+     */
+    public function skipNothingToDo(Plan $plan): void
+    {
+        $this->status = RunItemStatus::Skipped;
+        $this->reason = TargetResult::NOTHING_TO_DO;
+        $this->fields = $plan->skipped;
+        $this->warnings = array_values(array_unique([...$this->warnings, ...$plan->noteList()]));
     }
 
     public function toArray(): array

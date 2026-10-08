@@ -104,7 +104,7 @@ final readonly class EditorTranslation
     {
         $this->store->put($plan);
 
-        [$ready] = $this->deliver($plan, $target, $this->pipeline->readyFields($plan));
+        [$ready, , $warnings] = $this->deliver($plan, $target, $this->pipeline->readyFields($plan));
 
         return [
             'plan' => $plan->id,
@@ -112,7 +112,7 @@ final readonly class EditorTranslation
             'fields' => $plan->fieldHandles(),
             'skipped' => $plan->skipped,
             'ready' => $ready,
-            'warnings' => $plan->noteList(),
+            'warnings' => array_values(array_unique([...$plan->noteList(), ...$warnings])),
             'reviewer' => $plan->options->reviewer?->__toString(),
         ];
     }

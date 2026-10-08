@@ -142,6 +142,6 @@ final readonly class Plan
      */
     public function noteList(): array
     {
-        return array_values(array_unique(array_merge([], ...array_values($this->notes))));
+        return array_values(array_unique(Arr::flatten($this->notes)));
     }
 }

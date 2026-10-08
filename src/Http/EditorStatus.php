@@ -125,7 +125,6 @@ final readonly class EditorStatus
         return $item instanceof EntryContract ? $item->collection()->sites() : $item->taxonomy()->sites();
     }
 
-    // The settings keep the item's collection or taxonomy out of every translation, the editor's included.
     private function excluded(EntryContract|TermContract $item): bool
     {
         return $item instanceof EntryContract
