@@ -66,6 +66,26 @@ describe('roots', function () {
     });
 });
 
+describe('rootIdsOutside', function () {
+    it('lists the ids of the roots in other sites than the given one, in the order of roots()', function (string $site) {
+        $this->localize($this->hello, 'el', ['title' => 'Γεια σου']);
+        $families = app(EntryFamilies::class);
+        $roots = array_filter($families->roots(['articles'], []), fn (EntryContract $root) => $root->locale() !== $site);
+
+        expect($families->rootIdsOutside(Collection::find('articles'), $site))->toBe(array_values(array_map(fn (EntryContract $root) => $root->id(), $roots)));
+    })->with(['en', 'el', 'de']);
+
+    it('follows a structured collection\'s tree, with the roots in no tree after the others', function () {
+        $pages = $this->makePages(['home', 'rooms' => ['suites'], 'dining'], creationOrder: ['suites', 'dining', 'rooms', 'home']);
+        $orphan = $this->makeEntry('pages', 'en', ['title' => 'Orphan'], 'orphan');
+        $tree = Collection::find('pages')->structure()->in('en');
+        $tree->tree(array_values(array_filter($tree->tree(), fn (array $branch) => $branch['entry'] !== $orphan->id())))->save();
+
+        expect(app(EntryFamilies::class)->rootIdsOutside(Collection::find('pages'), 'el'))
+            ->toBe([...array_map(fn (string $slug) => $pages[$slug]->id(), ['home', 'rooms', 'suites', 'dining']), $orphan->id()]);
+    });
+});
+
 describe('targets', function () {
     it('pairs every root with each site of its collection but its own, family by family', function () {
         $families = app(EntryFamilies::class);

@@ -123,8 +123,9 @@ class RunsController extends Controller
     }
 
     /**
-     * Translates for one browser lane until `runs.tick_seconds` have passed. Other drivers' runs are not ticked, so the
-     * page's lanes end and it follows the run by polling.
+     * Translates for one browser lane until it ran one unit, so the request makes at most one provider call (D24), or
+     * until `runs.tick_seconds` have passed. Other drivers' runs are not ticked, so the page's lanes end and it follows
+     * the run by polling.
      */
     public function tick(RunTickRequest $request, RunProcessor $processor): JsonResponse
     {
@@ -136,7 +137,7 @@ class RunsController extends Controller
             $timeout = (int) config('tolk.http.timeout.web', 45);
             // A unit starts only before the deadline, so the request ends at most one provider timeout after it.
             $this->raiseTimeLimit($seconds + $timeout + 15);
-            $report = $processor->translate($run, $request->workerId(), CarbonImmutable::now()->addSeconds($seconds), $seconds + $timeout + 30);
+            $report = $processor->translate($run, $request->workerId(), CarbonImmutable::now()->addSeconds($seconds), $seconds + $timeout + 30, maxUnits: 1);
         }
 
         return response()->json([...$this->stateOf($run, $request), 'report' => $report->toArray()]);

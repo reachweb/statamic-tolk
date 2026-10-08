@@ -92,6 +92,23 @@ it('deletes the state of a translation file whose source file is gone, and keeps
         ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['lang::_json::de', 'lang::_json::fr']);
 });
 
+it('keeps the state of a translation file and of form texts whose file cannot be read, and prunes the rest', function () {
+    $this->app->useLangPath($this->temporaryPath('lang'));
+    (new Filesystem)->ensureDirectoryExists(lang_path());
+    file_put_contents(lang_path('en.json'), '{"Book now": "Book now"}');
+    file_put_contents(lang_path('de.json'), 'Jetzt buchen');
+    // Pending entries make confirm() read the file.
+    foreach ([new TargetRef(ContentType::Lang, '_json', 'de'), new TargetRef(ContentType::Forms, 'de')] as $ref) {
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('Book now', new FieldState(pending: [StateFixtures::pending('Book now', 'Jetzt buchen')])));
+    }
+    prunerState(new TargetRef(ContentType::Nav, 'footer', 'el'));
+
+    $report = pruned();
+
+    expect($report->orphaned(PruneReport::DELETED))->toBe(['nav::footer::el'])
+        ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['lang::_json::de', 'forms::de']);
+});
+
 it('keeps the state of the form texts of another language, and deletes that of the source language', function () {
     $this->app->useLangPath($this->temporaryPath('lang'));
     prunerState(new TargetRef(ContentType::Forms, 'de'));

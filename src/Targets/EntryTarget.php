@@ -33,8 +33,6 @@ final class EntryTarget implements Target
 {
     use AppliesFields;
 
-    private ?EntryContract $entry = null;
-
     private ?EntryContract $localization = null;
 
     private bool $localizationResolved = false;
@@ -52,6 +50,7 @@ final class EntryTarget implements Target
         private readonly ContentWalker $walker,
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
+        private ?EntryContract $entry = null,
     ) {}
 
     public function ref(): ?TargetRef

@@ -232,14 +232,19 @@ final readonly class RunProcessor
     /**
      * Claims items and works on them until the deadline, starting units only before it, so the call returns at most one
      * provider timeout after the deadline. An item whose plan is finished is `translated`. The loop stops when nothing
-     * can be claimed, after a transient provider failure, when the run stops running, and once $maxItems items finished
-     * translating, so a caller that also applies can save each item before it translates the next.
+     * can be claimed, after a transient provider failure, when the run stops running, once $maxItems items finished
+     * translating, so a caller that also applies can save each item before it translates the next, and once it ran
+     * $maxUnits units, so a web request makes at most one provider call (D24). Items with nothing to translate cost no
+     * unit and are worked through until the deadline.
      */
-    public function translate(Run $run, string $workerId, CarbonInterface $deadline, int $claimTtl, ?int $maxItems = null): WorkReport
+    public function translate(Run $run, string $workerId, CarbonInterface $deadline, int $claimTtl, ?int $maxItems = null, ?int $maxUnits = null): WorkReport
     {
         $units = $items = 0;
         $wait = null;
         $options = null;
+        $mayStartUnit = function () use ($deadline, $maxUnits, &$units): bool {
+            return CarbonImmutable::now()->lessThan($deadline) && ($maxUnits === null || $units < $maxUnits);
+        };
 
         // claimNext() refreshes the run and hands out nothing while it is not running, so a cancel or an abort ends the loop.
         while (CarbonImmutable::now()->lessThan($deadline)) {
@@ -250,9 +255,9 @@ final readonly class RunProcessor
             }
 
             $options ??= $this->runPlanner->planOptions($run);
-            $wait = $this->work($run, $item, $options, $deadline, $claimTtl, $units, $items);
+            $wait = $this->work($run, $item, $options, $mayStartUnit, $claimTtl, $units, $items);
 
-            if ($wait !== null || $run->status !== RunStatus::Running || ($maxItems !== null && $items >= $maxItems)) {
+            if ($wait !== null || $run->status !== RunStatus::Running || ($maxItems !== null && $items >= $maxItems) || ! $mayStartUnit()) {
                 break;
             }
         }
@@ -368,7 +373,7 @@ final readonly class RunProcessor
      *
      * @return ?int null to go on with the next item, otherwise the seconds to wait before the next call
      */
-    private function work(Run $run, RunItem $item, PlanOptions $options, CarbonInterface $deadline, int $claimTtl, int &$units, int &$items): ?int
+    private function work(Run $run, RunItem $item, PlanOptions $options, Closure $mayStartUnit, int $claimTtl, int &$units, int &$items): ?int
     {
         $lock = $this->itemLock($run, $item, $claimTtl);
 
@@ -377,7 +382,7 @@ final readonly class RunProcessor
         }
 
         try {
-            return $this->attempt($run, $item, $options, $deadline, $units, $items);
+            return $this->attempt($run, $item, $options, $mayStartUnit, $units, $items);
         } catch (ClaimLost|UnitBusy|RunNotFound) {
             // Another worker has the item now, or the run was deleted.
             return self::BUSY_SECONDS;
@@ -389,10 +394,10 @@ final readonly class RunProcessor
     /**
      * @return ?int as work()
      */
-    private function attempt(Run $run, RunItem $item, PlanOptions $options, CarbonInterface $deadline, int &$units, int &$items): ?int
+    private function attempt(Run $run, RunItem $item, PlanOptions $options, Closure $mayStartUnit, int &$units, int &$items): ?int
     {
         try {
-            return $this->translateItem($run, $item, $options, $deadline, $units, $items);
+            return $this->translateItem($run, $item, $options, $mayStartUnit, $units, $items);
         } catch (ClaimLost|UnitBusy|RunNotFound $quiet) {
             throw $quiet;
         } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing $exception) {
@@ -413,9 +418,10 @@ final readonly class RunProcessor
     }
 
     /**
+     * @param  Closure(): bool  $mayStartUnit  false once the deadline passed or the call ran its units
      * @return ?int as work()
      */
-    private function translateItem(Run $run, RunItem $item, PlanOptions $options, CarbonInterface $deadline, int &$units, int &$items): ?int
+    private function translateItem(Run $run, RunItem $item, PlanOptions $options, Closure $mayStartUnit, int &$units, int &$items): ?int
     {
         $plan = $item->planId === null ? null : $this->store->get($item->planId);
 
@@ -439,7 +445,7 @@ final readonly class RunProcessor
         $runnable = $this->pipeline->runnable($plan);
 
         while ($runnable !== []) {
-            if (! CarbonImmutable::now()->lessThan($deadline)) {
+            if (! $mayStartUnit()) {
                 return 0;
             }
 

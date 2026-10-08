@@ -212,6 +212,25 @@ describe('translate', function () {
             ->and(RunFixtures::statuses($run))->toBe(['translated', 'translated', 'translated']);
     });
 
+    it('ends the call once it ran the given number of units, working through items with nothing to translate', function () {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
+        $options = PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']);
+        app(TargetTranslator::class)->translate(app(TargetFactory::class)->forEntry($this->hello, 'el'), $options, new ApplyOptions);
+        $engine->calls = [];
+        $run = RunFixtures::started();
+
+        $first = app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300, maxUnits: 1);
+        $statuses = RunFixtures::statuses($run);
+        $second = app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300, maxUnits: 1);
+
+        expect($first->toArray())->toBe(['units' => 1, 'items' => 1, 'remains' => true, 'wait' => 0])
+            ->and($statuses)->toBe(['skipped', 'translating', 'pending'])
+            ->and($second->toArray())->toBe(['units' => 1, 'items' => 1, 'remains' => true, 'wait' => 0])
+            ->and(RunFixtures::statuses($run))->toBe(['skipped', 'translated', 'pending'])
+            ->and($engine->segmentIds())->toBe([['s1'], ['s2']]);
+    });
+
     it('starts no unit once the deadline has passed', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started();

@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\NavTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Statamic\Facades\Entry;
 
 function targets(): TargetFactory
 {
@@ -101,6 +102,25 @@ describe('forEntry', function () {
 
         targets()->forEntry($note, 'de');
     })->throws(InvalidTarget::class);
+});
+
+describe('forLoadedEntry', function () {
+    it('reads the entry it was given instead of finding it again, until fresh()', function () {
+        // Another instance of the same entry, as a query in another request would return.
+        $loaded = Entry::make()->id($this->origin->id())->collection('articles')->locale('en')->slug('hello')->data(['title' => 'Changed in memory']);
+
+        expect(targets()->forLoadedEntry($loaded, 'el')->sourceValue('title'))->toBe('Changed in memory')
+            ->and(targets()->forLoadedEntry($loaded, 'el')->fresh()->sourceValue('title'))->toBe('Hello')
+            ->and(targets()->forEntry($loaded, 'el')->sourceValue('title'))->toBe('Hello')
+            ->and(targets()->forLoadedEntry($loaded, 'el')->describe())->toBe(targets()->forEntry($this->origin, 'el')->describe());
+    });
+
+    it('rejects what forEntry() rejects', function (string $site, string $exception) {
+        expect(fn () => targets()->forLoadedEntry($this->origin, $site))->toThrow($exception);
+    })->with([
+        'an unknown site' => ['fr', UnknownSite::class],
+        'the source\'s own site' => ['en', InvalidTarget::class],
+    ]);
 });
 
 describe('fromDescription', function () {
