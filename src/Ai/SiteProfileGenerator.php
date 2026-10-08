@@ -80,9 +80,7 @@ final readonly class SiteProfileGenerator
     {
         $model = $this->catalog->resolveTranslator($this->settings, $model);
 
-        if (! FakeEngine::enabled() && ! $this->providers->isConfigured($model->provider)) {
-            throw ProviderNotConfigured::for($model->provider);
-        }
+        $this->providers->ensureCallable($model->provider);
 
         return $model;
     }

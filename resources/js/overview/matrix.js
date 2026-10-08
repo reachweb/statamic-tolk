@@ -2,6 +2,7 @@
 // Pure apart from `__()` and `__n()`.
 
 import { asMap } from '../api.js';
+import { itemStatusLabel } from '../editor/statuses.js';
 
 export const CONTENT_TYPES = ['entry', 'term', 'globals', 'nav'];
 
@@ -13,16 +14,9 @@ const SCOPE_KEYS = { entry: 'collections', term: 'taxonomies', globals: 'globals
 
 const STATUS_COLORS = { missing: 'red', untranslated: 'orange', outdated: 'amber', attention: 'purple', current: 'green' };
 
+// The banner's labels, but a whole item is current rather than up to date.
 export function statusLabel(status) {
-    return (
-        {
-            missing: __('Missing'),
-            untranslated: __('Untranslated'),
-            outdated: __('Outdated'),
-            attention: __('Needs attention'),
-            current: __('Current'),
-        }[status] ?? status
-    );
+    return status === 'current' ? __('Current') : itemStatusLabel(status);
 }
 
 export function statusColor(status) {
@@ -60,11 +54,14 @@ export function groupRows(rows) {
     );
 }
 
-// Every cell of the matrix, in the order rows and sites are shown, as `scan` takes it.
+// A row's cell in a site, as `scan` and the loader take it.
+export function scanCell(row, site) {
+    return { key: cellKey(row.type, row.handle, site), type: row.type, container: row.handle, site };
+}
+
+// Every cell of the matrix, in the order rows and sites are shown.
 export function matrixCells(rows) {
-    return (Array.isArray(rows) ? rows : []).flatMap((row) =>
-        (row.sites ?? []).map((site) => ({ key: cellKey(row.type, row.handle, site), type: row.type, container: row.handle, site })),
-    );
+    return (Array.isArray(rows) ? rows : []).flatMap((row) => (row.sites ?? []).map((site) => scanCell(row, site)));
 }
 
 // What a cell's scan found so far: the counts per status, the untracked fields and what can be done.

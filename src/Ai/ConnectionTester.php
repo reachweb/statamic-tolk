@@ -53,11 +53,8 @@ final readonly class ConnectionTester
      */
     public function test(string $provider): array
     {
+        $this->providers->ensureCallable($provider);
         $fake = FakeEngine::enabled();
-
-        if (! $fake && ! $this->providers->isConfigured($provider)) {
-            throw ProviderNotConfigured::for($provider);
-        }
 
         $model = $this->model($provider);
         $result = ['model' => (string) $model, 'label' => $this->catalog->label($model)];
@@ -82,7 +79,7 @@ final readonly class ConnectionTester
             }
         }
 
-        $latency = self::since($started);
+        $latency = (int) round((hrtime(true) - $started) / 1_000_000);
         $this->recorder->record($model, $usage, UsageSource::Editor);
 
         return ['ok' => true, ...$result, 'latency_ms' => $latency, 'fake' => $fake];
@@ -120,10 +117,5 @@ final readonly class ConnectionTester
             $error->kind === ProviderErrorKind::Paused => __(':provider is busy or unavailable (:status): :message', $replace),
             default => __(':provider refused the request (:status): :message', $replace),
         };
-    }
-
-    private static function since(int $started): int
-    {
-        return (int) round((hrtime(true) - $started) / 1_000_000);
     }
 }

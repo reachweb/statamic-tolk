@@ -224,10 +224,7 @@ describe('a localization', () => {
             { handle: 'teaser', label: 'Teaser' },
             { handle: 'kicker', label: 'Kicker' },
         ]);
-        expect(banner.localization.hint).toBe(
-            'Teaser, Kicker are not translated because they are not localizable. Run php please tolk:doctor for details.',
-        );
-        expect(describeStatus(status, { linked: true }).localization.hint).toBe('Teaser, Kicker are not translated because they are not localizable.');
+        expect(banner.localization.hint).toBe('Teaser, Kicker are not translated because they are not localizable.');
     });
 
     it('has nothing to translate when no field is in scope', () => {

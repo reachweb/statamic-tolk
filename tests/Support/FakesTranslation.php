@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Events\PromptingAgent;
 use Laravel\Ai\Gateway\FakeTextGateway;
 use Reach\StatamicTolk\Ai\Agents\ReviewAgent;
+use Reach\StatamicTolk\Ai\Agents\SiteProfileAgent;
 use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
 
 trait FakesTranslation
@@ -77,6 +78,26 @@ trait FakesTranslation
 
             return ['corrections' => $items];
         });
+    }
+
+    /**
+     * Answers every prompt of the site profile agent with $answer (a string is a profile without terms), and keeps the
+     * user message of each prompt and the model it went to.
+     *
+     * @return object{prompts: list<string>, models: list<string>}
+     */
+    protected function fakeSiteProfile(array|string $answer = ['profile' => 'A walking tour company on Crete.', 'terms' => ['Acme Tours']]): object
+    {
+        $seen = (object) ['prompts' => [], 'models' => []];
+
+        SiteProfileAgent::fake(function (string $prompt, $attachments, $provider, string $model) use ($seen, $answer) {
+            $seen->prompts[] = $prompt;
+            $seen->models[] = $model;
+
+            return is_string($answer) ? ['profile' => $answer, 'terms' => []] : $answer;
+        });
+
+        return $seen;
     }
 
     protected function modelCalls(): int

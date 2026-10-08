@@ -97,7 +97,7 @@ const scope = computed(() => describeScope(run.value.scope, siteName));
 const breakdown = computed(() => describeBreakdown(current.value.breakdown, siteName));
 const leftOut = computed(() => describeLeftOut(run.value.scope));
 const auditLink = localizableUrl(Statamic.$config.get('tolk.auditUrl'));
-const hint = computed(() => notLocalizableHint(run.value.scope, { linked: Boolean(auditLink) }));
+const hint = computed(() => notLocalizableHint(run.value.scope));
 const options = computed(() => describeOptions(run.value.options, props.models));
 const estimated = computed(() => describeEstimate(estimate.value, progress.value.total));
 const usage = computed(() => describeUsage(run.value, props.models));
@@ -278,6 +278,7 @@ function filterBy(value) {
                     <Link v-if="auditLink" :href="auditLink" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-audit-link>
                         {{ __('Open the setup audit') }}
                     </Link>
+                    <template v-else>{{ __('Run php please tolk:doctor for details.') }}</template>
                 </Description>
             </Card>
 

@@ -21,7 +21,6 @@ import RunsTable from '../components/RunsTable.vue';
 import { providerBadge } from '../fieldtypes/providersStatus.js';
 import { createCellLoader } from '../overview/cells.js';
 import {
-    cellKey,
     cellRun,
     describeCell,
     describeMonth,
@@ -30,6 +29,7 @@ import {
     groupRows,
     matrixCells,
     matrixColumns,
+    scanCell,
     siteRun,
     sourceLabel,
 } from '../overview/matrix.js';
@@ -52,17 +52,19 @@ const settingsUrl = Statamic.$config.get('tolk')?.settingsUrl ?? null;
 
 const empty = computed(() => emptyState(props));
 const columns = computed(() => matrixColumns(props.rows, props.sites));
-// The groups' rows with one cell per column: its key, its status and what it shows, null where the row has no cell.
+// The groups' rows with one cell per column: the cell `scan` takes, its status and what it shows, null where the row
+// has no cell.
 const groups = computed(() =>
     groupRows(props.rows).map((group) => ({
         ...group,
         rows: group.rows.map((row) => ({
             ...row,
             cells: columns.value.map((site) => {
-                const key = cellKey(row.type, row.handle, site.handle);
+                const cell = scanCell(row, site.handle);
                 const scanned = row.sites.includes(site.handle);
+                const state = cells[cell.key];
 
-                return { site, key, status: scanned ? (cells[key]?.status ?? 'waiting') : 'none', view: scanned ? describeCell(cells[key]) : null };
+                return { site, cell, status: scanned ? (state?.status ?? 'waiting') : 'none', view: scanned ? describeCell(state) : null };
             }),
         })),
     })),
@@ -73,7 +75,7 @@ const untracked = computed(() => Object.values(cells).some((cell) => Number(cell
 const siteRuns = computed(() => Object.fromEntries(columns.value.map((site) => [site.handle, siteRun(props.rows, cells, site.handle)])));
 
 const loader = createCellLoader({
-    scan: (cell) => post(props.urls.scan, { type: cell.type, container: cell.container, site: cell.site, cursor: cell.cursor, fresh: cell.fresh }),
+    scan: ({ key, ...body }) => post(props.urls.scan, body),
     onChange: (key, state) => (cells[key] = state),
 });
 
@@ -87,10 +89,6 @@ onBeforeUnmount(() => loader.stop());
 
 function countAgain() {
     loader.load(allCells.value, { fresh: true });
-}
-
-function retry(row, site, key) {
-    loader.retry({ key, type: row.type, container: row.handle, site });
 }
 
 // Creates a pending run and opens its page, where the estimate and Start are (D19).
@@ -171,10 +169,10 @@ async function createRun(key, body) {
                                 <Description>{{ row.handle }}</Description>
                             </TableCell>
                             <TableCell
-                                v-for="{ site, key, status, view } in row.cells"
+                                v-for="{ site, cell, status, view } in row.cells"
                                 :key="site.handle"
                                 class="align-top"
-                                :data-tolk-cell="key"
+                                :data-tolk-cell="cell.key"
                                 :data-tolk-cell-status="status"
                             >
                                 <Description v-if="!view">—</Description>
@@ -189,7 +187,7 @@ async function createRun(key, body) {
                                     </Description>
                                     <div v-if="view.failed" class="space-y-1">
                                         <Text size="sm" variant="danger" data-tolk-cell-error>{{ view.error }}</Text>
-                                        <Button size="xs" :text="__('Try again')" data-tolk-cell-retry @click="retry(row, site.handle, key)" />
+                                        <Button size="xs" :text="__('Try again')" data-tolk-cell-retry @click="loader.retry(cell)" />
                                     </div>
                                     <div v-if="view.missing > 0 || view.outdated > 0" class="flex flex-wrap gap-1">
                                         <Button
@@ -197,20 +195,20 @@ async function createRun(key, body) {
                                             size="xs"
                                             :text="__('Translate missing')"
                                             :aria-label="__('Translate missing :content into :site', { content: row.title, site: site.name })"
-                                            :loading="busy === `${key}|missing`"
+                                            :loading="busy === `${cell.key}|missing`"
                                             :disabled="busy !== null"
                                             data-tolk-cell-action="missing"
-                                            @click="createRun(`${key}|missing`, cellRun(row.type, row.handle, site.handle, 'missing'))"
+                                            @click="createRun(`${cell.key}|missing`, cellRun(row.type, row.handle, site.handle, 'missing'))"
                                         />
                                         <Button
                                             v-if="view.outdated > 0"
                                             size="xs"
                                             :text="__('Update outdated')"
                                             :aria-label="__('Update outdated :content in :site', { content: row.title, site: site.name })"
-                                            :loading="busy === `${key}|update`"
+                                            :loading="busy === `${cell.key}|update`"
                                             :disabled="busy !== null"
                                             data-tolk-cell-action="update"
-                                            @click="createRun(`${key}|update`, cellRun(row.type, row.handle, site.handle, 'update'))"
+                                            @click="createRun(`${cell.key}|update`, cellRun(row.type, row.handle, site.handle, 'update'))"
                                         />
                                     </div>
                                 </div>

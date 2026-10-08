@@ -28,7 +28,7 @@ onBeforeUnmount(stop);
 const state = computed(() => store.containers[name] ?? null);
 const phase = computed(() => state.value?.phase ?? 'idle');
 const auditLink = localizableUrl(Statamic.$config.get('tolk.auditUrl'));
-const banner = computed(() => describe(state.value?.status ?? null, { linked: Boolean(auditLink) }));
+const banner = computed(() => describe(state.value?.status ?? null));
 const summary = computed(() => describeSummary(state.value?.summary ?? null, state.value?.status ?? null));
 const canUndo = computed(() => undoable(state.value));
 const restart = computed(() => RESTART.includes(state.value?.error?.code));
@@ -106,6 +106,7 @@ async function undo() {
                 <Description v-if="banner.localization.hint" data-tolk-not-localizable>
                     {{ banner.localization.hint }}
                     <a v-if="auditLink" :href="auditLink" data-tolk-audit-link>{{ __('Open the setup audit') }}</a>
+                    <template v-else>{{ __('Run php please tolk:doctor for details.') }}</template>
                 </Description>
 
                 <div v-if="actions" class="flex flex-wrap gap-2 pt-1" data-tolk-actions>

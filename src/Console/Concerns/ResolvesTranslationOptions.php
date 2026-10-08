@@ -88,9 +88,7 @@ trait ResolvesTranslationOptions
     private function checkProviders(PlanOptions $options, Providers $providers): void
     {
         foreach ($this->models($options) as $model) {
-            if (! FakeEngine::enabled() && ! $providers->isConfigured($model->provider)) {
-                throw ProviderNotConfigured::for($model->provider);
-            }
+            $providers->ensureCallable($model->provider);
         }
     }
 

@@ -55,32 +55,13 @@ beforeEach(function () {
     $this->withSettings(['excluded_collections' => ['staff']]);
 });
 
-/**
- * Fakes the agent, keeps the user message of each prompt and the model it went to, and answers with the given profile.
- *
- * @return object{prompts: list<string>, models: list<string>}
- */
-function fakeProfile(array|string $answer = ['profile' => 'A walking tour company on Crete.', 'terms' => ['Acme Tours']]): object
-{
-    $seen = (object) ['prompts' => [], 'models' => []];
-
-    SiteProfileAgent::fake(function (string $prompt, $attachments, $provider, string $model) use ($seen, $answer) {
-        $seen->prompts[] = $prompt;
-        $seen->models[] = $model;
-
-        return is_string($answer) ? ['profile' => $answer, 'terms' => []] : $answer;
-    });
-
-    return $seen;
-}
-
 function generateProfile(?string $model = null, UsageSource $source = UsageSource::Cli): array
 {
     return app(SiteProfileGenerator::class)->generate($model ? ModelRef::fromString($model) : null, $source);
 }
 
 it('sends the site, the home entry, global sets, navigation and the first entries of the collections that are not excluded', function () {
-    $seen = fakeProfile();
+    $seen = $this->fakeSiteProfile();
 
     expect(generateProfile())->toBe(['profile' => 'A walking tour company on Crete.', 'terms' => ['Acme Tours']])
         ->and($seen->prompts)->toHaveCount(1);
@@ -105,7 +86,7 @@ it('sends the site, the home entry, global sets, navigation and the first entrie
 
 it('leaves out the home entry when its collection is excluded, and fields the settings exclude', function () {
     $this->withSettings(['excluded_collections' => ['pages', 'staff'], 'excluded_fields' => ['tagline']]);
-    $seen = fakeProfile();
+    $seen = $this->fakeSiteProfile();
 
     generateProfile();
 
@@ -128,7 +109,7 @@ it('stays under the cap with long content, cuts each part, and takes entries fro
         }
     }
 
-    $seen = fakeProfile();
+    $seen = $this->fakeSiteProfile();
     generateProfile();
 
     $prompt = $seen->prompts[0];
@@ -150,7 +131,7 @@ it('stays under the cap with long content, cuts each part, and takes entries fro
 });
 
 it('cuts an over-long answer to 150 words and removes its URLs and tags', function () {
-    fakeProfile([
+    $this->fakeSiteProfile([
         'profile' => "Acme Tours offers [guided walks](https://acme.test/walks) on <b>Crete</b>. Book at https://acme.test/book, www.acme.test or mailto:info@acme.test.\n\n\n\nIt writes in a friendly tone. ".trim(str_repeat('More words here. ', 100)),
         'terms' => ['Acme Tours', 'acme tours', '  Cretan   Trails ', 'https://acme.test', '', 42, str_repeat('x', 101), '<b>Olive Path</b>', '—'],
     ]);
@@ -167,13 +148,13 @@ it('cuts an over-long answer to 150 words and removes its URLs and tags', functi
 });
 
 it('keeps an answer within the limits as it is', function () {
-    fakeProfile(['profile' => "  A small hotel in Chania.\nIt speaks to couples.  ", 'terms' => []]);
+    $this->fakeSiteProfile(['profile' => "  A small hotel in Chania.\nIt speaks to couples.  ", 'terms' => []]);
 
     expect(generateProfile())->toBe(['profile' => "A small hotel in Chania.\nIt speaks to couples.", 'terms' => []]);
 });
 
 it('fails when the answer holds no profile', function (array $answer) {
-    fakeProfile($answer);
+    $this->fakeSiteProfile($answer);
 
     generateProfile();
 })->with([
@@ -183,7 +164,7 @@ it('fails when the answer holds no profile', function (array $answer) {
 ])->throws(ProfileFailed::class, 'held no site profile');
 
 it('uses the translator of the settings, or the given model, and records the call under the given source', function () {
-    $seen = fakeProfile();
+    $seen = $this->fakeSiteProfile();
     $this->withSettings(['translator_model' => 'gemini:gemini-3.8-flash']);
 
     generateProfile();

@@ -142,21 +142,17 @@ describe('what the run translates', () => {
         expect(describeLeftOut({ skipped: [] })).toEqual([]);
     });
 
-    it('names the fields that are not localizable with the doctor command, by container when there are several', () => {
+    it('names the fields that are not localizable, by container when there are several', () => {
         const field = (container, handle, label, reason = 'not_localizable') => ({ container, handle, label, type: 'text', reason });
 
         expect(notLocalizableHint({ out_of_scope: [field('notes', 'internal_note', 'Internal note'), field('notes', 'summary', 'Summary', 'disabled')] })).toBe(
-            'Internal note is not translated because it is not localizable. Run php please tolk:doctor for details.',
+            'Internal note is not translated because it is not localizable.',
         );
         expect(notLocalizableHint({ out_of_scope: [field('notes', 'internal_note', 'Internal note'), field('articles', 'teaser', '')] })).toBe(
-            'Internal note (notes), teaser (articles) are not translated because they are not localizable. Run php please tolk:doctor for details.',
+            'Internal note (notes), teaser (articles) are not translated because they are not localizable.',
         );
         expect(notLocalizableHint({ out_of_scope: [field('notes', 'summary', 'Summary', 'hidden')] })).toBeNull();
         expect(notLocalizableHint({})).toBeNull();
-        expect(notLocalizableHint({ out_of_scope: [field('notes', 'internal_note', 'Internal note')] }, { linked: true })).toBe(
-            'Internal note is not translated because it is not localizable.',
-        );
-        expect(notLocalizableHint({}, { linked: true })).toBeNull();
     });
 
     it('describes the scope: collections, selected entries and sites', () => {

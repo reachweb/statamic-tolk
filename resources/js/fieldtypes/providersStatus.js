@@ -6,15 +6,18 @@ export function providerRows(meta) {
     const fakeEngine = meta?.fake_engine === true;
     const providers = Array.isArray(meta?.providers) ? meta.providers : [];
 
-    return providers.map((provider) => ({
-        provider: provider.provider,
-        label: provider.label,
-        configured: provider.configured === true,
-        badge: providerBadge(provider.configured === true),
-        source: sourceNote(provider.source),
-        hint: provider.configured ? null : setupHint(provider.env),
-        testable: provider.configured === true || fakeEngine,
-    }));
+    return providers.map((provider) => {
+        const configured = provider.configured === true;
+
+        return {
+            provider: provider.provider,
+            label: provider.label,
+            badge: providerBadge(configured),
+            source: sourceNote(provider.source),
+            hint: configured ? null : setupHint(provider.env),
+            testable: configured || fakeEngine,
+        };
+    });
 }
 
 // Whether the provider has an API key, as a badge.
