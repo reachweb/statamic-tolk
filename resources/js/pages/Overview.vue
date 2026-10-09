@@ -5,6 +5,7 @@ import {
     Badge,
     Button,
     Card,
+    ConfirmationModal,
     Description,
     Header,
     Heading,
@@ -42,12 +43,16 @@ const props = defineProps({
     providers: { type: Array, default: () => [] },
     fakeEngine: { type: Boolean, default: false },
     usage: { type: Object, default: () => ({}) },
+    canResetUsage: { type: Boolean, default: false },
     runs: { type: Array, default: () => [] },
     urls: { type: Object, required: true },
 });
 
 const cells = reactive({});
 const busy = ref(null);
+const usage = ref(props.usage);
+const confirmingReset = ref(false);
+const resetting = ref(false);
 const settingsUrl = Statamic.$config.get('tolk')?.settingsUrl ?? null;
 
 const empty = computed(() => emptyState(props));
@@ -70,7 +75,7 @@ const groups = computed(() =>
     })),
 );
 const allCells = computed(() => matrixCells(props.rows));
-const month = computed(() => describeMonth(props.usage));
+const month = computed(() => describeMonth(usage.value));
 const untracked = computed(() => Object.values(cells).some((cell) => Number(cell?.untracked) > 0));
 const siteRuns = computed(() => Object.fromEntries(columns.value.map((site) => [site.handle, siteRun(props.rows, cells, site.handle)])));
 
@@ -102,6 +107,22 @@ async function createRun(key, body) {
     } catch (error) {
         Statamic.$toast.error(error.message);
         busy.value = null;
+    }
+}
+
+async function resetUsage() {
+    const name = formatMonth(month.value.month);
+
+    confirmingReset.value = false;
+    resetting.value = true;
+
+    try {
+        usage.value = (await post(props.urls.resetUsage, { month: month.value.month })).usage;
+        Statamic.$toast.success(__('The usage of :month was reset.', { month: name }));
+    } catch (error) {
+        Statamic.$toast.error(error.message);
+    } finally {
+        resetting.value = false;
     }
 }
 </script>
@@ -224,7 +245,18 @@ async function createRun(key, body) {
 
         <div class="grid gap-6 lg:grid-cols-2">
             <Card class="space-y-3" data-tolk-usage>
-                <Heading size="lg" :text="__('Usage in :month', { month: formatMonth(month.month) })" />
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <Heading size="lg" :text="__('Usage in :month', { month: formatMonth(month.month) })" />
+                    <Button
+                        v-if="canResetUsage && month.rows.length > 0"
+                        size="sm"
+                        :text="__('Reset')"
+                        :aria-label="__('Reset the usage of :month', { month: formatMonth(month.month) })"
+                        :loading="resetting"
+                        data-tolk-usage-reset
+                        @click="confirmingReset = true"
+                    />
+                </div>
                 <Text v-if="month.rows.length === 0">{{ __('No model was called this month.') }}</Text>
                 <template v-else>
                     <Table>
@@ -279,5 +311,18 @@ async function createRun(key, body) {
             <Text v-if="runs.length === 0">{{ __('No translation runs yet.') }}</Text>
             <RunsTable v-else :runs="runs" />
         </Card>
+
+        <!-- Mounted afresh each time: a modal reopened while its last close is pending (300 ms) closes again. -->
+        <ConfirmationModal
+            v-if="confirmingReset"
+            open
+            danger
+            :title="__('Reset the usage of :month?', { month: formatMonth(month.month) })"
+            :body-text="__('The calls, tokens and costs counted this month are deleted, and counting starts again from zero. The runs keep their own usage.')"
+            :button-text="__('Reset')"
+            data-tolk-usage-reset-confirm
+            @update:open="confirmingReset = $event"
+            @confirm="resetUsage"
+        />
     </div>
 </template>

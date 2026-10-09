@@ -16,11 +16,13 @@ use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Requests\OverviewScanRequest;
 use Reach\StatamicTolk\Http\Requests\RunStateRequest;
+use Reach\StatamicTolk\Http\Requests\UsageResetRequest;
 use Reach\StatamicTolk\Http\RunState;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\OverviewScanner;
 use Reach\StatamicTolk\State\StatusScanner;
+use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\Collection;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
@@ -30,7 +32,7 @@ use Statamic\Facades\User;
 
 /**
  * The Overview (§A13): what is translated into which site, per container, with the buttons that create runs, and the
- * month's usage, the providers and the latest runs. The page loads the cells itself through `scan`.
+ * month's usage (which users who may edit the settings can reset), the providers and the latest runs. The page loads the cells itself through `scan`.
  */
 class OverviewController extends Controller
 {
@@ -41,8 +43,6 @@ class OverviewController extends Controller
     public function index(StatusScanner $scanner, Providers $providers, UsageLog $usage, ModelCatalog $catalog, RunRepository $runs, RunState $state): Response
     {
         $sites = Site::authorized()->map(fn ($site) => ['handle' => $site->handle(), 'name' => $site->name()])->values()->all();
-        $month = now()->format('Y-m');
-        $models = $usage->month($month);
 
         return Inertia::render('tolk::Overview', [
             'multisite' => Site::multiEnabled() && Site::hasMultiple(),
@@ -50,15 +50,28 @@ class OverviewController extends Controller
             'rows' => $this->rows($scanner, array_column($sites, 'handle')),
             'providers' => $providers->statuses(),
             'fakeEngine' => FakeEngine::enabled(),
-            'usage' => ['month' => $month, 'models' => $models, 'labels' => $catalog->labels(array_keys($models))],
+            'usage' => $this->usage($usage, $catalog, now()->format('Y-m')),
+            'canResetUsage' => Settings::editableBy(User::current()),
             'runs' => array_map($state->summary(...), $this->recentRuns($runs)),
             'urls' => [
                 'scan' => cp_route('tolk.overview.scan'),
                 'store' => cp_route('tolk.runs.store'),
                 'runs' => cp_route('tolk.runs.index'),
                 'audit' => cp_route('tolk.audit'),
+                'resetUsage' => cp_route('tolk.usage.reset'),
             ],
         ]);
+    }
+
+    /**
+     * Deletes the usage of the month the page shows and answers it afresh.
+     */
+    public function resetUsage(UsageResetRequest $request, UsageLog $usage, ModelCatalog $catalog): JsonResponse
+    {
+        $month = $request->validated('month');
+        $usage->reset($month);
+
+        return response()->json(['usage' => $this->usage($usage, $catalog, $month)]);
     }
 
     /**
@@ -120,6 +133,16 @@ class OverviewController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * @return array{month: string, models: array, labels: array<string, string>}
+     */
+    private function usage(UsageLog $usage, ModelCatalog $catalog, string $month): array
+    {
+        $models = $usage->month($month);
+
+        return ['month' => $month, 'models' => $models, 'labels' => $catalog->labels(array_keys($models))];
     }
 
     private function title(ContentType $type, string $handle): string

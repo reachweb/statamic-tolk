@@ -42,6 +42,9 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
             Route::post('{run}/take-over', [RunsController::class, 'takeOver'])->name('take-over');
         });
 
+        // The addon's settings ability (`editSettings`, §A14); RunResetRequest checks.
+        Route::post('reset', [RunsController::class, 'reset'])->name('reset');
+
         // The run's creator may follow and drive it without `run bulk translations` (§A14); RunFollowRequest checks.
         Route::get('{run}/state', [RunsController::class, 'state'])->name('state');
         Route::post('{run}/tick', [RunsController::class, 'tick'])->name('tick');
@@ -51,7 +54,9 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
 
     Route::get('models', [ModelsController::class, 'index'])->name('models.index');
 
-    // The addon's settings ability (`editSettings`, §A14); ProviderTestRequest and SiteProfileGenerateRequest check.
+    // The addon's settings ability (`editSettings`, §A14); ProviderTestRequest, SiteProfileGenerateRequest and
+    // UsageResetRequest check.
     Route::post('providers/test', [ProvidersController::class, 'test'])->name('providers.test');
     Route::post('site-profile/generate', [SiteProfileController::class, 'generate'])->name('site-profile.generate');
+    Route::post('usage/reset', [OverviewController::class, 'resetUsage'])->name('usage.reset');
 });

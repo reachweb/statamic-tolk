@@ -644,6 +644,68 @@ describe('authorization', function () {
     });
 });
 
+describe('reset', function () {
+    it('deletes every finished run, beyond the listed ones too, and keeps the pending and running runs', function () {
+        $this->signInAdmin();
+        $this->fakeTranslations();
+        $processor = app(RunProcessor::class);
+        $completed = RunFixtures::started();
+        RunFixtures::finish($completed);
+        $cancelled = RunFixtures::started();
+        $processor->cancel($cancelled);
+        $running = RunFixtures::started();
+        $pending = RunFixtures::pending();
+
+        $this->postJson(cp_route('tolk.runs.reset'))->assertOk()->assertExactJson(['deleted' => 2]);
+
+        expect($this->runs->find($completed->id))->toBeNull()
+            ->and($this->runs->find($cancelled->id))->toBeNull()
+            ->and(RunFixtures::stored($running)->status)->toBe(RunStatus::Running)
+            ->and(RunFixtures::stored($pending)->status)->toBe(RunStatus::Pending);
+
+        $this->postJson(cp_route('tolk.runs.reset'))->assertOk()->assertExactJson(['deleted' => 0]);
+    });
+
+    it('keeps a run that ended but has not fired RunFinished yet', function () {
+        $run = RunFixtures::started();
+        $run->status = RunStatus::Aborted;
+        $this->runs->save($run);
+
+        expect(app(RunProcessor::class)->delete($run))->toBeFalse()
+            ->and($this->runs->find($run->id))->not->toBeNull();
+
+        app(RunProcessor::class)->finalize($run);
+
+        expect(app(RunProcessor::class)->delete($run))->toBeTrue()
+            ->and($this->runs->find($run->id))->toBeNull()
+            ->and(app(RunProcessor::class)->delete($run))->toBeFalse();
+    });
+
+    it('keeps the finished runs into a site the user may not access', function () {
+        $greek = RunFixtures::started();
+        app(RunProcessor::class)->cancel($greek);
+        $german = RunFixtures::started(['sites' => ['de']]);
+        app(RunProcessor::class)->cancel($german);
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'edit reachweb/statamic-tolk settings', 'access en site', 'access el site']);
+
+        $this->postJson(cp_route('tolk.runs.reset'))->assertOk()->assertExactJson(['deleted' => 1]);
+
+        expect($this->runs->find($greek->id))->toBeNull()
+            ->and($this->runs->find($german->id))->not->toBeNull();
+    });
+
+    it('is offered and allowed only to a user who may edit the settings', function () {
+        $run = RunFixtures::started();
+        app(RunProcessor::class)->cancel($run);
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site']);
+
+        $this->get(cp_route('tolk.runs.index'))->assertOk()->assertInertia(fn (AssertableInertia $page) => $page->where('canReset', false));
+        $this->postJson(cp_route('tolk.runs.reset'))->assertForbidden();
+
+        expect($this->runs->find($run->id))->not->toBeNull();
+    });
+});
+
 describe('pages', function () {
     it('renders the runs index with the recent runs', function () {
         $this->signInAdmin();
@@ -656,7 +718,9 @@ describe('pages', function () {
                 ->has('runs', 1)
                 ->where('runs.0.id', $run->id)
                 ->where('runs.0.counts.pending', 3)
-                ->where('runs.0.url', cp_route('tolk.runs.show', $run->id)));
+                ->where('runs.0.url', cp_route('tolk.runs.show', $run->id))
+                ->where('canReset', true)
+                ->where('urls', ['reset' => cp_route('tolk.runs.reset')]));
     });
 
     it('renders a run\'s page with its state, URLs and model labels', function () {

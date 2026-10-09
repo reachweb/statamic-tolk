@@ -64,7 +64,7 @@ Statamic's own permissions still apply on top of them:
 
 - A user translates only into sites they may access, and only what they may edit. For entries that is Statamic's edit permission for the collection; for terms, global sets and navigation it is the matching edit permission, and site access is checked as well.
 - Publishing follows Statamic: a translation published "same as origin" is published only when the user may publish the entry.
-- The settings page needs **Tolk settings** (`edit reachweb/statamic-tolk settings`, which Statamic registers for every addon with settings) or **Configure addons**. Users with it may also choose a model outside the catalog.
+- The settings page needs **Tolk settings** (`edit reachweb/statamic-tolk settings`, which Statamic registers for every addon with settings) or **Configure addons**. Users with it may also choose a model outside the catalog, reset the month's usage on the Overview and delete the finished runs from the runs list.
 - **Make localizable** on the Audit page also needs **Configure Fields**, because it changes blueprints.
 
 Who sees a run: users with `run bulk translations` who may access every site of the run (the sites it translates into and the site it translates from) see it, follow it and drive it. The runs list and the Overview's latest runs leave out the others, and creating a run, a push or an Overview count for a site the user may not access is refused. A run's items are saved with the rights of the user who created it, whoever drives it.
