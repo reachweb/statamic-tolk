@@ -5,7 +5,7 @@ import { diffWords } from '../editor/diff.js';
 import { modelName } from '../editor/statuses.js';
 
 const props = defineProps({
-    // `createModal()`: the banner mounts this component while it is open.
+    // `createModal()`: the banner and the run page mount this component while it is open.
     modal: { type: Object, required: true },
     corrections: { type: Array, default: () => [] },
     reviewer: { type: String, default: null },

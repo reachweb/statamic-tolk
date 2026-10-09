@@ -279,7 +279,36 @@ describe('describeItem', () => {
             error: null,
             rootPage: null,
             warnings: ['Its parent page has no localization.'],
+            corrected: null,
+            corrections: [],
         });
+    });
+
+    it('lists the reviewer\'s corrections with their field, for the changes modal', () => {
+        const item = {
+            status: 'done',
+            fields: { title: 'applied', content: 'applied', intro: 'no_corrections' },
+            corrections: {
+                title: [{ id: 's1', before: 'Στη θάλασσα', after: 'Δίπλα στη θάλασσα', reason: 'By the sea, not in it.' }],
+                content: [
+                    { id: 's4', before: 'Ένα', after: 'Μία', reason: 'Gender.' },
+                    { id: 's7', before: 'καλό', after: 'ωραίο', reason: 'Word choice.' },
+                ],
+            },
+        };
+
+        expect(describeItem(item)).toMatchObject({
+            applied: '2 fields saved',
+            corrected: '3 corrections',
+            corrections: [
+                { handle: 'title', label: 'title', id: 's1', before: 'Στη θάλασσα', after: 'Δίπλα στη θάλασσα', reason: 'By the sea, not in it.' },
+                { handle: 'content', label: 'content', id: 's4', before: 'Ένα', after: 'Μία', reason: 'Gender.' },
+                { handle: 'content', label: 'content', id: 's7', before: 'καλό', after: 'ωραίο', reason: 'Word choice.' },
+            ],
+        });
+        expect(describeItem({ ...item, corrections: { title: item.corrections.title } }).corrected).toBe('1 correction');
+        // PHP sends an item without corrections as an empty list.
+        expect(describeItem({ ...item, corrections: [] })).toMatchObject({ corrected: null, corrections: [] });
     });
 
     it('says why an item was skipped or failed', () => {
