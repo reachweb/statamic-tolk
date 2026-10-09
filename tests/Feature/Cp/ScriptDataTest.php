@@ -10,6 +10,18 @@ function tolkScriptData(): array
     return Statamic::jsonVariables(request())['tolk'];
 }
 
+function tolkCatalogLabels(): array
+{
+    return [
+        'anthropic:claude-sonnet-5-5' => 'Claude Sonnet 5.5',
+        'anthropic:claude-haiku-5-5' => 'Claude Haiku 5.5',
+        'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
+        'openai:gpt-6-luna' => 'GPT-6 Luna',
+        'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
+        'gemini:gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
+    ];
+}
+
 it('provides the addon\'s data to the CP script', function () {
     expect(tolkScriptData())->toBe([
         'fieldtypes' => ['text', 'textarea', 'markdown', 'bard', 'replicator', 'grid', 'group', 'table', 'list', 'array'],
@@ -18,6 +30,7 @@ it('provides the addon\'s data to the CP script', function () {
         'fakeEngine' => false,
         'settingsUrl' => null,
         'auditUrl' => null,
+        'models' => tolkCatalogLabels(),
     ]);
 });
 
@@ -32,7 +45,15 @@ it('reads the values when the CP page renders, not at boot', function () {
         'fakeEngine' => true,
         'settingsUrl' => null,
         'auditUrl' => null,
+        'models' => tolkCatalogLabels(),
     ]);
+});
+
+it('names the catalog\'s models as the model selects do', function () {
+    config(['tolk.models.openai' => [['id' => 'gpt-custom', 'label' => 'GPT Custom'], ['id' => 'gpt-unlabelled'], ['tier' => 'fast']]]);
+
+    expect(tolkScriptData()['models'])->toMatchArray(['openai:gpt-custom' => 'GPT Custom', 'openai:gpt-unlabelled' => 'gpt-unlabelled'])
+        ->not->toHaveKey('openai:gpt-6.1-sol');
 });
 
 it('keeps the editor concurrency at one or more', function () {
@@ -77,5 +98,5 @@ it('includes the data in the CP page', function () {
 
     $this->get(cp_route('dashboard'))
         ->assertOk()
-        ->assertSee('"tolk":{"fieldtypes":["text","textarea","markdown","bard","replicator","grid","group","table","list","array"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).',"auditUrl":'.json_encode(cp_route('tolk.audit')).'}', false);
+        ->assertSee('"tolk":{"fieldtypes":["text","textarea","markdown","bard","replicator","grid","group","table","list","array"],"concurrency":4,"multisite":true,"fakeEngine":false,"settingsUrl":'.json_encode(cp_route('addons.settings.edit', 'statamic-tolk')).',"auditUrl":'.json_encode(cp_route('tolk.audit')).',"models":'.json_encode(tolkCatalogLabels()).'}', false);
 });

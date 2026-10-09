@@ -1,4 +1,5 @@
-// Turns the payload of `editor/status` into what the banner shows. Pure apart from `__()` and `__n()`.
+// Turns the payload of `editor/status` into what the banner shows. Pure apart from `__()`, `__n()` and the catalog's
+// model labels in the script config (`modelName()`).
 
 import { asMap } from '../api.js';
 
@@ -178,6 +179,8 @@ function describeOrigin(block, setup) {
 
     return {
         localizations,
+        // Every localization exists and is up to date: there is nothing to act on.
+        upToDate: localizations.length > 0 && localizations.every((localization) => localization.status === 'current'),
         translateInto: !setup && localizations.some((localization) => localization.translate),
         update: !setup && localizations.some((localization) => localization.update),
     };
@@ -200,8 +203,14 @@ function originSummary(localization, parts) {
     return parts.map((part) => part.text).join(', ');
 }
 
-// `anthropic:claude-sonnet-5-5` → `claude-sonnet-5-5`.
-export function modelName(reference) {
+// A model as the model selects name it, from the catalog's labels (`tolk.models` in the script config):
+// `anthropic:claude-sonnet-5-5` → `Claude Sonnet 5.5`. A model outside the catalog is named by its id: `openai:gpt-custom`
+// → `gpt-custom`.
+export function modelName(reference, labels = globalThis.Statamic?.$config?.get('tolk.models')) {
+    if (typeof labels?.[reference] === 'string') {
+        return labels[reference];
+    }
+
     const separator = reference.indexOf(':');
 
     return separator === -1 ? reference : reference.slice(separator + 1);
@@ -265,7 +274,7 @@ export function describeSummary(summary, status = null) {
 function translators(summary) {
     const others = summary.models.filter((model) => model !== summary.reviewer);
 
-    return (others.length ? others : summary.models).map(modelName).join(', ');
+    return (others.length ? others : summary.models).map((model) => modelName(model)).join(', ');
 }
 
 function translatedLine(count, models) {

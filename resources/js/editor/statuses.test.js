@@ -20,6 +20,8 @@ afterEach(() => {
 });
 
 const zero = { untranslated: 0, current: 0, outdated: 0, manual: 0, attention: 0, untracked: 0 };
+// `tolk.models` of the script config: the catalog's labels by reference.
+const catalogLabels = { 'anthropic:claude-sonnet-5-5': 'Claude Sonnet 5.5', 'gemini:gemini-3.8-flash': 'Gemini 3.8 Flash' };
 
 function field(label, status, extra = {}) {
     return { status, label, source_changed: null, incomplete: false, ...extra };
@@ -310,12 +312,33 @@ describe('an origin', () => {
             }),
         );
 
-        expect(banner.origin).toMatchObject({ translateInto: false, update: false });
+        expect(banner.origin).toMatchObject({ upToDate: false, translateInto: false, update: false });
         // Every field up to date needs no line next to its badge.
         expect(banner.origin.localizations.map((l) => [l.label, l.color, l.summary])).toEqual([
             ['Up to date', 'green', null],
             ['Needs attention', 'purple', '1 field edited by hand, 1 needs attention'],
         ]);
+    });
+});
+
+describe('an origin whose translations', () => {
+    const origin = (...localizations) =>
+        describeStatus(
+            payload({
+                origin: {
+                    localizations: localizations.map(([site, status, counts]) => ({ site, name: site, exists: status !== 'missing', status, counts: { ...zero, ...counts } })),
+                },
+            }),
+        ).origin;
+
+    it('are all up to date, edited by hand ones included, is up to date', () => {
+        expect(origin(['el', 'current', { current: 4 }], ['de', 'current', { current: 2, manual: 2 }]).upToDate).toBe(true);
+    });
+
+    it('are not all there or up to date is not', () => {
+        expect(origin(['el', 'current', { current: 4 }], ['de', 'missing', { untranslated: 4 }]).upToDate).toBe(false);
+        expect(origin(['el', 'current', { current: 4 }], ['de', 'outdated', { current: 3, outdated: 1 }]).upToDate).toBe(false);
+        expect(origin().upToDate).toBe(false);
     });
 });
 
@@ -466,6 +489,18 @@ describe('describeSummary', () => {
         );
     });
 
+    it('names the models by their catalog labels', () => {
+        vi.stubGlobal('Statamic', { $config: { get: (key) => (key === 'tolk.models' ? catalogLabels : null) } });
+
+        const text = describeSummary(
+            summary({ delivered: ['intro'], models: ['gemini:gemini-3.8-flash', 'openai:gpt-custom'], reviewer: 'anthropic:claude-sonnet-5-5' }),
+            status,
+        );
+
+        expect(text.translated).toBe('1 field translated with Gemini 3.8 Flash, gpt-custom.');
+        expect(text.reviewed).toBe('Reviewed with Claude Sonnet 5.5: nothing to correct.');
+    });
+
     it('names the reviewer as the translator when it translated too', () => {
         const text = describeSummary(summary({ delivered: ['intro'], models: ['anthropic:claude-sonnet-5-5'], reviewer: 'anthropic:claude-sonnet-5-5' }), status);
 
@@ -560,8 +595,19 @@ describe('describeSummary', () => {
 });
 
 describe('modelName', () => {
-    it('drops the provider', () => {
+    it('names a catalog model by its label, as the model selects do', () => {
+        expect(modelName('gemini:gemini-3.8-flash', catalogLabels)).toBe('Gemini 3.8 Flash');
+    });
+
+    it('reads the labels from the script config', () => {
+        vi.stubGlobal('Statamic', { $config: { get: (key) => (key === 'tolk.models' ? catalogLabels : null) } });
+
+        expect(modelName('anthropic:claude-sonnet-5-5')).toBe('Claude Sonnet 5.5');
+    });
+
+    it('drops the provider of a model outside the catalog, or without labels', () => {
+        expect(modelName('openai:gpt-custom', catalogLabels)).toBe('gpt-custom');
         expect(modelName('gemini:gemini-3.8-flash')).toBe('gemini-3.8-flash');
-        expect(modelName('plain')).toBe('plain');
+        expect(modelName('plain', [])).toBe('plain');
     });
 });

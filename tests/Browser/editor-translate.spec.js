@@ -23,7 +23,7 @@ test('Translate fills the untranslated fields, and Save stores them with their s
 
     await banner(page).locator('[data-tolk-action="translate"]').click();
 
-    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with \S+\.$/);
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with .+\.$/);
     await expect(banner(page).locator('[data-tolk-summary-unsaved]')).toHaveText('Not saved yet. Check the fields, then save.');
     await expect(banner(page).locator('[data-tolk-action="undo"]')).toBeVisible();
     await expect(page.locator('#field_title')).toHaveValue(before.title);

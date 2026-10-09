@@ -97,6 +97,18 @@ it('groups the catalog by provider for model selects', function () {
     ]);
 });
 
+it('labels every catalog model by reference, configured or not', function () {
+    config(['tolk.models.gemini' => [['tier' => 'fast'], ['id' => 'gemini-custom']]]);
+
+    expect(modelCatalog()->catalogLabels())->toBe([
+        'anthropic:claude-sonnet-5-5' => 'Claude Sonnet 5.5',
+        'anthropic:claude-haiku-5-5' => 'Claude Haiku 5.5',
+        'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
+        'openai:gpt-6-luna' => 'GPT-6 Luna',
+        'gemini:gemini-custom' => 'gemini-custom',
+    ]);
+});
+
 it('returns the first model of a tier as the default', function (string $provider, Tier $tier, string $expected) {
     expect(modelCatalog()->default($provider, $tier))->toEqual(modelRef($expected));
 })->with([
