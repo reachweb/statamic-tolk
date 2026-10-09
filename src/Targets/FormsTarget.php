@@ -16,6 +16,7 @@ use Statamic\Contracts\Forms\Form as FormContract;
 use Statamic\Facades\Form;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fields;
+use Statamic\Support\Str;
 
 /**
  * The texts of every form in one language, stored in `lang/{lang}.json` under the source text, as Laravel's JSON
@@ -260,7 +261,8 @@ final class FormsTarget implements Target
             $prefix = $title.' › '.$field->display();
 
             foreach (self::FIELD_TEXTS as $key) {
-                $occurrences[] = [$field->get($key), "{$prefix} › {$key}"];
+                // A field without a display shows the label Statamic makes from its handle, which it passes through __().
+                $occurrences[] = [$field->get($key, $key === 'display' ? Str::slugToTitle($field->handle()) : null), "{$prefix} › {$key}"];
             }
 
             foreach (self::optionLabels($field->get('options')) as [$key, $label]) {

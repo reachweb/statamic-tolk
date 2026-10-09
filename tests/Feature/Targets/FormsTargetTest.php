@@ -17,6 +17,7 @@ use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\FormFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Facades\Form;
 use Statamic\Facades\Site;
 use Statamic\Facades\User;
 
@@ -84,6 +85,16 @@ it('reads an email config that is a single map, as Statamic sends it', function 
 
     expect(formsTarget()->fields()->keys()->all())->toContain('Legacy', 'Legacy subject')
         ->and(formsTarget()->fields()->get('Legacy subject')->display())->toBe('Legacy › email subject');
+});
+
+it('collects the label Statamic makes from the handle of a field without a display', function () {
+    FormFixtures::make('feedback', 'Feedback', [
+        'your_message' => ['type' => 'textarea', 'validate' => ['required']],
+    ]);
+
+    expect(Form::find('feedback')->blueprint()->field('your_message')->display())->toBe('Your Message')
+        ->and(formsTarget()->fields()->keys()->all())->toContain('Feedback', 'Your Message')
+        ->and(formsTarget()->fields()->get('Your Message')->display())->toBe('Feedback › Your Message › display');
 });
 
 it('labels a text with its place, and a text used in several places with the first and the count', function () {
