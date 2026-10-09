@@ -129,7 +129,7 @@ describe('PHP', function () {
     it('translates every title, explanation and item of the audit', function () {
         $this->useFileCache();
         config([
-            'tolk.models.openai' => [['id' => 'gpt-6-luna', 'tier' => 'fast']],
+            'tolk.models.openai' => [['id' => 'gpt-6.1-sol', 'tier' => 'fast']],
             'tolk.settings.fallback_model' => 'gemini:gemini-3.8-flash',
             'statamic.git.enabled' => true,
             'statamic.static_caching.strategy' => 'half',

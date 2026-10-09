@@ -101,9 +101,7 @@ function docsConfigKeys(?array $config = null, string $prefix = ''): array
  */
 function docsCatalogEntryKeys(): array
 {
-    $config = require DOCS_ROOT.'/config/tolk.php';
-
-    return collect($config['models'])
+    return collect(require DOCS_ROOT.'/resources/models.php')
         ->flatMap(fn (array $entries) => collect($entries)->flatMap(fn (array $entry) => array_keys(Arr::dot($entry))))
         ->map(fn (string $key) => preg_replace('/^options\..*/', 'options', $key))
         ->unique()

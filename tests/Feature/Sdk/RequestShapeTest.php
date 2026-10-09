@@ -4,6 +4,7 @@ use Composer\InstalledVersions;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Tests\Support\Agents\ProbeAgent;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 
@@ -46,7 +47,7 @@ it('sends no sampling parameters', function (string $provider, string $tier) {
 })->with(ProviderFixtures::PROVIDERS)->with(['quality', 'fast']);
 
 it('sends every catalog model with its options and keeps the structured output format', function (string $provider, string $formatPath, ?string $optionsPath) {
-    $models = config("tolk.models.{$provider}");
+    $models = app(ModelCatalog::class)->forProvider($provider);
 
     ProviderFixtures::fake($provider, ProviderFixtures::response($provider));
 

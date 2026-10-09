@@ -19,7 +19,7 @@ it('bills cache reads and writes at the prices of the catalog entry when it has 
     expect($pricing->cost(new ModelRef('openai', 'gpt-6.1-sol'), new Usage(input: 3000, cacheRead: 1000, cacheWrite: 1000)))
         ->toEqualWithDelta((1000 * 2 + 1000 * 0.1 + 1000 * 2.5) / 1_000_000, 1e-12);
 
-    config(['tolk.models.openai.1.price.cache_write' => 0.2, 'tolk.models.openai.1.price.cache_read' => 'free']);
+    config(['tolk.models.openai' => [['id' => 'gpt-6-luna', 'price' => ['input' => 0.1, 'output' => 0.5, 'cache_read' => 'free', 'cache_write' => 0.2]]]]);
 
     // Luna: a written price, and a read price that is not a number, so 10% of the input price.
     expect($pricing->cost(new ModelRef('openai', 'gpt-6-luna'), new Usage(input: 3000, cacheRead: 1000, cacheWrite: 1000)))
@@ -41,7 +41,7 @@ it('never bills a negative uncached input', function () {
 });
 
 it('has no cost for a model without a price', function () {
-    config(['tolk.models.openai.1.price' => null]);
+    config(['tolk.models.openai' => [['id' => 'gpt-6-luna', 'price' => null]]]);
 
     expect(app(Pricing::class)->cost(new ModelRef('openai', 'gpt-6-luna'), new Usage(1000, 100)))->toBeNull()
         ->and(app(Pricing::class)->cost(new ModelRef('anthropic', 'claude-custom'), new Usage(1000, 100)))->toBeNull();
