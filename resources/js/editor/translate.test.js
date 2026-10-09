@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import { ApiError } from '../api.js';
 import { restore, SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
+import { describeSummary } from './statuses.js';
 import { useEditorStore } from './store.js';
 import { createTranslations, keptMessage, remainingHandles, reviewable, reviewHandles, skipHandles, slugToKeep, undoable } from './translate.js';
 
@@ -1071,6 +1072,7 @@ describe('with the real runner and fill', () => {
                         usage: {},
                         remaining: 0,
                         review_skipped: false,
+                        reviewed: false,
                     };
                 }
 
@@ -1083,6 +1085,7 @@ describe('with the real runner and fill', () => {
                     usage: { 'openai:gpt-6.1-sol': { input: 10, output: 5, calls: 1 } },
                     remaining: 0,
                     review_skipped: false,
+                    reviewed: true,
                 };
             }),
         };
@@ -1103,7 +1106,13 @@ describe('with the real runner and fill', () => {
             reviewer: null,
         }]);
         expect(ctx.values.value).toMatchObject({ intro: '[de] A family hotel.', seo_title: '[de] Kyma Bay Hotel' });
-        expect(result).toMatchObject({ kind: 'review', delivered: ['intro'], unchanged: ['seo_title'], corrections: [{ handle: 'intro', ...correction }] });
+        expect(result).toMatchObject({
+            kind: 'review',
+            delivered: ['intro'],
+            unchanged: ['seo_title'],
+            corrections: [{ handle: 'intro', ...correction }],
+            reviewedUnits: ['b1'],
+        });
         expect(base().delivered.intro).toMatchObject({ plan: 'r1', value: '[de] A family hotel.' });
         expect(undoable(base())).toBe(true);
 
@@ -1115,5 +1124,100 @@ describe('with the real runner and fill', () => {
         expect(base().delivered.intro).toMatchObject({ plan: 'p1', value: '[de] A family-run hotel.' });
         expect(base().phase).toBe('idle');
         expect(reviewable(base())).toBe(true);
+    });
+});
+
+describe('what the summary says about the review, with the real runner', () => {
+    const REVIEWER = 'openai:gpt-6.1-sol';
+    const intro = { value: '[de] A family-run hotel.', meta: null, incomplete: false, warnings: [], corrections: [], reviewer: REVIEWER };
+    const reviewPlan = (extra = {}) => planResponse({ units: [{ id: 'b1', fields: ['intro'], chars: 19 }], fields: ['intro'], reviewer: REVIEWER, ...extra });
+    const unitResponse = (extra = {}) => ({
+        fields: {},
+        unchanged: [],
+        spawned: [],
+        failed: [],
+        warnings: [],
+        usage: {},
+        remaining: 0,
+        review_skipped: false,
+        reviewed: false,
+        ...extra,
+    });
+    const translated = unitResponse({ spawned: [{ id: 'b1.v', fields: ['intro'], chars: 19 }], usage: { 'anthropic:claude-sonnet-5-5': { calls: 1 } } });
+
+    // `editor/plan` answers the plan, `editor/unit` by unit id: a response, an error, or a function that returns one.
+    function unitApi(plan, units) {
+        return {
+            post: vi.fn(async (path, data) => {
+                if (path === 'editor/plan') {
+                    return plan;
+                }
+
+                const answer = typeof units[data.unit] === 'function' ? await units[data.unit]() : units[data.unit];
+
+                if (answer instanceof Error) {
+                    throw answer;
+                }
+
+                return answer;
+            }),
+        };
+    }
+
+    const fill = (ctx, payloads) => ({ applied: Object.keys(payloads), skipped: {}, stale: false });
+    const create = (api) => createTranslations({ store: () => store, registry, api, fill, concurrency: () => 1 });
+
+    async function summaryOf(plan, units) {
+        const result = await create(unitApi(plan, units)).translate('base', { mode: 'update', review: true });
+
+        return describeSummary(result, base().status);
+    }
+
+    beforeEach(() => {
+        vi.stubGlobal('__n', (key) => key);
+        mount();
+    });
+
+    it('names the reviewer once a review unit has reviewed', async () => {
+        const summary = await summaryOf(reviewPlan(), { b1: translated, 'b1.v': unitResponse({ fields: { intro }, reviewed: true }) });
+
+        expect(summary.reviewed).toBe('Reviewed with :model: nothing to correct.');
+    });
+
+    it('names no reviewer when the plan had no unit to review', async () => {
+        const summary = await summaryOf(reviewPlan({ units: [], ready: { intro } }), {});
+
+        expect(summary.translated).not.toBeNull();
+        expect(summary.reviewed).toBeNull();
+    });
+
+    it('names no reviewer when every review was skipped', async () => {
+        const summary = await summaryOf(reviewPlan(), { b1: translated, 'b1.v': unitResponse({ fields: { intro }, review_skipped: true }) });
+
+        expect(summary.reviewSkipped).not.toBeNull();
+        expect(summary.reviewed).toBeNull();
+    });
+
+    it('names no reviewer when the provider rejected it', async () => {
+        const rejected = new ApiError({ status: 502, code: 'provider_rejected', message: 'The AI provider [openai] does not offer the model.', data: null });
+        const summary = await summaryOf(reviewPlan(), { b1: translated, 'b1.v': rejected });
+
+        expect(base().phase).toBe('error');
+        expect(summary.reviewed).toBeNull();
+    });
+
+    it('names no reviewer when the translation was cancelled before a review ran', async () => {
+        const held = deferred();
+        const t = create(unitApi(reviewPlan(), { b1: () => held.promise }));
+        const running = t.translate('base', { mode: 'update', review: true });
+
+        await flush();
+        t.cancel('base');
+        held.resolve(translated);
+
+        const summary = describeSummary(await running, base().status);
+
+        expect(summary.cancelled).not.toBeNull();
+        expect(summary.reviewed).toBeNull();
     });
 });

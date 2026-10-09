@@ -477,14 +477,23 @@ describe('describeSummary', () => {
     it('names the reviewer and the corrections of a translation that was reviewed', () => {
         const corrections = [{ handle: 'intro', id: 's2', label: 'Introduction', before: 'a', after: 'b', reason: 'Better.' }];
         const text = describeSummary(
-            summary({ delivered: ['intro', 'seo_title'], models: ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol'], reviewer: 'openai:gpt-6.1-sol', corrections }),
+            summary({
+                delivered: ['intro', 'seo_title'],
+                models: ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol'],
+                reviewer: 'openai:gpt-6.1-sol',
+                reviewedUnits: ['b1.v'],
+                corrections,
+            }),
             status,
         );
 
         expect(text.translated).toBe('2 fields translated with claude-sonnet-5-5.');
         expect(text.reviewed).toBe('Reviewed with gpt-6.1-sol: 1 correction.');
         expect(text.corrections).toBe(1);
-        expect(describeSummary(summary({ delivered: ['intro'], reviewer: 'openai:gpt-6.1-sol', corrections: [...corrections, ...corrections] }), status).reviewed).toBe(
+        expect(
+            describeSummary(summary({ delivered: ['intro'], reviewer: 'openai:gpt-6.1-sol', reviewedUnits: ['b1.v'], corrections: [...corrections, ...corrections] }), status)
+                .reviewed,
+        ).toBe(
             'Reviewed with gpt-6.1-sol: 2 corrections.',
         );
     });
@@ -493,7 +502,7 @@ describe('describeSummary', () => {
         vi.stubGlobal('Statamic', { $config: { get: (key) => (key === 'tolk.models' ? catalogLabels : null) } });
 
         const text = describeSummary(
-            summary({ delivered: ['intro'], models: ['gemini:gemini-3.8-flash', 'openai:gpt-custom'], reviewer: 'anthropic:claude-sonnet-5-5' }),
+            summary({ delivered: ['intro'], models: ['gemini:gemini-3.8-flash', 'openai:gpt-custom'], reviewer: 'anthropic:claude-sonnet-5-5', reviewedUnits: ['b1.v'] }),
             status,
         );
 
@@ -502,7 +511,10 @@ describe('describeSummary', () => {
     });
 
     it('names the reviewer as the translator when it translated too', () => {
-        const text = describeSummary(summary({ delivered: ['intro'], models: ['anthropic:claude-sonnet-5-5'], reviewer: 'anthropic:claude-sonnet-5-5' }), status);
+        const text = describeSummary(
+            summary({ delivered: ['intro'], models: ['anthropic:claude-sonnet-5-5'], reviewer: 'anthropic:claude-sonnet-5-5', reviewedUnits: ['b1.v'] }),
+            status,
+        );
 
         expect(text.translated).toBe('1 field translated with claude-sonnet-5-5.');
         expect(text.reviewed).toBe('Reviewed with claude-sonnet-5-5: nothing to correct.');
@@ -511,7 +523,7 @@ describe('describeSummary', () => {
 
     it('describes a review without a translated line', () => {
         const review = (extra = {}) =>
-            summary({ kind: 'review', planned: ['intro', 'seo_title'], models: ['openai:gpt-6.1-sol'], reviewer: 'openai:gpt-6.1-sol', ...extra });
+            summary({ kind: 'review', planned: ['intro', 'seo_title'], models: ['openai:gpt-6.1-sol'], reviewer: 'openai:gpt-6.1-sol', reviewedUnits: ['b1'], ...extra });
         const corrected = describeSummary(review({ delivered: ['intro'], corrections: [{ handle: 'intro', id: 's1' }] }), status);
 
         expect(corrected.translated).toBeNull();
@@ -531,6 +543,17 @@ describe('describeSummary', () => {
         expect(describeSummary(summary({ kind: 'review', planned: ['intro'], planSkipped: { title: 'manual', seo_title: 'outdated' } }), status).manual).toBe(
             'Title was not reviewed because it was edited by hand. Overwrite manual edits in the options reviews it too.',
         );
+    });
+
+    it('names no reviewer while no review unit reviewed: none planned, every one skipped, rejected or cancelled', () => {
+        const unreviewed = (extra = {}) => describeSummary(summary({ delivered: ['intro'], reviewer: 'openai:gpt-6.1-sol', reviewedUnits: [], ...extra }), status);
+
+        expect(unreviewed().reviewed).toBeNull();
+        expect(unreviewed({ reviewSkipped: ['b1.v'] }).reviewed).toBeNull();
+        expect(unreviewed({ stopped: { status: 502, code: 'provider_rejected', message: 'Rejected.' } }).reviewed).toBeNull();
+        expect(unreviewed({ cancelled: true }).reviewed).toBeNull();
+        expect(describeSummary(summary({ delivered: ['intro'], reviewer: 'openai:gpt-6.1-sol' }), status).reviewed).toBeNull();
+        expect(unreviewed({ kind: 'review', planned: ['intro'], delivered: [] }).reviewed).toBeNull();
     });
 
     it('says when part of the review could not be made', () => {

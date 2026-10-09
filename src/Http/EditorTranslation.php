@@ -97,6 +97,7 @@ final readonly class EditorTranslation
             'remaining' => count($this->pipeline->runnable($plan)),
             // A review that could not be made keeps the translation as it was (§A10).
             'review_skipped' => $unit->kind === UnitKind::Review && $outcome->model === null,
+            'reviewed' => $unit->kind === UnitKind::Review && $outcome->model !== null,
         ];
     }
 
