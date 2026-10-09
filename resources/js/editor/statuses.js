@@ -292,7 +292,8 @@ function reviewedLine(summary, corrections) {
         return __('There was nothing to review: no field holds a translation that is up to date.');
     }
 
-    if (!summary.reviewer) {
+    // The plan names its reviewer whenever review is on; only a review unit that called it reviewed anything.
+    if (!summary.reviewer || !summary.reviewedUnits?.length) {
         return null;
     }
 

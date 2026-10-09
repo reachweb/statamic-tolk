@@ -489,15 +489,16 @@ describe('runPlan', () => {
         ]);
     });
 
-    it('lists the fields a review left unchanged, and the review units that were skipped', async () => {
+    it('lists the fields a review left unchanged, the review units that reviewed and those that were skipped', async () => {
         const server = fakeApi({
-            'b1.v': [response({ title: payload('title') }, { unchanged: ['intro'], review_skipped: false })],
-            'b2.v': [response({}, { unchanged: ['body', 'title'], review_skipped: true })],
+            'b1.v': [response({ title: payload('title') }, { unchanged: ['intro'], review_skipped: false, reviewed: true })],
+            'b2.v': [response({}, { unchanged: ['body', 'title'], review_skipped: true, reviewed: false })],
         });
 
         const summary = await runPlan({ api: server.api, plan: plan([unit('b1.v', ['title', 'intro']), unit('b2.v', ['body'])]) });
 
         expect(summary.unchanged).toEqual(['intro', 'body']);
+        expect(summary.reviewedUnits).toEqual(['b1.v']);
         expect(summary.reviewSkipped).toEqual(['b2.v']);
         expect(summary.corrections).toEqual([]);
     });
@@ -510,7 +511,16 @@ describe('runPlan', () => {
 
         expect(server.requests).toEqual([]);
         expect(onProgress).toHaveBeenLastCalledWith({ total: 0, done: 0, waiting: 0 });
-        expect(summary).toMatchObject({ delivered: [], corrections: [], unchanged: [], reviewSkipped: [], stopped: null, aborted: false, units: { total: 0, done: 0 } });
+        expect(summary).toMatchObject({
+            delivered: [],
+            corrections: [],
+            unchanged: [],
+            reviewedUnits: [],
+            reviewSkipped: [],
+            stopped: null,
+            aborted: false,
+            units: { total: 0, done: 0 },
+        });
     });
 });
 

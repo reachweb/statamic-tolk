@@ -82,6 +82,7 @@ export async function runPlan({
     const failed = {};
     const warnings = new Set();
     const unchanged = new Set();
+    const reviewed = new Set();
     const reviewSkipped = new Set();
     const usage = {};
     let stopped = null;
@@ -119,6 +120,10 @@ export async function runPlan({
 
         (Array.isArray(response?.warnings) ? response.warnings : []).forEach((warning) => warnings.add(warning));
         (Array.isArray(response?.unchanged) ? response.unchanged : []).forEach((handle) => unchanged.add(handle));
+
+        if (response?.reviewed === true) {
+            reviewed.add(unit.id);
+        }
 
         if (response?.review_skipped === true) {
             reviewSkipped.add(unit.id);
@@ -222,6 +227,7 @@ export async function runPlan({
         cancelledUnits,
         warnings: [...warnings],
         unchanged,
+        reviewedUnits: [...reviewed],
         reviewSkipped: [...reviewSkipped],
         usage,
         stopped,
@@ -230,7 +236,7 @@ export async function runPlan({
     });
 }
 
-function summarize(fills, { received, failed, failedUnits, cancelledUnits, warnings, unchanged, reviewSkipped, usage, stopped, aborted, progress }) {
+function summarize(fills, { received, failed, failedUnits, cancelledUnits, warnings, unchanged, reviewedUnits, reviewSkipped, usage, stopped, aborted, progress }) {
     const delivered = [];
     const skipped = {};
     let stale = false;
@@ -279,6 +285,8 @@ function summarize(fills, { received, failed, failedUnits, cancelledUnits, warni
         }),
         // Reviewed without a correction, so the server did not deliver them.
         unchanged: [...unchanged].filter((handle) => !delivered.includes(handle)),
+        // The review units that called the reviewer.
+        reviewedUnits,
         reviewSkipped,
         usage,
         models: Object.keys(usage),

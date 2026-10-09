@@ -251,6 +251,7 @@ describe('unit', function () {
             'usage' => ['anthropic:claude-sonnet-5-5' => $response->json('usage.anthropic:claude-sonnet-5-5')],
             'remaining' => 0,
             'review_skipped' => false,
+            'reviewed' => false,
         ])
             ->and($response->json('usage.anthropic:claude-sonnet-5-5.calls'))->toBe(1)
             ->and(Entry::find($this->greek->id())->data()->all())->toBe($before)

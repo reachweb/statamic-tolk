@@ -116,6 +116,7 @@ describe('review of the open form', function () {
             ]])
             ->and($response['unchanged'])->toBe(['intro', 'subtitle', 'body'])
             ->and($response['review_skipped'])->toBeFalse()
+            ->and($response['reviewed'])->toBeTrue()
             ->and(array_keys($response['usage']))->toBe([EDITOR_REVIEWER])
             ->and(Entry::find($this->greek->id())->data()->all())->toBe($before)
             ->and(editorReviewState('title')->pending[0]->plan)->toBe($plan['plan'])
@@ -251,6 +252,7 @@ describe('review of the open form', function () {
         expect($run['fields'])->toBe([])
             ->and($run['responses'][0]['unchanged'])->toBe(['title'])
             ->and($run['responses'][0]['review_skipped'])->toBeTrue()
+            ->and($run['responses'][0]['reviewed'])->toBeFalse()
             ->and($run['responses'][0]['warnings'])->toBe(['Title: review skipped (refused).']);
     });
 
@@ -288,6 +290,18 @@ describe('review while translating', function () {
             ->and($fields['intro']['reviewer'])->toBe(EDITOR_REVIEWER)
             ->and($fields['title']['corrections'])->toBe([])
             ->and($fields['title']['reviewer'])->toBe(EDITOR_REVIEWER);
+    });
+
+    it('reports as reviewed the review units that called the reviewer, also when one is run again', function () {
+        $this->fakeTranslations();
+        $this->fakeReview();
+
+        $plan = $this->postJson(cp_route('tolk.editor.plan'), ['reference' => $this->greek->reference(), 'mode' => 'missing', 'review' => true])->assertOk()->json();
+        $responses = editorReviewRun($plan)['responses'];
+        $again = $this->postJson(cp_route('tolk.editor.unit'), ['plan' => $plan['plan'], 'unit' => 'b1.v'])->assertOk()->json();
+
+        expect(array_column($responses, 'reviewed'))->toBe([false, true])
+            ->and($again['reviewed'])->toBeTrue();
     });
 
     it('follows the review setting unless the request turns it on or off', function (bool $setting, ?bool $review, ?string $reviewer) {
