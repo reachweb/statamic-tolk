@@ -25,7 +25,7 @@ test('the listing action creates a run of three articles, whose page starts it a
     const modal = page.getByRole('dialog');
 
     await expect(modal).toContainText('The next page shows an estimate before these 3 entries are translated.');
-    await expect(modal.getByRole('checkbox', { name: 'English' })).not.toBeChecked();
+    await expect(modal.getByRole('checkbox', { name: 'English' })).toHaveCount(0);
     await expect(modal.getByRole('checkbox', { name: 'Greek' })).toBeChecked();
     await expect(modal.getByRole('checkbox', { name: 'German' })).toBeChecked();
     await modal.getByRole('button', { name: 'Translate 3 items' }).click();
