@@ -8,6 +8,15 @@ import { describeError } from './unitRunner.js';
 // While a push is starting or running, the origin's buttons make way for its progress.
 export const PUSHING = ['starting', 'running'];
 
+// Milliseconds between the looks for the run a save starts with automatic updates on (T11.1): the process that saved
+// starts it after its response, a queue worker after UpdateTranslations::DELAY_SECONDS.
+export const EXPECT_DELAYS = [1000, 2000, 4000, 8000, 15000];
+
+// A localization of the status that an automatic update would translate into: missing, untranslated or outdated.
+export function awaitsUpdate(status) {
+    return (status?.origin?.localizations ?? []).some((localization) => !localization.exists || ['untranslated', 'outdated'].includes(localization.status));
+}
+
 // The sites Translate into… offers: missing, or with untranslated fields (`describe(status).origin`).
 export function pushChoices(origin) {
     return (origin?.localizations ?? [])
@@ -43,6 +52,7 @@ export function describePush(push, status) {
 
     return {
         sites: sites.join(', '),
+        automatic: Boolean(push.automatic),
         progress,
         keepOpen: push.phase === 'running' && push.driver === 'browser',
         failure: push.failures?.length ? push.failures.at(-1).error?.message ?? null : null,
@@ -76,7 +86,13 @@ function pushResultText(status, counts) {
 // otherwise. The open form is not touched; the run saves server-side (D4). A follower belongs to its run, not to the
 // form: it keeps driving when the editor switches site or leaves for another page, and a banner that shows the item
 // again (a switch back, a reload) picks the run up from `editor/status`'s `active_run`.
-export function createPushes({ store = useEditorStore, api = defaultApi, createFollower = defaultCreateFollower } = {}) {
+export function createPushes({
+    store = useEditorStore,
+    api = defaultApi,
+    createFollower = defaultCreateFollower,
+    wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    delays = EXPECT_DELAYS,
+} = {}) {
     // Run id → follower.
     const followers = new Map();
 
@@ -125,12 +141,12 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
     }
 
     // The store's `push` of a container (`initialState()` in store.js).
-    function pushState(phase, { run = null, driver = null, sites = null, missing = [] }) {
-        return { phase, run, driver, sites, state: null, failures: [], missing, cancelling: false, error: null };
+    function pushState(phase, { run = null, driver = null, automatic = false, sites = null, missing = [] }) {
+        return { phase, run, driver, automatic, sites, state: null, failures: [], missing, cancelling: false, error: null };
     }
 
     function show(name, run, missing, sites = null) {
-        store().container(name).push = pushState('running', { run: run.run, driver: run.driver, sites, missing });
+        store().container(name).push = pushState('running', { run: run.run, driver: run.driver, automatic: run.automatic === true, sites, missing });
     }
 
     function followerOf(container) {
@@ -231,6 +247,59 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
         }
     }
 
+    // After a save, `editor/confirm`'s status: a run the save started is followed. With automatic updates on each save
+    // (T11.1), the run may start a little later, so while a localization still needs it, the status is read again a few
+    // times until the run shows. Looking stops when the form shows another item or follows a run.
+    async function afterSave(name, status) {
+        const reference = store().containers[name]?.reference;
+
+        if (status?.active_run) {
+            await adopt(name, status);
+
+            return;
+        }
+
+        if (status?.origin?.auto_update !== 'save' || !awaitsUpdate(status)) {
+            return;
+        }
+
+        for (const delay of delays) {
+            await wait(delay);
+
+            const container = store().containers[name];
+
+            if (container?.reference !== reference || PUSHING.includes(container.push?.phase)) {
+                return;
+            }
+
+            let next;
+
+            try {
+                next = await api.get('editor/status', { reference });
+            } catch {
+                return;
+            }
+
+            const current = store().containers[name];
+
+            if (current?.reference !== reference || PUSHING.includes(current.push?.phase)) {
+                return;
+            }
+
+            current.status = next;
+
+            if (next?.active_run) {
+                await adopt(name, next);
+
+                return;
+            }
+
+            if (!awaitsUpdate(next)) {
+                return;
+            }
+        }
+    }
+
     // Starts the loops again after they gave up, from a fresh state.
     async function resume(name) {
         const container = store().containers[name];
@@ -279,6 +348,7 @@ export function createPushes({ store = useEditorStore, api = defaultApi, createF
     return {
         start,
         adopt,
+        afterSave,
         resume,
         cancel,
         dismiss,

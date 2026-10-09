@@ -21,13 +21,14 @@ const rows = computed(() =>
             url: run.url,
             status: run.status,
             what: scope.what,
+            automatic: scope.automatic,
             sites: scope.sites,
             progress: __(':finished of :total', { finished: formatNumber(progress.finished), total: formatNumber(progress.total) }),
             failed: progress.counts.failed,
             tokens: usage.input + usage.output,
             cost: usage.cost,
             date: formatDate(run.created_at),
-            by: run.created_by?.name ?? __('Command line'),
+            by: run.created_by?.name ?? (scope.automatic ? __('Automatic update') : __('Command line')),
         };
     }),
 );
@@ -51,6 +52,7 @@ const rows = computed(() =>
                     </TableCell>
                     <TableCell>
                         <Link :href="row.url" class="text-blue-600 hover:underline dark:text-blue-400">{{ row.what }}</Link>
+                        <Description v-if="row.automatic" data-tolk-run-automatic>{{ __('Automatic update') }}</Description>
                     </TableCell>
                     <TableCell>{{ row.sites }}</TableCell>
                     <TableCell>

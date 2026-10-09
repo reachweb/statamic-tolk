@@ -127,6 +127,16 @@ describe('entry.saved', () => {
         expect(toasts).toEqual([]);
     });
 
+    it('hands the fresh status on, so a run the save started is followed', async () => {
+        mount();
+        const onConfirmed = vi.fn();
+        const api = { post: vi.fn(async () => ({ ...freshStatus(), not_saved: [] })) };
+
+        await run(hooks({ api, onConfirmed }).saved, savedPayload());
+
+        expect(onConfirmed).toHaveBeenCalledExactlyOnceWith('base', freshStatus());
+    });
+
     it('resolves only once the confirm request has returned', async () => {
         mount();
         let answer;
