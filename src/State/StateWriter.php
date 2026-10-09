@@ -252,7 +252,7 @@ final readonly class StateWriter
 
             if ($field->savedPending($status->targetHash) !== null) {
                 $promoted[] = $handle;
-            } elseif ($field->editedPending($status->targetHash, $status->sourceTextHash) !== null) {
+            } elseif ($field->editedPending($status->targetHash, $status->sourceTextHash) !== null && $reconciled->toArray() !== $field->toArray()) {
                 $baselined[] = $handle;
             } else {
                 if (count($reconciled->pending) < count($field->pending)) {

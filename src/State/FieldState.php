@@ -95,12 +95,10 @@ final readonly class FieldState
         }
 
         if (($edited = $this->editedPending($targetHash, $sourceTextHash)) !== null) {
-            return $this->toBaseline($edited);
+            return $this->toBaseline($edited, $targetHash, $now);
         }
 
-        $cutoff = $now->subDays(self::PENDING_DAYS);
-
-        return $this->withPendingEntries(array_filter($this->pending, fn (PendingState $pending) => $pending->createdAt->greaterThan($cutoff)));
+        return $this->withPendingEntries($this->unexpired($now));
     }
 
     /**
@@ -164,12 +162,17 @@ final readonly class FieldState
         );
     }
 
-    public function toBaseline(PendingState $pending): self
+    /**
+     * Reconcile rule 2. The deliveries stay pending until they expire, so one that is saved later still reads as machine
+     * output (D27); they are rebased on the edited text, which then makes no baseline again.
+     */
+    public function toBaseline(PendingState $pending, string $targetHash, CarbonImmutable $now): self
     {
         return new self(
             sourceHash: $pending->sourceHash,
             translator: $pending->translator,
             history: $this->historyReplacedBy(null),
+            pending: array_map(fn (PendingState $entry) => $entry->withTargetBefore($targetHash), $this->unexpired($now)),
         );
     }
 
@@ -201,6 +204,16 @@ final readonly class FieldState
             'history' => $this->history,
             'pending' => array_map(fn (PendingState $pending) => $pending->toArray(), $this->pending),
         ], fn (mixed $value) => $value !== null && $value !== false && $value !== []);
+    }
+
+    /**
+     * @return list<PendingState>
+     */
+    private function unexpired(CarbonImmutable $now): array
+    {
+        $cutoff = $now->subDays(self::PENDING_DAYS);
+
+        return array_values(array_filter($this->pending, fn (PendingState $pending) => $pending->createdAt->greaterThan($cutoff)));
     }
 
     private function withPendingEntries(array $pending): self

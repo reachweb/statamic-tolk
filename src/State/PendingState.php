@@ -56,6 +56,11 @@ final readonly class PendingState
         );
     }
 
+    public function withTargetBefore(?string $targetBefore): self
+    {
+        return new self(...[...get_object_vars($this), 'targetBefore' => $targetBefore]);
+    }
+
     public function toArray(): array
     {
         return [
