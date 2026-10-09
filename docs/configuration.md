@@ -59,7 +59,7 @@ See [Context and glossary](context-and-glossary.md#the-glossary).
 ### What the settings page refuses
 
 - A glossary row needs a term, and a translation or **Do not translate**.
-- The same term twice for one language, or twice for every language, is refused on the later row. "The same" means equal after trimming spaces: terms that differ only in case are separate rows. A row for one language may override the row for every language with the same term.
+- The same term twice for one language, or twice for every language, is refused on the later row. "The same" means equal after trimming spaces: terms that differ only in case are separate rows. A row for one language may override the row for every language with the same term, ignoring case and accents.
 - Each language has at most one language instruction row, and the row needs a site.
 - Formality is `default`, `formal` or `informal`; New localizations is `draft` or `mirror`; a model is a `provider:model` reference.
 
