@@ -283,8 +283,15 @@ async function resetUsage() {
                     <Description data-tolk-usage-total>
                         {{
                             month.cost === null
-                                ? __(':calls calls this month. The cost is unknown: a model without a price was called.', { calls: formatNumber(month.calls) })
-                                : __(':calls calls this month, an estimated :cost.', { calls: formatNumber(month.calls), cost: formatCost(month.cost) })
+                                ? __n(
+                                      ':calls call this month. The cost is unknown: a model without a price was called.|:calls calls this month. The cost is unknown: a model without a price was called.',
+                                      month.calls,
+                                      { calls: formatNumber(month.calls) },
+                                  )
+                                : __n(':calls call this month, an estimated :cost.|:calls calls this month, an estimated :cost.', month.calls, {
+                                      calls: formatNumber(month.calls),
+                                      cost: formatCost(month.cost),
+                                  })
                         }}
                     </Description>
                 </template>

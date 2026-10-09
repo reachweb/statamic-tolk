@@ -112,3 +112,16 @@ describe('the items of a review run', () => {
         expect(await render('data-tolk-items', data)).not.toContain('data-tolk-item-changes');
     });
 });
+
+describe('the usage of a run', () => {
+    const usage = (calls) => ({
+        usage: { input: 1200, output: 300, calls, cost: 0.01 },
+        formatNumber: (value) => String(value),
+        formatCost: (value) => `$${value}`,
+    });
+
+    it('counts one call in the singular and more in the plural', async () => {
+        expect(text(await render('data-tolk-run-usage', usage(1)))).toBe('1200 input and 300 output tokens in 1 call. Estimated cost so far: $0.01.');
+        expect(text(await render('data-tolk-run-usage', usage(2)))).toBe('1200 input and 300 output tokens in 2 calls. Estimated cost so far: $0.01.');
+    });
+});
