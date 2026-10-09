@@ -275,22 +275,24 @@ function filterBy(value) {
         <div class="grid gap-6 lg:grid-cols-2">
             <Card class="space-y-3" data-tolk-breakdown>
                 <Heading size="lg" :text="__('What it translates')" />
-                <Table>
-                    <TableColumns>
-                        <TableColumn>{{ __('Content') }}</TableColumn>
-                        <TableColumn>{{ __('Site') }}</TableColumn>
-                        <TableColumn>{{ __('Items') }}</TableColumn>
-                        <TableColumn>{{ __('Skipped') }}</TableColumn>
-                    </TableColumns>
-                    <TableRows>
-                        <TableRow v-for="row in breakdown" :key="row.key" :data-tolk-breakdown-row="row.key">
-                            <TableCell>{{ row.type }}</TableCell>
-                            <TableCell>{{ row.site }}</TableCell>
-                            <TableCell data-tolk-breakdown-total>{{ formatNumber(row.total) }}</TableCell>
-                            <TableCell data-tolk-breakdown-skipped>{{ formatNumber(row.skipped) }}</TableCell>
-                        </TableRow>
-                    </TableRows>
-                </Table>
+                <div class="overflow-x-auto">
+                    <Table>
+                        <TableColumns>
+                            <TableColumn>{{ __('Content') }}</TableColumn>
+                            <TableColumn>{{ __('Site') }}</TableColumn>
+                            <TableColumn>{{ __('Items') }}</TableColumn>
+                            <TableColumn>{{ __('Skipped') }}</TableColumn>
+                        </TableColumns>
+                        <TableRows>
+                            <TableRow v-for="row in breakdown" :key="row.key" :data-tolk-breakdown-row="row.key">
+                                <TableCell>{{ row.type }}</TableCell>
+                                <TableCell>{{ row.site }}</TableCell>
+                                <TableCell data-tolk-breakdown-total>{{ formatNumber(row.total) }}</TableCell>
+                                <TableCell data-tolk-breakdown-skipped>{{ formatNumber(row.skipped) }}</TableCell>
+                            </TableRow>
+                        </TableRows>
+                    </Table>
+                </div>
                 <Description v-if="breakdown.length === 0">{{ __('This run has nothing to translate.') }}</Description>
                 <Description v-for="note in leftOut" :key="note.reason" :data-tolk-left-out="note.reason">{{ note.text }}</Description>
                 <Description v-if="hint" data-tolk-not-localizable>
@@ -354,50 +356,52 @@ function filterBy(value) {
                     <Select :model-value="filter" :options="filters" size="sm" data-tolk-items-filter @update:model-value="filterBy" />
                 </div>
             </div>
-            <Table>
-                <TableColumns>
-                    <TableColumn>{{ __('Title') }}</TableColumn>
-                    <TableColumn>{{ __('Site') }}</TableColumn>
-                    <TableColumn>{{ __('Status') }}</TableColumn>
-                    <TableColumn>{{ __('Result') }}</TableColumn>
-                </TableColumns>
-                <TableRows>
-                    <TableRow v-for="item in items" :key="item.index" data-tolk-item :data-tolk-item-status="item.status">
-                        <TableCell>
-                            <a v-if="item.editUrl" :href="item.editUrl" class="text-blue-600 hover:underline dark:text-blue-400">{{ item.title }}</a>
-                            <span v-else>{{ item.title }}</span>
-                        </TableCell>
-                        <TableCell>{{ item.site }}</TableCell>
-                        <TableCell><Badge :text="item.statusLabel" :color="item.statusColor" /></TableCell>
-                        <TableCell class="space-y-1">
-                            <Text v-if="item.applied" size="sm">{{ item.applied }}</Text>
-                            <div v-if="item.corrections.length" class="flex flex-wrap items-center gap-2">
-                                <Text size="sm">{{ item.corrected }}</Text>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    :text="__('View changes')"
-                                    :aria-label="__('View changes to :title in :site', { title: item.title, site: item.site })"
-                                    data-tolk-item-changes
-                                    @click="viewChanges(item)"
-                                />
-                            </div>
-                            <Description v-if="item.incomplete.length">{{ __('Left incomplete: :fields', { fields: item.incomplete.join(', ') }) }}</Description>
-                            <Description v-if="item.kept.length">
-                                {{ __('Not changed: :fields', { fields: item.kept.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
-                            </Description>
-                            <Description v-if="item.reason">{{ item.reason }}</Description>
-                            <Text v-if="item.error" size="sm" variant="danger" data-tolk-item-error>
-                                {{ item.error }}
-                                <a v-if="item.rootPage" :href="item.rootPage.url" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-root-page>{{
-                                    __('Open :title', { title: item.rootPage.title })
-                                }}</a>
-                            </Text>
-                            <Description v-for="(warning, index) in item.warnings" :key="index">{{ warning }}</Description>
-                        </TableCell>
-                    </TableRow>
-                </TableRows>
-            </Table>
+            <div class="overflow-x-auto">
+                <Table>
+                    <TableColumns>
+                        <TableColumn>{{ __('Title') }}</TableColumn>
+                        <TableColumn>{{ __('Site') }}</TableColumn>
+                        <TableColumn>{{ __('Status') }}</TableColumn>
+                        <TableColumn>{{ __('Result') }}</TableColumn>
+                    </TableColumns>
+                    <TableRows>
+                        <TableRow v-for="item in items" :key="item.index" data-tolk-item :data-tolk-item-status="item.status">
+                            <TableCell>
+                                <a v-if="item.editUrl" :href="item.editUrl" class="text-blue-600 hover:underline dark:text-blue-400">{{ item.title }}</a>
+                                <span v-else>{{ item.title }}</span>
+                            </TableCell>
+                            <TableCell>{{ item.site }}</TableCell>
+                            <TableCell><Badge :text="item.statusLabel" :color="item.statusColor" /></TableCell>
+                            <TableCell class="space-y-1">
+                                <Text v-if="item.applied" size="sm">{{ item.applied }}</Text>
+                                <div v-if="item.corrections.length" class="flex flex-wrap items-center gap-2">
+                                    <Text size="sm">{{ item.corrected }}</Text>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        :text="__('View changes')"
+                                        :aria-label="__('View changes to :title in :site', { title: item.title, site: item.site })"
+                                        data-tolk-item-changes
+                                        @click="viewChanges(item)"
+                                    />
+                                </div>
+                                <Description v-if="item.incomplete.length">{{ __('Left incomplete: :fields', { fields: item.incomplete.join(', ') }) }}</Description>
+                                <Description v-if="item.kept.length">
+                                    {{ __('Not changed: :fields', { fields: item.kept.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
+                                </Description>
+                                <Description v-if="item.reason">{{ item.reason }}</Description>
+                                <Text v-if="item.error" size="sm" variant="danger" data-tolk-item-error>
+                                    {{ item.error }}
+                                    <a v-if="item.rootPage" :href="item.rootPage.url" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-root-page>{{
+                                        __('Open :title', { title: item.rootPage.title })
+                                    }}</a>
+                                </Text>
+                                <Description v-for="(warning, index) in item.warnings" :key="index">{{ warning }}</Description>
+                            </TableCell>
+                        </TableRow>
+                    </TableRows>
+                </Table>
+            </div>
             <Description v-if="items.length === 0">{{ __('No items.') }}</Description>
             <div v-if="pagination.last_page > 1" class="flex items-center justify-end gap-2" data-tolk-items-pages>
                 <Description>{{ __('Page :page of :pages', { page: pagination.page, pages: pagination.last_page }) }}</Description>
