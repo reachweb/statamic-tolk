@@ -255,8 +255,8 @@ function filterBy(value) {
 
         <Alert v-if="result" :variant="result.variant" data-tolk-run-result>
             <div class="space-y-3">
-                <Text>{{ result.text }}</Text>
-                <Text v-if="result.error" variant="danger">{{ result.error }}</Text>
+                <Text as="p">{{ result.text }}</Text>
+                <Text v-if="result.error" as="p" variant="danger">{{ result.error }}</Text>
                 <div v-if="actions.retry || actions.resume" class="flex flex-wrap gap-2">
                     <Button
                         v-if="actions.retry"

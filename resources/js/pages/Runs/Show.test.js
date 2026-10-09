@@ -3,7 +3,7 @@ import { createSSRApp } from 'vue';
 import { parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { describeItem } from '../../runs/describe.js';
+import { describeItem, describeResult } from '../../runs/describe.js';
 
 // Core's translator, without translation files: replacements by name, then the plural form, `one|other`.
 const translate = (key, replacements = {}) => Object.entries(replacements).reduce((text, [name, value]) => text.split(`:${name}`).join(String(value)), key);
@@ -13,8 +13,9 @@ const translateChoice = (key, count, replacements = {}) => {
     return count === 1 ? one : (other ?? one);
 };
 
-// Core's components, reduced to their text; `Text` renders a `span` as core's does.
+// Core's components, reduced to their text; `Text` renders a `span` unless told otherwise, as core's does.
 const STUBS = {
+    Alert: { props: ['variant'], template: '<div role="alert"><slot /></div>' },
     Badge: { props: ['text', 'color'], template: '<span>{{ text }}</span>' },
     Button: { props: ['text'], template: '<button>{{ text }}<slot /></button>' },
     Card: { template: '<div><slot /></div>' },
@@ -27,7 +28,7 @@ const STUBS = {
     TableColumns: { template: '<thead><tr><slot /></tr></thead>' },
     TableRow: { template: '<tr><slot /></tr>' },
     TableRows: { template: '<tbody><slot /></tbody>' },
-    Text: { props: ['variant', 'size'], template: '<span><slot /></span>' },
+    Text: { props: { as: { type: String, default: 'span' }, variant: String, size: String }, template: '<component :is="as"><slot /></component>' },
     ChangesModal: {
         props: ['modal', 'corrections', 'reviewer'],
         template: '<div data-tolk-changes><p v-for="change in corrections" :key="change.id">{{ change.label }}: {{ change.before }} → {{ change.after }} ({{ change.reason }})</p></div>',
@@ -52,6 +53,16 @@ async function render(attribute, data) {
 }
 
 const text = (html) => html.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+// What a browser shows for the markup, line by line: blocks on lines of their own, inline elements run together.
+const lines = (html) =>
+    html
+        .replace(/<!--.*?-->/g, '')
+        .replace(/<\/?(div|p|ul|li)\b[^>]*>/g, '\n')
+        .replace(/<[^>]+>/g, '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
 
 beforeEach(() => {
     vi.stubGlobal('__', translate);
@@ -123,5 +134,14 @@ describe('the usage of a run', () => {
     it('counts one call in the singular and more in the plural', async () => {
         expect(text(await render('data-tolk-run-usage', usage(1)))).toBe('1200 input and 300 output tokens in 1 call. Estimated cost so far: $0.01.');
         expect(text(await render('data-tolk-run-usage', usage(2)))).toBe('1200 input and 300 output tokens in 2 calls. Estimated cost so far: $0.01.');
+    });
+});
+
+describe('the result of a run', () => {
+    it('puts the error of an aborted run on a line of its own', async () => {
+        const result = describeResult({ run: { status: 'aborted', error: 'The AI provider rejected the request: the API key is not valid.' }, counts: { done: 0 } });
+        const html = await render('data-tolk-run-result', { result, actions: {}, busy: null });
+
+        expect(lines(html)).toEqual(['The run was stopped: 0 done.', 'The AI provider rejected the request: the API key is not valid.']);
     });
 });
