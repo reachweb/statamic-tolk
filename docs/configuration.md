@@ -54,7 +54,7 @@ See [Context and glossary](context-and-glossary.md#the-glossary).
 
 ### Providers
 
-`providers` (Providers) shows, for Anthropic, OpenAI and Gemini, whether a key is set, which variable it comes from and which variables to set, with **Test connection**: one small request to the provider's fast model, with a 20-second timeout, answered with the time it took or a readable error. The field stores nothing.
+`providers` (Providers) shows, for Anthropic, OpenAI and Gemini, whether a key is set, whether it is Tolk's own, from the addon's config (`TOLK_*_API_KEY` by default), or comes from `config/ai.php`, which Tolk shares with the rest of the site, and, without a key, which variables to set, with **Test connection**: one small request to the provider's fast model, with a 20-second timeout, answered with the time it took or a readable error. The field stores nothing.
 
 ### What the settings page refuses
 
