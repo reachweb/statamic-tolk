@@ -65,17 +65,17 @@ Terms have no offer, because a term exists in every site of its taxonomy and the
 - **Model**: the model to translate with. The menu remembers your choice for your user and preselects it the next time; the banner's Translate and Update and the offer always use the model of the settings. Choosing the default model forgets your choice. Users who may edit Tolk's settings may also type a model outside the list, as `provider:model`.
 - **Retranslate everything**: translates every field again, the up-to-date ones too. Without it, the menu's Translate fills untranslated fields and updates outdated ones, as Update does.
 - **Overwrite manual edits**: also replaces the fields edited by hand. They count as machine-translated afterwards.
-- **Review after translating** and **Reviewer**: review this translation with a second model, whatever the setting says, and with which model (see [Review](review.md)).
+- **Review after translating** and **Reviewer**: review this translation with a second model, whatever the setting says, and with which model (see [Review](review.md)). The reviewer can be chosen while **Review after translating** is checked, or while the form holds translations that **Review** can check.
 - **Translate** and **Review** run the translation or the review with these choices.
 
 Every time the menu opens, **Retranslate everything** and **Overwrite manual edits** start unchecked and **Review after translating** starts as the setting says.
 
-Under **Translation status** are two actions, each shown only while it has something to do:
+Under **Translation status** are two actions that take effect at once, without **Translate**, each shown only while it has something to do:
 
 - **Mark manual fields as up to date** records that the fields edited by hand match the current source. They stay edited by hand, and a later change to the source shows them as needing attention. Use it after you checked hand-written fields against their source, and on content translated by hand before Tolk was installed.
 - **Protect this entry from updates** turns the entry's translated fields into fields edited by hand, so Translate and Update leave them alone from then on. It also marks the fields that were already edited by hand as up to date. It is shown while the entry has a machine-translated field, up to date or outdated.
 
-**Offer to translate new localizations** turns the offer on or off for your user. It shows only while the setting is on.
+The **Offer to translate new localizations** switch turns the offer on or off for your user, as soon as you flip it. It shows only while the setting is on.
 
 ## Translating one field
 

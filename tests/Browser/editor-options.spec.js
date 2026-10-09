@@ -37,6 +37,7 @@ const checkbox = (page, name) => dialog(page).getByRole('checkbox', { name });
 const toggle = (page, name) => dialog(page).locator('label', { hasText: name }).click();
 // The translator's select comes before the reviewer's (T7.5).
 const modelSelect = (page) => dialog(page).getByRole('combobox').first();
+const reviewerSelect = (page) => dialog(page).getByRole('combobox').nth(1);
 
 const preference = (page, key) => page.evaluate((key) => Statamic.$preferences.get(key, null), key);
 
@@ -151,6 +152,14 @@ test.describe('the German home page, whose title was written by hand', () => {
         // The combobox shows the chosen model as its placeholder.
         await expect(modelSelect(page)).toHaveAttribute('placeholder', /\(default\)$/);
 
+        // Review is off in the settings and the form holds no translation to review, so the reviewer waits for the box.
+        await expect(checkbox(page, 'Review after translating')).not.toBeChecked();
+        await expect(reviewerSelect(page)).toBeDisabled();
+        await toggle(page, 'Review after translating');
+        await expect(reviewerSelect(page)).toBeEnabled();
+        await toggle(page, 'Review after translating');
+        await expect(reviewerSelect(page)).toBeDisabled();
+
         await modelSelect(page).click();
         await page.getByRole('option', { name: 'GPT-6 Luna' }).click();
         await toggle(page, 'Overwrite manual edits');
@@ -190,22 +199,24 @@ test.describe('the German home page, whose title was written by hand', () => {
         expect(browserErrors()).toEqual([]);
     });
 
-    test('the toggle turns the offer for new localizations off and back on', async ({ page, browserErrors }) => {
+    test('the switch turns the offer for new localizations off and back on', async ({ page, browserErrors }) => {
         await openOptions(page);
 
-        const offer = 'Offer to translate new localizations';
-        await expect(checkbox(page, offer)).toBeChecked();
+        // A switch, since the preference is saved at once; its label names it.
+        const offer = dialog(page).getByRole('switch', { name: 'Offer to translate new localizations' });
+        await expect(offer).toBeChecked();
 
-        await toggle(page, offer);
-        await expect(checkbox(page, offer)).not.toBeChecked();
+        await offer.click();
+        await expect(offer).not.toBeChecked();
         await expect.poll(() => preference(page, 'tolk.offer')).toBe(false);
 
         await page.reload();
         await expect(action(page, 'options')).toBeVisible();
         await openOptions(page);
-        await expect(checkbox(page, offer)).not.toBeChecked();
+        await expect(offer).not.toBeChecked();
 
-        await toggle(page, offer);
+        await page.locator('label[for="tolk-options-offer"]').click();
+        await expect(offer).toBeChecked();
         await expect.poll(() => preference(page, 'tolk.offer')).toBe(true);
         expect(browserErrors()).toEqual([]);
     });

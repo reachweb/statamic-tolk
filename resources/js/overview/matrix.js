@@ -2,7 +2,7 @@
 // Pure apart from `__()` and `__n()`.
 
 import { asMap } from '../api.js';
-import { itemStatusLabel } from '../editor/statuses.js';
+import { itemStatusLabel, statusColor } from '../editor/statuses.js';
 
 export const CONTENT_TYPES = ['entry', 'term', 'globals', 'nav'];
 
@@ -12,16 +12,13 @@ export const STATUSES = ['missing', 'untranslated', 'outdated', 'attention', 'cu
 // The key of each content type's containers in a `runs.store` request.
 const SCOPE_KEYS = { entry: 'collections', term: 'taxonomies', globals: 'globals', nav: 'navs' };
 
-const STATUS_COLORS = { missing: 'red', untranslated: 'orange', outdated: 'amber', attention: 'purple', current: 'green' };
-
 // The banner's labels, but a whole item is current rather than up to date.
 export function statusLabel(status) {
     return status === 'current' ? __('Current') : itemStatusLabel(status);
 }
 
-export function statusColor(status) {
-    return STATUS_COLORS[status] ?? 'default';
-}
+// The banner's colours, so a status looks the same on every page.
+export { statusColor };
 
 export function groupLabel(type) {
     return (
