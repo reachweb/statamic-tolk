@@ -280,7 +280,7 @@ describe('failures', function () {
 
         expect($result->status)->toBe(TargetResultStatus::Failed)
             ->and($result->reason)->toBe(TargetResult::ROOT_MISSING)
-            ->and($result->error)->toBe('Translate Home into Greek first.')
+            ->and($result->error)->toBe('Translate Home into Greek first. The Pages collection has no Greek entries yet, and the first one saved becomes its Greek home page, so translating the home page first keeps the structure of the collection\'s tree.')
             ->and($result->ref)->toBeNull()
             ->and($this->planKeys)->toBe([])
             ->and(Entry::query()->where('collection', 'pages')->where('site', 'el')->count())->toBe(0);

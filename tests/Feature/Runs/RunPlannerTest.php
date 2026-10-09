@@ -590,8 +590,13 @@ describe('pages', function () {
             'suites→el' => [],
             'suites→de' => ['rooms→de'],
         ])
-            ->and($planned->items[0])->toMatchObject(['status' => RunItemStatus::Skipped, 'reason' => 'root_missing', 'error' => 'Translate Home into Greek first.'])
-            ->and($planned->items[2])->toMatchObject(['status' => RunItemStatus::Skipped, 'reason' => 'root_missing', 'error' => 'Translate Home into Greek first.'])
+            ->and($planned->items[0])->toMatchObject([
+                'status' => RunItemStatus::Skipped,
+                'reason' => 'root_missing',
+                'error' => 'Translate Home into Greek first. The Pages collection has no Greek entries yet, and the first one saved becomes its Greek home page, so translating the home page first keeps the structure of the collection\'s tree.',
+                'rootPage' => ['title' => 'Home', 'edit_url' => $pages['home']->editUrl()],
+            ])
+            ->and($planned->items[2])->toMatchObject(['status' => RunItemStatus::Skipped, 'reason' => 'root_missing', 'rootPage' => $planned->items[0]->rootPage])
             ->and($planned->items[1]->status)->toBe(RunItemStatus::Pending)
             ->and($planned->items[3]->status)->toBe(RunItemStatus::Pending);
     });

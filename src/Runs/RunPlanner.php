@@ -516,6 +516,7 @@ final readonly class RunPlanner
                     $item->status = RunItemStatus::Skipped;
                     $item->reason = TargetResult::ROOT_MISSING;
                     $item->error = $missing->getMessage();
+                    $item->rootPage = $missing->rootPage();
 
                     return $item;
                 }

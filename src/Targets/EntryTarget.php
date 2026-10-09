@@ -216,7 +216,13 @@ final class EntryTarget implements Target
         if ($this->rootMissing()) {
             $root = Entry::find($this->sourceRootId() ?? '');
 
-            throw RootMissing::for($root?->id(), (string) ($root?->value('title') ?? $root?->slug() ?? 'the root page'), $this->siteName());
+            throw RootMissing::for(
+                $root?->id(),
+                (string) ($root?->value('title') ?? $root?->slug() ?? 'the root page'),
+                (string) $this->source()->collection()->title(),
+                $this->siteName(),
+                $root?->editUrl(),
+            );
         }
     }
 

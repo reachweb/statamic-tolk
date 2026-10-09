@@ -277,6 +277,7 @@ describe('describeItem', () => {
             ],
             reason: null,
             error: null,
+            rootPage: null,
             warnings: ['Its parent page has no localization.'],
         });
     });
@@ -288,10 +289,18 @@ describe('describeItem', () => {
             applied: null,
             reason: 'Nothing to do.',
         });
-        expect(describeItem({ status: 'skipped', reason: 'root_missing', error: 'Translate Home into Greek first.' })).toMatchObject({
+        const rootMissing = {
+            status: 'skipped',
+            reason: 'root_missing',
+            error: 'Translate Home into Greek first.',
+            root_page: { title: 'Home', edit_url: 'https://cp.test/cp/collections/pages/entries/home' },
+        };
+        expect(describeItem(rootMissing)).toMatchObject({
             reason: null,
             error: 'Translate Home into Greek first.',
+            rootPage: { title: 'Home', url: 'https://cp.test/cp/collections/pages/entries/home' },
         });
+        expect(describeItem({ ...rootMissing, root_page: { title: 'Home', edit_url: null } }).rootPage).toBeNull();
         expect(describeItem({ status: 'failed', reason: 'dependency_failed' })).toMatchObject({ statusColor: 'red', reason: 'An item it depends on failed.' });
     });
 });

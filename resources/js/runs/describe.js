@@ -365,6 +365,8 @@ export function describeItem(item, siteName = (handle) => handle) {
         kept,
         reason,
         error: item?.error ?? null,
+        // For `root_missing`: the root page to translate first.
+        rootPage: item?.root_page?.edit_url ? { title: item.root_page.title || '', url: item.root_page.edit_url } : null,
         warnings: Array.isArray(item?.warnings) ? item.warnings : [],
     };
 }

@@ -176,7 +176,7 @@ describe('PHP', function () {
             ProviderTimeout::after('openai', 120, 30),
             ProviderUnavailable::connection('openai', 30),
             RequestRejected::from('openai', $error),
-            RootMissing::for('1', 'Home', 'Greek'),
+            RootMissing::for('1', 'Home', 'Pages', 'Greek'),
             SourceChanged::field('title'),
             TargetNotFound::entry('1'),
             TargetNotFound::term('topics::news', 'el'),
