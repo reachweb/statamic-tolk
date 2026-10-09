@@ -18,11 +18,13 @@ final readonly class TranslationMemory
 
     /**
      * Pairs the target's leaves with the source leaf fingerprints of the state, which the pipeline stored only when they
-     * line up one to one. Each target leaf is expressed in the numbering of the current source leaf with its fingerprint.
+     * line up one to one, and gives each current source leaf the earlier translation of its text in its own numbering.
+     * The n-th copy of a text takes the n-th earlier translation of it (D6: an unchanged copy keeps its own, which the
+     * model or the reviewer may have made differ from another copy's), else the first that renumbers.
      *
      * @param  mixed  $targetValue  the target's own value, untouched machine output of the state
      * @param  list<Leaf>  $sourceLeaves  the current source value's leaves
-     * @return array<string, string> source leaf fingerprint → target leaf text
+     * @return array<int, string> source leaf index → target leaf text
      */
     public function forField(Field $field, FieldState $state, mixed $targetValue, array $sourceLeaves): array
     {
@@ -36,21 +38,26 @@ final readonly class TranslationMemory
             return [];
         }
 
-        $sources = [];
-
-        foreach ($sourceLeaves as $leaf) {
-            $sources[Fingerprint::ofText($leaf->text)] ??= $leaf;
-        }
-
-        $memory = [];
+        $earlier = [];
 
         foreach (array_values($state->segments) as $index => $hash) {
-            if ($hash === null || isset($memory[$hash]) || ! isset($sources[$hash])) {
-                continue;
+            if ($hash !== null) {
+                $earlier[$hash][] = $targetLeaves[$index];
             }
+        }
 
-            if (($text = Renumber::like($targetLeaves[$index], $sources[$hash])) !== null) {
-                $memory[$hash] = $text;
+        $memory = $copies = [];
+
+        foreach ($sourceLeaves as $index => $leaf) {
+            $hash = Fingerprint::ofText($leaf->text);
+            $copy = $copies[$hash] = ($copies[$hash] ?? -1) + 1;
+            $candidates = $earlier[$hash] ?? [];
+
+            foreach (isset($candidates[$copy]) ? [$candidates[$copy], ...$candidates] : $candidates as $target) {
+                if (($text = Renumber::like($target, $leaf)) !== null) {
+                    $memory[$index] = $text;
+                    break;
+                }
             }
         }
 

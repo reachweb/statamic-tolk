@@ -78,9 +78,9 @@ beforeEach(function () {
 
 it('pairs each target leaf of an aligned Bard field with its source leaf', function () {
     expect(memoryFor(memoryState($this->source), $this->target, $this->source))->toBe([
-        Fingerprint::ofText('Welcome to <1>Chania</1>.') => 'Καλώς ήρθατε στα <1>Χανιά</1>.',
-        Fingerprint::ofText('Our rooms face the sea.') => 'Τα δωμάτιά μας βλέπουν τη θάλασσα.',
-        Fingerprint::ofText('Breakfast is served until ten.') => 'Το πρωινό σερβίρεται έως τις δέκα.',
+        0 => 'Καλώς ήρθατε στα <1>Χανιά</1>.',
+        1 => 'Τα δωμάτιά μας βλέπουν τη θάλασσα.',
+        2 => 'Το πρωινό σερβίρεται έως τις δέκα.',
     ]);
 });
 
@@ -92,8 +92,8 @@ it('knows only the leaves the current source still has, wherever they moved', fu
     ];
 
     expect(memoryFor(memoryState($this->source), $this->target, $current))->toBe([
-        Fingerprint::ofText('Welcome to <1>Chania</1>.') => 'Καλώς ήρθατε στα <1>Χανιά</1>.',
-        Fingerprint::ofText('Breakfast is served until ten.') => 'Το πρωινό σερβίρεται έως τις δέκα.',
+        0 => 'Το πρωινό σερβίρεται έως τις δέκα.',
+        2 => 'Καλώς ήρθατε στα <1>Χανιά</1>.',
     ]);
 });
 
@@ -115,8 +115,8 @@ it('does not reuse a leaf that was left untranslated', function () {
     ]);
 
     expect(memoryFor(memoryState($this->source, untranslated: [1]), $target, $this->source))->toBe([
-        Fingerprint::ofText('Welcome to <1>Chania</1>.') => 'Καλώς ήρθατε στα <1>Χανιά</1>.',
-        Fingerprint::ofText('Breakfast is served until ten.') => 'Το πρωινό σερβίρεται έως τις δέκα.',
+        0 => 'Καλώς ήρθατε στα <1>Χανιά</1>.',
+        2 => 'Το πρωινό σερβίρεται έως τις δέκα.',
     ]);
 });
 
@@ -126,7 +126,7 @@ it('gives back formatted runs that the translation reordered in the source\'s nu
 
     expect(array_column(app(ContentWalker::class)->leaves(memoryField(), $target, target: true), 'text'))->toBe(['Μια <1>σουίτα με θέα</1> <2>κλείστε</2>.'])
         ->and(memoryFor(memoryState($source), $target, $source))->toBe([
-            Fingerprint::ofText('<1>Book</1> a <2>sea view suite</2>.') => 'Μια <2>σουίτα με θέα</2> <1>κλείστε</1>.',
+            0 => 'Μια <2>σουίτα με θέα</2> <1>κλείστε</1>.',
         ]);
 });
 
@@ -137,21 +137,36 @@ it('leaves out a target leaf whose formatting the source leaf does not have', fu
     expect(memoryFor(memoryState($source), $target, $source))->toBe([]);
 });
 
-it('keeps the first translation of a source text that appears twice', function () {
+it('keeps each copy\'s own translation of a source text that appears twice', function () {
     $source = [memoryParagraph('Welcome.'), memoryParagraph('Our rooms face the sea.'), memoryParagraph('Welcome.')];
     $target = [memoryParagraph('Καλώς ήρθατε.'), memoryParagraph('Τα δωμάτιά μας βλέπουν τη θάλασσα.'), memoryParagraph('Καλωσορίσατε.')];
 
     expect(memoryFor(memoryState($source), $target, $source))->toBe([
-        Fingerprint::ofText('Welcome.') => 'Καλώς ήρθατε.',
-        Fingerprint::ofText('Our rooms face the sea.') => 'Τα δωμάτιά μας βλέπουν τη θάλασσα.',
+        0 => 'Καλώς ήρθατε.',
+        1 => 'Τα δωμάτιά μας βλέπουν τη θάλασσα.',
+        2 => 'Καλωσορίσατε.',
     ]);
 });
 
-it('takes the next translation of a repeated source text when the first cannot be renumbered', function () {
+it('gives a copy the origin added since the first translation of its text', function () {
+    $source = [memoryParagraph('Welcome.'), memoryParagraph('Our rooms face the sea.'), memoryParagraph('Welcome.')];
+    $target = [memoryParagraph('Καλώς ήρθατε.'), memoryParagraph('Τα δωμάτιά μας βλέπουν τη θάλασσα.'), memoryParagraph('Καλωσορίσατε.')];
+    $current = [...$source, memoryParagraph('Welcome.')];
+
+    expect(memoryFor(memoryState($source), $target, $current))->toBe([
+        0 => 'Καλώς ήρθατε.',
+        1 => 'Τα δωμάτιά μας βλέπουν τη θάλασσα.',
+        2 => 'Καλωσορίσατε.',
+        3 => 'Καλώς ήρθατε.',
+    ]);
+});
+
+it('takes the first translation of a repeated source text that renumbers when a copy\'s own cannot be renumbered', function () {
     $source = [memoryParagraph(['Book', ['type' => 'bold']], ' now.'), memoryParagraph(['Book', ['type' => 'bold']], ' now.')];
     $target = [memoryParagraph(['Κλείστε', ['type' => 'italic']], ' τώρα.'), memoryParagraph(['Κλείστε', ['type' => 'bold']], ' τώρα.')];
 
     expect(memoryFor(memoryState($source), $target, $source))->toBe([
-        Fingerprint::ofText('<1>Book</1> now.') => '<1>Κλείστε</1> τώρα.',
+        0 => '<1>Κλείστε</1> τώρα.',
+        1 => '<1>Κλείστε</1> τώρα.',
     ]);
 });

@@ -175,6 +175,51 @@ describe('updating', function () {
             ->and(StateFixtures::stored($localization)->field('body')->translator)->toBe($translator)->not->toBeNull();
     });
 
+    it('keeps each copy\'s own translation of a repeated paragraph when an update changes another paragraph', function () {
+        reuseEditOrigin($this->origin, 'body', fn () => [reuseParagraph('Book now.'), reuseParagraph('Our rooms face the sea.'), reuseParagraph('Book now.')]);
+        // The model translated the two copies differently, in their context.
+        $this->fakeTranslations(fn (string $text, array $segment) => match ($segment['id']) {
+            's1' => 'Κλείστε τώρα.',
+            's3' => 'Κάντε κράτηση τώρα.',
+            default => '[T] '.$text,
+        });
+        reuseTranslate($this->origin, ['fields' => ['body']]);
+
+        reuseEditOrigin($this->origin, 'body', function (array $body) {
+            $body[1] = reuseParagraph('Our rooms face the bay.');
+
+            return $body;
+        });
+        $sent = [];
+        reuseRecordSent($sent);
+        reuseTranslate($this->origin, ['mode' => Mode::Update, 'fields' => ['body']]);
+
+        expect(array_column($sent, 'text'))->toBe(['Our rooms face the bay.'])
+            ->and(array_map(fn (array $paragraph) => $paragraph['content'][0]['text'], reuseLocalization($this->origin)->get('body')))
+            ->toBe(['Κλείστε τώρα.', '[T] Our rooms face the bay.', 'Κάντε κράτηση τώρα.'])
+            ->and(StateFixtures::statuses($this->origin)['body'])->toBe(FieldStatus::Current);
+    });
+
+    it('keeps a review correction of a later copy of a repeated paragraph when an update changes another paragraph', function () {
+        reuseEditOrigin($this->origin, 'body', fn () => [reuseParagraph('Book now.'), reuseParagraph('Our rooms face the sea.'), reuseParagraph('Book now.')]);
+        $this->fakeTranslations(fn (string $text) => $text === 'Book now.' ? 'Κλείσε τώρα.' : '[T] '.$text);
+        $this->fakeReview(['s3' => 'Κλείστε τώρα.']);
+        reuseTranslate($this->origin, ['fields' => ['body'], 'review' => true]);
+        $texts = fn () => array_map(fn (array $paragraph) => $paragraph['content'][0]['text'], reuseLocalization($this->origin)->get('body'));
+
+        expect($texts())->toBe(['Κλείσε τώρα.', '[T] Our rooms face the sea.', 'Κλείστε τώρα.']);
+
+        reuseEditOrigin($this->origin, 'body', function (array $body) {
+            $body[1] = reuseParagraph('Our rooms face the bay.');
+
+            return $body;
+        });
+        $this->fakeTranslations();
+        reuseTranslate($this->origin, ['mode' => Mode::Update, 'fields' => ['body']]);
+
+        expect($texts())->toBe(['Κλείσε τώρα.', '[T] Our rooms face the bay.', 'Κλείστε τώρα.']);
+    });
+
     it('sends only the leaf that was left untranslated on the next update', function () {
         $sent = [];
         reuseRecordSent($sent, fn (string $text) => $text === 'Our rooms face the sea.' ? null : '[T] '.$text);
