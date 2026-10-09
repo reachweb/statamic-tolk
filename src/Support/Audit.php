@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\RunDispatcher;
+use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\State\StatusScanner;
 use Reach\StatamicTolk\Targets\GlobalsTarget;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
@@ -77,13 +78,14 @@ final class Audit
      * localizable (§A2 reason `not_localizable`; a text field with another input type, such as url, holds no text). A
      * field from an imported fieldset names it as `fieldset`: makeLocalizable() leaves it alone.
      *
+     * @param  array<string, ?string>  $assumedSites  containers to cover although they have one site (RunRequest::$assumedSites)
      * @return list<array{level: string, text: string, type: string, container: string, namespace: string, blueprint: string, name: string, fields: list<array{handle: string, label: string, type: string, fieldset: ?string}>}>
      */
-    public function notLocalizable(): array
+    public function notLocalizable(array $assumedSites = []): array
     {
         $items = [];
 
-        foreach ($this->blueprints() as $source) {
+        foreach ($this->blueprints($assumedSites) as $source) {
             $explained = $this->translatableFields->explain($source['blueprint'], $source['context']);
             $imported = $this->importedFields($source['blueprint']);
             $fields = [];
@@ -113,13 +115,14 @@ final class Audit
      * The blueprints with nested fields that would be translated although their handles look technical
      * (TranslatableFields::nestedTechnicalFields()).
      *
+     * @param  array<string, ?string>  $assumedSites  containers to cover although they have one site (RunRequest::$assumedSites)
      * @return list<array{level: string, text: string, type: string, container: string, namespace: string, blueprint: string, name: string, fields: list<array{path: string, handle: string, type: string, label: string}>}>
      */
-    public function technicalFields(): array
+    public function technicalFields(array $assumedSites = []): array
     {
         $items = [];
 
-        foreach ($this->blueprints() as $source) {
+        foreach ($this->blueprints($assumedSites) as $source) {
             $fields = $this->translatableFields->nestedTechnicalFields($source['blueprint']);
 
             if ($fields !== []) {
@@ -489,15 +492,17 @@ final class Audit
      * The blueprints of the collections and taxonomies Tolk translates (StatusScanner::containers()), and of the
      * global sets among them that have one, with the context TranslatableFields::explain() needs (§A2).
      *
+     * @param  array<string, ?string>  $assumedSites  containers to add (RunRequest::$assumedSites)
      * @return list<array{type: string, name: string, container: string, blueprint: Blueprint, context: array}>
      */
-    private function blueprints(): array
+    private function blueprints(array $assumedSites = []): array
     {
         $excludedFields = $this->settings->excludedFields();
         $context = fn (bool $autoTitle = false) => ['auto_title' => $autoTitle, 'excluded_fields' => $excludedFields];
+        $containers = fn (ContentType $type, string $assumed) => array_values(array_unique([...$this->scanner->containers($type), ...RunRequest::assumed($assumedSites, $assumed)]));
         $blueprints = [];
 
-        foreach ($this->scanner->containers(ContentType::Entry) as $handle) {
+        foreach ($containers(ContentType::Entry, 'collection') as $handle) {
             $collection = Collection::find($handle);
 
             foreach ($collection->entryBlueprints() as $blueprint) {
@@ -505,7 +510,7 @@ final class Audit
             }
         }
 
-        foreach ($this->scanner->containers(ContentType::Term) as $handle) {
+        foreach ($containers(ContentType::Term, 'taxonomy') as $handle) {
             $taxonomy = Taxonomy::find($handle);
 
             foreach ($taxonomy->termBlueprints() as $blueprint) {
@@ -513,7 +518,7 @@ final class Audit
             }
         }
 
-        foreach ($this->scanner->containers(ContentType::GlobalSet) as $handle) {
+        foreach ($containers(ContentType::GlobalSet, 'globals') as $handle) {
             $set = GlobalSet::find($handle);
 
             if ($blueprint = $set->blueprint()) {

@@ -59,10 +59,12 @@ final class TargetFactory
     /**
      * $source is the entry to translate from when the localization does not exist yet: the root of the
      * family, or another localization of it. An existing localization is always translated from its origin.
+     *
+     * @param  array<string, ?string>  $assumedSites  containers to treat as having the site (RunRequest::$assumedSites)
      */
-    public function forEntry(EntryContract|string $source, string $site): EntryTarget
+    public function forEntry(EntryContract|string $source, string $site, array $assumedSites = []): EntryTarget
     {
-        return $this->entryTarget($source instanceof EntryContract ? $source : (Entry::find($source) ?? throw TargetNotFound::entry($source)), $site);
+        return $this->entryTarget($source instanceof EntryContract ? $source : (Entry::find($source) ?? throw TargetNotFound::entry($source)), $site, assumedSites: $assumedSites);
     }
 
     /**
@@ -77,8 +79,10 @@ final class TargetFactory
 
     /**
      * $term is any site of the term, or its id; the source is always the term in its taxonomy's default site.
+     *
+     * @param  array<string, ?string>  $assumedSites  containers to treat as having the site (RunRequest::$assumedSites)
      */
-    public function forTerm(TermContract|string $term, string $site): TermTarget
+    public function forTerm(TermContract|string $term, string $site, array $assumedSites = []): TermTarget
     {
         $source = $term instanceof TermContract ? $term->inDefaultLocale() : (Term::find($term) ?? throw TargetNotFound::term($term));
 
@@ -90,7 +94,7 @@ final class TargetFactory
             throw InvalidTarget::defaultSite((string) $source->id(), $site);
         }
 
-        if (! $source->taxonomy()->sites()->contains($site)) {
+        if (! $source->taxonomy()->sites()->contains($site) && ! array_key_exists('taxonomy:'.$source->taxonomyHandle(), $assumedSites)) {
             throw InvalidTarget::siteNotInTaxonomy($source->taxonomyHandle(), $site);
         }
 
@@ -99,9 +103,12 @@ final class TargetFactory
 
     /**
      * $set is the set or its handle. A site the set does not have or has no origin for gives a target that is not
-     * translatable (GlobalsTarget::untranslatableReason()), so callers can report it.
+     * translatable (GlobalsTarget::untranslatableReason()), so callers can report it, unless $assumedSites names an
+     * origin for the set.
+     *
+     * @param  array<string, ?string>  $assumedSites  containers to treat as having the site (RunRequest::$assumedSites)
      */
-    public function forGlobalSet(GlobalSetContract|string $set, string $site): GlobalsTarget
+    public function forGlobalSet(GlobalSetContract|string $set, string $site, array $assumedSites = []): GlobalsTarget
     {
         $set = $set instanceof GlobalSetContract ? $set : (GlobalSet::findByHandle($set) ?? throw TargetNotFound::globalSet($set));
 
@@ -109,7 +116,7 @@ final class TargetFactory
             throw UnknownSite::for($site);
         }
 
-        return new GlobalsTarget($set->handle(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter, $set);
+        return new GlobalsTarget($set->handle(), $site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter, $set, $assumedSites['globals:'.$set->handle()] ?? null);
     }
 
     /**
@@ -174,7 +181,10 @@ final class TargetFactory
         return $term !== null && $term->taxonomy()->sites()->contains($ref->site) ? $term->in($ref->site) : null;
     }
 
-    public function fromDescription(array $describe): Target
+    /**
+     * @param  array<string, ?string>  $assumedSites  containers to treat as having the site (RunRequest::$assumedSites)
+     */
+    public function fromDescription(array $describe, array $assumedSites = []): Target
     {
         $type = ContentType::tryFrom((string) ($describe['type'] ?? ''));
         $sourceId = $describe['source_id'] ?? null;
@@ -185,16 +195,19 @@ final class TargetFactory
         }
 
         return match ($type) {
-            ContentType::Entry => $this->forEntry((string) $sourceId, $site),
-            ContentType::Term => $this->forTerm((string) $sourceId, $site),
-            ContentType::GlobalSet => $this->forGlobalSet((string) $sourceId, $site),
+            ContentType::Entry => $this->forEntry((string) $sourceId, $site, $assumedSites),
+            ContentType::Term => $this->forTerm((string) $sourceId, $site, $assumedSites),
+            ContentType::GlobalSet => $this->forGlobalSet((string) $sourceId, $site, $assumedSites),
             ContentType::Nav => $this->navFromDescription((string) $sourceId, $site),
             ContentType::Lang => $this->langFromDescription((string) $sourceId, $site),
             ContentType::Forms => $this->forForms($site, (string) $sourceId),
         };
     }
 
-    private function entryTarget(EntryContract $entry, string $site, bool $loaded = false): EntryTarget
+    /**
+     * @param  array<string, ?string>  $assumedSites
+     */
+    private function entryTarget(EntryContract $entry, string $site, bool $loaded = false, array $assumedSites = []): EntryTarget
     {
         if (Site::get($site) === null) {
             throw UnknownSite::for($site);
@@ -204,7 +217,7 @@ final class TargetFactory
             throw InvalidTarget::sameSite((string) $entry->id(), $site);
         }
 
-        if (! $entry->collection()->sites()->contains($site)) {
+        if (! $entry->collection()->sites()->contains($site) && ! array_key_exists('collection:'.$entry->collectionHandle(), $assumedSites)) {
             throw InvalidTarget::siteNotInCollection($entry->collectionHandle(), $site);
         }
 

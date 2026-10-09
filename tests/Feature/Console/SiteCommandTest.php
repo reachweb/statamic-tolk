@@ -50,6 +50,17 @@ function titleIsLocalizable(): bool
     return Collection::find('articles')->entryBlueprint()->field('title')->isLocalizable();
 }
 
+/**
+ * The lines of the plan that tolk:translate prints before its question: the targets, the items per content type and
+ * site, and the estimate.
+ *
+ * @return list<string>
+ */
+function siteCommandPlan(string $output): array
+{
+    return array_values(preg_grep('/^(Targets: |\s+(Entries|Terms|Global sets|Navigation) → |\s+(Segments|Estimated tokens|Estimated cost) )/', explode("\n", $output)));
+}
+
 it('adds the site, fixes the blueprint and translates entries, terms, the global set and the navigation on the interactive path', function () {
     $this->fakeTranslations();
 
@@ -115,22 +126,55 @@ it('changes no configuration and no content in a dry run', function () {
     $this->assertNoModelCalls();
 });
 
-it('lists the blueprints of the collections a dry run would enable for the site', function () {
+it('lists the blueprints of the collections a dry run would enable for the site, and plans their entries', function () {
     $this->makeCollection('notes', ['en'], [
         'title' => ['type' => 'text', 'localizable' => true],
         'body' => ['type' => 'textarea', 'display' => 'Body'],
     ]);
+    $this->makeEntry('notes', 'en', ['title' => 'First note', 'body' => 'Shared by every site.'], 'first-note');
 
     [, $output] = siteCommand(['--dry-run' => true, '--yes' => false]);
 
     expect($output)->toContain('Collection Notes (notes)')
-        ->and($output)->not->toContain('Collection Notes › Note: Body (body)');
+        ->and($output)->toContain('Collection Notes › Note: Body (body)')
+        ->and($output)->toContain('First note → German: title (1 segment')
+        ->and($output)->not->toContain('does not have');
+});
 
-    Collection::find('notes')->sites(['en', 'el'])->save();
+it('plans and estimates in a dry run what the run translates once steps 2 and 3 enable the site', function () {
+    $this->fakeTranslations();
 
-    [, $output] = siteCommand(['--dry-run' => true, '--yes' => false]);
+    [, $dry] = siteCommand(['--dry-run' => true]);
+    [$exitCode, $real] = siteCommand();
 
-    expect($output)->toContain('Collection Notes › Note: Body (body)');
+    expect($exitCode)->toBe(0)
+        ->and($real)->toContain('Big news → German: done, created')
+        ->and($real)->toContain('Site Settings → German: done')
+        ->and($dry)->toContain('Big news → German: title (1 segment')
+        ->and($dry)->toContain('Site Settings → German: tagline (1 segment')
+        ->and($dry)->not->toContain('does not have')
+        ->and(siteCommandPlan($dry))->toHaveCount(8)
+        ->and(siteCommandPlan($dry))->toBe(siteCommandPlan($real));
+});
+
+it('plans in a dry run the pages of a structured collection that step 2 would enable, below their home page', function () {
+    $this->fakeTranslations();
+    $this->makeCollection('pages', ['en'], ['title' => ['type' => 'text', 'localizable' => true]], structured: true)
+        ->structureContents(['root' => true])
+        ->save();
+    $home = $this->makeEntry('pages', 'en', ['title' => 'Home'], 'home');
+    $rooms = $this->makeEntry('pages', 'en', ['title' => 'Rooms'], 'rooms');
+    Collection::find('pages')->structure()->in('en')->tree([['entry' => $home->id()], ['entry' => $rooms->id()]])->save();
+
+    [, $dry] = siteCommand(['--dry-run' => true]);
+    [$exitCode, $real] = siteCommand();
+
+    expect($exitCode)->toBe(0)
+        ->and($real)->toContain('Rooms → German: done, created')
+        ->and($dry)->toContain('Home → German: title (1 segment')
+        ->and($dry)->toContain('Rooms → German: title (1 segment')
+        ->and(siteCommandPlan($dry))->toBe(siteCommandPlan($real))
+        ->and($this->treeOfSlugs('de'))->toBe(['home' => [], 'rooms' => []]);
 });
 
 it('enables the site and translates with --yes, but leaves blueprints alone', function () {

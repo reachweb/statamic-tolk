@@ -1954,8 +1954,8 @@ Goal: "translate the whole website to a new language". Revisions, terms, global 
       - step 6 asks "Continue, and translate them as text?" and defaults to yes. Declining step 6 translates nothing and exits 0.
       - `--yes` asks nothing.
       - A collection that should stay out belongs in the excluded collections setting, which step 2 skips.
-    - `--dry-run` asks nothing and changes nothing. It lists each step's findings and says they are not changed.
-    - Steps 5 and 6 list only the blueprints of containers that are enabled for the site, or that steps 2 and 3 would enable in a dry run. A single-site collection joins the audit only once it has a second site, so a dry run does not list its fields.
+    - `--dry-run` asks nothing and changes nothing. It lists each step's findings and says they are not changed. It passes what steps 2 and 3 would enable to `tolk:translate` (`TranslateCommand::assumingSites()`) as `RunRequest::$assumedSites` (`{type}:{handle}`, with a global set's origin), which the run's scope keeps as `assumed_sites`: `RunPlanner`, `TargetFactory` and `GlobalsTarget` treat those containers as having the site, single-site ones included, so the dry run's plan and estimate match the run's.
+    - Steps 5 and 6 list only the blueprints of containers that are enabled for the site, or that steps 2 and 3 would enable in a dry run. `Audit::notLocalizable()` and `technicalFields()` take the same list, so a dry run also lists the fields of a single-site collection, which joins the audit of a run once step 2 gives it a second site.
     - The command delegates with `$this->call('tolk:translate', …)` and passes the options that were given. It then prints "Not translated by this command:", also after a dry run or a failure. Its exit code is `tolk:translate`'s.
     - In the sandbox, `tolk:site de --yes` adds `de` to `notes`. Its `title` and `body` are not localizable, so its two notes are skipped.
 

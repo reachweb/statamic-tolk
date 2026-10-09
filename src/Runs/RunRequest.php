@@ -50,6 +50,10 @@ final readonly class RunRequest
      * @param  list<string>  $entryIds  any entry of each family
      * @param  list<string>  $termIds  term ids, `{taxonomy}::{default slug}`
      * @param  ?string  $reference  the item open in the editor when the run was pushed from it (T8.13)
+     * @param  array<string, ?string>  $assumedSites  `{type}:{handle}` of collections (`collection`), taxonomies
+     *                                                (`taxonomy`) and global sets (`globals`) to plan as if they had
+     *                                                the sites, with the site a global set is translated from (null for
+     *                                                the others): what tolk:site would enable, for its dry run
      */
     public function __construct(
         array $sites,
@@ -64,6 +68,7 @@ final readonly class RunRequest
         array $options = [],
         public ?User $user = null,
         public ?string $reference = null,
+        public array $assumedSites = [],
     ) {
         if ($sites === []) {
             throw new InvalidArgumentException('A run needs at least one site to translate into.');
@@ -72,6 +77,12 @@ final readonly class RunRequest
         foreach (compact('sites', 'collections', 'taxonomies', 'globals', 'navs', 'entryIds', 'termIds') as $name => $list) {
             if (! array_is_list($list) || array_filter($list, fn ($value) => ! is_string($value) || $value === '') !== []) {
                 throw new InvalidArgumentException("The {$name} of a run request must be a list of handles or ids.");
+            }
+        }
+
+        foreach ($assumedSites as $key => $origin) {
+            if (preg_match('/^(collection|taxonomy|globals):./', (string) $key) !== 1 || ($origin !== null && (! is_string($origin) || $origin === ''))) {
+                throw new InvalidArgumentException('The assumed sites of a run request must map {type}:{handle} to a site or null.');
             }
         }
 
@@ -116,6 +127,26 @@ final readonly class RunRequest
     }
 
     /**
+     * The handles of the containers of $type in $assumedSites.
+     *
+     * @param  array<string, ?string>  $assumedSites
+     * @param  string  $type  `collection`, `taxonomy` or `globals`
+     * @return list<string>
+     */
+    public static function assumed(array $assumedSites, string $type): array
+    {
+        $handles = [];
+
+        foreach (array_keys($assumedSites) as $key) {
+            if (str_starts_with($key, "{$type}:")) {
+                $handles[] = substr($key, strlen($type) + 1);
+            }
+        }
+
+        return $handles;
+    }
+
+    /**
      * What was asked for, as the run's `scope` stores it.
      */
     public function scope(): array
@@ -130,6 +161,7 @@ final readonly class RunRequest
             'entry_ids' => $this->entryIds,
             'term_ids' => $this->termIds,
             'reference' => $this->reference,
+            'assumed_sites' => $this->assumedSites,
         ];
     }
 }

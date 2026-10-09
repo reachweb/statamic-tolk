@@ -70,7 +70,8 @@ final readonly class RunPlanner
     /**
      * The unsaved pending run, with the models and defaults resolved from the settings now, so a run keeps the options
      * it was started with. The run's `scope` holds the request, the `skipped` counts and, as `out_of_scope`, the
-     * text-bearing top-level fields of its targets that are never translated, with the reason (§A2).
+     * text-bearing top-level fields of its targets that are never translated, with the reason (§A2). Containers the
+     * request assumes to have its sites (RunRequest::$assumedSites) are planned as if they had them.
      */
     public function build(RunRequest $request): PlannedRun
     {
@@ -179,7 +180,8 @@ final readonly class RunPlanner
      */
     private function entryTargets(RunRequest $request, array &$notes): array
     {
-        $collections = $this->containers($request->collections, Collection::class, 'Collection');
+        $assumed = RunRequest::assumed($request->assumedSites, 'collection');
+        $collections = $this->containers($request->collections, Collection::class, 'Collection', $assumed);
 
         if ($collections === [] && $request->entryIds === []) {
             return [];
@@ -194,13 +196,13 @@ final readonly class RunPlanner
             $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
                 $site === $root->locale() => self::SOURCE,
                 in_array($collection->handle(), $excluded, true) => self::EXCLUDED_COLLECTION,
-                ! $collection->sites()->contains($site) => self::SITE_NOT_IN_COLLECTION,
+                ! $collection->sites()->contains($site) && ! in_array($collection->handle(), $assumed, true) => self::SITE_NOT_IN_COLLECTION,
                 default => null,
             });
 
             foreach ($sites as $site) {
                 $source = $this->source($root, $site, $request->sourceSite);
-                $target = $this->factory->forEntry($source, $site);
+                $target = $this->factory->forEntry($source, $site, $request->assumedSites);
 
                 if ($this->admits($request, $target, $collection->handle().'.'.$source->blueprint()->handle(), $notes)) {
                     $family[$site] = compact('root', 'site', 'source', 'target');
@@ -225,7 +227,8 @@ final readonly class RunPlanner
      */
     private function termItems(RunRequest $request, int $offset, array &$notes): array
     {
-        $taxonomies = $this->containers($request->taxonomies, Taxonomy::class, 'Taxonomy');
+        $assumed = RunRequest::assumed($request->assumedSites, 'taxonomy');
+        $taxonomies = $this->containers($request->taxonomies, Taxonomy::class, 'Taxonomy', $assumed);
 
         if ($taxonomies === [] && $request->termIds === []) {
             return [];
@@ -239,12 +242,12 @@ final readonly class RunPlanner
             $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
                 $site === $term->locale() => self::SOURCE,
                 in_array($taxonomy->handle(), $excluded, true) => self::EXCLUDED_TAXONOMY,
-                ! $taxonomy->sites()->contains($site) => self::SITE_NOT_IN_TAXONOMY,
+                ! $taxonomy->sites()->contains($site) && ! in_array($taxonomy->handle(), $assumed, true) => self::SITE_NOT_IN_TAXONOMY,
                 default => null,
             });
 
             foreach ($sites as $site) {
-                $target = $this->factory->forTerm($term, $site);
+                $target = $this->factory->forTerm($term, $site, $request->assumedSites);
 
                 if ($this->admits($request, $target, $taxonomy->handle().'.'.$term->blueprint()->handle(), $notes)) {
                     $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title());
@@ -269,13 +272,14 @@ final readonly class RunPlanner
     {
         $items = [];
 
-        foreach ($this->containers($request->globals, GlobalSet::class, 'Global set') as $handle) {
+        foreach ($this->containers($request->globals, GlobalSet::class, 'Global set', RunRequest::assumed($request->assumedSites, 'globals')) as $handle) {
             $set = GlobalSet::findByHandle($handle);
+            $origin = $request->assumedSites["globals:{$handle}"] ?? null;
             $targets = $indexes = [];
-            $sites = $this->sitesFor($request, $notes, fn (string $site) => GlobalsTarget::isSource($set, $site) ? self::SOURCE : GlobalsTarget::untranslatableReasonFor($set, $site));
+            $sites = $this->sitesFor($request, $notes, fn (string $site) => GlobalsTarget::isSource($set, $site) ? self::SOURCE : GlobalsTarget::untranslatableReasonFor($set, $site, $origin));
 
             foreach ($sites as $site) {
-                $target = $this->factory->forGlobalSet($set, $site);
+                $target = $this->factory->forGlobalSet($set, $site, $request->assumedSites);
 
                 if ($this->admits($request, $target, $handle, $notes)) {
                     $targets[$site] = $target;
@@ -578,18 +582,19 @@ final readonly class RunPlanner
     }
 
     /**
-     * The named containers, or with [ALL] every one that has more than one site.
+     * The named containers, or with [ALL] every one that has more than one site or is assumed to have the request's.
      *
      * @param  list<string>  $handles
      * @param  class-string<Collection|Taxonomy|GlobalSet>  $facade
      * @param  string  $label  what an unknown handle is called in the error
+     * @param  list<string>  $assumed  the handles the request assumes to have its sites (RunRequest::$assumedSites)
      * @return list<string>
      */
-    private function containers(array $handles, string $facade, string $label): array
+    private function containers(array $handles, string $facade, string $label, array $assumed = []): array
     {
         if (RunRequest::all($handles)) {
             return $facade::all()
-                ->filter(fn ($container) => $container->sites()->count() > 1)
+                ->filter(fn ($container) => $container->sites()->count() > 1 || in_array($container->handle(), $assumed, true))
                 ->map->handle()
                 ->values()
                 ->all();
@@ -617,7 +622,7 @@ final readonly class RunPlanner
         }
 
         try {
-            $target = $this->factory->fromDescription($item->describe());
+            $target = $this->factory->fromDescription($item->describe(), (array) ($run->scope['assumed_sites'] ?? []));
         } catch (InvalidTarget|NotSupportedYet|TargetNotFound|UnknownSite) {
             // Translating fails the item and says why.
             return new Estimate;

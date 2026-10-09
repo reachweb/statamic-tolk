@@ -155,7 +155,7 @@ The site must exist: Tolk does not create sites. Add it under **Sites** in the C
 Then it runs `tolk:translate --all --site={site} --mode=missing` with the options you gave, so its estimate, question, progress and report follow, and its exit code is the command's.
 
 - `--yes` accepts the safe default of each step: it enables the site where it is missing and leaves blueprints alone. A default blueprint's `title` then stays untranslated until you run `tolk:doctor --fix-localizable`.
-- `--dry-run` asks nothing and changes no configuration: it lists each step's findings and what it would translate.
+- `--dry-run` asks nothing and changes no configuration: it lists each step's findings and what it would translate, as if you had accepted steps 2 and 3, so its estimate matches the run's.
 
 It ends with what it does not translate:
 

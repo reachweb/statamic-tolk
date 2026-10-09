@@ -126,6 +126,21 @@ class TranslateCommand extends Command
     /** @var array<int, int> lane → exit code of the workers that stopped with an error */
     private array $failedWorkers = [];
 
+    /** @var array<string, ?string> RunRequest::$assumedSites */
+    private array $assumedSites = [];
+
+    /**
+     * Plans the run as if these containers had the sites: tolk:site passes what its dry run would enable.
+     *
+     * @param  array<string, ?string>  $assumedSites  RunRequest::$assumedSites
+     */
+    public function assumingSites(array $assumedSites): static
+    {
+        $this->assumedSites = $assumedSites;
+
+        return $this;
+    }
+
     public function handle(Settings $settings, ModelCatalog $catalog, Providers $providers, RunPlanner $planner, RunRepository $runs, RunProcessor $processor, RunDispatcher $dispatcher): int
     {
         $this->runs = $runs;
@@ -171,6 +186,7 @@ class TranslateCommand extends Command
                     'new_status' => $this->option('publish') ? 'mirror' : null,
                     'publish_changes' => (bool) $this->option('publish-changes'),
                 ],
+                assumedSites: $this->assumedSites,
             ));
         } catch (InvalidArgumentException|MissingDefaultModel|NoProviderConfigured|ProviderNotConfigured|TargetNotFound $exception) {
             $this->components->error($exception->getMessage());

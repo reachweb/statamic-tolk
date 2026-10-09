@@ -26,6 +26,7 @@ use Statamic\Fields\Fields;
  * The variables of a global set in one site, translated from the variables of the origin the set names for that site
  * (§A11 "Global sets"). Build it with TargetFactory. A site the set does not have or has no origin for, and a set
  * without a blueprint, give a target that is not translatable: it has no fields, and untranslatableReason() says why.
+ * With an assumed origin, such a site is translated from that origin, as tolk:site's dry run plans it.
  */
 final class GlobalsTarget implements Target
 {
@@ -57,18 +58,21 @@ final class GlobalsTarget implements Target
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
         ?GlobalSetContract $set = null,
+        private readonly ?string $assumedOrigin = null,
     ) {
         $this->set = $set;
     }
 
     /**
      * Why the set's variables in $site cannot be translated, or null when they can.
+     *
+     * @param  ?string  $assumedOrigin  the origin to assume when the set does not have the site or names none for it
      */
-    public static function untranslatableReasonFor(GlobalSetContract $set, string $site): ?string
+    public static function untranslatableReasonFor(GlobalSetContract $set, string $site, ?string $assumedOrigin = null): ?string
     {
         return match (true) {
-            ! $set->sites()->contains($site) => self::SITE_NOT_IN_SET,
-            self::originOf($set, $site) === null => self::NO_ORIGIN,
+            $assumedOrigin === null && ! $set->sites()->contains($site) => self::SITE_NOT_IN_SET,
+            (self::originOf($set, $site) ?? $assumedOrigin) === null => self::NO_ORIGIN,
             $set->blueprint() === null => self::NO_BLUEPRINT,
             default => null,
         };
@@ -95,7 +99,7 @@ final class GlobalsTarget implements Target
 
     public function untranslatableReason(): ?string
     {
-        return self::untranslatableReasonFor($this->set(), $this->site);
+        return self::untranslatableReasonFor($this->set(), $this->site, $this->assumedOrigin);
     }
 
     // Null for a site the set does not have, whose variables cannot exist.
@@ -228,7 +232,7 @@ final class GlobalsTarget implements Target
 
     public function fresh(): static
     {
-        return new self($this->handle, $this->site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter);
+        return new self($this->handle, $this->site, $this->translatableFields, $this->summary, $this->settings, $this->resolver, $this->stateWriter, assumedOrigin: $this->assumedOrigin);
     }
 
     /**
@@ -294,15 +298,18 @@ final class GlobalsTarget implements Target
         }
 
         $set = $this->set();
-        $origin = self::originOf($set, $this->site);
+        $origin = self::originOf($set, $this->site) ?? $this->assumedOrigin;
         $this->variables = $set->in($this->site);
         $this->source = $origin === null ? null : $set->in($origin);
         $this->resolved = true;
     }
 
+    // Every site of a set shares its blueprint; a site the set does not have yet has no variables to ask.
     private function blueprint(): Blueprint
     {
-        return $this->variables()->blueprint()->setParent($this->variables());
+        $variables = $this->variables() ?? $this->source();
+
+        return $variables->blueprint()->setParent($variables);
     }
 
     // A global set has no title of its own to generate.
