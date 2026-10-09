@@ -47,6 +47,7 @@ All notable changes to Tolk are documented in this file.
 - Translating a field again keeps the ids of the localization's Replicator and Grid rows and Bard sets where the origin's have none (content imported or saved by code), in the editor too, instead of giving every row a new id each time, which rewrote unchanged lines in git.
 - A cancelled or aborted run, or a cancelled Translate into…, no longer lists items as "Translating" when they had units left: they go back to waiting, and Resume continues them at once, without repeating what was already translated.
 - Cancel with review on no longer drops the translations already on their way: they are still reviewed and filled into the form, instead of the summary saying that no fields were translated.
+- A Markdown field emptied in the origin shows empty in the localization after Update or "Translate from origin", instead of keeping its old text on screen until the page is reloaded.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

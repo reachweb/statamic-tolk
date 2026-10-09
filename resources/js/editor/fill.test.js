@@ -90,6 +90,22 @@ function container({ reference = 'entry::de', values = stored(), meta = {}, loca
 
 const translated = (text) => ({ value: `[de] ${text}`, meta: null, incomplete: false, warnings: [] });
 
+// Core's Markdown fieldtype hands every new value to CodeMirror, whose `setValue()` splits it, so null throws "Cannot
+// read properties of null (reading 'split')" and the editor keeps showing the old text.
+function markdown(ctx, handle) {
+    const set = ctx.setFieldValue.getMockImplementation();
+
+    ctx.setFieldValue.mockImplementation((field, value) => {
+        set(field, value);
+
+        if (field === handle) {
+            value.split(/\r\n?|\n/);
+        }
+    });
+
+    return ctx;
+}
+
 // Runs every timer, the fill's guards and read-back included, and returns what the promise resolved with.
 async function settled(promise) {
     await vi.runAllTimersAsync();
@@ -351,6 +367,20 @@ describe('applyFields', () => {
         expect(delivered.intro).toMatchObject({ plan: 'plan-1', value: 'Origin intro', sync: true });
     });
 
+    it('fills an empty string for a synced value of null while the form holds text, and null otherwise', async () => {
+        const ctx = markdown(container({ values: { ...stored(), excerpt: 'Eigener Auszug', tags: null }, localized: ['excerpt', 'tags'] }), 'excerpt');
+        const delivered = {};
+
+        const result = await settled(
+            fill(ctx, { excerpt: { value: null, meta: null, sync: true }, tags: { value: null, meta: null, sync: true } }, { delivered }),
+        );
+
+        expect(result.applied).toEqual(['excerpt', 'tags']);
+        expect(ctx.values.value).toMatchObject({ excerpt: '', tags: null });
+        expect(ctx.localizedFields.value).toEqual([]);
+        expect(delivered.excerpt).toMatchObject({ value: '', sync: true });
+    });
+
     it('keeps a synced field unlocalized when its fieldtype re-emits the value', async () => {
         const normalise = (nodes) => nodes.map((node) => ({ ...node, attrs: { textAlign: null } }));
         const ctx = container({ localized: ['body'], reemit: { body: normalise } });
@@ -544,6 +574,17 @@ describe('restore', () => {
 
         expect(result).toEqual({ restored: ['body'], kept: [] });
         expect(ctx.values.value.body).toEqual(stored().body);
+    });
+
+    it('puts back an empty string for a value that was null while the form holds text', async () => {
+        const ctx = markdown(attached({ values: { ...stored(), excerpt: null } }), 'excerpt');
+        const { snap, delivered } = await translate(ctx, { excerpt: translated('Excerpt') });
+
+        const result = await settled(restore(ctx, snap, delivered, { registry }));
+
+        expect(result.restored).toEqual(['excerpt']);
+        expect(ctx.values.value.excerpt).toBe('');
+        expect(ctx.localizedFields.value).toEqual([]);
     });
 
     it('restores nothing after a switch to another item', async () => {
