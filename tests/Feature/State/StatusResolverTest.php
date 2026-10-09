@@ -222,14 +222,15 @@ describe('pending entries', function () {
 
     it('reads a pending entry that was edited before saving as manual with an unchanged source', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
-        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
+        $pending = StateFixtures::pending('Hello', 'Γεια');
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
 
         $field = statusOf($this->origin)->fields['title'];
 
         expect($field->status)->toBe(FieldStatus::Manual)
             ->and($field->sourceChanged)->toBeFalse()
             ->and($field->state->isBaseline())->toBeTrue()
-            ->and($field->state->pending)->toBe([])
+            ->and($field->state->pending)->toEqual([$pending->withTargetBefore(Fingerprint::ofLeaves(['Γεια σου, κόσμε']))])
             ->and($field->translator)->toBe('openai:gpt-6.1-sol');
     });
 

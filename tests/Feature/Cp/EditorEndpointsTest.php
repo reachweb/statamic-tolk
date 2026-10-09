@@ -510,6 +510,39 @@ describe('confirm', function () {
             ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Current);
     });
 
+    it('keeps a translation machine output when it is saved after another tab saved a hand-typed text of the field', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek);
+
+        Entry::find($this->greek->id())->set('title', 'Γεια σου')->save();
+        $other = $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => []])->assertOk();
+
+        Entry::find($this->greek->id())->merge(array_map(fn (array $field) => $field['value'], $fields))->save();
+        $response = $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])->assertOk();
+
+        expect($other->json('localization.fields.title.status'))->toBe('manual')
+            ->and($response->json('localization.fields.title.status'))->toBe('current')
+            ->and(greekState('title')->targetHash)->toBe(Fingerprint::ofLeaves(['[T] Hello']))
+            ->and(greekState('title')->pending)->toBe([]);
+    });
+
+    it('reads a delivered field as machine output again once its edit is undone and saved', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek);
+        $values = array_map(fn (array $field) => $field['value'], $fields);
+
+        Entry::find($this->greek->id())->merge([...$values, 'title' => '[T] Hello!'])->save();
+        $edited = $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])->assertOk();
+
+        Entry::find($this->greek->id())->set('title', '[T] Hello')->save();
+        $undone = $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => []])->assertOk();
+
+        expect($edited->json('localization.fields.title.status'))->toBe('manual')
+            ->and($undone->json('localization.fields.title.status'))->toBe('current');
+    });
+
     it('lists a delivered field that was not stored', function () {
         $this->fakeTranslations();
         greekEditor();

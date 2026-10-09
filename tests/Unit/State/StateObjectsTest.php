@@ -207,7 +207,7 @@ it('promotes onto a baseline or an empty record without adding history', functio
 it('turns a pending entry into a baseline', function () {
     $pending = pendingState('4444444444444444', ['translator' => 'openai:gpt-6-luna', 'reviewer' => 'gemini:gemini-3.8-flash']);
 
-    $field = machineState('1111111111111111', '2222222222222222')->withPending($pending)->toBaseline($pending);
+    $field = machineState('1111111111111111', '2222222222222222')->withPending($pending)->toBaseline($pending, 'edited', $pending->createdAt);
 
     expect($field->isBaseline())->toBeTrue()
         ->and($field->sourceHash)->toBe('source-4444444444444444')
@@ -216,7 +216,7 @@ it('turns a pending entry into a baseline', function () {
         ->and($field->reviewer)->toBeNull()
         ->and($field->segments)->toBe([])
         ->and($field->translatedAt)->toBeNull()
-        ->and($field->pending)->toBe([])
+        ->and($field->pending)->toEqual([pendingState('4444444444444444', ['translator' => 'openai:gpt-6-luna', 'reviewer' => 'gemini:gemini-3.8-flash', 'targetBefore' => 'edited'])])
         ->and($field->history)->toBe([['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222']]);
 });
 
@@ -400,7 +400,23 @@ it('writes a baseline from the newest pending entry whose plan saw other text', 
         ->and($reconciled->isBaseline())->toBeTrue()
         ->and($reconciled->sourceHash)->toBe($planned->sourceHash)
         ->and($reconciled->history)->toBe([['source_hash' => 's1', 'target_hash' => 't1']])
-        ->and($reconciled->pending)->toBe([]);
+        ->and($reconciled->pending)->toEqual([$unchanged, pendingState('t3', ['targetBefore' => 'edited', 'createdAt' => $now->subHour()])]);
+});
+
+it('keeps the recent pending entries after a baseline, so a later save of one reads as machine output and the same text is no new edit', function () {
+    $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
+    $fresh = pendingState('t2', ['createdAt' => $now->subDays(FieldState::PENDING_DAYS)->addSecond()]);
+    $stale = pendingState('t3', ['createdAt' => $now->subDays(FieldState::PENDING_DAYS)]);
+
+    $baseline = machineState('s1', 't1')->withPending($stale)->withPending($fresh)->reconcile('edited', $now);
+
+    expect($baseline->isBaseline())->toBeTrue()
+        ->and($baseline->sourceHash)->toBe($fresh->sourceHash)
+        ->and($baseline->pending)->toEqual([pendingState('t2', ['targetBefore' => 'edited', 'createdAt' => $fresh->createdAt])])
+        ->and($baseline->reconcile('edited', $now))->toEqual($baseline)
+        ->and($baseline->reconcile('t2', $now)->isMachine())->toBeTrue()
+        ->and($baseline->reconcile('t2', $now)->pending)->toBe([])
+        ->and($baseline->reconcile('edited again', $now)->pending)->toEqual([pendingState('t2', ['targetBefore' => 'edited again', 'createdAt' => $fresh->createdAt])]);
 });
 
 it('keeps unsaved pending entries for 30 days', function () {

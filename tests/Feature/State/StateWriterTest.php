@@ -116,7 +116,8 @@ describe('confirm', function () {
 
     it('writes a baseline for a delivery that was edited before it was saved', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
-        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
+        $pending = StateFixtures::pending('Hello', 'Γεια');
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending($pending)]);
 
         $report = writer()->confirm(writerTarget($this->origin));
         $field = storedState($localization)->field('title');
@@ -126,7 +127,49 @@ describe('confirm', function () {
             ->and($field->isBaseline())->toBeTrue()
             ->and($field->sourceHash)->toBe(Fingerprint::of('Hello'))
             ->and($field->translator)->toBe('openai:gpt-6.1-sol')
-            ->and($field->pending)->toBe([])
+            ->and($field->pending)->toEqual([$pending->withTargetBefore(Fingerprint::ofLeaves(['Γεια σου, κόσμε']))])
+            ->and($status->status)->toBe(FieldStatus::Manual)
+            ->and($status->sourceChanged)->toBeFalse();
+    });
+
+    it('promotes a delivery saved after a hand-typed text of the same field was baselined, as from a second tab', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
+        writer()->confirm(writerTarget($this->origin));
+
+        $localization->set('title', 'Γεια')->save();
+        $report = writer()->confirm(writerTarget($this->origin));
+
+        expect($report)->toEqual(new ConfirmReport(promoted: ['title']))
+            ->and(storedState($localization)->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['Γεια']))
+            ->and(writerStatus($this->origin)->fields['title']->status)->toBe(FieldStatus::Current);
+    });
+
+    it('reports nothing when the same edited text is confirmed again', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
+        writer()->confirm(writerTarget($this->origin));
+        $baseline = storedState($localization)->toArray();
+
+        $report = writer()->confirm(writerTarget($this->origin));
+
+        expect($report)->toEqual(new ConfirmReport(unresolved: ['title']))
+            ->and($report->changed())->toBeFalse()
+            ->and(storedState($localization)->toArray())->toBe($baseline);
+    });
+
+    it('keeps a baseline moved to the current source after an edited delivery, while that delivery is still pending', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια σου, κόσμε']);
+        StateFixtures::store($localization, ['title' => (new FieldState)->withPending(StateFixtures::pending('Hello', 'Γεια'))]);
+        writer()->confirm(writerTarget($this->origin));
+        $this->origin->set('title', 'Hello, world')->save();
+
+        writer()->baseline(writerTarget($this->origin));
+        $report = writer()->confirm(writerTarget($this->origin));
+        $status = writerStatus($this->origin)->fields['title'];
+
+        expect($report->changed())->toBeFalse()
+            ->and(storedState($localization)->field('title')->sourceHash)->toBe(Fingerprint::of('Hello, world'))
             ->and($status->status)->toBe(FieldStatus::Manual)
             ->and($status->sourceChanged)->toBeFalse();
     });
