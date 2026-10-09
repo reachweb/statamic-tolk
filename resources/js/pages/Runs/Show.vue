@@ -367,15 +367,12 @@ function filterBy(value) {
                                 {{ __('Not changed: :fields', { fields: item.kept.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
                             </Description>
                             <Description v-if="item.reason">{{ item.reason }}</Description>
-                            <Text v-if="item.error" size="sm" variant="danger" data-tolk-item-error>{{ item.error }}</Text>
-                            <a
-                                v-if="item.rootPage"
-                                :href="item.rootPage.url"
-                                class="block text-sm text-blue-600 hover:underline dark:text-blue-400"
-                                data-tolk-root-page
-                            >
-                                {{ __('Open :title', { title: item.rootPage.title }) }}
-                            </a>
+                            <Text v-if="item.error" size="sm" variant="danger" data-tolk-item-error>
+                                {{ item.error }}
+                                <a v-if="item.rootPage" :href="item.rootPage.url" class="text-blue-600 hover:underline dark:text-blue-400" data-tolk-root-page>{{
+                                    __('Open :title', { title: item.rootPage.title })
+                                }}</a>
+                            </Text>
                             <Description v-for="(warning, index) in item.warnings" :key="index">{{ warning }}</Description>
                         </TableCell>
                     </TableRow>

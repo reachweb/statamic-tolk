@@ -133,10 +133,12 @@ function reload() {
                     <a v-if="item.editUrl" :href="item.editUrl" class="text-sm font-medium underline">{{ item.site }}</a>
                     <Text v-else variant="strong">{{ item.site }}</Text>
                     <Badge :text="item.statusLabel" :color="item.statusColor" />
-                    <Description v-if="item.error || item.reason">{{ item.error ?? item.reason }}</Description>
-                    <a v-if="item.rootPage" :href="item.rootPage.url" class="text-sm font-medium underline" data-tolk-root-page>
-                        {{ __('Open :title', { title: item.rootPage.title }) }}
-                    </a>
+                    <Description v-if="item.error || item.reason">
+                        {{ item.error ?? item.reason }}
+                        <a v-if="item.rootPage" :href="item.rootPage.url" class="font-medium underline" data-tolk-root-page>{{
+                            __('Open :title', { title: item.rootPage.title })
+                        }}</a>
+                    </Description>
                 </li>
             </ul>
             <Description v-if="shown.reload">{{ __('Reload the page to see the new localizations in the Sites panel.') }}</Description>
