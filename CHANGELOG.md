@@ -27,6 +27,7 @@ All notable changes to Tolk are documented in this file.
 - `tolk:lang` copies strings with nothing to translate, such as URLs, email addresses and phone numbers, from the source into the target file, as it copies numbers, so `__('site.url')` no longer shows `site.url` on a translated site (a JSON file has no fallback language). They are copied whenever the command writes the file.
 - A text that moves between `lang/{source}.json` and a form, such as a form label added to the JSON file, keeps its record, so `tolk:lang` and `tolk:forms` no longer read its translation as edited by hand.
 - `tolk:forms` collects the label of a form field without a `display`, which Statamic makes from the field's handle (`your_message` becomes "Your Message") and shows in the submission email and in validation messages.
+- When the provider rejects the key or the model, `tolk:lang` and `tolk:forms` report the file they were translating as failed, count it in the summary and name the files they did not get to, instead of leaving the file's line empty and reporting Failed 0.
 
 ## 1.0.0-beta.1 - 2026-10-08
 
