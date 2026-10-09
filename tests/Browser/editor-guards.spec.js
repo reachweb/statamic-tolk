@@ -149,7 +149,10 @@ test('a filled field edited before saving counts as edited by hand, with the sou
 
     expect(intro.source_hash).toMatch(/^[0-9a-f]{16}$/);
     expect(intro.target_hash).toBeUndefined();
-    expect(intro.pending).toBeUndefined();
+    // The delivery stays pending, rebased onto the saved text, so its exact text saved later reads as machine again
+    // (§A5 rule 2, D27).
+    expect(intro.pending).toHaveLength(1);
+    expect(intro.pending[0].target_hash).toMatch(/^[0-9a-f]{16}$/);
     expect(browserErrors()).toEqual([]);
 });
 
