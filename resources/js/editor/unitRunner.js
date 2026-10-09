@@ -59,7 +59,9 @@ const brief = ({ id, fields }) => ({ id, fields });
 
 // Runs the units of a plan from `editor/plan` in parallel (D24). The queue grows with each response's `spawned`, and
 // each response's `fields` go to `onFields` at once, so the form fills while other units still run. `onFields` may
-// return (a promise of) the result of `applyFields()`; the summary then counts what was really filled.
+// return (a promise of) the result of `applyFields()`; the summary then counts what was really filled. After an abort
+// no unit of the plan starts, but while `finishing()` the units spawned by those already run still do (a review, a
+// repair, a retry): the server delivers a field only once no unit holds a part of it.
 export async function runPlan({
     api = defaultApi,
     plan,
@@ -67,6 +69,7 @@ export async function runPlan({
     onFields = () => {},
     onProgress = () => {},
     signal = null,
+    finishing = () => true,
     sleep = wait,
     maxWaits = MAX_WAITS,
     busyMs = BUSY_MS,
@@ -74,6 +77,7 @@ export async function runPlan({
 }) {
     const limit = Math.max(1, Math.floor(Number(concurrency)) || 1);
     const queue = [...(plan.units ?? [])];
+    const initial = new Set(queue.map((unit) => unit.id));
     const progress = { total: queue.length, done: 0, waiting: 0 };
     const received = new Map();
     const fills = [];
@@ -89,6 +93,16 @@ export async function runPlan({
 
     const halted = () => stopped !== null || Boolean(signal?.aborted);
     const report = () => onProgress({ ...progress });
+
+    function next() {
+        if (!halted()) {
+            return queue.shift();
+        }
+
+        const index = stopped === null && finishing() ? queue.findIndex((unit) => !initial.has(unit.id)) : -1;
+
+        return index === -1 ? null : queue.splice(index, 1)[0];
+    }
 
     function deliver(fields) {
         const handles = entries(fields).map(([handle, payload]) => {
@@ -198,9 +212,9 @@ export async function runPlan({
         let active = 0;
 
         const pump = () => {
-            while (active < limit && queue.length && !halted()) {
-                const unit = queue.shift();
+            let unit;
 
+            while (active < limit && (unit = next())) {
                 active++;
                 run(unit).finally(() => {
                     active--;

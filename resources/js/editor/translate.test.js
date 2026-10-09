@@ -656,6 +656,29 @@ describe('translate', () => {
         expect(base()).toMatchObject({ phase: 'done', summary: { cancelled: true, delivered: ['intro'] } });
     });
 
+    it('lets the runner finish what is on its way after Cancel, but not after a switch', async () => {
+        mount();
+        const finish = deferred();
+        let finishing;
+        const t = translations({
+            run: (args) => {
+                finishing = args.finishing;
+
+                return finish.promise;
+            },
+        });
+
+        t.translate('base');
+        await flush();
+        t.cancel('base');
+
+        expect(finishing()).toBe(true);
+        t.abort('base');
+        expect(finishing()).toBe(false);
+
+        finish.resolve(summary());
+    });
+
     it('keeps the cancelling flag when progress arrives afterwards', async () => {
         mount();
         const finish = deferred();
@@ -1054,6 +1077,42 @@ describe('with the real runner and fill', () => {
         expect(base().phase).toBe('done');
         expect(undoable(base())).toBe(true);
         expect(dirty.has('base')).toBe(true);
+    });
+
+    it('still reviews and fills the translation on its way when Cancel comes with review on', async () => {
+        vi.useFakeTimers({ now: 100_000 });
+        const ctx = mount();
+        const translated = deferred();
+        const answer = (extra) => ({ fields: {}, unchanged: [], spawned: [], failed: [], warnings: [], usage: {}, remaining: 0, review_skipped: false, ...extra });
+        const api = {
+            post: vi.fn(async (path, data) => {
+                if (path === 'editor/plan') {
+                    return planResponse({ units: [{ id: 'b1', fields: ['intro'], chars: 20 }, { id: 'b2', fields: ['seo_title'], chars: 20 }], reviewer: 'openai:gpt-6.1-sol' });
+                }
+
+                if (data.unit === 'b1') {
+                    await translated.promise;
+
+                    // Its fields wait for its review (T7.3).
+                    return answer({ spawned: [{ id: 'b1.v', fields: ['intro'], chars: 20 }], remaining: 2 });
+                }
+
+                return answer({ fields: { intro: { value: '[de] A family-run hotel.', meta: null, incomplete: false, warnings: [], corrections: [], reviewer: 'openai:gpt-6.1-sol' } } });
+            }),
+        };
+        const t = createTranslations({ store: () => store, registry, api, concurrency: () => 1 });
+
+        const promise = t.translate('base', { review: true });
+        await vi.advanceTimersByTimeAsync(0);
+        t.cancel('base');
+        translated.resolve();
+        await vi.advanceTimersByTimeAsync(SETTLE_MS + 1_000);
+        const result = await promise;
+
+        expect(api.post.mock.calls.map(([, data]) => data.unit ?? null)).toEqual([null, 'b1', 'b1.v']);
+        expect(ctx.values.value.intro).toBe('[de] A family-run hotel.');
+        expect(result).toMatchObject({ cancelled: true, delivered: ['intro'] });
+        expect(result.cancelledUnits.map((unit) => unit.id)).toEqual(['b2']);
     });
 
     it('reviews the filled form, and Undo puts back the translation from before the review', async () => {

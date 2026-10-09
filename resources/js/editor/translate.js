@@ -183,7 +183,7 @@ export function createTranslations({
         }
     }
 
-    // Cancel: no new unit starts, and units in flight are still filled.
+    // Cancel: no new unit of the plan starts, and the units in flight are still filled, with what they spawn (a review).
     function cancel(name) {
         const current = runs.get(name);
         const container = store().containers[name];
@@ -280,6 +280,8 @@ export function createTranslations({
                 plan,
                 concurrency: concurrency(),
                 signal: controller.signal,
+                // After a switch, what the units in flight spawn would be paid for and discarded.
+                finishing: mine,
                 onFields: (payloads) => fill(ctx, payloads, options),
                 onProgress: (progress) => {
                     if (current()) {
