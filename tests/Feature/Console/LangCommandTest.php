@@ -8,9 +8,12 @@ use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
+use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
@@ -135,6 +138,27 @@ it('writes a key that holds a dot as the source has it, so a key that is also it
         ->and($this->modelCalls())->toBe($calls)
         ->and($second)->toContain('lang/de/help.php: skipped, nothing to do')
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, 'help', 'de'))->hasPending())->toBeFalse();
+});
+
+it('tracks keys that read as integers, so their translations read current and update refreshes them', function () {
+    writeLang('en.json', json_encode(['Book now' => 'Book now', '2026' => 'Season 2026', 'Contact us' => 'Contact us'], JSON_PRETTY_PRINT));
+    writeLang('en/errors.php', "<?php\n\nreturn ['404' => 'Page not found', '500' => 'Something went wrong', 'title' => 'Error'];\n");
+    $this->fakeTranslations();
+    $statuses = fn (string $group) => array_map(fn ($field) => $field->status, app(StatusResolver::class)->resolve(app(TargetFactory::class)->forLang($group, 'de', 'en'))->fields);
+
+    [$exitCode] = langCommand(['sites' => ['de'], '--group' => ['_json', 'errors']]);
+
+    expect($exitCode)->toBe(0)
+        ->and($statuses('_json'))->toBe(['Book now' => FieldStatus::Current, '2026' => FieldStatus::Current, 'Contact us' => FieldStatus::Current])
+        ->and($statuses('errors'))->toBe(['404' => FieldStatus::Current, '500' => FieldStatus::Current, 'title' => FieldStatus::Current]);
+
+    writeLang('en/errors.php', "<?php\n\nreturn ['404' => 'This page was not found', '500' => 'Something went wrong', 'title' => 'Error'];\n");
+    [, $output] = langCommand(['sites' => ['de'], '--group' => ['_json', 'errors'], '--mode' => 'update']);
+
+    expect($output)->toContain('lang/de.json: skipped, nothing to do')
+        ->and($output)->toContain('lang/de/errors.php: done, 1 field')
+        ->and($output)->not->toContain('manual edits kept')
+        ->and(readLang('de/errors.php'))->toBe(['404' => '[T] This page was not found', '500' => '[T] Something went wrong', 'title' => '[T] Error']);
 });
 
 it('re-sends only the edited key in mode update', function () {
