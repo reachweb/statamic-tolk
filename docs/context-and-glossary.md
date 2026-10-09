@@ -68,7 +68,7 @@ Terms that must always be translated the same way, or not at all. Each row has:
 - **Do not translate**: keep the term as it is (a brand, a product name). Then no translation is needed.
 - **Note**: when the row applies, for the model ("only for the two sea-view rooms").
 
-A row for one language overrides the row for every language with the same term. So "suite" can have one translation for every language and another for German. The settings page refuses the same term twice for one language, or twice for every language; terms that differ only in case are separate rows.
+A row for one language overrides the row for every language with the same term, ignoring case and accents: a German row for "booking" replaces an every-language row for "Booking". So "suite" can have one translation for every language and another for German. The settings page refuses the same term twice for one language, or twice for every language; within one language, or within every language, terms that differ only in case are separate rows, and both are kept.
 
 The model receives the rows that apply to the target language, sorted by term:
 
