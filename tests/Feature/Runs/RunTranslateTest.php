@@ -135,9 +135,9 @@ describe('translate', function () {
         }
     });
 
-    it('records each call in the month\'s log as run usage, on the run and on its item', function () {
+    it('records each call in the month\'s log under the source of the run\'s driver, on the run and on its item', function (RunDriver $driver, string $source) {
         $engine = ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
-        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'driver' => $driver]);
 
         RunFixtures::translate($run);
 
@@ -146,9 +146,12 @@ describe('translate', function () {
 
         expect(RunFixtures::stored($run)->usage->toArray())->toBe([$model => $call->toArray()])
             ->and(RunFixtures::items($run)[0]->usage->toArray())->toBe([$model => $call->toArray()])
-            ->and(app(UsageLog::class)->month()[$model]['sources'])->toHaveKey('run')
-            ->and(app(UsageLog::class)->month()[$model]['sources'])->not->toHaveKey('cli');
-    });
+            ->and(array_keys(app(UsageLog::class)->month()[$model]['sources']))->toBe([$source]);
+    })->with([
+        'browser' => [RunDriver::Browser, 'run'],
+        'queue' => [RunDriver::Queue, 'run'],
+        'command line' => [RunDriver::Cli, 'cli'],
+    ]);
 
     it('plans a run item without the editor\'s split, with the profile of its driver', function (RunDriver $driver, string $profile) {
         config(['tolk.batch.min_chars' => 1, 'tolk.concurrency.editor' => 4]);

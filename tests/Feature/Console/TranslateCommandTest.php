@@ -22,6 +22,7 @@ use Reach\StatamicTolk\Events\RunStarted;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Jobs\WorkRun;
+use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
@@ -833,6 +834,15 @@ describe('the run engine', function () {
             ->and($output)->toMatch('/Estimated cost \.+ \$0\.\d+/')
             ->and($output)->not->toContain('No worker process could be started')
             ->and($this->world->fresh()->in('de')->get('title'))->toBe('[T] World');
+    });
+
+    it('records its calls under the command line in the month\'s usage', function () {
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
+
+        [$exitCode] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and(array_keys(app(UsageLog::class)->month()[(string) $engine->calls[0]->model]['sources']))->toBe(['cli']);
     });
 
     it('leaves no run behind after a dry run, and prints the estimate', function () {
