@@ -45,6 +45,14 @@ function loadTolkConfig(array $env = []): array
     }
 }
 
+/**
+ * Reads Tolk's own model catalog, resources/models.php.
+ */
+function loadTolkModels(): array
+{
+    return require dirname(__DIR__, 2).'/resources/models.php';
+}
+
 it('pins every default', function () {
     expect(loadTolkConfig())->toBe([
         'providers' => [
@@ -52,68 +60,7 @@ it('pins every default', function () {
             'openai' => ['key' => null, 'url' => null],
             'gemini' => ['key' => null, 'url' => null],
         ],
-        'models' => [
-            'anthropic' => [
-                [
-                    'id' => 'claude-sonnet-5-5',
-                    'label' => 'Claude Sonnet 5.5',
-                    'tier' => 'quality',
-                    'options' => ['thinking' => ['type' => 'between_tools']],
-                    'max_output_tokens' => 128000,
-                    'reasoning_headroom' => 0,
-                    'price' => ['input' => 2.0, 'output' => 10.0],
-                ],
-                [
-                    'id' => 'claude-haiku-5-5',
-                    'label' => 'Claude Haiku 5.5',
-                    'tier' => 'fast',
-                    'options' => ['thinking' => ['type' => 'disabled']],
-                    'max_output_tokens' => 128000,
-                    'reasoning_headroom' => 0,
-                    'price' => ['input' => 0.1, 'output' => 0.5],
-                ],
-            ],
-            'openai' => [
-                [
-                    'id' => 'gpt-6.1-sol',
-                    'label' => 'GPT-6.1 Sol',
-                    'tier' => 'quality',
-                    'options' => ['reasoning' => ['effort' => 'low']],
-                    'max_output_tokens' => 128000,
-                    'reasoning_headroom' => 4000,
-                    'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
-                ],
-                [
-                    'id' => 'gpt-6-luna',
-                    'label' => 'GPT-6 Luna',
-                    'tier' => 'fast',
-                    'options' => ['reasoning' => ['effort' => 'none']],
-                    'max_output_tokens' => 128000,
-                    'reasoning_headroom' => 0,
-                    'price' => ['input' => 0.1, 'output' => 0.5],
-                ],
-            ],
-            'gemini' => [
-                [
-                    'id' => 'gemini-3.8-flash',
-                    'label' => 'Gemini 3.8 Flash',
-                    'tier' => 'quality',
-                    'options' => ['thinking_level' => 'low'],
-                    'max_output_tokens' => 65536,
-                    'reasoning_headroom' => 0,
-                    'price' => ['input' => 1.5, 'output' => 7.5],
-                ],
-                [
-                    'id' => 'gemini-3.5-flash-lite',
-                    'label' => 'Gemini 3.5 Flash-Lite',
-                    'tier' => 'fast',
-                    'options' => [],
-                    'max_output_tokens' => 65536,
-                    'reasoning_headroom' => 0,
-                    'price' => ['input' => 0.3, 'output' => 2.5],
-                ],
-            ],
-        ],
+        'models' => ['anthropic' => [], 'openai' => [], 'gemini' => []],
         'http' => [
             'timeout' => ['web' => 45, 'background' => 180],
         ],
@@ -164,6 +111,71 @@ it('pins every default', function () {
     ]);
 });
 
+it('pins Tolk\'s model catalog', function () {
+    expect(loadTolkModels())->toBe([
+        'anthropic' => [
+            [
+                'id' => 'claude-sonnet-5-5',
+                'label' => 'Claude Sonnet 5.5',
+                'tier' => 'quality',
+                'options' => ['thinking' => ['type' => 'between_tools']],
+                'max_output_tokens' => 128000,
+                'reasoning_headroom' => 0,
+                'price' => ['input' => 2.0, 'output' => 10.0],
+            ],
+            [
+                'id' => 'claude-haiku-5-5',
+                'label' => 'Claude Haiku 5.5',
+                'tier' => 'fast',
+                'options' => ['thinking' => ['type' => 'disabled']],
+                'max_output_tokens' => 128000,
+                'reasoning_headroom' => 0,
+                'price' => ['input' => 0.1, 'output' => 0.5],
+            ],
+        ],
+        'openai' => [
+            [
+                'id' => 'gpt-6.1-sol',
+                'label' => 'GPT-6.1 Sol',
+                'tier' => 'quality',
+                'options' => ['reasoning' => ['effort' => 'low']],
+                'max_output_tokens' => 128000,
+                'reasoning_headroom' => 4000,
+                'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
+            ],
+            [
+                'id' => 'gpt-6-luna',
+                'label' => 'GPT-6 Luna',
+                'tier' => 'fast',
+                'options' => ['reasoning' => ['effort' => 'none']],
+                'max_output_tokens' => 128000,
+                'reasoning_headroom' => 0,
+                'price' => ['input' => 0.1, 'output' => 0.5],
+            ],
+        ],
+        'gemini' => [
+            [
+                'id' => 'gemini-3.8-flash',
+                'label' => 'Gemini 3.8 Flash',
+                'tier' => 'quality',
+                'options' => ['thinking_level' => 'low'],
+                'max_output_tokens' => 65536,
+                'reasoning_headroom' => 0,
+                'price' => ['input' => 1.5, 'output' => 7.5],
+            ],
+            [
+                'id' => 'gemini-3.5-flash-lite',
+                'label' => 'Gemini 3.5 Flash-Lite',
+                'tier' => 'fast',
+                'options' => [],
+                'max_output_tokens' => 65536,
+                'reasoning_headroom' => 0,
+                'price' => ['input' => 0.3, 'output' => 2.5],
+            ],
+        ],
+    ]);
+});
+
 it('reads the provider keys and the fake engine switch from the environment', function () {
     $config = loadTolkConfig([
         'TOLK_ANTHROPIC_API_KEY' => 'anthropic-key',
@@ -184,7 +196,7 @@ it('merges the file into the tolk config', function () {
 });
 
 it('has a catalog entry with every key for each model', function () {
-    $catalog = loadTolkConfig()['models'];
+    $catalog = loadTolkModels();
 
     expect(array_keys($catalog))->toBe(ModelRef::PROVIDERS);
 
@@ -209,7 +221,7 @@ it('has a catalog entry with every key for each model', function () {
 });
 
 it('keeps format and sampling keys out of the catalog options', function () {
-    foreach (loadTolkConfig()['models'] as $models) {
+    foreach (loadTolkModels() as $models) {
         foreach ($models as $model) {
             $keys = array_map(fn (string $key) => Str::afterLast($key, '.'), array_keys(Arr::dot($model['options'])));
 

@@ -67,7 +67,7 @@ it('records the call in the usage log as the editor\'s', function () {
 });
 
 it('tests the quality model of a provider whose catalog has no fast model', function () {
-    config(['tolk.models.anthropic' => [config('tolk.models.anthropic.0')]]);
+    config(['tolk.models.anthropic' => [['id' => 'claude-haiku-5-5', 'tier' => 'quality']]]);
     fakeReply('anthropic');
 
     testProvider('anthropic')->assertOk()->assertJsonPath('model', 'anthropic:claude-sonnet-5-5');
@@ -121,8 +121,8 @@ it('refuses a provider without a key with 422', function () {
     Http::assertNothingSent();
 });
 
-it('refuses a provider the catalog has no model for with 422', function () {
-    config(['tolk.models.gemini' => []]);
+it('refuses a provider the catalog has no model of either tier for with 422', function () {
+    config(['tolk.models.gemini' => [['id' => 'gemini-3.8-flash', 'tier' => null], ['id' => 'gemini-3.5-flash-lite', 'tier' => null]]]);
     Http::fake();
 
     testProvider('gemini')->assertStatus(422)->assertJsonPath('code', 'no_model');

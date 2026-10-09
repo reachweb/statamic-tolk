@@ -106,7 +106,7 @@ it('answers 422 when the translator\'s provider has no key, or no provider has o
 
 it('answers 422 when the catalog has no model for the automatic choice', function () {
     $this->fakeSiteProfile();
-    config(['tolk.models.anthropic' => [config('tolk.models.anthropic.1')]]);
+    config(['tolk.models.anthropic' => [['id' => 'claude-sonnet-5-5', 'tier' => 'fast']]]);
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
 
     generateSiteProfile()

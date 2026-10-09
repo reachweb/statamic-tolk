@@ -18,14 +18,40 @@ function modelRef(string $reference): ModelRef
     return ModelRef::fromString($reference);
 }
 
-it('reads the catalog from the config, per provider in order', function () {
-    expect(modelCatalog()->all())->toBe([
-        'anthropic' => config('tolk.models.anthropic'),
-        'openai' => config('tolk.models.openai'),
-        'gemini' => config('tolk.models.gemini'),
-    ])
-        ->and(modelCatalog()->forProvider('openai'))->toBe(config('tolk.models.openai'))
+it('reads Tolk\'s catalog per provider, in order', function () {
+    $tolk = require dirname(__DIR__, 2).'/resources/models.php';
+
+    expect(modelCatalog()->all())->toBe($tolk)
+        ->and(modelCatalog()->forProvider('openai'))->toBe($tolk['openai'])
         ->and(modelCatalog()->forProvider('mistral'))->toBe([]);
+});
+
+it('merges the entries of the config into Tolk\'s catalog by id', function () {
+    config(['tolk.models.openai' => [
+        ['id' => 'gpt-6-astra', 'label' => 'GPT-6 Astra', 'tier' => 'quality'],
+        ['id' => 'gpt-6.1-sol', 'options' => [], 'price' => ['input' => 1.5, 'output' => 8.0]],
+        ['label' => 'No id'],
+        'gpt-6-nova',
+        ['id' => 'gpt-6-astra', 'max_output_tokens' => 64000],
+    ]]);
+
+    expect(array_column(modelCatalog()->forProvider('openai'), 'id'))->toBe(['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra'])
+        ->and(modelCatalog()->find(modelRef('openai:gpt-6.1-sol')))->toBe([
+            'id' => 'gpt-6.1-sol',
+            'label' => 'GPT-6.1 Sol',
+            'tier' => 'quality',
+            'options' => [],
+            'max_output_tokens' => 128000,
+            'reasoning_headroom' => 4000,
+            'price' => ['input' => 1.5, 'output' => 8.0],
+        ])
+        ->and(modelCatalog()->find(modelRef('openai:gpt-6-astra')))->toBe([
+            'id' => 'gpt-6-astra',
+            'label' => 'GPT-6 Astra',
+            'tier' => 'quality',
+            'max_output_tokens' => 64000,
+        ])
+        ->and(modelCatalog()->find(modelRef('openai:gpt-6-luna'))['options'])->toBe(['reasoning' => ['effort' => 'none']]);
 });
 
 it('ignores providers the addon does not support', function () {
@@ -39,7 +65,15 @@ it('describes a catalog model', function () {
     $sol = modelRef('openai:gpt-6.1-sol');
 
     expect(modelCatalog()->has($sol))->toBeTrue()
-        ->and(modelCatalog()->find($sol))->toBe(config('tolk.models.openai.0'))
+        ->and(modelCatalog()->find($sol))->toBe([
+            'id' => 'gpt-6.1-sol',
+            'label' => 'GPT-6.1 Sol',
+            'tier' => 'quality',
+            'options' => ['reasoning' => ['effort' => 'low']],
+            'max_output_tokens' => 128000,
+            'reasoning_headroom' => 4000,
+            'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
+        ])
         ->and(modelCatalog()->options($sol))->toBe(['reasoning' => ['effort' => 'low']])
         ->and(modelCatalog()->maxOutputTokens($sol))->toBe(128000)
         ->and(modelCatalog()->reasoningHeadroom($sol))->toBe(4000)
@@ -92,6 +126,8 @@ it('groups the catalog by provider for model selects', function () {
             ['value' => 'openai:gpt-6-luna', 'label' => 'GPT-6 Luna', 'tier' => 'fast', 'configured' => true],
         ],
         'gemini' => [
+            ['value' => 'gemini:gemini-3.8-flash', 'label' => 'Gemini 3.8 Flash', 'tier' => 'quality', 'configured' => false],
+            ['value' => 'gemini:gemini-3.5-flash-lite', 'label' => 'Gemini 3.5 Flash-Lite', 'tier' => 'fast', 'configured' => false],
             ['value' => 'gemini:gemini-custom', 'label' => 'gemini-custom', 'tier' => null, 'configured' => false],
         ],
     ]);
@@ -105,6 +141,8 @@ it('labels every catalog model by reference, configured or not', function () {
         'anthropic:claude-haiku-5-5' => 'Claude Haiku 5.5',
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
+        'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
+        'gemini:gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
         'gemini:gemini-custom' => 'gemini-custom',
     ]);
 });
@@ -120,18 +158,22 @@ it('returns the first model of a tier as the default', function (string $provide
     ['gemini', Tier::Fast, 'gemini:gemini-3.5-flash-lite'],
 ]);
 
-it('uses catalog order when a tier has several models', function () {
+it('keeps Tolk\'s first model of a tier as its default, unless the config moves that model to another tier', function () {
+    config(['tolk.models.anthropic' => [['id' => 'claude-opus-5-5', 'tier' => 'quality']]]);
+
+    expect(modelCatalog()->default('anthropic', Tier::Quality))->toEqual(modelRef('anthropic:claude-sonnet-5-5'));
+
     config(['tolk.models.anthropic' => [
-        ['id' => 'claude-haiku-5-5', 'tier' => 'fast'],
         ['id' => 'claude-opus-5-5', 'tier' => 'quality'],
-        ['id' => 'claude-sonnet-5-5', 'tier' => 'quality'],
+        ['id' => 'claude-sonnet-5-5', 'tier' => 'fast'],
     ]]);
 
-    expect(modelCatalog()->default('anthropic', Tier::Quality))->toEqual(modelRef('anthropic:claude-opus-5-5'));
+    expect(modelCatalog()->default('anthropic', Tier::Quality))->toEqual(modelRef('anthropic:claude-opus-5-5'))
+        ->and(modelCatalog()->default('anthropic', Tier::Fast))->toEqual(modelRef('anthropic:claude-sonnet-5-5'));
 });
 
 it('throws when the catalog has no model of a tier', function () {
-    config(['tolk.models.gemini' => [['id' => 'gemini-3.8-flash', 'tier' => 'quality']]]);
+    config(['tolk.models.gemini' => [['id' => 'gemini-3.5-flash-lite', 'tier' => 'quality']]]);
 
     expect(fn () => modelCatalog()->default('gemini', Tier::Fast))
         ->toThrow(MissingDefaultModel::class, 'The model catalog (tolk.models) has no fast model for [gemini].');

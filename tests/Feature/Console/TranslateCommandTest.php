@@ -114,7 +114,7 @@ describe('validation', function () {
 
     it('fails with a clear message when the catalog has no default model for the provider', function () {
         $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
-        config(['tolk.models.anthropic' => [['id' => 'claude-haiku-5-5', 'tier' => 'fast']]]);
+        config(['tolk.models.anthropic' => [['id' => 'claude-sonnet-5-5', 'tier' => 'fast']]]);
 
         [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
 

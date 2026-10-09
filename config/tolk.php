@@ -36,87 +36,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Model catalog
+    | Models
     |--------------------------------------------------------------------------
     |
-    | The models offered per provider. The first model of each tier is the
-    | provider's default for that tier. `options` are merged into the request
-    | as they are, so they must never contain `output_config` (Anthropic),
-    | `text` (OpenAI) or `response_format` (Gemini): each would replace the
-    | structured output format. Never add temperature, top_p or top_k.
-    | OpenAI's models from GPT-5.6 on also get `prompt_cache_options` in
-    | explicit mode, unless their options hold a `prompt_cache_options`.
-    | `reasoning_headroom` is the number of output tokens reserved for
-    | thinking, 0 when the model does not think with these options. Prices
-    | are USD per million tokens; `cache_read` and `cache_write` are needed
-    | only where a model's differ from 10% and 125% of its input price.
+    | Tolk's model catalog ships with Tolk and is updated with it. List models
+    | here only to add one or to change one of Tolk's: an entry with the id of
+    | a Tolk model replaces the keys it names and keeps the others. Models you
+    | add follow Tolk's, so Tolk's first model of each tier stays the default.
+    | Each entry has an `id` and any of `label`, `tier` (quality or fast),
+    | `options`, `max_output_tokens`, `reasoning_headroom` and `price` (USD
+    | per million tokens: input, output, cache_read, cache_write). `options`
+    | are merged into the request, so they must never contain `output_config`
+    | (Anthropic), `text` (OpenAI) or `response_format` (Gemini), nor
+    | temperature, top_p or top_k.
     |
     */
 
     'models' => [
-        'anthropic' => [
-            [
-                'id' => 'claude-sonnet-5-5',
-                'label' => 'Claude Sonnet 5.5',
-                'tier' => 'quality',
-                'options' => ['thinking' => ['type' => 'between_tools']],
-                'max_output_tokens' => 128000,
-                'reasoning_headroom' => 0,
-                'price' => ['input' => 2.0, 'output' => 10.0],
-            ],
-            [
-                'id' => 'claude-haiku-5-5',
-                'label' => 'Claude Haiku 5.5',
-                'tier' => 'fast',
-                'options' => ['thinking' => ['type' => 'disabled']],
-                'max_output_tokens' => 128000,
-                'reasoning_headroom' => 0,
-                // Anthropic's rate for prompts up to 100,000 tokens (0.5 / 2.5 above that); Tolk's batches stay far below.
-                'price' => ['input' => 0.1, 'output' => 0.5],
-            ],
-        ],
-        'openai' => [
-            [
-                'id' => 'gpt-6.1-sol',
-                'label' => 'GPT-6.1 Sol',
-                'tier' => 'quality',
-                'options' => ['reasoning' => ['effort' => 'low']],
-                'max_output_tokens' => 128000,
-                'reasoning_headroom' => 4000,
-                // OpenAI bills Sol's cache reads at 5% of its input price, where most models read at 10%.
-                'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
-            ],
-            [
-                'id' => 'gpt-6-luna',
-                'label' => 'GPT-6 Luna',
-                'tier' => 'fast',
-                'options' => ['reasoning' => ['effort' => 'none']],
-                'max_output_tokens' => 128000,
-                'reasoning_headroom' => 0,
-                'price' => ['input' => 0.1, 'output' => 0.5],
-            ],
-        ],
-        'gemini' => [
-            [
-                'id' => 'gemini-3.8-flash',
-                'label' => 'Gemini 3.8 Flash',
-                'tier' => 'quality',
-                'options' => ['thinking_level' => 'low'],
-                'max_output_tokens' => 65536,
-                'reasoning_headroom' => 0,
-                // Google charges 0.75 / 3.75 until 2026-12-31; this is the price from 2027-01-01.
-                'price' => ['input' => 1.5, 'output' => 7.5],
-            ],
-            [
-                'id' => 'gemini-3.5-flash-lite',
-                'label' => 'Gemini 3.5 Flash-Lite',
-                'tier' => 'fast',
-                'options' => [],
-                'max_output_tokens' => 65536,
-                'reasoning_headroom' => 0,
-                'price' => ['input' => 0.3, 'output' => 2.5],
-            ],
-        ],
+        'anthropic' => [],
+        'openai' => [],
+        'gemini' => [],
     ],
 
     /*

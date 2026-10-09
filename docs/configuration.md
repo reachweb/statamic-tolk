@@ -3,7 +3,7 @@
 Tolk has two kinds of configuration:
 
 - **Settings**, for editors, on the settings page in the Control Panel: models, review, the context sent with every translation, the glossary and what is left out. They are stored in `resources/addons/statamic-tolk.yaml`.
-- **The developer config**, `config/tolk.php`: the model catalog, timeouts, batch sizes, concurrency, drivers and paths. Publish it with `php artisan vendor:publish --tag=tolk-config` when you need to change a value.
+- **The developer config**, `config/tolk.php`: models to add to Tolk's catalog or to change in it, timeouts, batch sizes, concurrency, drivers and paths. Publish it with `php artisan vendor:publish --tag=tolk-config` when you need to change a value.
 
 API keys belong to neither: they come from `.env` only (see [Installation](installation.md#api-keys)).
 
@@ -118,7 +118,7 @@ Tolk never changes the app's `ai.*` config. It builds its own provider connectio
 
 ### The model catalog
 
-`models.anthropic`, `models.openai` and `models.gemini` list the models offered per provider. The defaults:
+Tolk comes with a catalog of models per provider, and each release of Tolk keeps it up to date, with new models, prices and request options. Its defaults:
 
 | Provider | Quality (the default) | Fast |
 | --- | --- | --- |
@@ -126,40 +126,51 @@ Tolk never changes the app's `ai.*` config. It builds its own provider connectio
 | OpenAI | `gpt-6.1-sol` (GPT-6.1 Sol) | `gpt-6-luna` (GPT-6 Luna) |
 | Gemini | `gemini-3.8-flash` (Gemini 3.8 Flash) | `gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) |
 
+`models.anthropic`, `models.openai` and `models.gemini` are empty in the config. List models there only to add one to Tolk's catalog or to change one of Tolk's:
+
+- An entry with the id of one of Tolk's models replaces the keys it names and keeps Tolk's other keys. The keys it does not name still follow Tolk's updates.
+- An entry with any other id adds a model, offered after Tolk's. So Tolk's first model of each tier stays the provider's default.
+
 Each entry has these keys:
 
 | Key | Meaning |
 | --- | --- |
-| `id` | The provider's model id. |
+| `id` | The provider's model id. The only key that a change to one of Tolk's models needs. |
 | `label` | The name shown in the CP and the commands. |
-| `tier` | `quality` or `fast`. The first model of a tier is the provider's default for it; Automatic uses the quality one. |
+| `tier` | `quality` or `fast`. The first model of a tier is the provider's default for it; Automatic uses the quality one. To make a model you add the default, choose it in the settings, or give Tolk's model another tier. |
 | `options` | Provider options merged into every request, such as reasoning settings. Never put `output_config` (Anthropic), `text` (OpenAI) or `response_format` (Gemini) here: each would replace the structured output format Tolk relies on. Never add `temperature`, `top_p` or `top_k`. OpenAI's models from GPT-5.6 on also get `prompt_cache_options: {mode: explicit}` (see [How much context costs](context-and-glossary.md#how-much-context-costs)), unless their options hold a `prompt_cache_options` of their own. |
 | `max_output_tokens` | The model's output limit. |
 | `reasoning_headroom` | Output tokens reserved for the model's thinking with these options; `0` when it does not think. |
 | `price.input`, `price.output` | USD per million tokens, for the estimates and the usage figures. Without a price the cost reads "unknown". |
 | `price.cache_read`, `price.cache_write` | Optional: USD per million tokens read from or written to the provider's prompt cache. Without them, reads cost 10% of the input price and writes 125%, the usual rates; GPT-6.1 Sol sets `cache_read`, because OpenAI bills its reads at 5%. |
 
+A key you name replaces Tolk's whole value: your `options` replace Tolk's options, and your `price` needs both `input` and `output`.
+
 Claude Haiku 5.5 is priced by prompt length; the catalog holds its rate for prompts up to 100,000 tokens, which Tolk's requests stay well below. Gemini 3.8 Flash is priced at its rate from January 2027, so until then the estimates for it are about twice the cost.
 
-A published config holds the whole catalog, so add or change models in it:
+For example, to pay a negotiated price for Claude Sonnet 5.5 and offer a fine-tuned OpenAI model:
 
 ```php
 'models' => [
     'anthropic' => [
+        ['id' => 'claude-sonnet-5-5', 'price' => ['input' => 1.8, 'output' => 9.0]],
+    ],
+    'openai' => [
         [
-            'id' => 'claude-sonnet-5-5',
-            'label' => 'Claude Sonnet 5.5',
-            'tier' => 'quality',
-            'options' => ['thinking' => ['type' => 'between_tools']],
+            'id' => 'ft:gpt-6-luna:acme::abc123',
+            'label' => 'Acme Luna',
+            'tier' => 'fast',
+            'options' => ['reasoning' => ['effort' => 'none']],
             'max_output_tokens' => 128000,
             'reasoning_headroom' => 0,
-            'price' => ['input' => 2.0, 'output' => 10.0],
+            'price' => ['input' => 0.2, 'output' => 0.8],
         ],
-        // …
     ],
-    // …
+    'gemini' => [],
 ],
 ```
+
+A config published from Tolk 1.0.0-beta.1 holds a copy of that version's whole catalog, and each entry of the copy keeps replacing Tolk's model with the same id. Delete the entries, or keep only the keys you changed. The copy's Claude Haiku 5.5 sends a thinking option that Anthropic refuses.
 
 A model may also be used without a catalog entry, typed as `provider:model` in the settings (or in `--translator`); it then gets no options, no known output limit and no price. Only users who may edit the settings may choose a model outside the catalog for a single translation.
 

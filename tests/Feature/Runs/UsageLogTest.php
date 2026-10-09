@@ -109,7 +109,7 @@ it('has no cost for a model without a price, keeps the cost of the others and so
 it('keeps the price of the day a call was made', function () {
     $this->log->add($this->sonnet, new Usage(input: 1_000_000, calls: 1), UsageSource::Cli);
 
-    config(['tolk.models.anthropic.0.price.input' => 4]);
+    config(['tolk.models.anthropic' => [['id' => 'claude-sonnet-5-5', 'price' => ['input' => 4.0, 'output' => 10.0]]]]);
     $this->log->add($this->sonnet, new Usage(input: 1_000_000, calls: 1), UsageSource::Cli);
 
     expect($this->log->month()[USAGE_TRANSLATOR]['cost'])->toEqualWithDelta(6.0, 1e-9);
