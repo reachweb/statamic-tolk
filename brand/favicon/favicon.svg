@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 5 85 85" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <style>.l{stroke:#111827}.d{fill:#0d9488}@media (prefers-color-scheme:dark){.l{stroke:#ffffff}.d{fill:#2dd4bf}}</style>
+  <path d="M33 14.5V67.5C33 75 39 81 46.5 81H53" class="l" stroke-width="15"/>
+  <path d="M19.5 41H52" class="l" stroke-width="11.5"/>
+  <path d="M51 38C59.5 38 63.5 27 71 27M51 44C59.5 44 63.5 55 71 55" class="l" stroke-width="5.5"/>
+  <circle cx="76.5" cy="27" r="6.5" class="d"/>
+  <circle cx="76.5" cy="55" r="6.5" class="d"/>
+</svg>
