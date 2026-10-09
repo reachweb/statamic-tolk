@@ -171,7 +171,7 @@ async function undo() {
                 </Description>
             </div>
 
-            <div v-if="phase === 'planning'" class="flex items-center gap-2" data-tolk-phase="planning">
+            <div v-if="phase === 'planning'" class="flex items-center gap-2" tabindex="-1" data-tolk-focus data-tolk-phase="planning">
                 <Text>{{ __('Preparing the translation…') }}</Text>
             </div>
 
