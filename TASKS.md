@@ -439,7 +439,7 @@ Plan {
 | Finish reason `ContentFilter`, or an OpenAI `refusal` content item (OpenAI reports a refusal as `Stop` with `structured === []`; only `$response->raw` shows it, T2.1) | Several segments: spawn two halves to isolate the refusal. One segment: fail it with reason `refused`. |
 | Ids missing from the output | Spawn one unit with the missing segments. If they are missing again, fail them with reason `missing`. |
 | A segment that is not valid (§A3) | Spawn a repair unit for that segment alone, with a `note` naming the problem; at most 2 repairs, then fail it with reason `invalid`. Exceeding `max_length` gets one repair and is then accepted with a warning. |
-| Valid translations, review on | Spawn one review unit for those segments. A review unit that fails for any reason adds the warning "review skipped" and never fails a segment. |
+| Valid translations, review on | Spawn one review unit for those segments. A review unit that fails for any reason other than `ProviderRejected` adds the warning "review skipped" and never fails a segment. A rejected reviewer is handled as in the rejected row above: its key or model is wrong, so `ProviderRejected` propagates and runs abort (T7.3). |
 
 A segment that failed for good is handled at assembly (§A8 step 4). The SDK has no retries of its own (R2 §10.2).
 

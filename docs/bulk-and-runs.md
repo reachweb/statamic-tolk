@@ -41,7 +41,7 @@ When text fields were left out because they are not localizable, the page says s
 
 Users who may edit Tolk's settings can clear the list with **Reset** on the runs list: after a confirmation it deletes every completed, cancelled and aborted run they may see, with its results, so it can no longer be resumed or retried. Pending and running runs stay, and so do the translations the deleted runs saved. Without it, `tolk:prune` deletes runs after `runs.retention_days` days without activity.
 
-A run's status is one of *Not started*, *Running*, *Completed*, *Completed with errors*, *Cancelled* or *Aborted*. A run is aborted when a provider rejects the API key or a spending limit is reached, or when three items in a row failed because the provider stayed unavailable. An item fails after ten waits in a row for a provider that keeps asking to wait; such waits pause the item, not the run.
+A run's status is one of *Not started*, *Running*, *Completed*, *Completed with errors*, *Cancelled* or *Aborted*. A run is aborted when a provider rejects a request of the translator or the reviewer for good (a wrong API key, an unknown or retired model, a spending limit), or when three items in a row failed because the provider stayed unavailable. A run keeps the models it started with: after fixing a key or a spending limit, **Resume** continues it; after an unknown or retired model, start a new run. An item fails after ten waits in a row for a provider that keeps asking to wait; such waits pause the item, not the run.
 
 ### The order of the items
 
