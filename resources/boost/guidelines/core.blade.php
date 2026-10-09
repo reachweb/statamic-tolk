@@ -14,7 +14,7 @@
 
 ### Where Tolk keeps things
 
-- **Settings** (models, review, the context sent with every translation, the glossary, excluded collections and fields): the settings page under **Tools › Addons › Tolk** (`cp/addons/statamic-tolk/settings`), stored in `resources/addons/statamic-tolk.yaml` and committed. It needs the **Tolk settings** permission or **Configure addons**.
+- **Settings** (models, review, the context sent with every translation, the glossary, excluded collections and fields): the settings page under **Tools › Addons › Tolk** or **Tools › Translations › Settings** (`cp/addons/statamic-tolk/settings`), stored in `resources/addons/statamic-tolk.yaml` and committed. It needs the **Tolk settings** permission or **Configure addons**.
 - **The developer config**, `config/tolk.php`: the model catalog, timeouts, batch sizes, concurrency, drivers and paths. Publish it with `php artisan vendor:publish --tag=tolk-config` only when a value has to change.
 - **Translation state**, what Tolk remembers about each translated field: `content/tolk/`. Commit it together with the content it describes. **Do not edit the files under `content/tolk/` by hand**, and do not write or delete them from your own code: a wrong value makes a field read untranslated, outdated or edited by hand. `php please tolk:prune` removes the records of deleted content.
 - **Runs** in `storage/statamic/tolk/runs/` and **monthly usage** in `storage/statamic/tolk/usage/`; plans, locks and cached counts in the cache store. None of these is committed.

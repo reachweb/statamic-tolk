@@ -21,6 +21,8 @@ use Reach\StatamicTolk\Runs\FileRunRepository;
 use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\Support\Settings;
+use Statamic\CP\Navigation\Nav as Navigation;
+use Statamic\CP\Navigation\NavItem;
 use Statamic\Facades\Addon;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
@@ -99,11 +101,20 @@ class ServiceProvider extends AddonServiceProvider
             ->route('tolk.overview')
             ->icon('dictionary-language-book')
             ->can('run bulk translations')
-            ->children([
+            ->children(array_filter([
                 $nav->item('Overview')->route('tolk.overview'),
                 $nav->item('Runs')->route('tolk.runs.index'),
                 $nav->item('Audit')->route('tolk.audit'),
-            ]));
+                $this->settingsNavItem($nav),
+            ])));
+    }
+
+    // Gated as core's own Tools › Addons › Tolk item is, by the addon's editSettings.
+    private function settingsNavItem(Navigation $nav): ?NavItem
+    {
+        $addon = Addon::get(Settings::PACKAGE);
+
+        return $addon ? $nav->item('Settings')->url($addon->settingsUrl())->can('editSettings', $addon) : null;
     }
 
     // The built-in handlers come with the registry, so an addon that boots before this one (Tolk::registerFieldtype()) can replace them.

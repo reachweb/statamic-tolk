@@ -4,6 +4,10 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **Settings** in the **Tools › Translations** menu, below **Audit**, for users who may edit Tolk's settings.
+
 ### Changed
 
 - The editor's translation options are grouped and shorter, so they fit a laptop screen: the model and the reviewer side by side, the reviewer enabled only while it has something to do, the actions that take effect at once under their own heading, and the offer preference as a switch.

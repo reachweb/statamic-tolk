@@ -9,7 +9,7 @@ API keys belong to neither: they come from `.env` only (see [Installation](insta
 
 ## Settings
 
-Open the settings page under **Tools › Addons › Tolk** (`cp/addons/statamic-tolk/settings`). It needs the **Tolk settings** permission or **Configure addons**. Every setting is read fresh on each request, so queue workers and the command's worker processes pick up a change without a restart.
+Open the settings page under **Tools › Addons › Tolk** or **Tools › Translations › Settings** (`cp/addons/statamic-tolk/settings`). It needs the **Tolk settings** permission or **Configure addons**. Every setting is read fresh on each request, so queue workers and the command's worker processes pick up a change without a restart.
 
 ### General
 

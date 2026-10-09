@@ -85,8 +85,8 @@ Commit `content/tolk/` together with the content it describes, and do not edit i
 
 ## In the Control Panel
 
-- **Tools › Translations** opens the **Overview** (`cp/tolk/overview`), with **Runs** and **Audit** below it. The nav item shows for users with `run bulk translations`.
-- The settings are at `cp/addons/statamic-tolk/settings`: **Tools › Addons › Tolk** for users who may configure addons, **Tools › Tolk** for the others with the settings permission.
+- **Tools › Translations** opens the **Overview** (`cp/tolk/overview`), with **Runs**, **Audit** and **Settings** below it. The nav item shows for users with `run bulk translations`, and its **Settings** for those of them who may edit the settings.
+- The settings are at `cp/addons/statamic-tolk/settings`: **Tools › Addons › Tolk** for users who may configure addons, **Tools › Tolk** for the others with the settings permission, and **Tools › Translations › Settings** as well.
 - Entry and term forms show the Tolk banner above the tabs on a multi-site collection or taxonomy, for users with `translate content`.
 
 ## The interface language
