@@ -47,7 +47,7 @@ A run's status is one of *Not started*, *Running*, *Completed*, *Completed with 
 
 Items are translated in parallel, but some wait for others:
 
-- A new page of a structured collection waits for its parent page's localization, so it is placed under it in the target site's tree.
+- A new page of a structured collection waits for its parent page's localization, so it is placed under it in the target site's tree. Pages are saved in the order their translations finish, and each is placed at its origin's position among its siblings, so the target's tree ends up in the origin's order.
 - On a collection whose tree has a root (a home page), the root page goes first in a site whose tree is still empty: the first page placed in an empty tree becomes that site's home page. A page whose root page has no localization in that site, and is not in the run, is skipped with "Translate Home into Greek first."
 - A site translated from another localization (`de_CH` from `de`) waits for that localization.
 - Navigation is translated after the run's entries, so its branches can link the new localizations.

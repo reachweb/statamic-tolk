@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Event;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Contracts\Structures\CollectionTreeRepository;
 use Statamic\Events\EntryCreated;
 use Statamic\Events\EntryCreating;
 use Statamic\Events\EntrySaved;
@@ -60,6 +61,31 @@ describe('tree placement', function () {
 
         expect($this->treeOfSlugs('de'))->toBe(['home' => [], 'rooms' => ['suites' => ['honeymoon' => []]]])
             ->and($this->treeOfSlugs('de'))->toBe($this->treeOfSlugs('en'));
+    });
+
+    it('appends a localization at the end of its level, whatever its origin\'s position there', function () {
+        $pages = $this->makePages(['home', 'about', 'rooms' => ['suites', 'villas']], root: true);
+
+        foreach (['home', 'rooms', 'about', 'villas', 'suites'] as $slug) {
+            localizeFresh($pages[$slug], 'de');
+        }
+
+        expect($this->treeOfSlugs('de'))->toBe(['home' => [], 'rooms' => ['villas' => [], 'suites' => []], 'about' => []]);
+    });
+
+    it('saves no tree for a localization in an orderable collection, whose tree lists the entries it lacks in query order', function () {
+        $this->makeCollection('team', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]], structured: true)
+            ->structureContents(['root' => false, 'max_depth' => 1])
+            ->save();
+        $anna = $this->makeEntry('team', 'en', ['title' => 'Anna'], 'anna');
+        $bob = $this->makeEntry('team', 'en', ['title' => 'Bob'], 'bob');
+        Collection::find('team')->structure()->in('en')->tree([['entry' => $anna->id()], ['entry' => $bob->id()]])->save();
+
+        $greekBob = localizeFresh($bob, 'el');
+        $greekAnna = localizeFresh($anna, 'el');
+
+        expect(app(CollectionTreeRepository::class)->find('team', 'el'))->toBeNull()
+            ->and(Collection::find('team')->structure()->in('el')->tree())->toEqualCanonicalizing([['entry' => $greekBob->id()], ['entry' => $greekAnna->id()]]);
     });
 });
 

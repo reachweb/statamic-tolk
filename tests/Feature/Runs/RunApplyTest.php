@@ -141,6 +141,30 @@ describe('applyReady', function () {
             ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Completed);
     });
 
+    it('gives the target the origin\'s order when it applies the pages out of order, as parallel lanes finish them', function () {
+        $this->fakeTranslations();
+        $this->makePages(['home', 'about', 'rooms', 'dining', 'spa']);
+        $run = RunFixtures::started(['collections' => ['pages']]);
+        RunFixtures::translate($run);
+        applyRun($run);
+        RunFixtures::translate($run);
+
+        // Another lane still holds About and Rooms while Dining and Spa are applied.
+        $held = [$this->runs->claimTranslated($run, 'lane-2', 300), $this->runs->claimTranslated($run, 'lane-3', 300)];
+        applyRun($run);
+
+        expect(RunFixtures::statuses($run))->toBe(['done', 'applying', 'applying', 'done', 'done']);
+
+        foreach ($held as $item) {
+            $this->runs->release($run, $item);
+        }
+
+        applyRun($run);
+
+        expect(RunFixtures::statuses($run))->toBe(array_fill(0, 5, 'done'))
+            ->and($this->treeOfSlugs('el'))->toBe($this->treeOfSlugs('en'));
+    });
+
     it('keeps the planner\'s warnings and adds those of the apply', function () {
         $this->fakeTranslations();
         $pages = $this->makePages(['home', 'rooms' => ['suites']], root: false);
