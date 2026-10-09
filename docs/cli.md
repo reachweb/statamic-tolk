@@ -275,7 +275,7 @@ php please tolk:profile --save
 
 ## `tolk:lang`
 
-Translates the app's Laravel translation files into the languages of other sites: `lang/{lang}.json` and `lang/{lang}/*.php`. The interface texts of a Statamic site's templates (`{{ trans key="…" }}`, `__()`) come from these files.
+Translates the app's Laravel translation files into the languages of other sites: `lang/{lang}.json` and the PHP files directly in `lang/{lang}/` (not those in its subfolders). The interface texts of a Statamic site's templates (`{{ trans key="…" }}`, `__()`) come from these files.
 
 | Argument or option | Meaning |
 | --- | --- |

@@ -43,7 +43,7 @@ Every command works with `php please` and `php artisan`. They run without a CP u
 - `tolk:baseline`: records the origin of fields translated by hand before Tolk was installed, so that later changes to the origin are noticed. The adoption path for an existing site.
 - `tolk:prune`: deletes the state of deleted content and old runs, and stops stalled runs. Schedule it daily: `Schedule::command('tolk:prune')->daily()`.
 - `tolk:profile`: writes a site profile for the prompts from the default site's content.
-- `tolk:lang`: translates the app's Laravel translation files, `lang/{lang}.json` and `lang/{lang}/*.php`, into the languages of the other sites; `:parameters` stay as they are.
+- `tolk:lang`: translates the app's Laravel translation files, `lang/{lang}.json` and the PHP files directly in `lang/{lang}/`, into the languages of the other sites; `:parameters` stay as they are.
 - `tolk:forms`: translates the texts of forms (titles, labels, instructions, placeholders, option labels and email subjects) as JSON translation strings into `lang/{lang}.json`. Form templates must pass those texts through `trans`, as the command reminds you:
 
 @verbatim
