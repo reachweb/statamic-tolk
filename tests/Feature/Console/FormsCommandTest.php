@@ -255,11 +255,14 @@ it('stops at ProviderRejected with its message and exits 1', function () {
     $commits = RunFixtures::commits();
     ScriptedEngine::bind(fn (EngineCall $call) => throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
 
-    [$exitCode, $output] = formsCommand(['sites' => ['de']]);
+    [$exitCode, $output] = formsCommand(['sites' => ['de', 'el']]);
 
     expect($exitCode)->toBe(1)
-        ->and($output)->toContain('Invalid API key.')
+        ->and($output)->toMatch('/lang\/de\.json: failed, .*Invalid API key\./')
+        ->and($output)->toContain('1 file was not translated: lang/el.json.')
+        ->and($output)->toMatch('/\| 0 +\| 0 +\| 1 +\| 0 +\|/')
         ->and(formsJson('de'))->toBeNull()
+        ->and(formsJson('el'))->toBeNull()
         ->and($commits->getArrayCopy())->toBe([]);
 });
 

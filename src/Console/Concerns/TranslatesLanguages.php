@@ -24,6 +24,7 @@ use Reach\StatamicTolk\Targets\LangTarget;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
+use Reach\StatamicTolk\Translation\TargetResult;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Facades\Site;
 
@@ -116,7 +117,8 @@ trait TranslatesLanguages
 
     /**
      * One target after another; a provider that refuses the account or the model stops the command, because every other
-     * target would meet it too. The state the translations wrote is committed once.
+     * target would meet it too: that target fails, and the targets after it are named. The state the translations wrote
+     * is committed once.
      *
      * @param  list<LangTarget|FormsTarget>  $targets
      */
@@ -127,7 +129,7 @@ trait TranslatesLanguages
         $this->newLine();
 
         try {
-            foreach ($targets as $target) {
+            foreach ($targets as $index => $target) {
                 $saved = $this->adoptMovedKeys($target) || $saved;
                 $this->startTarget($target->name());
                 $result = $options->mode === Mode::Review ? $translator->review($target, $options, $apply) : $translator->translate($target, $options, $apply);
@@ -135,8 +137,13 @@ trait TranslatesLanguages
                 $saved = $saved || $result->status === TargetResultStatus::Done;
             }
         } catch (ProviderRejected $exception) {
-            $this->newLine();
-            $this->components->error($exception->getMessage());
+            $this->reportResult($target->name(), TargetResult::failed(TargetResult::PROVIDER_REJECTED, $exception->getMessage()));
+            $left = array_map(fn (LangTarget|FormsTarget $target) => $target->name(), array_slice($targets, $index + 1));
+
+            if ($left !== []) {
+                $this->newLine();
+                $this->components->warn(sprintf('%s not translated: %s.', count($left) === 1 ? '1 file was' : number_format(count($left)).' files were', implode(', ', $left)));
+            }
 
             return self::FAILURE;
         } finally {

@@ -475,10 +475,24 @@ it('stops at ProviderRejected with its message, commits what was saved and exits
     [$exitCode, $output] = langCommand(['sites' => ['de']]);
 
     expect($exitCode)->toBe(1)
-        ->and($output)->toContain('Invalid API key.')
         ->and($output)->toContain('lang/de.json: done, created, 3 fields')
+        ->and($output)->toMatch('/lang\/de\/messages\.php: failed, .*Invalid API key\./')
+        ->and($output)->toMatch('/\| 1 +\| 0 +\| 1 +\| 0 +\|/')
+        ->and($output)->not->toContain('not translated')
         ->and(file_exists(lang_path('de/messages.php')))->toBeFalse()
         ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
+});
+
+it('names the files it did not get to after ProviderRejected', function () {
+    ScriptedEngine::bind(fn (EngineCall $call) => throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
+
+    [$exitCode, $output] = langCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toMatch('/lang\/de\.json: failed, .*Invalid API key\./')
+        ->and($output)->toContain('1 file was not translated: lang/de/messages.php.')
+        ->and($output)->toMatch('/\| 0 +\| 0 +\| 1 +\| 0 +\|/')
+        ->and(file_exists(lang_path('de.json')))->toBeFalse();
 });
 
 it('commits once when a file was saved, and not when nothing was', function () {

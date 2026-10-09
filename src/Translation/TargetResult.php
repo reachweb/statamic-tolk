@@ -30,6 +30,8 @@ final readonly class TargetResult
 
     public const string PROVIDER_UNAVAILABLE = 'provider_unavailable';
 
+    public const string PROVIDER_REJECTED = 'provider_rejected';
+
     public const string FIELDS_FAILED = 'fields_failed';
 
     public const string WRITER_BUSY = 'writer_busy';
