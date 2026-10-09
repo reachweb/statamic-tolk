@@ -12,6 +12,7 @@ use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Runs\Estimate;
 use Reach\StatamicTolk\Runs\Estimator;
+use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\GitListeners;
@@ -127,6 +128,7 @@ trait TranslatesLanguages
 
         try {
             foreach ($targets as $target) {
+                $saved = $this->adoptMovedKeys($target) || $saved;
                 $this->startTarget($target->name());
                 $result = $options->mode === Mode::Review ? $translator->review($target, $options, $apply) : $translator->translate($target, $options, $apply);
                 $this->reportResult($target->name(), $result);
@@ -144,6 +146,17 @@ trait TranslatesLanguages
         }
 
         return $this->resultCounts()['failed'] > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * A key of `lang/{lang}.json` that moved between the source language's JSON file and the forms takes its record
+     * along, so its translation does not read as edited by hand. Returns whether a record moved.
+     */
+    private function adoptMovedKeys(LangTarget|FormsTarget $target): bool
+    {
+        $from = $target->sharesFileWith();
+
+        return $from !== null && app(StateWriter::class)->adopt($target, $from) !== [];
     }
 
     /**

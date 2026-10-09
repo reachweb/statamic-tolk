@@ -15,6 +15,7 @@ use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Tests\Support\FormFixtures;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Statamic\Facades\Site;
@@ -178,6 +179,23 @@ it('copies the strings with nothing to translate, such as URLs and email address
         ->and($second)->toContain('lang/de.json: skipped, nothing to do')
         ->and($second)->toContain('lang/el.json: skipped, nothing to do')
         ->and($second)->not->toContain('manual edits kept');
+});
+
+it('takes over the record of a form text that moved into lang/en.json, so its translation stays machine output', function () {
+    FormFixtures::contact();
+    $this->fakeTranslations();
+    Artisan::call('tolk:forms', ['sites' => ['de']]);
+
+    writeLang('en.json', json_encode(['Book now' => 'Book now', 'Contact us' => 'Contact us', 'Hello, :name' => 'Hello, :name', 'Your message' => 'Your message'], JSON_PRETTY_PRINT));
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['_json']]);
+    $status = app(StatusResolver::class)->resolve(app(TargetFactory::class)->forLang('_json', 'de', 'en'))->fields['Your message'];
+
+    expect($exitCode)->toBe(0)
+        ->and($status->status)->toBe(FieldStatus::Current)
+        ->and($output)->toContain('lang/de.json: done, 3 fields')
+        ->and($output)->not->toContain('manual edits kept')
+        ->and(readLang('de.json')['Your message'])->toBe('[T] Your message')
+        ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Forms, 'de'))->fields)->not->toHaveKey('Your message');
 });
 
 it('re-sends only the edited key in mode update', function () {

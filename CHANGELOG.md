@@ -25,6 +25,7 @@ All notable changes to Tolk are documented in this file.
 - `tolk:lang` writes a key of a PHP translation file that holds a dot (`'faq.title' => …`) as one key, as the source has it, instead of nesting it. A key that is also the start of another (`'faq'` next to `'faq.title'`) no longer loses its translation, which made `__()` return an array, and is no longer sent again on every run.
 - `tolk:lang` tracks keys that read as numbers, such as `'404'` in `lang/en/errors.php` or `"2026"` in `lang/en.json`. Their translations were recorded under the wrong key, so they read "edited by hand" and `--mode=update` never refreshed them. Keys translated by 1.0.0-beta.1 read "edited by hand" until they are translated again with `tolk:lang --force --group=<file>` (`_json` for the JSON file).
 - `tolk:lang` copies strings with nothing to translate, such as URLs, email addresses and phone numbers, from the source into the target file, as it copies numbers, so `__('site.url')` no longer shows `site.url` on a translated site (a JSON file has no fallback language). They are copied whenever the command writes the file.
+- A text that moves between `lang/{source}.json` and a form, such as a form label added to the JSON file, keeps its record, so `tolk:lang` and `tolk:forms` no longer read its translation as edited by hand.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

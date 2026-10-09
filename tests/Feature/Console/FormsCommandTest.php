@@ -6,9 +6,15 @@ use Illuminate\Translation\FileLoader;
 use Illuminate\Translation\Translator;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\ProviderError;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
+use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\FormFixtures;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
@@ -168,6 +174,22 @@ it('shows the texts by status, the plan and the estimate in a dry run, and write
         ->and(formsJson('de'))->toBe(['Topic' => 'Thema'])
         ->and(file_exists($this->temporaryPath('state/forms/de.yaml')))->toBeFalse();
     $this->assertNoModelCalls();
+});
+
+it('takes over the record of a string that moved out of lang/en.json into the forms, so its translation stays machine output', function () {
+    $this->fakeTranslations();
+    Artisan::call('tolk:lang', ['sites' => ['de']]);
+
+    file_put_contents(lang_path('en.json'), json_encode(['Book now' => 'Book now'], JSON_PRETTY_PRINT));
+    [$exitCode, $output] = formsCommand(['sites' => ['de']]);
+    $status = app(StatusResolver::class)->resolve(app(TargetFactory::class)->forForms('de', 'en'))->fields['Contact us'];
+
+    expect($exitCode)->toBe(0)
+        ->and($status->status)->toBe(FieldStatus::Current)
+        ->and($output)->toContain('lang/de.json: done, 16 fields')
+        ->and($output)->not->toContain('manual edits kept')
+        ->and(formsJson('de')['Contact us'])->toBe('[T] Contact us')
+        ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, '_json', 'de'))->fields)->not->toHaveKey('Contact us');
 });
 
 it('keeps a text edited by hand unless --force is given', function () {

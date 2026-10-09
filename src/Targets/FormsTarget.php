@@ -114,6 +114,14 @@ final class FormsTarget implements Target
         ));
     }
 
+    /**
+     * The `_json` translation file, which writes the keys of the source language's JSON file into the same file (§A16).
+     */
+    public function sharesFileWith(): TargetRef
+    {
+        return new TargetRef(ContentType::Lang, LangFiles::JSON, $this->lang);
+    }
+
     public function type(): ContentType
     {
         return ContentType::Forms;

@@ -330,7 +330,7 @@ php please tolk:forms --form=contact --dry-run
 
 - **What it collects**: each form's title; the label (`display`), `instructions` and `placeholder` of each top-level field; the labels of its options, never the option values; and the subject of each email.
 - **Each text is its own key** in `lang/{lang}.json`, keyed by the source text, as Laravel's JSON files are. A text used by several forms is translated once. Because the key is the text, a changed label is a new key: the old one is listed as unused and left in the file, never deleted.
-- **A text `lang/{source}.json` already has** as a key is left to `tolk:lang`, which translates that file.
+- **A text `lang/{source}.json` already has** as a key is left to `tolk:lang`, which translates that file. A text that moves between that file and a form keeps its record: the command that takes it over finds the translation as the other one left it, so a machine translation is not read as edited by hand.
 - **An email subject with Antlers** (`{{ name }} wrote to you`) is left out and named: Statamic renders the subject before it looks up its translation, so its key would never match.
 - **The state** lives under `content/tolk/forms/`.
 

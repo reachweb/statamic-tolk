@@ -153,6 +153,56 @@ final readonly class StateWriter
     }
 
     /**
+     * Moves to the target's state the records that the state of $from holds for fields the target has a value for but
+     * no record of its own. A key of `lang/{lang}.json` that moves between the source language's JSON file and the forms
+     * changes the target it belongs to (§A16), and without its record its translation would read as edited by hand.
+     *
+     * @return list<string> the handles whose records moved
+     */
+    public function adopt(Target $target, TargetRef $from): array
+    {
+        $ref = $target->ref();
+
+        if ($ref === null) {
+            return [];
+        }
+
+        $other = $this->repository->get($from);
+        $records = [];
+
+        foreach ($target->fields() as $handle => $field) {
+            if (! $other->field((string) $handle)->isEmpty() && $target->hasOverride((string) $handle)) {
+                $records[(string) $handle] = $other->field((string) $handle);
+            }
+        }
+
+        if ($records === []) {
+            return [];
+        }
+
+        $adopted = [];
+
+        $this->repository->update($ref, function (ItemState $state) use ($records, $target, &$adopted) {
+            $adopted = [];
+
+            foreach ($records as $handle => $record) {
+                if ($state->field((string) $handle)->isEmpty()) {
+                    $state = $state->withField((string) $handle, $record);
+                    $adopted[] = (string) $handle;
+                }
+            }
+
+            return $adopted === [] ? $state : $state->withSourceSite($target->sourceSite());
+        });
+
+        if ($adopted !== []) {
+            $this->repository->update($from, fn (ItemState $state) => array_reduce($adopted, fn (ItemState $state, string $handle) => $state->withoutField($handle), $state));
+        }
+
+        return $adopted;
+    }
+
+    /**
      * Deletes the target's state, or only the state of the given fields. Returns whether there was any.
      *
      * @param  ?list<string>  $handles
