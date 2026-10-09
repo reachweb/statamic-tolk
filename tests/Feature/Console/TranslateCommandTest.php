@@ -7,6 +7,7 @@ use Illuminate\Process\FakeInvokedProcess;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
@@ -30,9 +31,12 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Reach\StatamicTolk\Tests\Support\TerminalTranslate;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Term;
+use Symfony\Component\Process\InputStream;
+use Symfony\Component\Process\Process as SymfonyProcess;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -1192,6 +1196,53 @@ describe('the run engine', function () {
         expect(app(RunRepository::class)->recent(1)[0]->status)->toBe(RunStatus::Cancelled)
             ->and($this->world->fresh()->existsIn('el'))->toBeFalse();
     });
+
+    it('deletes the run and translates nothing when Ctrl-C answers the confirmation on a terminal', function () {
+        if (! SymfonyProcess::isPtySupported()) {
+            $this->markTestSkipped('Needs a pseudo-terminal.');
+        }
+
+        $directory = $this->temporaryPath();
+        File::ensureDirectoryExists($directory);
+        $terminal = new InputStream;
+        $child = new SymfonyProcess([PHP_BINARY, TerminalTranslate::SCRIPT, $directory], null, null, $terminal, 120);
+        $child->setPty(true);
+        $child->start();
+
+        try {
+            for ($deadline = microtime(true) + 90; ! str_contains($child->getOutput(), 'Translate and save them?'); usleep(50_000)) {
+                expect($child->isRunning() && microtime(true) < $deadline)->toBeTrue("The command did not ask:\n{$child->getOutput()}");
+            }
+
+            expect(app(RunRepository::class)->recent(10))->toHaveCount(1);
+
+            // Laravel Prompts reads the terminal in raw mode, which passes Ctrl-C on as this key instead of sending SIGINT.
+            $terminal->write("\x03");
+
+            for ($deadline = microtime(true) + 30; $child->isRunning(); usleep(50_000)) {
+                expect(microtime(true) < $deadline)->toBeTrue("The command did not end after Ctrl-C:\n{$child->getOutput()}");
+            }
+        } finally {
+            $terminal->close();
+            $child->stop(0);
+        }
+
+        expect($child->getExitCode())->toBe(1, $child->getOutput())
+            ->and($child->getOutput())->toContain('Nothing was translated.')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
+    })->group('slow');
+
+    it('reads an answer piped to the confirmation without a terminal', function () {
+        $directory = $this->temporaryPath();
+        File::ensureDirectoryExists($directory);
+        $child = new SymfonyProcess([PHP_BINARY, TerminalTranslate::SCRIPT, $directory], null, null, "no\n", 120);
+        $child->run();
+
+        expect($child->getExitCode())->toBe(0, $child->getOutput().$child->getErrorOutput())
+            ->and($child->getOutput())->toContain('Translate and save them?')
+            ->and($child->getOutput())->toContain('Nothing was translated.')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
+    })->group('slow');
 
     it('waits for the workers after Ctrl-C, and stops them at once on a second one', function () {
         if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
