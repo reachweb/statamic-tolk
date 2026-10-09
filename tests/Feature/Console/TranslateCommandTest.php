@@ -229,6 +229,42 @@ describe('translating', function () {
             ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
     });
 
+    it('keeps the ids of the rows and sets of a localization translated again from an origin without ids', function () {
+        $this->fakeTranslations();
+        $this->makeCollection('stories', ['en', 'el'], [
+            'blocks' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+                'text' => ['display' => 'Text', 'fields' => [['handle' => 'heading', 'field' => ['type' => 'text']]]],
+            ]]]],
+            'faq' => ['type' => 'grid', 'localizable' => true, 'fields' => [['handle' => 'question', 'field' => ['type' => 'text']]]],
+            'body' => ['type' => 'bard', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+                'quote' => ['display' => 'Quote', 'fields' => [['handle' => 'text', 'field' => ['type' => 'textarea']]]],
+            ]]]],
+        ]);
+        // Seeded as code or an importer writes content: no row or set ids.
+        $story = $this->makeEntry('stories', 'en', [
+            'blocks' => [['type' => 'text', 'heading' => 'Rooms'], ['type' => 'text', 'heading' => 'Dining']],
+            'faq' => [['question' => 'When is breakfast?']],
+            'body' => [
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome.']]],
+                ['type' => 'set', 'attrs' => ['values' => ['type' => 'quote', 'text' => 'A fine stay.']]],
+            ],
+        ], 'story');
+        $ids = function () use ($story) {
+            $greek = $story->fresh()->in('el');
+
+            return [...array_column($greek->get('blocks'), 'id'), ...array_column($greek->get('faq'), 'id'), $greek->get('body')[1]['attrs']['id']];
+        };
+
+        translateCommand(['--entry' => [$story->id()], '--site' => ['el']]);
+        $first = $ids();
+        [$exitCode] = translateCommand(['--entry' => [$story->id()], '--site' => ['el'], '--mode' => 'all']);
+
+        expect($exitCode)->toBe(0)
+            ->and($story->fresh()->in('el')->get('blocks')[0]['heading'])->toBe('[T] Rooms')
+            ->and($first)->toHaveCount(4)->each->toBeString()
+            ->and($ids())->toBe($first);
+    });
+
     it('keeps a manual field in mode update and overwrites it with --force', function () {
         $this->fakeTranslations();
         translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el']]);

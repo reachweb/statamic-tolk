@@ -42,7 +42,7 @@ Inside those fields, a string is not sent to the model, and stays as it is, when
 
 ### What stays as it is
 
-Formatting, links, set types, ids and every value that is not text are kept exactly as in the origin; only the text changes. Inside the text:
+Formatting, links, set types, ids and every value that is not text are kept exactly as in the origin; only the text changes. Where the origin's Replicator or Grid rows or Bard sets have no ids (content imported or saved by code), each keeps the id the localization's row or set at the same place already has, so translating a field again does not rewrite its ids. Inside the text:
 
 - **Antlers tags** (`{{ site:name }}`, `{{ partial:cta }}`) are kept unchanged, and a translation may not add one.
 - **HTML tags** in text fields are kept: the model sees placeholders in their place and must return each one. The `alt` and `title` attributes inside HTML tags are not translated; Bard's own link titles and image alt texts are.
