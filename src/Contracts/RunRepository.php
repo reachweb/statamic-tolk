@@ -116,6 +116,14 @@ interface RunRepository
     public function retryFailed(Run $run): int;
 
     /**
+     * Puts every `translating` item back to `pending`, atomically, with its plan and without its claim, so a run that
+     * stopped holds no item; a worker still inside a unit loses its claim at its next write. Returns how many.
+     *
+     * @throws RunNotFound
+     */
+    public function releaseTranslating(Run $run): int;
+
+    /**
      * Seconds until some item can be claimed with claimNext(), 0 when one can be now, null when nothing is waiting.
      */
     public function nextAvailableIn(Run $run): ?int;

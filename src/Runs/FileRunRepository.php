@@ -258,6 +258,29 @@ final class FileRunRepository implements RunRepository
         });
     }
 
+    public function releaseTranslating(Run $run): int
+    {
+        return $this->locked($run->id, function () use ($run) {
+            $stored = $this->readRun($run->id) ?? throw RunNotFound::for($run->id);
+            $index = $this->readIndex($run->id);
+            $changed = [];
+
+            foreach ($index as $i => $entry) {
+                if ($entry['status'] !== RunItemStatus::Translating->value || ! $item = $this->readItem($run->id, $i)) {
+                    continue;
+                }
+
+                $item->status = RunItemStatus::Pending;
+                $item->claim = null;
+                $changed[$i] = $item;
+            }
+
+            $this->commit($run, $stored, $index, $changed);
+
+            return count($changed);
+        });
+    }
+
     public function nextAvailableIn(Run $run): ?int
     {
         $status = $this->readRun($run->id)?->status;

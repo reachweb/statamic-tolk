@@ -431,6 +431,31 @@ describe('translate', function () {
             ->and($run->status)->toBe(RunStatus::Cancelled)
             ->and($engine->segmentIds())->toBe([['s1']]);
     });
+
+    it('releases the items other workers hold when the run is cancelled or aborted', function (string $stop) {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 2 && $stop === 'abort' ? rejectedKey($call) : ScriptedEngine::translated($call));
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id()]]);
+        $deadline = CarbonImmutable::now()->addSeconds(30);
+
+        // A browser lane's tick runs one unit, and the item keeps its claim for the lane's next tick.
+        app(RunProcessor::class)->translate($run, 'lane-1', $deadline, 300, maxUnits: 1);
+
+        expect(RunFixtures::items($run)[0]->status)->toBe(RunItemStatus::Translating);
+
+        $stop === 'abort'
+            ? app(RunProcessor::class)->translate($run, 'lane-2', $deadline, 300, maxUnits: 1)
+            : app(RunProcessor::class)->cancel($run);
+        [$first, $second] = RunFixtures::items($run);
+
+        expect(RunFixtures::stored($run)->status)->toBe($stop === 'abort' ? RunStatus::Aborted : RunStatus::Cancelled)
+            ->and(RunFixtures::statuses($run))->toBe(['pending', 'pending'])
+            ->and($first->claim)->toBeNull()
+            ->and($first->planId)->not->toBeNull()
+            ->and($second->claim)->toBeNull()
+            ->and(app(RunProcessor::class)->translate($run, 'lane-1', $deadline, 300, maxUnits: 1)->units)->toBe(0)
+            ->and($engine->calls)->toHaveCount($stop === 'abort' ? 2 : 1);
+    })->with(['cancel', 'abort']);
 });
 
 describe('failures', function () {

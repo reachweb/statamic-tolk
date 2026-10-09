@@ -127,8 +127,9 @@ final readonly class RunProcessor
     }
 
     /**
-     * Cancels a pending or running run and finalizes it, which commits the content saved so far. Workers stop at their
-     * next step; an item they release mid-plan keeps its plan for a resume.
+     * Cancels a pending or running run and finalizes it, which commits the content saved so far. The items being
+     * translated go back to `pending` with their plans, so a resume does not repeat finished units; a worker still
+     * inside a unit stops at its next write.
      *
      * @return bool whether the run was cancelled now
      */
@@ -143,6 +144,7 @@ final readonly class RunProcessor
 
             $run->status = RunStatus::Cancelled;
             $this->runs->save($run);
+            $this->runs->releaseTranslating($run);
 
             return true;
         });
@@ -427,9 +429,8 @@ final readonly class RunProcessor
         } catch (TransientProviderFailure $failure) {
             return $this->waitFor($run, $item, $failure, $items);
         } catch (ProviderRejected $rejected) {
-            // Every other item would meet the same refusal. The run is aborted first, so a lost claim cannot prevent it.
+            // Every other item would meet the same refusal. abort() releases this item with the others.
             $this->abort($run, Sanitizer::message($rejected->getMessage()));
-            $this->runs->release($run, $item);
 
             return 0;
         } catch (Throwable $exception) {
@@ -793,6 +794,7 @@ final readonly class RunProcessor
                 $run->status = RunStatus::Aborted;
                 $run->error = $message;
                 $this->runs->save($run);
+                $this->runs->releaseTranslating($run);
             }
         });
 

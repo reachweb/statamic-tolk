@@ -2,12 +2,17 @@
 
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
+use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\RunDriver;
+use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\Run;
+use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
+use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
@@ -354,5 +359,51 @@ describe('active_run', function () {
 
         $this->withSettings(['new_localization_status' => 'mirror']);
         pushStatus($this->hello)->assertJsonPath('defaults.new_status', 'mirror');
+    });
+});
+
+describe('cancel', function () {
+    // A lane's tick runs one unit; with review on, the item still has its review unit after the translation unit.
+    it('releases the item when the push is cancelled while its tick runs a unit', function () {
+        $this->signInAdmin();
+        $response = null;
+        ScriptedEngine::bind(
+            function (EngineCall $call) use (&$response) {
+                app(RunProcessor::class)->cancel(pushedRun($response));
+
+                return ScriptedEngine::translated($call);
+            },
+            fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Stop),
+        );
+        $response = pushEntry($this->hello, ['sites' => ['el'], 'review' => true]);
+
+        $tick = $this->postJson($response->json('urls.tick'), ['nonce' => 'bannerNonce1', 'lane' => 1])->assertOk();
+        $item = RunFixtures::items(pushedRun($response))[0];
+
+        expect($tick->json('run.status'))->toBe('cancelled')
+            ->and($tick->json('items.0.status'))->toBe('pending')
+            ->and($item)->toMatchObject(['status' => RunItemStatus::Pending, 'claim' => null])
+            ->and($item->planId)->not->toBeNull();
+    });
+
+    it('releases the item when the push is cancelled between two ticks', function () {
+        $this->signInAdmin();
+        ScriptedEngine::bind(
+            fn (EngineCall $call) => ScriptedEngine::translated($call),
+            fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Stop),
+        );
+        $response = pushEntry($this->hello, ['sites' => ['el'], 'review' => true]);
+        $tick = fn () => $this->postJson($response->json('urls.tick'), ['nonce' => 'bannerNonce1', 'lane' => 1])->assertOk();
+
+        expect($tick()->json('items.0.status'))->toBe('translating');
+
+        $this->postJson($response->json('urls.cancel'))->assertOk()->assertJsonPath('run.status', 'cancelled');
+        $after = $tick();
+        $state = $this->getJson($response->json('urls.state'))->assertOk();
+
+        expect($after->json('report.units'))->toBe(0)
+            ->and($state->json('items.0.status'))->toBe('pending')
+            ->and($state->json('counts.translating'))->toBe(0)
+            ->and(RunFixtures::items(pushedRun($response))[0]->claim)->toBeNull();
     });
 });

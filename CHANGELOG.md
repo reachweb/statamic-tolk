@@ -45,6 +45,7 @@ All notable changes to Tolk are documented in this file.
 - A field saved with exactly the text Tolk produced reads as machine-translated, also when a hand-typed text of the field was saved before it, from a second tab or as an edit that was then undone. It used to stay "edited by hand", so Update skipped it.
 - Update keeps the translation of each copy of a text that appears more than once in a field (a repeated paragraph, label or table cell), instead of giving every copy the first copy's translation, which lost a review correction or a translation made in context.
 - Translating a field again keeps the ids of the localization's Replicator and Grid rows and Bard sets where the origin's have none (content imported or saved by code), in the editor too, instead of giving every row a new id each time, which rewrote unchanged lines in git.
+- A cancelled or aborted run, or a cancelled Translate into…, no longer lists items as "Translating" when they had units left: they go back to waiting, and Resume continues them at once, without repeating what was already translated.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

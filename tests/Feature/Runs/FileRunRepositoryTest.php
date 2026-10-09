@@ -349,6 +349,27 @@ it('releases an item back to pending or translated, available from the given tim
         ->and($this->runs->item($run, 1)->availableAt)->toBeNull();
 });
 
+it('releases every item being translated with its plan, and leaves the others', function () {
+    $run = runRepoRun([runRepoItem(0, ['planId' => 'plan-0']), runRepoItem(1), runRepoItem(2), runRepoItem(3, ['status' => RunItemStatus::Done])]);
+    $first = $this->runs->claimNext($run, 'lane-1', 60);
+    $second = $this->runs->claimNext($run, 'lane-2', 60);
+    $second->status = RunItemStatus::Translated;
+    $this->runs->saveItem($run, $second);
+    $applying = $this->runs->claimTranslated($run, 'apply', 60);
+    $third = $this->runs->claimNext($run, 'lane-2', 60);
+    $this->travel(5)->seconds();
+
+    expect($this->runs->releaseTranslating($run))->toBe(2)
+        ->and(RunFixtures::statuses($run))->toBe(['pending', 'applying', 'pending', 'done'])
+        ->and($this->runs->item($run, 0))->toMatchObject(['claim' => null, 'planId' => 'plan-0'])
+        ->and($this->runs->item($run, 2)->claim)->toBeNull()
+        ->and($this->runs->item($run, 1)->claim->token)->toBe($applying->claim->token)
+        ->and($run->progressedAt->equalTo(CarbonImmutable::now()))->toBeTrue()
+        ->and(fn () => $this->runs->saveItem($run, $first))->toThrow(ClaimLost::class)
+        ->and(fn () => $this->runs->extendClaim($run, $third))->toThrow(ClaimLost::class)
+        ->and($this->runs->releaseTranslating($run))->toBe(0);
+});
+
 it('applies the lowest translated item, the worker\'s own first, and takes over an expired apply', function () {
     $run = runRepoRun(array_map(runRepoItem(...), range(0, 2)));
 
