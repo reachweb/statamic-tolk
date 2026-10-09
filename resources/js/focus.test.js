@@ -4,11 +4,12 @@ import { BANNER_MODALS, createFocusKeeper } from './focus.js';
 // A minimal DOM: elements know their children, and focusing one makes it the document's active element.
 function setup() {
     const doc = { body: { name: 'body' }, activeElement: null };
-    const element = (name, { disabled = false, action = false, modal = false } = {}) => ({
+    const element = (name, { disabled = false, action = false, modal = false, target = false } = {}) => ({
         name,
         disabled,
         action,
         modal,
+        target,
         isConnected: true,
         children: [],
         focus() {
@@ -24,7 +25,11 @@ function setup() {
             const all = this.children.flatMap((child) => [child, ...child.children]);
             const enabled = all.filter((child) => !child.disabled);
 
-            return (selector.startsWith('[data-tolk-action]') ? enabled.find((child) => child.action) : enabled[0]) ?? null;
+            if (selector.startsWith('[data-tolk-action]')) {
+                return enabled.find((child) => child.action) ?? null;
+            }
+
+            return (selector === '[data-tolk-focus]' ? all.find((child) => child.target) : enabled[0]) ?? null;
         },
     });
 
@@ -68,6 +73,48 @@ describe('createFocusKeeper', () => {
         keeper.changing();
         banner.children.splice(1, 1);
         doc.activeElement = doc.body;
+        run();
+
+        expect(doc.activeElement).toBe(badge);
+    });
+
+    // A status badge opens its tooltip on focus, over the page's header.
+    it('prefers the part\'s focus target to its first control while it has no action', () => {
+        const { doc, element, banner, translate, wait, run } = setup();
+        const keeper = createFocusKeeper(() => banner, { doc, wait });
+        const planning = element('planning', { target: true });
+
+        translate.focus();
+        keeper.changing();
+        banner.children.splice(1, 1, planning);
+        doc.activeElement = doc.body;
+        run();
+
+        expect(doc.activeElement).toBe(planning);
+    });
+
+    it('moves a focus left on a fallback to the first action that appears', () => {
+        const { doc, banner, badge, cancel, translate, wait, run } = setup();
+        const keeper = createFocusKeeper(() => banner, { modals: BANNER_MODALS, doc, wait });
+
+        // Update is pressed: while the translation is planned the banner has no action, then Cancel appears.
+        translate.focus();
+        keeper.changing();
+        banner.children.splice(1, 1);
+        doc.activeElement = doc.body;
+        run();
+
+        expect(doc.activeElement).toBe(badge);
+
+        keeper.changing();
+        banner.children.push(cancel);
+        run();
+
+        expect(doc.activeElement).toBe(cancel);
+
+        // A control the editor moved to themselves is theirs.
+        badge.focus();
+        keeper.changing();
         run();
 
         expect(doc.activeElement).toBe(badge);
