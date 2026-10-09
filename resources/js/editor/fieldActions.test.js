@@ -1,7 +1,7 @@
 import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, nextTick, ref } from 'vue';
-import { createFieldActions } from './fieldActions.js';
+import { CONFIRM, createFieldActions } from './fieldActions.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 import { createTranslations } from './translate.js';
@@ -12,11 +12,13 @@ let events;
 let permissions;
 let toast;
 let added;
+let confirmations;
 
 beforeEach(() => {
     permissions = new Set(['translate content']);
     toast = { error: vi.fn() };
     added = [];
+    confirmations = fakeComponents();
     vi.stubGlobal('Statamic', {
         $pinia: { defineStore },
         $config: { get: (key) => ({ 'tolk.fieldtypes': ['text', 'bard', 'replicator'], 'tolk.concurrency': 2 })[key] },
@@ -106,6 +108,62 @@ function fakeTranslations(result = null) {
     };
 }
 
+// Core's `$components`: the confirmations the action appends, each answered with `answer` as soon as the action listens
+// for it; with null, the test answers.
+function fakeComponents(answer = 'confirm') {
+    const appended = [];
+
+    return {
+        appended,
+        append: vi.fn((name, { props }) => {
+            const component = {
+                name,
+                props,
+                handlers: {},
+                destroy: vi.fn(),
+                on(event, handler) {
+                    component.handlers[event] = handler;
+
+                    if (event === answer) {
+                        queueMicrotask(handler);
+                    }
+                },
+            };
+
+            appended.push(component);
+
+            return component;
+        }),
+    };
+}
+
+// The page as far as the focus goes: the title field, whose header holds its actions menu, and the banner.
+function page() {
+    const doc = { body: { name: 'body' }, activeElement: null };
+    const element = (name, find = {}) => ({
+        name,
+        find,
+        focus() {
+            doc.activeElement = this;
+        },
+        querySelector(selector) {
+            return this.find[selector] ?? null;
+        },
+    });
+    const menu = element('actions menu');
+    const field = element('title field', { '[data-ui-field-header] [data-ui-dropdown-trigger]': menu });
+    const label = (target, group = null) => ({ getAttribute: () => target, closest: (selector) => (selector === '[data-ui-input-group]' ? group : null) });
+    const planning = element('planning');
+    const cancel = element('cancel');
+    const banner = element('banner', { '[data-tolk-focus]': planning });
+
+    doc.querySelectorAll = (selector) => (selector === 'label[for]' ? [label('field_intro'), label('field_title', field)] : []);
+    doc.querySelector = (selector) => (selector === '[data-tolk-banner]' ? banner : null);
+    doc.activeElement = doc.body;
+
+    return { doc, menu, banner, planning, cancel };
+}
+
 function actions(overrides = {}) {
     return createFieldActions({
         registry,
@@ -114,6 +172,8 @@ function actions(overrides = {}) {
         fieldActions: () => ({ add: (binding, action) => added.push([binding, action]) }),
         permissions: () => ({ has: (permission) => permissions.has(permission) }),
         toast: () => toast,
+        components: () => confirmations,
+        wait: vi.fn(),
         ...overrides,
     });
 }
@@ -137,11 +197,12 @@ describe('register', () => {
         expect(added).toEqual([]);
     });
 
-    it('is titled and asks for confirmation', () => {
+    // Core's confirmation leaves the focus on the page's body when it closes; the action asks itself.
+    it('is titled, and asks for confirmation itself', () => {
         const { action } = actions();
 
         expect(action.title).toBe('Translate from origin');
-        expect(action.confirm).toEqual({ text: 'The current content of this field will be replaced.', buttonText: 'Translate' });
+        expect(action.confirm).toBeUndefined();
         expect(action.visibleWhenReadOnly).toBeUndefined();
         expect(action.quick).toBeUndefined();
     });
@@ -282,6 +343,80 @@ describe('run', () => {
 
         expect(translations.translate).toHaveBeenCalledExactlyOnceWith('base', { mode: 'all', fields: ['title'], overwriteManual: true, replace: true });
         expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('asks first, and translates only once Translate is chosen', async () => {
+        mount();
+        const translations = fakeTranslations();
+        confirmations = fakeComponents(null);
+        const { run } = actions({ translations });
+
+        run(payload('title'));
+        await flush();
+        const [confirmation] = confirmations.appended;
+
+        expect(confirmation.name).toBe(CONFIRM);
+        expect(translations.translate).not.toHaveBeenCalled();
+
+        confirmation.handlers.confirm();
+        await flush();
+
+        expect(confirmation.destroy).toHaveBeenCalledOnce();
+        expect(translations.translate).toHaveBeenCalledOnce();
+    });
+
+    it('translates nothing on Cancel or Esc, and gives the focus back to the field\'s actions menu', async () => {
+        mount();
+        const translations = fakeTranslations();
+        const { doc, menu } = page();
+        const wait = vi.fn();
+        confirmations = fakeComponents('cancel');
+
+        actions({ translations, doc: () => doc, wait }).run(payload('title'));
+        await flush();
+
+        expect(confirmations.appended[0].destroy).toHaveBeenCalledOnce();
+        expect(wait.mock.calls.map(([, delay]) => delay)).toEqual([0, 400]);
+
+        wait.mock.calls[0][0]();
+
+        expect(doc.activeElement).toBe(menu);
+        expect(translations.translate).not.toHaveBeenCalled();
+    });
+
+    it('moves the focus into the banner after Translate, to its Cancel once the translation runs', async () => {
+        mount();
+        const { doc, banner, planning, cancel } = page();
+        const wait = vi.fn();
+
+        actions({ doc: () => doc, wait }).run(payload('title'));
+        await flush();
+        wait.mock.calls[0][0]();
+
+        // While the translation is planned, the banner's planning line; its focus keeper moves on to Cancel.
+        expect(doc.activeElement).toBe(planning);
+
+        banner.find['[data-tolk-action="cancel"]'] = cancel;
+        doc.activeElement = doc.body;
+        wait.mock.calls[1][0]();
+
+        expect(doc.activeElement).toBe(cancel);
+    });
+
+    it('leaves a focus that is somewhere once the confirmation has closed', async () => {
+        mount();
+        const { doc, menu } = page();
+        const wait = vi.fn();
+        confirmations = fakeComponents('cancel');
+
+        actions({ doc: () => doc, wait }).run(payload('title'));
+        await flush();
+        const field = { name: 'another field' };
+        doc.activeElement = field;
+        wait.mock.calls.forEach(([callback]) => callback());
+
+        expect(doc.activeElement).toBe(field);
+        expect(doc.activeElement).not.toBe(menu);
     });
 
     it('does nothing but report it when the value is not the base form\'s', async () => {
