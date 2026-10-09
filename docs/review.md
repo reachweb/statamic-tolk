@@ -37,7 +37,7 @@ With review on, the banner's Translate and Update review each part as soon as it
 
 ![The reviewer's changes in the editor](images/review.png)
 
-**Review** in the banner (and in the options menu) reviews the translations that are in the form, without translating anything: the machine translations that are up to date, and the ones just filled in and not yet saved. Fields edited by hand are left out unless **Overwrite manual edits** is checked in the options; a reviewed field edited by hand stays edited by hand. Text the localization only inherits from its origin is not reviewed: it is not translated.
+**Review** in the banner (and in the options menu) reviews the translations that are in the form, without translating anything: the machine translations that are up to date, and the ones just filled in and not yet saved. Fields edited by hand are left out unless **Overwrite manual edits** is checked in the options; a reviewed field edited by hand stays edited by hand. Checking it also offers **Review** in the options on a localization whose fields were all edited by hand, such as one translated before Tolk was installed. Text the localization only inherits from its origin is not reviewed: it is not translated.
 
 **Review again with another model**: open **Options**, choose another **Reviewer** and press **Review**. The menu remembers your reviewer for your user. Users who may edit the settings may also type a model outside the list.
 

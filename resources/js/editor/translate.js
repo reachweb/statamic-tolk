@@ -45,10 +45,12 @@ export function reviewHandles(ctx, status) {
 }
 
 // Review has work while the form holds machine output: fields stored up to date, or fields filled since the last save.
-export function reviewable(container) {
+// With `overwriteManual` (the options' Review) fields edited by hand count too.
+export function reviewable(container, { overwriteManual = false } = {}) {
     const filled = Object.values(container?.delivered ?? {}).some((record) => !record.pending && !record.sync);
+    const counts = container?.status?.localization?.counts ?? {};
 
-    return filled || (container?.status?.localization?.counts?.current ?? 0) > 0;
+    return filled || (counts.current ?? 0) > 0 || (overwriteManual && (counts.manual ?? 0) > 0);
 }
 
 // The planned handles a stopped translation did not fill and did not skip, and a stopped review did not review.

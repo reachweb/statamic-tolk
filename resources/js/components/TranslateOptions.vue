@@ -45,8 +45,8 @@ function choicesFor(defaultChoice, rememberedChoice, current) {
 
 const choices = computed(() => choicesFor(defaultModel.value, remembered.value, model.value));
 const reviewerChoices = computed(() => choicesFor(defaultReviewer.value, rememberedReviewer.value, reviewer.value));
-// Review has work while the form holds machine output (T7.5).
-const canReview = computed(() => reviewable(store.containers[props.containerName]));
+// Review has work while the form holds machine output (T7.5), or with "Overwrite manual edits" fields edited by hand.
+const canReview = computed(() => reviewable(store.containers[props.containerName], { overwriteManual: overwriteManual.value }));
 // The reviewer serves "Review after translating" and Review; without either it would be a choice that does nothing.
 const reviewerUsed = computed(() => reviewAfter.value || canReview.value);
 const actions = computed(() => stateActions(props.status));
