@@ -162,6 +162,26 @@ class ModelCatalog
         return $labels;
     }
 
+    /**
+     * The label of every catalog model, by reference, so the CP names a model as the model selects do.
+     *
+     * @return array<string, string>
+     */
+    public function catalogLabels(): array
+    {
+        $references = [];
+
+        foreach ($this->all() as $provider => $entries) {
+            foreach ($entries as $entry) {
+                if (is_string($entry['id'] ?? null)) {
+                    $references[] = $provider.':'.$entry['id'];
+                }
+            }
+        }
+
+        return $this->labels($references);
+    }
+
     public function resolveTranslator(Settings $settings, ?ModelRef $override = null): ModelRef
     {
         return $override ?? $settings->translatorModel() ?? $this->automaticTranslator();

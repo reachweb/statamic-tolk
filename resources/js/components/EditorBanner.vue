@@ -81,7 +81,10 @@ watch(
     () => state.value?.summary,
     () => changes.hide(),
 );
-const shown = computed(() => !ctx.readOnly.value && (banner.value.visible || failure.value !== null));
+// An origin whose translations are all up to date has nothing to act on, so the banner stays out of the way, unless a
+// translation into other sites is running or its result is still shown.
+const settled = computed(() => Boolean(banner.value.origin?.upToDate) && !banner.value.localization && !state.value?.push);
+const shown = computed(() => !ctx.readOnly.value && (failure.value !== null || (banner.value.visible && !settled.value)));
 // Text the editor typed and has not saved, as the translations decide it (D27). Core's dirty flag is no guide: fieldtypes
 // re-emit normalised values after its 500 ms window, so it flags most forms right after they load.
 const dirty = computed(() => registry.dirtyHandles(name).length > 0);
@@ -92,6 +95,14 @@ const focus = createFocusKeeper(() => card.value?.$el ?? null, { modals: BANNER_
 
 // Translate, Update, Retry and Translate into… leave with the phase they start.
 watch([phase, () => state.value?.push?.phase], () => focus.changing());
+
+// Close after the translations into other sites leaves an origin with nothing to show: the focus goes to the page's
+// content, where core puts it when a page loads. The watcher runs before the banner is removed, while it still holds it.
+watch(shown, (visible) => {
+    if (!visible && focus.holds()) {
+        nextTick(() => document.getElementById('content-card')?.focus());
+    }
+});
 
 function translate(mode) {
     translations.translate(name, { mode });

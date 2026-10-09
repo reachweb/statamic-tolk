@@ -122,7 +122,7 @@ test('Enter on the offer translates, and the focus is not lost', async ({ page, 
     await page.keyboard.press('Enter');
 
     await expect(offer(page)).toHaveCount(0);
-    await expect(translated(page)).toHaveText(/^5 fields translated with \S+\.$/);
+    await expect(translated(page)).toHaveText(/^5 fields translated with .+\.$/);
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await page.waitForTimeout(500);
     expect(await focusLost(page)).toBe(false);
@@ -162,7 +162,7 @@ test('the banner and its options work from the keyboard, and the options open ag
     await tabTo(page, options(page).locator('[data-tolk-options-action="translate"]'));
     await page.keyboard.press('Enter');
 
-    await expect(translated(page)).toHaveText(/^\d+ fields? translated with \S+\.$/);
+    await expect(translated(page)).toHaveText(/^\d+ fields? translated with .+\.$/);
     // Options left with the idle phase; the focus stays in the banner instead of falling back to the top of the page.
     await expect.poll(() => holdsFocus(banner(page))).toBe(true);
     await expect(page.locator('#field_intro')).toHaveValue(/^\[de\] /);

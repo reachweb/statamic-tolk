@@ -17,16 +17,22 @@ const ARTICLE = 'fake-engine-markers';
 const ARTICLE_ID = '3e1bef1b-a083-4fc6-9326-825405cb50eb';
 const MARKED = '[[review]] This paragraph asks the fake reviewer for a correction, so the review step has something to change.';
 // The models the sandbox picks when the settings name none: Claude Sonnet 5.5 for both without provider keys; with keys,
-// the reviewer is another provider's quality model.
-const { translator: TRANSLATOR_REF, reviewer: REVIEWER_REF } = JSON.parse(
+// the reviewer is another provider's quality model. The banner names them by their catalog labels.
+const {
+    translator: TRANSLATOR_REF,
+    reviewer: REVIEWER_REF,
+    translatorLabel: TRANSLATOR,
+    reviewerLabel: REVIEWER,
+} = JSON.parse(
     tinker(
-        "$catalog = app(\\Reach\\StatamicTolk\\Ai\\ModelCatalog::class); $translator = $catalog->automaticTranslator(); echo json_encode(['translator' => (string) $translator, 'reviewer' => (string) $catalog->automaticReviewer($translator)]);",
+        "$catalog = app(\\Reach\\StatamicTolk\\Ai\\ModelCatalog::class); $translator = $catalog->automaticTranslator(); $reviewer = $catalog->automaticReviewer($translator); echo json_encode(['translator' => (string) $translator, 'reviewer' => (string) $reviewer, 'translatorLabel' => $catalog->label($translator), 'reviewerLabel' => $catalog->label($reviewer)]);",
     )
         .split('\n')
         .at(-1),
 );
-const TRANSLATOR = TRANSLATOR_REF.split(':')[1];
-const REVIEWER = REVIEWER_REF.split(':')[1];
+
+// A label such as "GPT-6.1 Sol" as a literal part of a pattern.
+const escaped = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test.beforeEach(() => {
     reset();
@@ -79,7 +85,7 @@ test('Translate with Review after translating reports the correction, lists it w
     expect((await planned).postDataJSON()).toMatchObject({ review: true, reviewer: null });
 
     await expect(reviewed(page)).toHaveText(`Reviewed with ${REVIEWER}: 1 correction.`);
-    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${TRANSLATOR}\\.$`));
+    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${escaped(TRANSLATOR)}\\.$`));
 
     await action(page, 'view-changes').click();
     await expect(changes(page).locator('[data-tolk-change]')).toHaveCount(1);
@@ -119,7 +125,7 @@ test('Review on the filled form corrects it, Undo puts the translation back, and
     await openGreek(page);
 
     await action(page, 'translate').click();
-    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${TRANSLATOR}\\.$`));
+    await expect(translated(page)).toHaveText(new RegExp(`^\\d+ fields translated with ${escaped(TRANSLATOR)}\\.$`));
     await expect(reviewed(page)).toHaveCount(0);
     await expect(page.locator('#field_title')).toHaveValue('[el] [[review]] Fake engine markers');
 

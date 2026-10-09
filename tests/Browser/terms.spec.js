@@ -28,7 +28,7 @@ test('Translate fills a topic in the Greek term form, and Save stores it under t
 
     await banner(page).locator('[data-tolk-action="translate"]').click();
 
-    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^2 fields translated with \S+\.$/);
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^2 fields translated with .+\.$/);
     await expect(page.locator('#field_title')).toHaveValue(`[el] ${origin.title}`);
     await expect(page.locator('#field_description')).toHaveValue(`[el] ${origin.description}`);
     expect(termFile('topics', 'food-and-drink')).toEqual(origin);

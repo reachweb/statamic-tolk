@@ -130,7 +130,7 @@ test('running it replaces only that field, typed text included, and leaves the f
     await expect(banner(page).locator('[data-tolk-working-field]')).toHaveText('Translating Title into German…');
     release();
 
-    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with \S+\.$/);
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with .+\.$/);
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
     await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('Welcome to Kyma Bay');

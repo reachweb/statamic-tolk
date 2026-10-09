@@ -13,6 +13,8 @@ All notable changes to Tolk are documented in this file.
 - The editor's translation options are grouped and shorter, so they fit a laptop screen: the model and the reviewer side by side, the reviewer enabled only while it has something to do, the actions that take effect at once under their own heading, and the offer preference as a switch.
 - The banner of a localization shows its counts and its buttons on one line, without repeating that it is up to date; the origin's list of translations lines up and colours each status.
 - A status has the same colour in the banner, the origin's list and the Overview.
+- The editor names models as the model selects do ("Gemini 3.8 Flash" rather than `gemini-3.8-flash`): in the banner's summary, the offer and the reviewer's changes.
+- The origin's banner is hidden while every localization is up to date.
 
 ### Fixed
 

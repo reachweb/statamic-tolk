@@ -30,7 +30,7 @@ There is one automatic round. To review again, use Review (below).
 
 ## In the editor
 
-With review on, the banner's Translate and Update review each part as soon as it is translated, before it is filled in. The summary then says, for example, "Reviewed with gpt-6.1-sol: 2 corrections."
+With review on, the banner's Translate and Update review each part as soon as it is translated, before it is filled in. The summary then says, for example, "Reviewed with GPT-6.1 Sol: 2 corrections."
 
 - **View changes** opens the reviewer's corrections: for each, the field, the text before and after, with removed words struck through and added words underlined, and the reviewer's reason. The corrections are in the form; nothing is saved until you press Save.
 - **Undo** puts back the fields as they were before the translation or review, as long as you have not saved.

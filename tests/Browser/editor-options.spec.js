@@ -165,7 +165,7 @@ test.describe('the German home page, whose title was written by hand', () => {
         await toggle(page, 'Overwrite manual edits');
 
         expect(await translateFromOptions(page)).toMatchObject({ translator: 'openai:gpt-6-luna', overwrite_manual: true });
-        await expect(translated(page)).toHaveText('5 fields translated with gpt-6-luna.');
+        await expect(translated(page)).toHaveText('5 fields translated with GPT-6 Luna.');
         await expect.poll(() => preference(page, 'tolk.editor.translator')).toBe('openai:gpt-6-luna');
 
         await page.reload();

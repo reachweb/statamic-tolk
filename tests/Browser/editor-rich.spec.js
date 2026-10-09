@@ -79,7 +79,7 @@ test.describe('an article with rich content', () => {
         await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('6 fields untranslated');
         await banner(page).locator('[data-tolk-action="translate"]').click();
 
-        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^6 fields translated with \S+\.$/);
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^6 fields translated with .+\.$/);
         await expect(banner(page).locator('[data-tolk-summary-edited]')).toHaveCount(0);
 
         // Formatting and the link are kept in the Bard editor; the Replicator set's fields and the group are filled.
@@ -125,7 +125,7 @@ test.describe('an article with rich content', () => {
         await openEntry(page, 'articles', ARTICLE, 'el');
         await expect(banner(page).locator('[data-tolk-part="outdated"]')).toHaveText('1 field outdated');
         await banner(page).locator('[data-tolk-action="update"]').click();
-        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with \S+\.$/);
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with .+\.$/);
 
         const updated = await quickSave(page);
         const after = entryFile('articles', 'el', ARTICLE);
@@ -153,7 +153,7 @@ test.describe('the German home page, whose Bard content is inherited', () => {
         await expect.poll(() => page.evaluate(() => Statamic.$dirty.has('base')), { intervals: [10] }).toBe(true);
         await banner(page).locator('[data-tolk-action="translate"]').click();
 
-        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with \S+\.$/);
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with .+\.$/);
         await expect(banner(page).locator('[data-tolk-summary-edited]')).toHaveCount(0);
         await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('[de] Welcome to Kyma Bay');
 
@@ -194,7 +194,7 @@ test.describe('the German home page, whose Bard content is inherited', () => {
         await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('4 fields untranslated');
 
         await banner(page).locator('[data-tolk-action="translate"]').click();
-        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with \S+\.$/);
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^4 fields translated with .+\.$/);
         await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('[de] Welcome to Kyma Bay');
 
         const translated = await quickSave(page);

@@ -90,12 +90,14 @@ test('Translate into… creates the Greek and German localizations as drafts, wi
         expect(stored.body[0].heading).toBe(`[${site}] A quiet corner of the garden wing`);
     }
 
-    // Reload shows the new localizations in the Sites panel.
+    // Reload shows the new localizations in the Sites panel. Both are up to date, so the banner has nothing left to show.
+    const status = page.waitForResponse((response) => response.url().includes('/tolk/editor/status'));
     await result.locator('[data-tolk-action="reload"]').click();
-    await expect(banner(page).locator('[data-tolk-site="de"]')).toContainText('Up to date');
-    await expect(push(page).locator('[data-tolk-push-result]')).toHaveCount(0);
+    await status;
     await expect(struckThrough(page, 'German')).toHaveCount(0);
     await expect(struckThrough(page, 'Greek')).toHaveCount(0);
+    await page.waitForTimeout(500);
+    await expect(banner(page)).toHaveCount(0);
     expect(browserErrors()).toEqual([]);
 });
 

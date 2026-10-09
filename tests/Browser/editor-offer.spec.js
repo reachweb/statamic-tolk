@@ -61,13 +61,13 @@ for (const slug of ['about', 'dining']) {
         await expect(offer(page).locator('[data-tolk-offer-text]')).toHaveText(
             'Translate 5 fields from English into German. Nothing is saved until you press Save.',
         );
-        await expect(offer(page).locator('[data-tolk-offer-model]')).toHaveText(/^Model: \S+$/);
+        await expect(offer(page).locator('[data-tolk-offer-model]')).toHaveText(/^Model: .+$/);
 
         const slugs = await recordSlugs(page);
         await offer(page).locator('[data-tolk-offer-action="translate"]').click();
 
         await expect(offer(page)).toHaveCount(0);
-        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with \S+\.$/);
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with .+\.$/);
 
         for (const handle of fields) {
             await expect(page.locator(`#field_${handle}`)).toHaveValue(`[de] ${origin[handle]}`);
@@ -137,7 +137,7 @@ test("with Don't offer again the offer no longer appears, and the banner's Trans
 
     const slugs = await recordSlugs(page);
     await banner(page).locator('[data-tolk-action="translate"]').click();
-    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with \S+\.$/);
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with .+\.$/);
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await expect(page.locator('#field_slug')).toHaveValue('about');
 

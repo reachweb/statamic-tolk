@@ -90,7 +90,7 @@ The action is not offered on nested fields (inside a Replicator, Grid or Bard se
 
 ## In the origin
 
-On the origin entry, the banner lists each localization with its status, for the sites you may access. A missing localization reads "Not created yet". The names link to the localizations.
+On the origin entry, the banner lists each localization with its status, for the sites you may access. A missing localization reads "Not created yet". The names link to the localizations. When every localization exists and is up to date, there is nothing to do there, so the banner is hidden; it comes back as soon as a localization needs work, for example after you change the origin and save.
 
 - **Translate into…** opens a dialog with the sites that have no localization or have untranslated fields, all checked. **New localizations** chooses whether new ones are saved as **Drafts** or the **Same as origin** (published when the origin is; it needs the publish permission). **Review after translating** reviews each translation before it is saved.
 - **Update translations** updates every localization with outdated fields.

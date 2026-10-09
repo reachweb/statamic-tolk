@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk;
 
 use Reach\StatamicTolk\Ai\FakeEngine;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\TranslationEngine;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Handlers\ArrayHandler;
@@ -147,6 +148,7 @@ class ServiceProvider extends AddonServiceProvider
             'fakeEngine' => FakeEngine::enabled(),
             'settingsUrl' => $this->settingsUrl(),
             'auditUrl' => User::current()?->can('run bulk translations') ? cp_route('tolk.audit') : null,
+            'models' => app(ModelCatalog::class)->catalogLabels(),
         ]]);
     }
 
