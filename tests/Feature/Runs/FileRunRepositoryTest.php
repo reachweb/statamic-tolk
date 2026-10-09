@@ -463,7 +463,7 @@ it('puts failed items and the items their failure skipped back to pending, all a
         runRepoItem(1, ['dependsOn' => [3], 'status' => RunItemStatus::Skipped, 'reason' => RunItem::DEPENDENCY_FAILED]),
         runRepoItem(2, ['status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do']),
         runRepoItem(3, ['dependsOn' => [5], 'status' => RunItemStatus::Skipped, 'reason' => RunItem::DEPENDENCY_FAILED]),
-        runRepoItem(4, ['status' => RunItemStatus::Failed, 'reason' => 'root_missing', 'error' => 'Translate Home into Greek first.', 'attempts' => 2, 'waits' => 4, 'planId' => 'plan-4', 'availableAt' => $later, 'warnings' => ['Kept.']]),
+        runRepoItem(4, ['status' => RunItemStatus::Failed, 'reason' => 'root_missing', 'error' => 'Translate Home into Greek first.', 'rootPage' => ['title' => 'Home', 'edit_url' => 'https://cp.test/home'], 'attempts' => 2, 'waits' => 4, 'planId' => 'plan-4', 'availableAt' => $later, 'warnings' => ['Kept.']]),
         runRepoItem(5, ['status' => RunItemStatus::Failed, 'error' => 'Boom', 'attempts' => 3]),
     ]);
     $this->travel(5)->seconds();
@@ -471,7 +471,7 @@ it('puts failed items and the items their failure skipped back to pending, all a
     expect($this->runs->retryFailed($run))->toBe(4)
         ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['done' => 1, 'skipped' => 1, 'pending' => 4]))
         ->and($this->runs->item($run, 4))->toMatchObject([
-            'status' => RunItemStatus::Pending, 'reason' => null, 'error' => null, 'attempts' => 0, 'waits' => 0,
+            'status' => RunItemStatus::Pending, 'reason' => null, 'error' => null, 'rootPage' => null, 'attempts' => 0, 'waits' => 0,
             'availableAt' => null, 'claim' => null, 'planId' => 'plan-4', 'warnings' => ['Kept.'],
         ])
         ->and($this->runs->item($run, 1)->reason)->toBeNull()

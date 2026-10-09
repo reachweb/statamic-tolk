@@ -420,6 +420,8 @@ final readonly class RunProcessor
         } catch (ClaimLost|UnitBusy|RunNotFound $quiet) {
             throw $quiet;
         } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing $exception) {
+            $item->rootPage = $exception instanceof RootMissing ? $exception->rootPage() : null;
+
             return $this->fail($run, $item, $exception->getMessage(), self::reason($exception), $items);
         } catch (TransientProviderFailure $failure) {
             return $this->waitFor($run, $item, $failure, $items);
@@ -561,6 +563,7 @@ final readonly class RunProcessor
                 : $this->settle($run, $item, RunItemStatus::Pending, TargetResult::SOURCE_CHANGED);
         } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing|ApplyFailed $exception) {
             $this->forget($plan);
+            $item->rootPage = $exception instanceof RootMissing ? $exception->rootPage() : null;
 
             return $this->failItem($run, $item, $exception->getMessage(), self::reason($exception));
         } catch (Throwable $exception) {

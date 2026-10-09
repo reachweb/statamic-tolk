@@ -12,7 +12,7 @@ A field Tolk does not translate is left as it is, so "nothing was translated" us
 - **The field is switched off or excluded**: its **Translate automatically** option is off, or its handle is in **Excluded fields**, or its collection or taxonomy is excluded in the settings.
 - **The titles are generated** by the collection, so Tolk leaves them to Statamic.
 - **Everything is up to date.** The default mode translates only what is missing. Use **Update** (mode `update`) for outdated fields, **Retranslate everything** (mode `all`) for everything, and **Overwrite manual edits** (`--force`) for fields edited by hand.
-- **A page is skipped with "Translate Home into Greek first."** In a collection whose tree has a root page, translate the root page into that site first, or include it in the run.
+- **A page is skipped with "Translate Home into Greek first."** In a collection whose tree has a root page (a home page), the first page saved into a site's empty tree becomes that site's home page, so the root page has to be translated first for the tree to keep its structure. Open the root page (the result and the run's page link to it), translate it into that site, then translate the page again; or include the root page in the run.
 
 ## The banner does not appear
 

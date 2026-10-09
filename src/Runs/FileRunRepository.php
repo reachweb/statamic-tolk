@@ -246,7 +246,7 @@ final class FileRunRepository implements RunRepository
                 }
 
                 $item->status = RunItemStatus::Pending;
-                $item->reason = $item->error = null;
+                $item->reason = $item->error = $item->rootPage = null;
                 $item->attempts = $item->waits = 0;
                 $item->claim = $item->availableAt = null;
                 $changed[$i] = $item;

@@ -365,7 +365,9 @@ describe('translate', function () {
 
         RunFixtures::translate($run);
 
-        expect(RunFixtures::items($run)[1])->toMatchObject(['status' => RunItemStatus::Failed, 'reason' => 'root_missing', 'error' => 'Translate Home into Greek first.', 'planId' => null])
+        expect(RunFixtures::items($run)[1])->toMatchObject(['status' => RunItemStatus::Failed, 'reason' => 'root_missing', 'planId' => null])
+            ->and(RunFixtures::items($run)[1]->error)->toStartWith('Translate Home into Greek first.')
+            ->and(RunFixtures::items($run)[1]->rootPage)->toBe(['title' => 'Home', 'edit_url' => $pages['home']->editUrl()])
             ->and($pages['dining']->fresh()->existsIn('el'))->toBeFalse()
             ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
         $this->assertNoModelCalls();

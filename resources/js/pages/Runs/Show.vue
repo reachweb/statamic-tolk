@@ -368,6 +368,14 @@ function filterBy(value) {
                             </Description>
                             <Description v-if="item.reason">{{ item.reason }}</Description>
                             <Text v-if="item.error" size="sm" variant="danger" data-tolk-item-error>{{ item.error }}</Text>
+                            <a
+                                v-if="item.rootPage"
+                                :href="item.rootPage.url"
+                                class="block text-sm text-blue-600 hover:underline dark:text-blue-400"
+                                data-tolk-root-page
+                            >
+                                {{ __('Open :title', { title: item.rootPage.title }) }}
+                            </a>
                             <Description v-for="(warning, index) in item.warnings" :key="index">{{ warning }}</Description>
                         </TableCell>
                     </TableRow>

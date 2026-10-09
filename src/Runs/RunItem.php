@@ -34,6 +34,7 @@ final class RunItem
      *                                         skipped or failed, as TargetResult::$fields
      * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
      * @param  bool  $created  whether applying the item created the localization
+     * @param  ?array{title: string, edit_url: string}  $rootPage  for `root_missing`: the root page to translate first
      */
     public function __construct(
         public int $index,
@@ -58,6 +59,7 @@ final class RunItem
         public ?string $reference = null,
         public ?string $editUrl = null,
         public bool $created = false,
+        public ?array $rootPage = null,
     ) {}
 
     /**
@@ -105,6 +107,7 @@ final class RunItem
             'reference' => $this->reference,
             'edit_url' => $this->editUrl,
             'created' => $this->created,
+            'root_page' => $this->rootPage,
         ];
     }
 
@@ -133,6 +136,17 @@ final class RunItem
             reference: self::storedString($data, 'reference'),
             editUrl: self::storedString($data, 'edit_url'),
             created: (bool) ($data['created'] ?? false),
+            rootPage: self::storedRootPage(self::storedArray($data, 'root_page')),
         );
+    }
+
+    /**
+     * @return ?array{title: string, edit_url: string}
+     */
+    private static function storedRootPage(array $page): ?array
+    {
+        $url = self::storedString($page, 'edit_url');
+
+        return $url === null ? null : ['title' => (string) (self::storedString($page, 'title') ?? ''), 'edit_url' => $url];
     }
 }
