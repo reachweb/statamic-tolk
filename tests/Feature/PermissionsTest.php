@@ -25,6 +25,13 @@ it('gives each permission a label and a description', function (string $value, s
     ['run bulk translations', 'Run bulk translations'],
 ]);
 
+it('describes what each permission grants: the listing action comes with running bulk translations only', function () {
+    $permissions = Permission::boot();
+
+    expect($permissions->get('translate content')->description())->toContain('entry and term forms')->not->toContain('listing')
+        ->and($permissions->get('run bulk translations')->description())->toContain('listings');
+});
+
 it('grants the permissions through a role', function () {
     $translator = $this->signInWithPermissions(['access cp', 'translate content']);
 

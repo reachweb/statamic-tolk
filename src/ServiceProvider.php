@@ -87,7 +87,7 @@ class ServiceProvider extends AddonServiceProvider
         Permission::extend(fn () => Permission::group('tolk', 'Tolk', function () {
             Permission::register('translate content', fn ($permission) => $permission
                 ->label(__('Translate content'))
-                ->description(__('Translate one item at a time, in the editor or from its listing. Site and edit permissions still apply.')));
+                ->description(__('Translate one item at a time in entry and term forms: the banner, the offer, the field action, and Translate into… and Update translations from the origin. Site and edit permissions still apply.')));
 
             Permission::register('run bulk translations', fn ($permission) => $permission
                 ->label(__('Run bulk translations'))
