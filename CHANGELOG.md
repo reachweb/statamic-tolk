@@ -40,6 +40,7 @@ All notable changes to Tolk are documented in this file.
 - The editor's options remember both the model and the reviewer when you change both. Before, one of the two choices could be lost.
 - The editor says "Reviewed with …" only when the reviewer checked the text. Before, it said so whenever review was on, also when no review ran: nothing needed a model, every review failed, the provider rejected the reviewer, or the translation was cancelled first.
 - The editor's options offer **Review** with **Overwrite manual edits** checked on a localization whose fields were all edited by hand, such as one translated before Tolk was installed. Before, Review and the reviewer were only available while the form held machine translations.
+- After a failed translation the editor's banner still shows **Options** (and **Review** where it applies), so you can choose another model when the provider rejected one. Before, it offered only **Retry**, which repeated the rejected model.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

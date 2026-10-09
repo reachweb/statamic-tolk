@@ -2,7 +2,7 @@ import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { ApiError } from '../api.js';
-import { attachBanner, createBanners, isTermReference, shouldPush } from './banner.js';
+import { attachBanner, createBanners, isTermReference, shouldPush, showsActions } from './banner.js';
 import { SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
@@ -65,6 +65,21 @@ describe('isTermReference', () => {
         expect(isTermReference('entry::abc')).toBe(false);
         expect(isTermReference('globals::site_settings::el')).toBe(false);
         expect(isTermReference(null)).toBe(false);
+    });
+});
+
+describe('showsActions', () => {
+    const localization = { localization: { translate: true }, setup: false };
+
+    it('shows the action row before and after a translation, and after one failed, so another model can be chosen', () => {
+        expect(['idle', 'done', 'error'].map((phase) => showsActions(phase, localization))).toEqual([true, true, true]);
+    });
+
+    it('hides it while a translation runs or the offer is open, in an origin, and while setup is needed', () => {
+        expect(['planning', 'working', 'offer'].map((phase) => showsActions(phase, localization))).toEqual([false, false, false]);
+        expect(showsActions('idle', { localization: null, setup: false })).toBe(false);
+        expect(showsActions('error', { ...localization, setup: true })).toBe(false);
+        expect(showsActions('idle', null)).toBe(false);
     });
 });
 
