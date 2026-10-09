@@ -2250,7 +2250,7 @@ In T0.1 (2026-10-02) the owner asked for none of these for v1 (D29). Each task i
 
 ## Out of scope for v1 (do not implement without asking the owner)
 
-- Asset alt text (a later version, D2). A CP interface for translation files and forms, which are CLI only (D2, §A16); `lang/vendor/` files; form texts nested in Grid or Group fields; submit buttons and other texts that live in templates.
+- Asset alt text (a later version, D2). A CP interface for translation files and forms, which are CLI only (D2, §A16); `lang/vendor/` files; PHP files in subfolders of `lang/{lang}/` (such as `lang/en/admin/users.php`); form texts nested in Grid or Group fields; submit buttons and other texts that live in templates.
 - Any direction other than origin → localization (D3).
 - Retrieval-based consistency memory beyond the glossary, neighbour context and paragraph reuse (D7).
 - Updating only the changed paragraphs of a field a human has edited. A manual field is updated as a whole, and only on request.

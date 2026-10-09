@@ -119,6 +119,6 @@ Both track their strings like content: a second run sends nothing, and a string 
 ## Not translated in this version
 
 - Asset alt text and other asset fields. A later version translates alt text.
-- `lang/vendor/` files, form texts inside Grid or Group fields, and texts written in templates.
+- `lang/vendor/` files, PHP files in subfolders of `lang/{lang}/` (such as `lang/en/admin/users.php`), form texts inside Grid or Group fields, and texts written in templates.
 - Fields of third-party fieldtypes, such as those of SEO addons, until a handler is registered ([Extending](extending.md)).
 - The slugs of existing localizations, and term slugs, by design.
