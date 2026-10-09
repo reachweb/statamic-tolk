@@ -5,7 +5,6 @@ namespace Reach\StatamicTolk\Translation;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Content\ContentWalker;
-use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
 use Reach\StatamicTolk\Content\Markup\Renumber;
@@ -281,7 +280,7 @@ final readonly class Planner
      * earlier translation and is not sent.
      *
      * @param  list<Leaf>  $leaves
-     * @param  array<string, string>  $known  source leaf fingerprint → earlier translation
+     * @param  array<int, string>  $known  source leaf index → earlier translation
      */
     private function field(string $handle, FieldStatusInfo $status, array $leaves, array $known, array &$segments): array
     {
@@ -290,7 +289,7 @@ final readonly class Planner
 
         foreach ($leaves as $index => $leaf) {
             $id = 's'.(count($segments) + 1);
-            $translation = $known[Fingerprint::ofText($leaf->text)] ?? null;
+            $translation = $known[$index] ?? null;
             $segments[$id] = $this->segment($handle, $index, $leaf, $translation);
             $ids[] = $id;
             $reused += (int) ($translation !== null);

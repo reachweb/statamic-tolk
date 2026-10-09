@@ -43,6 +43,7 @@ All notable changes to Tolk are documented in this file.
 - After a failed translation the editor's banner still shows **Options** (and **Review** where it applies), so you can choose another model when the provider rejected one. Before, it offered only **Retry**, which repeated the rejected model.
 - A page that a run, Translate into… or the command line creates in a structured or orderable collection is placed at its origin's position among the pages already in the target site's tree, instead of at the end of its level in the order the translations finished. Pages already in the tree keep their order.
 - A field saved with exactly the text Tolk produced reads as machine-translated, also when a hand-typed text of the field was saved before it, from a second tab or as an edit that was then undone. It used to stay "edited by hand", so Update skipped it.
+- Update keeps the translation of each copy of a text that appears more than once in a field (a repeated paragraph, label or table cell), instead of giving every copy the first copy's translation, which lost a review correction or a translation made in context.
 
 ## 1.0.0-beta.1 - 2026-10-08
 
