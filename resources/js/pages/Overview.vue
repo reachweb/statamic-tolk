@@ -241,7 +241,7 @@ async function resetUsage() {
                 </Table>
             </div>
             <Description v-if="untracked" data-tolk-baseline-hint>
-                {{ __('Untracked fields were translated by hand without a record of their origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record it.') }}
+                {{ __('Untracked fields were translated by hand without a record of their origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record the origin of each.') }}
             </Description>
         </Card>
 

@@ -78,9 +78,10 @@ class StatusCommand extends Command
 
         if ($untracked > 0) {
             $this->components->warn(sprintf(
-                '%s translated by hand without a record of %s origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record it.',
+                '%s translated by hand without a record of %s origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record %s.',
                 $untracked === 1 ? '1 field was' : number_format($untracked).' fields were',
                 $untracked === 1 ? 'its' : 'their',
+                $untracked === 1 ? 'its origin' : 'the origin of each',
             ));
         }
 
