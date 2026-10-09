@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Actions;
 
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Mode;
@@ -67,9 +68,18 @@ class TranslateAction extends Action
     public function run($items, $values)
     {
         $ids = fn (string $type) => $items->filter(fn ($item) => $item instanceof $type)->map(fn ($item) => (string) $item->id())->values()->all();
+        $sites = array_values(array_map(strval(...), (array) ($values['sites'] ?? [])));
+        $source = $this->sharedSource();
+
+        // The planner would leave the source out of the run without a word, so the run would have nothing to translate.
+        if ($source !== null && array_diff($sites, [$source]) === []) {
+            throw new InvalidArgumentException(__('There is nothing to translate into :site: the selected items are translated from it.', [
+                'site' => Site::get($source)?->name() ?? $source,
+            ]));
+        }
 
         $planned = app(RunPlanner::class)->build(new RunRequest(
-            sites: array_values(array_map(strval(...), (array) ($values['sites'] ?? []))),
+            sites: $sites,
             driver: RunDispatcher::resolveDriver(),
             entryIds: $ids(Entry::class),
             termIds: $ids(Term::class),
@@ -97,6 +107,8 @@ class TranslateAction extends Action
     {
         $settings = app(Settings::class);
         $sites = $this->siteOptions();
+        // A site every selected item is translated from is not offered; the `in` rule still admits it, so run() can say why it is refused.
+        $options = array_diff_key($sites, array_flip(array_filter([$this->sharedSource()])));
         // A term is translated from its taxonomy's first site, which need not be the default site.
         $sources = $this->onlyTerms()
             ? $this->items->map(fn (Term $term) => $term->taxonomy()->sites()->first())->unique()->all()
@@ -106,8 +118,8 @@ class TranslateAction extends Action
             'sites' => [
                 'type' => 'checkboxes',
                 'display' => __('Translate into'),
-                'options' => $sites,
-                'default' => array_values(array_diff(array_keys($sites), $sources)),
+                'options' => $options,
+                'default' => array_values(array_diff(array_keys($options), $sources)),
                 // `in` checks each value of a checkboxes field only together with `array` (§A14).
                 'validate' => ['required', 'array', 'in:'.implode(',', array_keys($sites))],
             ],
@@ -181,6 +193,21 @@ class TranslateAction extends Action
             $item instanceof Term => $item->taxonomy()->sites(),
             default => collect(),
         };
+    }
+
+    /**
+     * The site every selected item is translated from, if they have one in common: an entry's root's site, a term's
+     * taxonomy's first site.
+     */
+    private function sharedSource(): ?string
+    {
+        $sources = $this->items->map(fn ($item) => match (true) {
+            $item instanceof Entry => $item->root()->locale(),
+            $item instanceof Term => $item->taxonomy()->sites()->first(),
+            default => null,
+        })->unique();
+
+        return $sources->count() === 1 ? $sources->first() : null;
     }
 
     // Core lists the actions of one listing at a time, so the items are all entries or all terms.

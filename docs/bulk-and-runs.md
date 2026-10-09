@@ -15,7 +15,7 @@ In the CP they need the `run bulk translations` permission, except the origin en
 
 Select entries or terms in a listing (or open a page's dropdown in the tree view) and choose **Translate…**:
 
-- **Translate into**: the sites of the selected items' collections or taxonomies that you may access. All are checked except the site they are translated from: the default site for entries, the taxonomy's first site for terms.
+- **Translate into**: the sites of the selected items' collections or taxonomies that you may access, except a site that every selected item is translated from, since there is nothing to translate into it. All are checked except the site they are translated from: the default site for entries, the taxonomy's first site for terms.
 - **What to translate**:
   - *Only what is not translated yet* (`missing`): missing localizations and untranslated fields.
   - *Also update outdated translations* (`update`): the above, plus fields whose source changed since they were translated.

@@ -106,7 +106,7 @@ describe('visibility', function () {
         expect($action['title'])->toBe('Translate…')
             ->and($action['buttonText'])->toBe('Translate|Translate :count items')
             ->and(collect($action['fields'])->pluck('handle')->all())->toBe(['sites', 'mode', 'overwrite_manual', 'review', 'new_status'])
-            ->and(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English', 'el' => 'Greek', 'de' => 'German'])
+            ->and(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['el' => 'Greek', 'de' => 'German'])
             ->and($action['values'])->toMatchArray([
                 'sites' => ['el', 'de'],
                 'mode' => 'missing',
@@ -131,13 +131,25 @@ describe('visibility', function () {
 
         $sites = collect(listedActions([$news], ['collection' => 'news'])[TRANSLATE_ACTION]['fields'])->firstWhere('handle', 'sites');
 
-        expect($sites['options'])->toBe(['en' => 'English', 'el' => 'Greek']);
+        expect($sites['options'])->toBe(['el' => 'Greek']);
 
         $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site', 'edit articles entries']);
         $action = listedActions([$this->hello])[TRANSLATE_ACTION];
 
-        expect(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English', 'el' => 'Greek'])
+        expect(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['el' => 'Greek'])
             ->and($action['values']['sites'])->toBe(['el']);
+    });
+
+    it('leaves out the site every selected entry is translated from, and offers it when some are translated into it', function () {
+        $sea = $this->makeEntry('articles', 'el', ['title' => 'Θάλασσα'], 'sea');
+        $this->signInAdmin();
+
+        $sites = fn (array $entries) => collect(listedActions($entries)[TRANSLATE_ACTION]['fields'])->firstWhere('handle', 'sites')['options'];
+
+        expect($sites([$sea]))->toBe(['en' => 'English', 'de' => 'German'])
+            ->and($sites([$this->hello, $this->localize($this->world, 'el')]))->toBe(['el' => 'Greek', 'de' => 'German'])
+            ->and($sites([$this->hello, $sea]))->toBe(['en' => 'English', 'el' => 'Greek', 'de' => 'German'])
+            ->and(listedActions([$this->hello, $sea])[TRANSLATE_ACTION]['values']['sites'])->toBe(['el', 'de']);
     });
 
     it('is not offered in the publish form', function () {
@@ -271,6 +283,24 @@ describe('running', function () {
             ->and(app(RunRepository::class)->recent(10))->toBe([]);
     });
 
+    it('refuses a run into only the site the selected entries are translated from, with the reason', function () {
+        $this->signInAdmin();
+
+        $response = runTranslateAction([$this->hello, $this->world], ['sites' => ['en']])->assertOk();
+
+        expect($response->json())->toMatchArray(['success' => false, 'message' => 'There is nothing to translate into English: the selected items are translated from it.'])
+            ->and($response->json())->not->toHaveKey('redirect')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
+
+        $sea = $this->makeEntry('articles', 'el', ['title' => 'Θάλασσα'], 'sea');
+
+        runTranslateAction([$this->hello, $sea], ['sites' => ['en']])->assertOk()->assertJsonPath('redirect', cp_route('tolk.runs.show', onlyRun()->id));
+
+        expect(array_map(fn (RunItem $item) => [$item->sourceId, $item->targetSite], RunFixtures::items(onlyRun())))->toBe([
+            [$sea->id(), 'en'],
+        ]);
+    });
+
     it('needs at least one site', function () {
         $this->signInAdmin();
 
@@ -321,20 +351,30 @@ describe('terms', function () {
         $action = listedTermActions([$this->food, $this->wellness])[TRANSLATE_ACTION];
 
         expect(collect($action['fields'])->pluck('handle')->all())->toBe(['sites', 'mode', 'overwrite_manual', 'review'])
-            ->and(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English', 'el' => 'Greek', 'de' => 'German'])
+            ->and(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['el' => 'Greek', 'de' => 'German'])
             ->and($action['values']['sites'])->toBe(['el', 'de'])
             ->and($action['confirmationText'])->toBe('The next page shows an estimate before this term is translated.|The next page shows an estimate before these :count terms are translated.');
     });
 
-    it('leaves the taxonomy\'s own first site out of the default sites', function () {
+    it('leaves the taxonomy\'s own first site out of the sites', function () {
         $this->makeTaxonomy('tags', ['el', 'en'], ['title' => ['type' => 'text', 'localizable' => true]]);
         $sea = Term::find($this->makeTerm('tags', 'sea', ['el' => ['title' => 'Θάλασσα']])->id());
         $this->signInAdmin();
 
         $action = listedTermActions([$sea])[TRANSLATE_ACTION];
 
-        expect(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English', 'el' => 'Greek'])
+        expect(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['en' => 'English'])
             ->and($action['values']['sites'])->toBe(['en']);
+    });
+
+    it('refuses a run into only the taxonomy\'s first site, which the terms are translated from', function () {
+        $this->signInAdmin();
+
+        $response = runTermAction([$this->food, $this->wellness], ['sites' => ['en']])->assertOk();
+
+        expect($response->json())->toMatchArray(['success' => false, 'message' => 'There is nothing to translate into English: the selected items are translated from it.'])
+            ->and($response->json())->not->toHaveKey('redirect')
+            ->and(app(RunRepository::class)->recent(10))->toBe([]);
     });
 
     it('is not offered for a single-site taxonomy, one the settings exclude, or a user who may not edit its terms', function () {

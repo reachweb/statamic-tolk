@@ -86,7 +86,7 @@ test('the listing action on two topics creates a run of their terms, whose page 
     const modal = page.getByRole('dialog');
 
     await expect(modal).toContainText('The next page shows an estimate before these 2 terms are translated.');
-    await expect(modal.getByRole('checkbox', { name: 'English' })).not.toBeChecked();
+    await expect(modal.getByRole('checkbox', { name: 'English' })).toHaveCount(0);
     await expect(modal.getByRole('checkbox', { name: 'Greek' })).toBeChecked();
     await expect(modal.getByRole('checkbox', { name: 'German' })).toBeChecked();
     await expect(modal.getByText('New localizations')).toHaveCount(0);
