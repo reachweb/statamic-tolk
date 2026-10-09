@@ -11,3 +11,4 @@
 /.env.browser.example export-ignore
 /pint.json export-ignore
 *.test.js export-ignore
+/brand export-ignore
