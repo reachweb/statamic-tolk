@@ -1,7 +1,7 @@
 import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
-import { createOffers, describeOffer, OFFER_PREFERENCE, offersEnabled, PICKER_CLOSE_MS, shouldOffer } from './offer.js';
+import { createOffers, describeOffer, OFFER_PREFERENCE, offersEnabled, PICKER_CLOSE_MS, savePreference, shouldOffer } from './offer.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
 
@@ -145,6 +145,55 @@ describe('describeOffer', () => {
 
     it('copes with a status that has no localization block', () => {
         expect(describeOffer(null)).toEqual({ count: 0, source: '', target: '', translator: null });
+    });
+});
+
+describe('savePreference', () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Each `set` waits until the test settles it.
+    function heldPreferences() {
+        const requests = [];
+
+        return {
+            requests,
+            set: vi.fn((key, value) => new Promise((resolve, reject) => requests.push({ key, value, resolve, reject }))),
+        };
+    }
+
+    it('starts at once while no other preference is being stored', async () => {
+        expect(savePreference(OFFER_PREFERENCE, false, { preferences: () => preferences, toast: () => toast })).toBeInstanceOf(Promise);
+        expect(preferences.set).toHaveBeenCalledExactlyOnceWith(OFFER_PREFERENCE, false);
+        await settle();
+        expect(preferences.values[OFFER_PREFERENCE]).toBe(false);
+    });
+
+    // Core saves all of a user's preferences with each one it stores, so two stores at once would keep only the later.
+    it('stores one preference at a time, the next once the one before has settled, failed or not', async () => {
+        const held = heldPreferences();
+        const using = { preferences: () => held, toast: () => toast };
+
+        const first = savePreference('tolk.editor.translator', 'gemini:gemini-3.8-flash', using);
+        const second = savePreference('tolk.editor.reviewer', 'openai:gpt-6.1-sol', using);
+        const third = savePreference(OFFER_PREFERENCE, false, using);
+        await settle();
+
+        expect(held.requests.map((request) => request.key)).toEqual(['tolk.editor.translator']);
+
+        held.requests[0].reject(new Error('Network Error'));
+        expect(await first).toBe(false);
+        await settle();
+
+        expect(held.requests.map((request) => request.key)).toEqual(['tolk.editor.translator', 'tolk.editor.reviewer']);
+
+        held.requests[1].resolve();
+        expect(await second).toBe(true);
+        await settle();
+        held.requests[2].resolve();
+
+        expect(await third).toBe(true);
+        expect(held.requests.map((request) => request.key)).toEqual(['tolk.editor.translator', 'tolk.editor.reviewer', OFFER_PREFERENCE]);
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('Your choice could not be saved.');
     });
 });
 

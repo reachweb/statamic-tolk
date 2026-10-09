@@ -359,6 +359,44 @@ describe('translate', () => {
         expect(preferences.values).toEqual({ [TRANSLATOR_PREFERENCE]: 'openai:gpt-6-luna', [REVIEWER_PREFERENCE]: null });
     });
 
+    // Core's endpoint reads the user's preferences when a request arrives and saves all of them when it ends.
+    it('remembers both the model and the reviewer', async () => {
+        const stored = {};
+        const requests = [];
+        let peak = 0;
+
+        preferences = {
+            get: (key, fallback) => (Object.hasOwn(stored, key) ? stored[key] : fallback),
+            set: vi.fn((key, value) => {
+                const loaded = { ...stored };
+
+                return new Promise((resolve) => {
+                    requests.push(() => {
+                        Object.keys(stored).forEach((name) => delete stored[name]);
+                        resolve(Object.assign(stored, loaded, { [key]: value }));
+                    });
+                    peak = Math.max(peak, requests.length);
+                });
+            }),
+        };
+        mount();
+        create().translate('base', {
+            model: 'gemini:gemini-3.8-flash',
+            defaultModel: 'anthropic:claude-sonnet-5-5',
+            review: true,
+            reviewer: 'anthropic:claude-haiku-5-5',
+            defaultReviewer: 'openai:gpt-6.1-sol',
+        });
+
+        for (let round = 0; round < 3; round++) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            requests.splice(0).forEach((finish) => finish());
+        }
+
+        expect(stored).toEqual({ [TRANSLATOR_PREFERENCE]: 'gemini:gemini-3.8-flash', [REVIEWER_PREFERENCE]: 'anthropic:claude-haiku-5-5' });
+        expect(peak).toBe(1);
+    });
+
     it('leaves the remembered reviewer alone when the review is off', () => {
         preferences = fakePreferences({ [REVIEWER_PREFERENCE]: 'gemini:gemini-3.8-flash' });
         mount();

@@ -8,16 +8,32 @@ import { translations as sharedTranslations } from './translate.js';
 // The user preference behind "Don't offer again".
 export const OFFER_PREFERENCE = 'tolk.offer';
 
-// Stores a user preference. Resolves whether it was stored; a failure shows a toast.
-export function savePreference(key, value, { preferences = () => Statamic.$preferences, toast = () => Statamic.$toast } = {}) {
-    return Promise.resolve(preferences().set(key, value)).then(
-        () => true,
-        () => {
-            toast().error(__('Your choice could not be saved.'));
+// The preference being stored, while one is. Core saves all of a user's preferences with each one it stores, from the
+// user as it was when the request arrived, so of two stores at once only the later one's value would be kept.
+let storing = null;
 
-            return false;
-        },
-    );
+// Stores a user preference once the one before has been stored, failed or not. Resolves whether it was stored; a
+// failure shows a toast.
+export function savePreference(key, value, { preferences = () => Statamic.$preferences, toast = () => Statamic.$toast } = {}) {
+    const store = () =>
+        new Promise((resolve) => resolve(preferences().set(key, value))).then(
+            () => true,
+            () => {
+                toast().error(__('Your choice could not be saved.'));
+
+                return false;
+            },
+        );
+    const stored = storing ? storing.then(store) : store();
+
+    storing = stored;
+    stored.then(() => {
+        if (storing === stored) {
+            storing = null;
+        }
+    });
+
+    return stored;
 }
 
 export function offersEnabled(preferences = Statamic.$preferences) {

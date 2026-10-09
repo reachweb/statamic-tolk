@@ -37,6 +37,7 @@ All notable changes to Tolk are documented in this file.
 - On a narrow screen, the tables of the Overview, the runs list and a run's page scroll sideways inside their card, as Statamic's listings do, instead of running off the card and scrolling the whole page.
 - The description of the **Translate content** permission no longer says it gives the listing action, which needs **Run bulk translations**; it now names what it gives, as the installation guide does.
 - The editor's options review with the reviewer they show when you choose another model. Before, the reviewer marked "(default)" was replaced by the one the settings would pick for that model.
+- The editor's options remember both the model and the reviewer when you change both. Before, one of the two choices could be lost.
 
 ## 1.0.0-beta.1 - 2026-10-08
 
