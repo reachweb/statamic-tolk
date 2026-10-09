@@ -101,7 +101,7 @@ Navigation trees are separate per site, with nothing inherited, so Tolk translat
 
 - The source is the default site's tree, or the tree of the `--from` site when the navigation has one there. Any other site can be translated into.
 - A navigation is translated after the entries of the same run, so its branches can point at the new localizations.
-- An **entry branch** links the target site's localization of its entry. A branch whose entry has no localization there is left out; when branches below it remain, it is kept as a text branch titled with its entry's title, translated with the tree. Either way the item gets a warning, and the tree reads outdated until the localization exists, so a later Update adds the branch.
+- An **entry branch** links the target site's localization of its entry. A branch whose entry has no localization there is left out; when branches below it remain, it is kept as a text branch titled with its entry's title, translated with the tree. Either way the item gets a warning. The tree reads current until the entry is localized in that site; then it reads outdated, and Update adds the branch.
 - Branch ids are kept. Branch titles and the fields of the navigation's blueprint are translated; URLs are kept.
 - Translate navigation from the Overview's cells or with `tolk:translate --nav=main --site=el`. The navigation editor has no banner.
 
