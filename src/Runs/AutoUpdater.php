@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\Site;
 
 /**
  * Automatic updates (T11.1): saving a published entry in its origin updates its translations with a run of that entry,
@@ -25,8 +26,7 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 final readonly class AutoUpdater
 {
     /**
-     * How many of the most recent runs are searched for an earlier run from the entry. An update runs for minutes, so it
-     * is among them.
+     * How many of the most recent runs are searched for the latest automatic update of a localization.
      */
     public const int RECENT = 50;
 
@@ -63,12 +63,12 @@ final readonly class AutoUpdater
     }
 
     /**
-     * Whether saving the entry now updates its translations: the settings cover its collection, it is published, and it
-     * is the origin of a site to update.
+     * Whether saving the entry now, as $user, updates its translations: the settings cover its collection, it is
+     * published, and it is the origin of a site to update.
      */
-    public function applies(EntryContract $entry): bool
+    public function applies(EntryContract $entry, ?User $user = null): bool
     {
-        return $this->covers($entry) && $entry->published() && $this->sites($entry) !== [];
+        return $this->covers($entry) && $entry->published() && $this->sites($entry, $user) !== [];
     }
 
     /**
@@ -86,26 +86,30 @@ final readonly class AutoUpdater
     }
 
     /**
-     * The sites an update of the entry translates into: those of its direct localizations and, when the settings create
-     * missing localizations and the entry is the root of its family, the sites it has none in.
+     * The sites an update of the entry as $user translates into: those of its direct localizations and, when the
+     * settings create missing localizations and the entry is the root of its family, the sites it has none in. A user
+     * gets only the sites they may access, so they may follow the run (§A14); without one, every site.
      *
      * @return list<string>
      */
-    public function sites(EntryContract $entry): array
+    public function sites(EntryContract $entry, ?User $user = null): array
     {
-        return $this->families->originSites($entry, $this->settings->autoUpdateCreate());
+        $sites = $this->families->originSites($entry, $this->settings->autoUpdateCreate());
+
+        return $user === null ? $sites : array_values(array_filter($sites, fn (string $site) => $user->can('view', Site::get($site))));
     }
 
     /**
      * Whether a run from the entry has not finished and is still moving, an automatic one or one pushed from its banner:
-     * a new run would translate the same fields again. A run that stopped moving no longer counts.
+     * a new run would translate the same fields again. A run that stopped moving no longer counts. Every run is searched,
+     * because an import that saves many entries makes as many runs while an earlier one still works.
      */
     public function busy(EntryContract $entry): bool
     {
         $reference = $entry->reference();
         $cutoff = CarbonImmutable::now()->subSeconds(max(1, (int) config('tolk.runs.claim_ttl')));
 
-        foreach ($this->runs->recent(self::RECENT) as $run) {
+        foreach ($this->runs->recent(PHP_INT_MAX) as $run) {
             if (! $run->status->isFinal() && ($run->scope['reference'] ?? null) === $reference && ! $run->lastActivityAt()->lessThan($cutoff)) {
                 return true;
             }
@@ -122,7 +126,7 @@ final readonly class AutoUpdater
      */
     public function start(EntryContract $entry, ?User $user, bool $drive): ?Run
     {
-        $sites = $this->sites($entry);
+        $sites = $this->sites($entry, $user);
 
         if ($sites === []) {
             return null;

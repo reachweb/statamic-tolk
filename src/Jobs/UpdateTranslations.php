@@ -134,7 +134,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         while (true) {
             $entry = Entry::find($this->entryId);
 
-            if ($entry === null || ! $updater->applies($entry)) {
+            if ($entry === null || ! $updater->applies($entry, $user)) {
                 return;
             }
 

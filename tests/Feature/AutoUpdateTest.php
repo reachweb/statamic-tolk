@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Bus\UniqueLock;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
@@ -241,6 +242,7 @@ describe('without a queue worker', function () {
 
         expect(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.')
             ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[T] A short intro.')
+            ->and(autoRuns()[0]->scope['sites'])->toBe(['el'])
             ->and(array_map(fn ($item) => $item->targetSite, RunFixtures::items(autoRuns()[0])))->toBe(['el']);
     });
 
@@ -355,6 +357,84 @@ describe('with a queue worker', function () {
         expect(autoEntry($this->hello, 'de')->get('intro'))->toBe('[T] A longer intro.');
     });
 
+    it('makes the run into the sites the user who saved may access, so they may follow and cancel it', function () {
+        autoTranslated($this->hello, ['el', 'de']);
+        $editor = $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+
+        $job = (new UpdateTranslations($this->hello->id(), (string) $editor->id()))->withFakeQueueInteractions();
+        app()->call([$job, 'handle']);
+        $run = autoRuns()[0];
+
+        expect($run->scope['sites'])->toBe(['el'])
+            ->and(RunFixtures::statuses($run))->toBe(['pending']);
+        $this->getJson(cp_route('tolk.runs.state', $run->id))->assertOk();
+        $this->postJson(cp_route('tolk.runs.cancel', $run->id))->assertOk();
+    });
+
+    it('updates the localizations of a localization the worker saved as the user who saved the origin', function () {
+        autoTranslated($this->hello, ['el']);
+        // A chain: German is translated from Greek, so the Greek localization is an origin too.
+        $this->localize(autoEntry($this->hello, 'el'), 'de');
+        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
+        $editor = $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'access de site', 'edit articles entries']);
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+
+        app()->call([(new UpdateTranslations($this->hello->id(), (string) $editor->id()))->withFakeQueueInteractions(), 'handle']);
+        // A queue worker has no signed-in user.
+        Auth::forgetUser();
+        RunFixtures::finish(autoRuns()[0]);
+        $greek = autoEntry($this->hello, 'el');
+
+        expect($greek->get('intro'))->toBe('[T] A longer intro.');
+        Queue::assertPushed(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $greek->id() && $job->userId === (string) $editor->id());
+    });
+
+    it('does not go on along a chain into a site the user who saved the origin may not access', function () {
+        autoTranslated($this->hello, ['el']);
+        $this->localize(autoEntry($this->hello, 'el'), 'de');
+        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
+        $german = autoEntry($this->hello, 'de')->get('intro');
+        $editor = $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+
+        app()->call([(new UpdateTranslations($this->hello->id(), (string) $editor->id()))->withFakeQueueInteractions(), 'handle']);
+        Auth::forgetUser();
+        RunFixtures::finish(autoRuns()[0]);
+        $greek = autoEntry($this->hello, 'el');
+
+        expect($greek->get('intro'))->toBe('[T] A longer intro.');
+        Queue::assertNotPushed(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $greek->id());
+
+        app()->call([(new UpdateTranslations($greek->id(), (string) $editor->id()))->withFakeQueueInteractions(), 'handle']);
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe($german);
+    });
+
+    it('is released while an earlier run from the entry is still moving, however many runs were made since', function () {
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        $other = $this->makeEntry('articles', 'en', ['title' => 'Other'], 'other');
+
+        foreach (range(1, AutoUpdater::RECENT) as $ignored) {
+            RunFixtures::pending(['entryIds' => [$other->id()]]);
+        }
+
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+
+        $job = (new UpdateTranslations($this->hello->id(), (string) $admin->id()))->withFakeQueueInteractions();
+        app()->call([$job, 'handle']);
+
+        $job->assertReleased(UpdateTranslations::RETRY_SECONDS);
+        expect(autoRuns())->toBe([]);
+    });
+
     it('is released while an earlier run from the entry is still moving', function () {
         $admin = $this->signInAdmin();
         autoTranslated($this->hello, ['el']);
@@ -399,6 +479,17 @@ describe('the banner', function () {
 
         autoOn(['auto_update_collections' => ['pages']]);
         $status($this->hello)->assertJsonPath('origin.auto_update', null)->assertJsonPath('origin.auto_update_sites', []);
+    });
+
+    it('names only the sites the user may access among those a save updates', function () {
+        autoTranslated($this->hello, ['el']);
+        $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
+        autoOn(['auto_update_create' => true]);
+
+        $this->getJson(cp_route('tolk.editor.status', ['reference' => $this->hello->reference()]))
+            ->assertOk()
+            ->assertJsonPath('origin.localizations.*.site', ['el'])
+            ->assertJsonPath('origin.auto_update_sites', ['el']);
     });
 
     it('follows the running automatic run of the user who saved', function () {

@@ -208,12 +208,12 @@ final readonly class EditorStatus
             return null;
         }
 
-        $autoUpdate = $this->autoUpdate($item);
+        $autoUpdate = $this->autoUpdate($item, $user);
 
         return [
             'localizations' => $localizations,
             'auto_update' => $autoUpdate,
-            'auto_update_sites' => $autoUpdate === null ? [] : $this->updater->sites($item),
+            'auto_update_sites' => $autoUpdate === null ? [] : $this->updater->sites($item, $user),
         ];
     }
 
@@ -230,12 +230,13 @@ final readonly class EditorStatus
     }
 
     /**
-     * When the settings update the entry's translations automatically (T11.1): `save` when each save of the entry does,
-     * `publish` when only its publishing does (with revisions, or while it is a draft), null when nothing does.
+     * When the settings update the entry's translations automatically (T11.1) as the user saves it: `save` when each
+     * save of the entry does, `publish` when only its publishing does (with revisions, or while it is a draft), null
+     * when nothing does.
      */
-    private function autoUpdate(EntryContract|TermContract $item): ?string
+    private function autoUpdate(EntryContract|TermContract $item, User $user): ?string
     {
-        if (! $item instanceof EntryContract || ! $this->updater->covers($item) || $this->updater->sites($item) === []) {
+        if (! $item instanceof EntryContract || ! $this->updater->covers($item) || $this->updater->sites($item, $user) === []) {
             return null;
         }
 

@@ -106,7 +106,7 @@ With `auto_update` on ([Configuration](configuration.md#automation)), saving a p
 
 A save while an earlier run of the entry is still moving waits for that run (up to 15 minutes), so the same fields are not translated twice. A run started from the entry's banner counts too.
 
-On the runs list an automatic run says **Automatic update**, and its page "Started automatically on …, when … saved the entry." It translates as the user who saved the entry: the sites they may not edit are left out. A save without a signed-in user, from code or a command, may update every site.
+On the runs list an automatic run says **Automatic update**, and its page "Started automatically on …, when … saved the entry." It translates as the user who saved the entry: the sites they may not access or edit are left out, so they can follow and cancel it from the banner. A save a run makes counts as that run's creator's, so when the update saves a published localization that other localizations are translated from, their own update runs as the same user. A save without a signed-in user, from code or a command, may update every site.
 
 ### Stalled runs
 
