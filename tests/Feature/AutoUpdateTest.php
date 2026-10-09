@@ -383,16 +383,22 @@ describe('the banner', function () {
         autoTranslated($this->hello, ['el']);
         $status = fn (EntryContract $entry) => $this->getJson(cp_route('tolk.editor.status', ['reference' => $entry->reference()]))->assertOk();
 
-        $status($this->hello)->assertJsonPath('origin.auto_update', null);
+        $status($this->hello)->assertJsonPath('origin.auto_update', null)->assertJsonPath('origin.auto_update_sites', []);
 
         autoOn();
-        $status($this->hello)->assertJsonPath('origin.auto_update', 'save');
+        $status($this->hello)
+            ->assertJsonPath('origin.auto_update', 'save')
+            ->assertJsonPath('origin.localizations.*.site', ['el', 'de'])
+            ->assertJsonPath('origin.auto_update_sites', ['el']);
+
+        autoOn(['auto_update_create' => true]);
+        $status($this->hello)->assertJsonPath('origin.auto_update_sites', ['el', 'de']);
 
         $this->hello->published(false)->saveQuietly();
         $status($this->hello)->assertJsonPath('origin.auto_update', 'publish');
 
         autoOn(['auto_update_collections' => ['pages']]);
-        $status($this->hello)->assertJsonPath('origin.auto_update', null);
+        $status($this->hello)->assertJsonPath('origin.auto_update', null)->assertJsonPath('origin.auto_update_sites', []);
     });
 
     it('follows the running automatic run of the user who saved', function () {
