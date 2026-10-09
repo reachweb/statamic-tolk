@@ -523,7 +523,7 @@ Global sets and the nav page editor do not render pushed components (R3 §2.4), 
 - Publishing follows core: see §A11.
 - Runs, overview and the bulk action: `run bulk translations`. When a run is planned by a user, targets that fail `authorize()` are skipped with a reason, and the check is repeated when each item is applied. CLI runs have no user and are unrestricted.
 - A run is shown and driven only to a user who may access every site it translates into and the site it names to translate from (`RunStateRequest::allows()`, every run route); the runs list and the Overview's latest runs leave out the others. Creating a run or a push into a site the user may not access is refused with 403, as is an Overview cell of such a site. Edit rights on a run's items are not checked when it is shown or driven: its items are applied with its creator's rights (T12.3).
-- One exception: the editor's push (T8.13) lets a user with `translate content` create a run for the single item they have open. They may follow, cancel and resume that run (`state`, `tick`, `apply`, `cancel`) as its creator, without `run bulk translations`.
+- One exception: the editor's push (T8.13) lets a user with `translate content` create a run for the single item they have open. They may follow, cancel and continue (re-open) that run (`state`, `tick`, `apply`, `cancel`) as its creator, without `run bulk translations`; `resume` needs it.
 - A plan belongs to the user who created it; unit requests from another user are rejected.
 - Model choice per request (`translator`, `reviewer`) is limited to models in the catalog, unless the user may edit the addon's settings.
 - `GET models` needs `translate content` or `run bulk translations`.
