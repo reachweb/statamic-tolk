@@ -101,7 +101,7 @@ While the run goes, the banner shows its progress and **Cancel**. When Tolk's ru
 
 When it has finished, the banner shows a line per site with a link to the localization and its result. New localizations appear in Statamic's **Sites** panel after a reload, which **Reload** does.
 
-You need only `translate content` for this: you follow, cancel and resume the run you started from the entry, without seeing the Runs pages.
+You need only `translate content` for this: you follow and cancel the run you started from the entry, and it continues when you open the entry again, without seeing the Runs pages. A cancelled or aborted run is resumed on the Runs pages, which need `run bulk translations`; otherwise start the translation again from the entry.
 
 ## Collections with revisions
 
