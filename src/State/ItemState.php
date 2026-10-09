@@ -59,7 +59,11 @@ final readonly class ItemState
 
     public function withField(string $handle, FieldState $field): self
     {
-        return new self($this->reference, $this->sourceSite, $this->version, [...$this->fields, $handle => $field]);
+        // Not a spread, which would renumber a handle that reads as an integer, such as a translation file's key `404`.
+        $fields = $this->fields;
+        $fields[$handle] = $field;
+
+        return new self($this->reference, $this->sourceSite, $this->version, $fields);
     }
 
     public function withoutField(string $handle): self

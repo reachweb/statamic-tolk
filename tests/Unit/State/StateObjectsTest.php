@@ -270,6 +270,17 @@ it('keeps the order of fields and replaces a field in place', function () {
         ->and($item->field('title')->targetHash)->toBe('t3');
 });
 
+it('keeps a handle that reads as an integer when it adds or replaces a field', function () {
+    $item = ItemState::empty(TargetRef::parse('lang::errors::de'))
+        ->withField('404', machineState('s1', 't1'))
+        ->withField('title', machineState('s2', 't2'))
+        ->withField('404', machineState('s3', 't3'));
+
+    expect(array_map('strval', array_keys($item->fields)))->toBe(['404', 'title'])
+        ->and($item->field('404')->targetHash)->toBe('t3')
+        ->and($item->field('title')->targetHash)->toBe('t2');
+});
+
 it('reads values of the wrong type as missing', function () {
     $field = FieldState::fromArray([
         'source_hash' => 42,
