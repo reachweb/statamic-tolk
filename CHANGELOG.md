@@ -28,6 +28,7 @@ All notable changes to Tolk are documented in this file.
 - A text that moves between `lang/{source}.json` and a form, such as a form label added to the JSON file, keeps its record, so `tolk:lang` and `tolk:forms` no longer read its translation as edited by hand.
 - `tolk:forms` collects the label of a form field without a `display`, which Statamic makes from the field's handle (`your_message` becomes "Your Message") and shows in the submission email and in validation messages.
 - When the provider rejects the key or the model, `tolk:lang` and `tolk:forms` report the file they were translating as failed, count it in the summary and name the files they did not get to, instead of leaving the file's line empty and reporting Failed 0.
+- Requests to OpenAI's models from GPT-5.6 on no longer pay for cache writes: by default OpenAI wrote every whole request to its prompt cache, at 1.25 times the input price, and never read it back. The usage figures also price GPT-6.1 Sol's cache reads at its own rate, 5% of the input price.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

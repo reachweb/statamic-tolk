@@ -392,6 +392,7 @@ it('throws RequestRejected on a 400 and logs the shape of the request without it
         && $context['kinds'] === ['plain' => 2]
         && $context['source_chars'] === 47
         && $context['max_tokens'] === app(TranslationEngine::class)->outputCap(engineCall($provider))
+        && $context['options'] === ['anthropic' => ['thinking'], 'openai' => ['prompt_cache_options', 'reasoning'], 'gemini' => ['thinking_level']][$provider]
         && ! str_contains(json_encode($context), 'Kyma'));
 })->with(ProviderFixtures::PROVIDERS);
 

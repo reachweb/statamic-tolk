@@ -12,6 +12,20 @@ it('bills uncached input, cache reads at 10%, cache writes at 125% and output at
     expect(app(Pricing::class)->cost(new ModelRef('anthropic', 'claude-sonnet-5-5'), $usage))->toEqualWithDelta(0.00258, 1e-12);
 });
 
+it('bills cache reads and writes at the prices of the catalog entry when it has them', function () {
+    $pricing = app(Pricing::class);
+
+    // GPT-6.1 Sol reads at $0.10 per million tokens, 0.05 times its input price, and writes at the usual 125%.
+    expect($pricing->cost(new ModelRef('openai', 'gpt-6.1-sol'), new Usage(input: 3000, cacheRead: 1000, cacheWrite: 1000)))
+        ->toEqualWithDelta((1000 * 2 + 1000 * 0.1 + 1000 * 2.5) / 1_000_000, 1e-12);
+
+    config(['tolk.models.openai.1.price.cache_write' => 0.2, 'tolk.models.openai.1.price.cache_read' => 'free']);
+
+    // Luna: a written price, and a read price that is not a number, so 10% of the input price.
+    expect($pricing->cost(new ModelRef('openai', 'gpt-6-luna'), new Usage(input: 3000, cacheRead: 1000, cacheWrite: 1000)))
+        ->toEqualWithDelta((1000 * 0.1 + 1000 * 0.01 + 1000 * 0.2) / 1_000_000, 1e-12);
+});
+
 it('never adds reasoning tokens on top of the output', function () {
     $model = new ModelRef('openai', 'gpt-6.1-sol');
     $pricing = app(Pricing::class);

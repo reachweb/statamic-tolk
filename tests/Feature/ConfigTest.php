@@ -81,7 +81,7 @@ it('pins every default', function () {
                     'options' => ['reasoning' => ['effort' => 'low']],
                     'max_output_tokens' => 128000,
                     'reasoning_headroom' => 4000,
-                    'price' => ['input' => 2.0, 'output' => 10.0],
+                    'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
                 ],
                 [
                     'id' => 'gpt-6-luna',
@@ -201,9 +201,9 @@ it('has a catalog entry with every key for each model', function () {
                 ->and($model['options'])->toBeArray()
                 ->and($model['max_output_tokens'])->toBeInt()->toBeGreaterThan(0)
                 ->and($model['reasoning_headroom'])->toBeInt()->toBeGreaterThanOrEqual(0)->toBeLessThan($model['max_output_tokens'])
-                ->and(array_keys($model['price']))->toBe(['input', 'output'])
-                ->and($model['price']['input'])->toBeFloat()->toBeGreaterThan(0)
-                ->and($model['price']['output'])->toBeFloat()->toBeGreaterThan(0);
+                ->and(array_keys($model['price']))->toContain('input', 'output')
+                ->and(array_diff(array_keys($model['price']), ['input', 'output', 'cache_read', 'cache_write']))->toBe([])
+                ->and($model['price'])->each->toBeFloat()->toBeGreaterThan(0);
         }
     }
 });

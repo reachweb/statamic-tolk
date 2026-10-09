@@ -185,6 +185,14 @@ it('sends the corrections schema to the reviewer\'s model', function (string $pr
     'gemini' => ['gemini', 'gemini-3.5-flash-lite', 'response_format.schema'],
 ]);
 
+it('switches off OpenAI\'s implicit prompt caching for the reviewer', function () {
+    ProviderFixtures::fake('openai', ProviderFixtures::withText('openai', '{"corrections":[]}'));
+
+    engineReview('openai');
+
+    expect(ProviderFixtures::sentRequest()->data()['prompt_cache_options'] ?? null)->toBe(['mode' => 'explicit']);
+});
+
 it('drops corrections without a string id, text and reason, ids that were not asked for and repeated ids', function () {
     ReviewAgent::fake([['corrections' => [
         'junk',

@@ -43,7 +43,7 @@ it('describes a catalog model', function () {
         ->and(modelCatalog()->options($sol))->toBe(['reasoning' => ['effort' => 'low']])
         ->and(modelCatalog()->maxOutputTokens($sol))->toBe(128000)
         ->and(modelCatalog()->reasoningHeadroom($sol))->toBe(4000)
-        ->and(modelCatalog()->price($sol))->toBe(['input' => 2.0, 'output' => 10.0])
+        ->and(modelCatalog()->price($sol))->toBe(['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1])
         ->and(modelCatalog()->label($sol))->toBe('GPT-6.1 Sol');
 });
 

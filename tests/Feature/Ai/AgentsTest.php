@@ -4,8 +4,12 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Prompts\AgentPrompt;
+use Reach\StatamicTolk\Ai\Agents\ConnectionTestAgent;
+use Reach\StatamicTolk\Ai\Agents\ReviewAgent;
+use Reach\StatamicTolk\Ai\Agents\SiteProfileAgent;
 use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
 use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
@@ -76,6 +80,48 @@ it('marks the instructions for caching on Anthropic', function () {
         'text' => 'Translate every segment into Greek.',
         'cache_control' => ['type' => 'ephemeral'],
     ]]);
+});
+
+it('switches off OpenAI\'s implicit prompt caching from GPT-5.6 on, which writes every request to the cache and never reads it back', function (string $model, ?array $expected) {
+    $model = ModelRef::fromString($model);
+    ProviderFixtures::fake($model->provider, ProviderFixtures::response($model->provider));
+
+    (new TranslationAgent($model, 'Translate every segment into Greek.', app(ModelCatalog::class)->options($model)))->prompt('{"segments":[]}');
+
+    expect(ProviderFixtures::sentRequest()->data()['prompt_cache_options'] ?? null)->toBe($expected);
+})->with([
+    'GPT-6.1 Sol' => ['openai:gpt-6.1-sol', ['mode' => 'explicit']],
+    'GPT-6 Luna' => ['openai:gpt-6-luna', ['mode' => 'explicit']],
+    'GPT-5.6 Terra' => ['openai:gpt-5.6-terra', ['mode' => 'explicit']],
+    'GPT-5.10' => ['openai:gpt-5.10', ['mode' => 'explicit']],
+    'GPT-5 mini' => ['openai:gpt-5-mini', null],
+    'GPT-5.5' => ['openai:gpt-5.5', null],
+    'GPT-4.1' => ['openai:gpt-4.1', null],
+    'an id without a version' => ['openai:o4-mini', null],
+    'Claude' => ['anthropic:claude-sonnet-5-5', null],
+    'Gemini' => ['gemini:gemini-3.8-flash', null],
+]);
+
+it('switches off OpenAI\'s implicit prompt caching for every agent', function (string $agent) {
+    ProviderFixtures::fake('openai', ProviderFixtures::response('openai'));
+    $model = ModelRef::fromString('openai:gpt-6.1-sol');
+
+    (new $agent($model, 'Instructions.', app(ModelCatalog::class)->options($model)))->prompt('{}');
+
+    $body = ProviderFixtures::sentRequest()->data();
+
+    expect($body['prompt_cache_options'])->toBe(['mode' => 'explicit'])
+        ->and($body['reasoning'])->toBe(['effort' => 'low'])
+        ->and($body['input'][0])->toBe(['role' => 'system', 'content' => 'Instructions.']);
+})->with([TranslationAgent::class, ReviewAgent::class, SiteProfileAgent::class, ConnectionTestAgent::class]);
+
+it('lets a catalog entry\'s options choose OpenAI\'s cache mode', function () {
+    config(['tolk.models.openai.0.options.prompt_cache_options' => ['mode' => 'implicit']]);
+
+    $body = promptTranslationAgent('openai')->data();
+
+    expect($body['prompt_cache_options'])->toBe(['mode' => 'implicit'])
+        ->and($body['reasoning'])->toBe(['effort' => 'low']);
 });
 
 it('sends the instructions as the system prompt on OpenAI and Gemini', function (string $provider, string $path) {

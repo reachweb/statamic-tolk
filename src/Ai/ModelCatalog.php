@@ -116,7 +116,7 @@ class ModelCatalog
     }
 
     /**
-     * @return array{input: float, output: float}|null
+     * @return array{input: float, output: float, cache_read?: float, cache_write?: float}|null
      */
     public function price(ModelRef $model): ?array
     {
@@ -126,7 +126,15 @@ class ModelCatalog
             return null;
         }
 
-        return ['input' => (float) $price['input'], 'output' => (float) $price['output']];
+        $prices = ['input' => (float) $price['input'], 'output' => (float) $price['output']];
+
+        foreach (['cache_read', 'cache_write'] as $key) {
+            if (is_numeric($price[$key] ?? null)) {
+                $prices[$key] = (float) $price[$key];
+            }
+        }
+
+        return $prices;
     }
 
     public function label(ModelRef $model): string
