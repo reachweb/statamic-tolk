@@ -34,6 +34,7 @@ All notable changes to Tolk are documented in this file.
 - A run's page shows the reviewer's corrections: an item the reviewer corrected says how many, and **View changes** shows each with the text before and after and the reason, as the editor does.
 - "1 call" instead of "1 calls" in a run's usage and the Overview's usage of the month, and the count can be pluralised in a host's translation.
 - On the page of a stopped run, the error is on a line of its own instead of running into the result ("0 done.The AI provider…").
+- On a narrow screen, the tables of the Overview, the runs list and a run's page scroll sideways inside their card, as Statamic's listings do, instead of running off the card and scrolling the whole page.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

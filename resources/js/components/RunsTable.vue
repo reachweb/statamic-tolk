@@ -34,37 +34,39 @@ const rows = computed(() =>
 </script>
 
 <template>
-    <Table>
-        <TableColumns>
-            <TableColumn>{{ __('Status') }}</TableColumn>
-            <TableColumn>{{ __('Content') }}</TableColumn>
-            <TableColumn>{{ __('Sites') }}</TableColumn>
-            <TableColumn>{{ __('Items finished') }}</TableColumn>
-            <TableColumn>{{ __('Usage') }}</TableColumn>
-            <TableColumn>{{ __('Created') }}</TableColumn>
-        </TableColumns>
-        <TableRows>
-            <TableRow v-for="row in rows" :key="row.id" data-tolk-run-row :data-tolk-run-id="row.id">
-                <TableCell>
-                    <Link :href="row.url" class="inline-flex"><Badge :text="runStatusLabel(row.status)" :color="runStatusColor(row.status)" /></Link>
-                </TableCell>
-                <TableCell>
-                    <Link :href="row.url" class="text-blue-600 hover:underline dark:text-blue-400">{{ row.what }}</Link>
-                </TableCell>
-                <TableCell>{{ row.sites }}</TableCell>
-                <TableCell>
-                    {{ row.progress }}
-                    <Description v-if="row.failed > 0">{{ __n(':count failed|:count failed', row.failed) }}</Description>
-                </TableCell>
-                <TableCell>
-                    {{ __(':tokens tokens', { tokens: formatNumber(row.tokens) }) }}
-                    <Description>{{ row.cost === null ? __('Cost unknown') : formatCost(row.cost) }}</Description>
-                </TableCell>
-                <TableCell>
-                    {{ row.date }}
-                    <Description>{{ row.by }}</Description>
-                </TableCell>
-            </TableRow>
-        </TableRows>
-    </Table>
+    <div class="overflow-x-auto">
+        <Table>
+            <TableColumns>
+                <TableColumn>{{ __('Status') }}</TableColumn>
+                <TableColumn>{{ __('Content') }}</TableColumn>
+                <TableColumn>{{ __('Sites') }}</TableColumn>
+                <TableColumn>{{ __('Items finished') }}</TableColumn>
+                <TableColumn>{{ __('Usage') }}</TableColumn>
+                <TableColumn>{{ __('Created') }}</TableColumn>
+            </TableColumns>
+            <TableRows>
+                <TableRow v-for="row in rows" :key="row.id" data-tolk-run-row :data-tolk-run-id="row.id">
+                    <TableCell>
+                        <Link :href="row.url" class="inline-flex"><Badge :text="runStatusLabel(row.status)" :color="runStatusColor(row.status)" /></Link>
+                    </TableCell>
+                    <TableCell>
+                        <Link :href="row.url" class="text-blue-600 hover:underline dark:text-blue-400">{{ row.what }}</Link>
+                    </TableCell>
+                    <TableCell>{{ row.sites }}</TableCell>
+                    <TableCell>
+                        {{ row.progress }}
+                        <Description v-if="row.failed > 0">{{ __n(':count failed|:count failed', row.failed) }}</Description>
+                    </TableCell>
+                    <TableCell>
+                        {{ __(':tokens tokens', { tokens: formatNumber(row.tokens) }) }}
+                        <Description>{{ row.cost === null ? __('Cost unknown') : formatCost(row.cost) }}</Description>
+                    </TableCell>
+                    <TableCell>
+                        {{ row.date }}
+                        <Description>{{ row.by }}</Description>
+                    </TableCell>
+                </TableRow>
+            </TableRows>
+        </Table>
+    </div>
 </template>
