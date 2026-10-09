@@ -563,7 +563,8 @@ class TranslateCommand extends Command
     }
 
     /**
-     * A line per item: what its plan does, or why it would fail; then the totals of the plans.
+     * A line per item: what its plan does, or why it would be skipped, as the run's report says; then the totals of the
+     * plans.
      *
      * @param  array<int, string>  $lines
      * @param  int  $targets  the plans that have something to do
@@ -576,7 +577,7 @@ class TranslateCommand extends Command
         foreach ($items as $item) {
             $line = match (true) {
                 isset($lines[$item->index]) => $lines[$item->index],
-                $item->reason === TargetResult::ROOT_MISSING => '<fg=red>would fail</>, '.$item->error,
+                $item->reason === TargetResult::ROOT_MISSING => '<comment>would be skipped</comment>, '.$item->error,
                 default => null,
             };
 
