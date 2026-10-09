@@ -1,5 +1,6 @@
 <?php
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterval as Duration;
 use Illuminate\Console\Signals;
 use Illuminate\Process\FakeInvokedProcess;
@@ -22,6 +23,7 @@ use Reach\StatamicTolk\Events\RunStarted;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Jobs\WorkRun;
+use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
@@ -839,7 +841,8 @@ describe('summary and git', function () {
             ->and($run->status)->toBe(RunStatus::Aborted)
             ->and($run->error)->toContain('Invalid API key.')
             ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
-            ->and($output)->toContain('1 target was not finished. Run the command again to translate it, or resume the run in the Control Panel:')
+            ->and($output)->toContain('1 target was not translated. Resume the run in the Control Panel once the cause above is fixed:')
+            ->and($output)->not->toContain('Run the command again')
             ->and($output)->toContain("\n  ".cp_route('tolk.runs.show', $run->id)."\n");
     });
 });
@@ -1127,7 +1130,7 @@ describe('the run engine', function () {
             ->and($run->status)->toBe(RunStatus::Cancelled)
             ->and($output)->toContain('Cancelling the run.')
             ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
-            ->and($output)->toContain('1 target was not finished.')
+            ->and($output)->toContain('1 target was not translated. Run the command again to translate it, or resume the run in the Control Panel:')
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello')
             ->and($this->world->fresh()->existsIn('el'))->toBeFalse()
             ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE])
@@ -1223,9 +1226,46 @@ describe('the run engine', function () {
         expect($exitCode)->toBe(1)
             ->and(app(RunRepository::class)->recent(1)[0]->status)->toBe(RunStatus::Cancelled)
             ->and($output)->toContain('The worker processes finish their current request first; press Ctrl-C again to stop them at once.')
-            ->and($output)->toContain('2 targets were not finished.')
+            ->and($output)->toContain('2 targets were not translated.')
             ->and($sleeps)->toBe([1000.0, 200.0, 200.0]);
         $this->assertNoModelCalls();
+    });
+
+    it('advises resuming the run, not running the command again, for a target translated but not saved at Ctrl-C', function () {
+        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the pcntl and posix extensions.');
+        }
+
+        Process::fake(['*' => Process::describe()->runsFor(iterations: 3)]);
+        $this->fakeTranslations();
+        $interrupted = false;
+        Sleep::fake();
+        Sleep::whenFakingSleep(function () use (&$interrupted) {
+            if ($interrupted) {
+                return;
+            }
+
+            // A worker finishes its current request, and Ctrl-C comes before this process saves it.
+            $interrupted = true;
+            app(RunProcessor::class)->translate(app(RunRepository::class)->recent(1)[0], 'cli-1', CarbonImmutable::now()->addSeconds(30), 300, 1);
+            posix_kill(getmypid(), SIGINT);
+        });
+        $please = base_path('please');
+        file_put_contents($please, '<?php');
+
+        try {
+            [$exitCode, $output] = withSignals(fn () => translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => 2]));
+        } finally {
+            unlink($please);
+        }
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($exitCode)->toBe(1)
+            ->and($run->status)->toBe(RunStatus::Cancelled)
+            ->and(RunFixtures::statuses($run))->toBe(['translated', 'pending'])
+            ->and($output)->toContain('1 target was translated but not saved, and 1 target was not translated. Resume the run in the Control Panel within 2 hours to save it without translating it again, and to translate the rest:')
+            ->and($output)->toContain("\n  ".cp_route('tolk.runs.show', $run->id)."\n")
+            ->and($output)->not->toContain('Run the command again');
     });
 });
 

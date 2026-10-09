@@ -109,7 +109,7 @@ The command creates a run, like the CP's runs, and drives it itself. It starts `
 
 The run is listed on the CP's Runs page with its progress.
 
-- **Ctrl-C** cancels the run after the current requests: the workers stop before their next request, and everything saved stays saved. A second Ctrl-C stops the workers at once. The cancelled run can be resumed on its run page, which saves the items already translated and translates the rest.
+- **Ctrl-C** cancels the run after the current requests: the workers stop before their next request, and everything saved stays saved. A second Ctrl-C stops the workers at once. The cancelled run can be resumed on its run page, which saves the items already translated and translates the rest. The command counts the targets translated but not saved: resume the run within `plan_ttl` (2 hours) to save them without paying for them again, since running the command again, or resuming later, translates them anew.
 - **`--queue`** creates a queue run, starts its lane jobs and prints the run page's address; the command then ends and a queue worker does the work. It is refused on a connection without a worker, such as `sync`; use `--concurrency` there.
 
 ### Exit codes

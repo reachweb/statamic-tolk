@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Console\Commands;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterval;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
@@ -557,14 +558,16 @@ class TranslateCommand extends Command
      */
     private function report(Run $run): int
     {
-        $unfinished = 0;
+        $unsaved = $untranslated = 0;
         $this->newLine();
 
         foreach ($this->items($run) as $item) {
             if ($item->status->isFinal()) {
                 $this->reportItem($item);
+            } elseif (in_array($item->status, [RunItemStatus::Translated, RunItemStatus::Applying], true)) {
+                $unsaved++;
             } else {
-                $unfinished++;
+                $untranslated++;
             }
         }
 
@@ -575,13 +578,9 @@ class TranslateCommand extends Command
             $this->components->error($run->error ?? 'The run was stopped.');
         }
 
-        if ($unfinished > 0) {
+        if ($unsaved + $untranslated > 0) {
             $this->newLine();
-            $this->components->warn(sprintf(
-                '%s not finished. Run the command again to translate %s, or resume the run in the Control Panel:',
-                $unfinished === 1 ? '1 target was' : number_format($unfinished).' targets were',
-                $unfinished === 1 ? 'it' : 'them',
-            ));
+            $this->components->warn($this->unfinished($run, $unsaved, $untranslated));
             $this->line('  '.cp_route('tolk.runs.show', $run->id));
         }
 
@@ -590,6 +589,42 @@ class TranslateCommand extends Command
         return $this->resultCounts()['failed'] > 0 || in_array($run->status, [RunStatus::Aborted, RunStatus::Cancelled], true)
             ? self::FAILURE
             : self::SUCCESS;
+    }
+
+    /**
+     * What is left of a run that did not finish, and the way on. Only a resume saves what was translated without paying
+     * for it again, and only until its plans expire; after an abort, the same cause stops a new run too.
+     *
+     * @param  int  $unsaved  the items translated but not saved
+     * @param  int  $untranslated  the items not translated
+     */
+    private function unfinished(Run $run, int $unsaved, int $untranslated): string
+    {
+        $aborted = $run->status === RunStatus::Aborted;
+        $them = fn (int $count) => $count === 1 ? 'it' : 'them';
+        $facts = implode(', and ', array_filter([
+            $unsaved > 0 ? $this->count($unsaved, 'target').($unsaved === 1 ? ' was' : ' were').' translated but not saved' : null,
+            $untranslated > 0 ? $this->count($untranslated, 'target').($untranslated === 1 ? ' was' : ' were').' not translated' : null,
+        ]));
+
+        if ($unsaved > 0) {
+            return sprintf(
+                '%s. Resume the run in the Control Panel within %s to save %s without translating %s again%s:',
+                $facts,
+                CarbonInterval::seconds(max(1, (int) config('tolk.plan_ttl', 7200)))->cascade()->forHumans(),
+                $them($unsaved),
+                $them($unsaved),
+                match (true) {
+                    $untranslated === 0 => '',
+                    $aborted => ', and to translate the rest once the cause above is fixed',
+                    default => ', and to translate the rest',
+                },
+            );
+        }
+
+        return $aborted
+            ? "{$facts}. Resume the run in the Control Panel once the cause above is fixed:"
+            : "{$facts}. Run the command again to translate {$them($untranslated)}, or resume the run in the Control Panel:";
     }
 
     /**
