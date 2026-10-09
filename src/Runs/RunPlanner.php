@@ -300,7 +300,8 @@ final readonly class RunPlanner
     /**
      * One item per navigation × site the user may edit, from index $offset on, nav by nav (§A11 "Navigation"). The
      * source is the nav's tree in the request's source site when it has one there, else the default site's tree; the
-     * source site is not a target, and a nav without a source tree is counted in the notes. Nav items are of stage 1,
+     * source site is not a target, and a nav without a source tree is counted in the notes, as is a requested site
+     * whose tree is the source because the request names it as the source site. Nav items are of stage 1,
      * so each is translated only once no entry, term or global set item of its site is unfinished: the localizations
      * the run creates are then there for its entry branches (§A12).
      *
@@ -315,6 +316,7 @@ final readonly class RunPlanner
             $sourceSite = $request->sourceSite !== null && $nav->existsIn($request->sourceSite) ? $request->sourceSite : Site::default()->handle();
             $hasSourceTree = $nav->existsIn($sourceSite);
             $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
+                $site === $sourceSite && $site === $request->sourceSite => NavTarget::FROM_SITE,
                 $site === $sourceSite => self::SOURCE,
                 ! $hasSourceTree => NavTarget::NO_SOURCE_TREE,
                 default => null,

@@ -189,6 +189,8 @@ export function describeLeftOut(scope) {
         site_not_in_collection: (count) =>
             __n(":count target is in a site its collection does not have.|:count targets are in sites their collection does not have.", count),
         unauthorized: (count) => __n(':count target is one you may not edit.|:count targets are ones you may not edit.', count),
+        from_site: (count) =>
+            __n(':count target is a navigation in the site it is translated from.|:count targets are navigations in the site they are translated from.', count),
     };
 
     return Object.entries(asMap(scope?.skipped))

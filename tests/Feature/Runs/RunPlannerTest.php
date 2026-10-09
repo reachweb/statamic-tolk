@@ -490,12 +490,15 @@ describe('navigation', function () {
 
         $fromDefault = planRun(['sites' => ['en', 'el', 'de'], 'navs' => ['main', 'footer']]);
         $fromGerman = planRun(['sites' => ['en', 'el'], 'sourceSite' => 'de', 'navs' => ['main', 'footer']]);
+        $intoGerman = planRun(['sites' => ['el', 'de'], 'sourceSite' => 'de', 'navs' => ['main', 'footer']]);
         $all = planRun(['sites' => ['el'], 'navs' => ['*']]);
 
         expect(array_map($label, $fromDefault->items))->toBe(['main::en→el', 'main::en→de'])
             ->and($fromDefault->skipped)->toBe(['no_source_tree' => 2])
             ->and(array_map($label, $fromGerman->items))->toBe(['main::en→el', 'footer::de→en', 'footer::de→el'])
             ->and($fromGerman->skipped)->toBe([])
+            ->and(array_map($label, $intoGerman->items))->toBe(['main::en→el', 'main::en→de', 'footer::de→el'])
+            ->and($intoGerman->skipped)->toBe(['from_site' => 1])
             ->and(array_map($label, $all->items))->toEqualCanonicalizing(['main::en→el'])
             ->and($all->skipped)->toBe(['no_source_tree' => 1]);
     });

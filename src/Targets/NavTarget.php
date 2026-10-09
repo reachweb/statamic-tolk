@@ -39,6 +39,9 @@ final class NavTarget implements Target
     // A site the navigation has no tree in has nothing to translate from.
     public const string NO_SOURCE_TREE = 'no_source_tree';
 
+    // The site named as the one to translate from, whose tree the other sites' trees are translated from.
+    public const string FROM_SITE = 'from_site';
+
     // The fieldtype of the synthetic field; its walk is NavTreeHandler's, which the field names as `tolk_handler`.
     private const string TREE_FIELDTYPE = 'yaml';
 
