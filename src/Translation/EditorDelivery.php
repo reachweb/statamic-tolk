@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Translation;
 
 use LogicException;
+use Reach\StatamicTolk\Content\RowIds;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
@@ -61,7 +62,10 @@ final readonly class EditorDelivery
         }
 
         // Values and meta come from one instance: Bard and Replicator meta is computed from the pre-processed value.
-        $form = $target->formFields(array_map(fn (AssembledField $field) => $field->value, $fields))->preProcess();
+        $form = $target->formFields(array_map(
+            fn (AssembledField $field) => RowIds::keep($target->fields()->get($field->handle), $field->value, $target->targetValue($field->handle)),
+            $fields,
+        ))->preProcess();
         $values = $form->values()->all();
         $meta = $form->meta()->all();
 

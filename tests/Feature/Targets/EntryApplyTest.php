@@ -18,6 +18,7 @@ use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Tests\Support\ContentFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\Pipeline;
@@ -28,11 +29,13 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\EntryCreating;
 use Statamic\Events\EntrySaved;
 use Statamic\Events\EntrySaving;
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Stache;
 use Statamic\Git\CommitJob;
 use Statamic\Git\Subscriber;
+use Statamic\Support\Arr;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -473,6 +476,128 @@ it('lets the callback of ContentWriter::write() see what another process cached'
 
     expect($before)->toBe([false, false])
         ->and($inside)->toBe([true, true]);
+});
+
+/**
+ * Every row and set id of the value, at any depth, by path.
+ *
+ * @return array<string, string>
+ */
+function rowIdsOf(mixed $value, string $path = ''): array
+{
+    $ids = [];
+
+    foreach (is_array($value) ? $value : [] as $key => $item) {
+        if ($key === 'id' && is_string($item)) {
+            $ids[$path] = $item;
+        } else {
+            $ids += rowIdsOf($item, "{$path}/{$key}");
+        }
+    }
+
+    return $ids;
+}
+
+describe('row and set ids', function () {
+    beforeEach(function () {
+        $this->makeCollection('stories', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'blocks' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+                'text' => ['display' => 'Text', 'fields' => [['handle' => 'heading', 'field' => ['type' => 'text']]]],
+                'quote' => ['display' => 'Quote', 'fields' => [['handle' => 'text', 'field' => ['type' => 'textarea']]]],
+            ]]]],
+            'faq' => ['type' => 'grid', 'localizable' => true, 'fields' => [['handle' => 'question', 'field' => ['type' => 'text']]]],
+            'body' => ['type' => 'bard', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+                'quote' => ['display' => 'Quote', 'fields' => [['handle' => 'text', 'field' => ['type' => 'textarea']]]],
+            ]]]],
+        ]);
+
+        // Written by code, as an import or a seeder writes it: no row or set ids.
+        $this->story = $this->makeEntry('stories', 'en', [
+            'title' => 'Hello',
+            'blocks' => [['type' => 'text', 'heading' => 'Rooms'], ['type' => 'text', 'heading' => 'Dining']],
+            'faq' => [['question' => 'When is breakfast?']],
+            'body' => [
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome.']]],
+                ['type' => 'set', 'attrs' => ['values' => ['type' => 'quote', 'text' => 'Best stay ever.']]],
+            ],
+        ], 'hello');
+        $this->storyIds = fn () => rowIdsOf(Arr::only($this->story->fresh()->in('el')->data()->all(), ['blocks', 'faq', 'body']));
+    });
+
+    it('keeps the ids of the localization\'s rows and sets when an update rebuilds them from an origin without ids', function () {
+        translateInto($this->story->id());
+        $before = ($this->storyIds)();
+        $blocks = $this->story->get('blocks');
+        $blocks[1]['heading'] = 'Dining room';
+        $this->story->set('blocks', $blocks)->set('faq', [['question' => 'When is lunch?']])->set('body', [
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome home.']]],
+            ...array_slice($this->story->get('body'), 1),
+        ])->save();
+
+        translateInto($this->story->id(), plan: ['mode' => Mode::Update]);
+
+        expect($before)->toHaveCount(4)
+            ->and($this->story->fresh()->get('blocks')[0])->not->toHaveKey('id')
+            ->and($this->story->fresh()->in('el')->get('blocks')[1]['heading'])->toBe('[T] Dining room')
+            ->and(($this->storyIds)())->toBe($before)
+            ->and(StateFixtures::statuses($this->story))->each->toBe(FieldStatus::Current);
+    });
+
+    it('keeps them when everything is translated again', function () {
+        translateInto($this->story->id());
+        $before = ($this->storyIds)();
+
+        translateInto($this->story->id(), plan: ['mode' => Mode::All]);
+
+        expect(($this->storyIds)())->toBe($before);
+    });
+
+    it('gives a new id to a row whose set type changed at its position, and to a row the origin added', function () {
+        translateInto($this->story->id());
+        $before = ($this->storyIds)();
+        $this->story->set('blocks', [
+            ['type' => 'text', 'heading' => 'Rooms'],
+            ['type' => 'quote', 'text' => 'Lovely.'],
+            ['type' => 'text', 'heading' => 'Spa'],
+        ])->save();
+
+        translateInto($this->story->id(), plan: ['mode' => Mode::Update]);
+        $after = ($this->storyIds)();
+
+        expect($after['/blocks/0'])->toBe($before['/blocks/0'])
+            ->and($after['/blocks/1'])->toBeString()->not->toBe($before['/blocks/1'])
+            ->and($after['/blocks/2'])->toBeString()->not->toBeIn($before);
+    });
+
+    it('takes the origin\'s ids once the origin has them', function () {
+        translateInto($this->story->id());
+        $this->story->set('blocks', [['id' => 'rooms01', 'type' => 'text', 'heading' => 'Rooms'], ['id' => 'dining01', 'type' => 'text', 'heading' => 'Dining']])->save();
+
+        translateInto($this->story->id(), plan: ['mode' => Mode::Update]);
+
+        expect(array_column($this->story->fresh()->in('el')->get('blocks'), 'id'))->toBe(['rooms01', 'dining01']);
+    });
+
+    it('keeps the ids of rows nested in groups, sets and grids', function () {
+        AssetContainer::make('assets')->disk('local')->save();
+        ContentFixtures::field('replicator-nested');
+        $fixtures = ['content' => 'bard-rich', 'builder' => 'replicator-nested', 'rooms' => 'grid'];
+        $this->makeCollection('pages', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            ...array_map(fn (string $name) => [...ContentFixtures::raw($name)['field'], 'localizable' => true], $fixtures),
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['title' => 'Home', ...array_map(ContentFixtures::value(...), $fixtures)], 'home');
+        $ids = fn () => rowIdsOf(Arr::only($origin->fresh()->in('el')->data()->all(), array_keys($fixtures)));
+
+        translateInto($origin->id());
+        $before = $ids();
+
+        translateInto($origin->id(), plan: ['mode' => Mode::All]);
+
+        expect(count($before))->toBeGreaterThan(count(rowIdsOf(array_map(ContentFixtures::value(...), $fixtures))))
+            ->and($ids())->toBe($before);
+    });
 });
 
 describe('existing localizations', function () {

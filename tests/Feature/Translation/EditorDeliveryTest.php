@@ -198,6 +198,35 @@ it('refuses a target that does not exist', function () {
     app(EditorDelivery::class)->deliver($plan, $target, ['intro']);
 })->throws(LogicException::class);
 
+it('delivers the ids the localization\'s rows and sets have where the origin stores none', function () {
+    $this->signInAdmin();
+    $this->fakeTranslations();
+    $this->makeCollection('pages', ['en', 'el'], [
+        'blocks' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+            'text' => ['display' => 'Text', 'fields' => [['handle' => 'heading', 'field' => ['type' => 'text']]]],
+        ]]]],
+        'body' => ['type' => 'bard', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+            'quote' => ['display' => 'Quote', 'fields' => [['handle' => 'text', 'field' => ['type' => 'textarea']]]],
+        ]]]],
+    ]);
+    // Written by code: no row or set ids.
+    $origin = $this->makeEntry('pages', 'en', [
+        'blocks' => [['type' => 'text', 'heading' => 'Rooms'], ['type' => 'text', 'heading' => 'Dining']],
+        'body' => [
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome.']]],
+            ['type' => 'set', 'attrs' => ['values' => ['type' => 'quote', 'text' => 'Best stay ever.']]],
+        ],
+    ], 'home');
+    $target = fn () => app(TargetFactory::class)->forEntry($origin, 'el');
+    app(TargetTranslator::class)->translate($target(), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+    $greek = $origin->fresh()->in('el');
+
+    $delivered = app(EditorDelivery::class)->deliver(runDeliveryPlan($target(), ['mode' => 'all']), $target(), ['blocks', 'body']);
+
+    expect(array_column($delivered['blocks']['value'], '_id'))->toBe(array_column($greek->get('blocks'), 'id'))
+        ->and($delivered['body']['value'][1]['attrs']['id'])->toBe($greek->get('body')[1]['attrs']['id'])->toBeString();
+});
+
 describe('rich content', function () {
     beforeEach(function () {
         // Rows and sets stored without an id get a random one on every pre-processing; numbered instead, two

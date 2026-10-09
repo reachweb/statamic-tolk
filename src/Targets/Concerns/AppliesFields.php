@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Targets\Concerns;
 
 use LogicException;
+use Reach\StatamicTolk\Content\RowIds;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\PendingState;
 use Reach\StatamicTolk\Support\ContentWriter;
@@ -139,7 +140,8 @@ trait AppliesFields
     }
 
     /**
-     * The values as a load and save in the CP leaves them (§A11 step 3), so a later CP save does not rewrite them.
+     * The values as a load and save in the CP leaves them (§A11 step 3), so a later CP save does not rewrite them, with
+     * the target's own row and set ids where the source has none.
      *
      * @param  array<string, mixed>  $values
      * @return array<string, mixed>
@@ -148,6 +150,10 @@ trait AppliesFields
     {
         if ($values === []) {
             return [];
+        }
+
+        foreach ($values as $handle => $value) {
+            $values[$handle] = RowIds::keep($this->fields()->get($handle), $value, $this->targetValue($handle));
         }
 
         // Blueprint objects are shared (by every entry of a collection, by every site of a term), so the parent is set
