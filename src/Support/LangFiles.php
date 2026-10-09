@@ -121,16 +121,17 @@ final class LangFiles
      * @param  array<string, string>  $set  flat key → value
      * @param  list<string>  $remove
      * @param  array<string, mixed>  $sourceShape  the source file's array, as contents() gives it
+     * @param  list<int|string>  $carry  the flat keys of the source's values that have nothing to translate
      *
      * @throws InvalidLangFile
      */
-    public function write(string $lang, string $group, array $set, array $remove, array $sourceShape): void
+    public function write(string $lang, string $group, array $set, array $remove, array $sourceShape, array $carry = []): void
     {
         $file = $this->contents($lang, $group);
         $source = self::flat($group, $sourceShape);
         $values = array_replace(array_diff_key(self::flat($group, $file), array_flip($remove)), $set);
-        // Values that are not text are no fields: the source's are carried over as they are where the file has none.
-        $values += array_filter($source, fn (mixed $value) => ! is_string($value));
+        // Values with nothing to translate are no fields: the source's are carried over as they are where the file has none.
+        $values += array_intersect_key($source, array_flip($carry));
         $values = array_replace(array_intersect_key($source, $values), $values);
         $name = self::name($lang, $group);
         $path = $this->path($lang, $group);

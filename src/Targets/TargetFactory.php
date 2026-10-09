@@ -149,7 +149,7 @@ final class TargetFactory
             throw TargetNotFound::lang(LangFiles::name($sourceLang, $group));
         }
 
-        return new LangTarget($group, $lang, $sourceLang, $site, $sourceSite, $this->langFiles, $this->resolver, $this->stateWriter);
+        return new LangTarget($group, $lang, $sourceLang, $site, $sourceSite, $this->langFiles, $this->resolver, $this->stateWriter, $this->walker);
     }
 
     /**

@@ -36,6 +36,11 @@ trait WritesLangFile
      */
     abstract private function sourceShape(): array;
 
+    /**
+     * @return list<int|string> the flat keys of the source's values that are no fields, which the written file carries over
+     */
+    abstract private function carried(): array;
+
     public function lang(): string
     {
         return $this->lang;
@@ -125,7 +130,7 @@ trait WritesLangFile
             $created = ! $this->exists();
 
             try {
-                $this->files->write($this->lang, $this->group(), $set, $this->removedHandles($writes), $this->sourceShape());
+                $this->files->write($this->lang, $this->group(), $set, $this->removedHandles($writes), $this->sourceShape(), $this->carried());
             } catch (Throwable $exception) {
                 throw ApplyFailed::notWritten($this->name(), $exception);
             }
