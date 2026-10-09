@@ -332,14 +332,14 @@ class TranslateCommand extends Command
             $this->waitFor($workers);
         }
 
-        $bar->finish();
-        $this->newLine();
+        $run = $this->runs->find($run->id) ?? $run;
+        $this->endBar($bar, in_array($run->status, [RunStatus::Completed, RunStatus::CompletedWithErrors], true));
 
         foreach ($this->failedWorkers as $lane => $exitCode) {
             $this->components->warn("Worker process {$lane} stopped with exit code {$exitCode}. Its error is in the log.");
         }
 
-        return $this->runs->find($run->id) ?? $run;
+        return $run;
     }
 
     /**
@@ -513,10 +513,28 @@ class TranslateCommand extends Command
             $bar->setProgress($progress->next ?? $total);
         } while (! $progress->isFinished() && $this->interrupts === 0);
 
-        $bar->finish();
-        $this->newLine();
+        $this->endBar($bar, $progress->isFinished());
 
         return $progress->estimate;
+    }
+
+    /**
+     * Ends the bar's line: full when its work is finished, else where the work stopped, which finish() would fill.
+     * Throttling may not have drawn the last step yet. clear(), on the next and empty line, then resets the terminal's
+     * progress indicator (Symfony 7.4 and later), as finish() does.
+     */
+    private function endBar(ProgressBar $bar, bool $finished): void
+    {
+        if ($finished) {
+            $bar->finish();
+            $this->newLine();
+
+            return;
+        }
+
+        $bar->display();
+        $this->newLine();
+        $bar->clear();
     }
 
     /**
