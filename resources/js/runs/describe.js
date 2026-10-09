@@ -351,6 +351,10 @@ export function describeItem(item, siteName = (handle) => handle) {
         .filter(([, value]) => !['applied', 'incomplete'].includes(value))
         .map(([handle, value]) => ({ handle, reason: FIELD_REASONS[value]?.() ?? String(value).replaceAll('_', ' ') }));
     const reason = item?.reason ? (ITEM_REASONS[item.reason]?.() ?? null) : null;
+    // The reviewer's corrections, labelled by their field's handle: the run page has no blueprints.
+    const corrections = Object.entries(asMap(item?.corrections)).flatMap(([handle, list]) =>
+        (Array.isArray(list) ? list : []).map((correction) => ({ ...correction, handle, label: handle })),
+    );
 
     return {
         index: item?.index,
@@ -368,5 +372,7 @@ export function describeItem(item, siteName = (handle) => handle) {
         // For `root_missing`: the root page to translate first.
         rootPage: item?.root_page?.edit_url ? { title: item.root_page.title || '', url: item.root_page.edit_url } : null,
         warnings: Array.isArray(item?.warnings) ? item.warnings : [],
+        corrected: corrections.length > 0 ? __n(':count correction|:count corrections', corrections.length) : null,
+        corrections,
     };
 }

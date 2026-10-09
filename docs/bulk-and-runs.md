@@ -34,7 +34,7 @@ Selecting a localization translates its whole family: the origin into every chos
 ![A run page while the run is in progress](images/run.png)
 
 - **Before it starts**: the items per content type and site, what was left out and why (an excluded collection, a site the collection does not have, items you may not edit), the models and options, and an estimate that fills in while Tolk scans the items: segments, characters, tokens and cost. The estimate counts only what will be sent, so text that is up to date or reused costs nothing; it is always an estimate, because languages and models differ. **Start** is available at once; the estimate does not have to finish.
-- **While it runs**: a progress bar, the tokens used and the cost so far, and the items with their status, the fields saved, the fields left out and why, and errors. Filter the items by status. **Cancel** stops the run after the requests in flight; everything saved so far stays saved.
+- **While it runs**: a progress bar, the tokens used and the cost so far, and the items with their status, the fields saved, the fields left out and why, the reviewer's corrections (**View changes**, see [Review](review.md#reviewing-existing-translations)), and errors. Filter the items by status. **Cancel** stops the run after the requests in flight; everything saved so far stays saved.
 - **When it ends**: the result. **Retry failed** sends the failed items back, together with the items skipped because an item they depend on failed. **Resume** continues a cancelled or stopped run with its unfinished items.
 
 When text fields were left out because they are not localizable, the page says so and links to the [Audit page](#the-audit-page), so "nothing was translated" has an explanation.

@@ -506,7 +506,7 @@ A **run** is a bulk job: `{ id (ULID), status, driver, created_by, created_at, s
 1. **Entry and term publish forms**: a banner component pushed above the tabs with `pushComponent` (R3 §2.4). On a localization it shows field status counts and Translate / Update / Review; on an origin it shows the status of each localization and Translate into… / Update. It also opens the offer after `localization.created`.
 2. **Field actions**: "Translate from origin" on top-level fields of supported fieldtypes, inside localizations, in the base form only.
 3. **Bulk action** "Translate…" in entry and term listings and in a structured collection's tree view, which creates a pending run and redirects to its page.
-4. **Run page**: item counts, a progressively computed estimate, a Start button, then progress, usage, per-item results, cancel, resume and retry.
+4. **Run page**: item counts, a progressively computed estimate, a Start button, then progress, usage, per-item results (with the reviewer's corrections), cancel, resume and retry.
 5. **Overview and Audit pages** (Inertia): the status matrix by content type, container and site, with buttons that create runs (global sets and navs are translated from here); blueprint and setup checks.
 6. **Settings**: the native addon settings page, with three custom fieldtypes (model select, provider status, site profile).
 
@@ -1742,7 +1742,7 @@ Goal: many targets at once, with progress, from the CP and the CLI, on a site wi
 - [x] **T8.9 Run pages and navigation**
   - `resources/js/pages/Runs/Show.vue` (`tolk::Runs/Show`):
     - `pending`: item counts by content type and site, the estimate filling in as `estimateLoop` runs (segments, characters, tokens, cost when prices are known, always labelled as an estimate), the models and options, and **Start** (available at once; the estimate is not required).
-    - `running`: progress bar and counts; usage and estimated cost so far; an items table (title, site, status, fields applied, left incomplete or skipped with reasons, the error, a link to the item); **Cancel**.
+    - `running`: progress bar and counts; usage and estimated cost so far; an items table (title, site, status, fields applied, left incomplete or skipped with reasons, the reviewer's corrections with **View changes**, which opens the editor's `ChangesModal` labelled by field handle, the error, a link to the item); **Cancel**.
       - Browser driver: start the lanes (`concurrency.browser`) and the apply loop on mount, show "Keep this tab open while the run is in progress", and warn on `beforeunload` while they are active.
       - Queue driver: poll every 2 seconds; when `stalled`, show a notice with **Resume** and **Run in this browser instead** (`take-over`).
     - Finished or interrupted: the result, **Retry failed**, and **Resume** for a run that was left unfinished.

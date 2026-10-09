@@ -19,8 +19,10 @@ import {
     Text,
 } from '@statamic/cms/ui';
 import { localizableUrl } from '../../audit/checks.js';
+import ChangesModal from '../../components/ChangesModal.vue';
 import ProgressBar from '../../components/ProgressBar.vue';
 import { createFocusKeeper } from '../../focus.js';
+import { createModal } from '../../modal.js';
 import {
     describeBreakdown,
     describeEstimate,
@@ -112,6 +114,13 @@ const countParts = computed(() =>
 const filters = computed(() => [{ label: __('All items'), value: 'all' }, ...ITEM_STATUSES.map((key) => ({ label: itemStatusLabel(key), value: key }))]);
 const root = ref(null);
 const focus = createFocusKeeper(() => root.value);
+const changes = createModal();
+const shown = ref([]);
+
+function viewChanges(item) {
+    shown.value = item.corrections;
+    changes.show();
+}
 
 // Cancel leaves with the running run.
 watch(status, () => focus.changing());
@@ -362,6 +371,17 @@ function filterBy(value) {
                         <TableCell><Badge :text="item.statusLabel" :color="item.statusColor" /></TableCell>
                         <TableCell class="space-y-1">
                             <Text v-if="item.applied" size="sm">{{ item.applied }}</Text>
+                            <div v-if="item.corrections.length" class="flex flex-wrap items-center gap-2">
+                                <Text size="sm">{{ item.corrected }}</Text>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    :text="__('View changes')"
+                                    :aria-label="__('View changes to :title in :site', { title: item.title, site: item.site })"
+                                    data-tolk-item-changes
+                                    @click="viewChanges(item)"
+                                />
+                            </div>
                             <Description v-if="item.incomplete.length">{{ __('Left incomplete: :fields', { fields: item.incomplete.join(', ') }) }}</Description>
                             <Description v-if="item.kept.length">
                                 {{ __('Not changed: :fields', { fields: item.kept.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
@@ -390,6 +410,7 @@ function filterBy(value) {
                     @click="showPage(pagination.page + 1)"
                 />
             </div>
+            <ChangesModal v-if="changes.open" :modal="changes" :corrections="shown" />
         </Card>
     </div>
 </template>

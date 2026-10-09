@@ -31,6 +31,7 @@ All notable changes to Tolk are documented in this file.
 - Requests to OpenAI's models from GPT-5.6 on no longer pay for cache writes: by default OpenAI wrote every whole request to its prompt cache, at 1.25 times the input price, and never read it back. The usage figures also price GPT-6.1 Sol's cache reads at its own rate, 5% of the input price.
 - The Overview's usage listed the calls of `tolk:translate` and `tolk:site` under **Runs**; they now count under **Command line**, unless the run is handed to the queue with `--queue`.
 - The listing action's **Translate into** no longer offers the site that the selected entries or terms are translated from, which created a run with nothing to translate; a run into only that site is refused with the reason.
+- A run's page shows the reviewer's corrections: an item the reviewer corrected says how many, and **View changes** shows each with the text before and after and the reason, as the editor does.
 
 ## 1.0.0-beta.1 - 2026-10-08
 
