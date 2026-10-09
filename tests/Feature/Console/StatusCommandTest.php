@@ -65,8 +65,18 @@ describe('table', function () {
                 ['Navigation', 'main', 'el', '1', '0', '0', '0', '0', '0'],
                 ['Navigation', 'main', 'de', '1', '0', '0', '0', '0', '0'],
             ])
-            ->expectsOutputToContain('1 field was translated by hand without a record of its origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record it.')
+            ->expectsOutputToContain('1 field was translated by hand without a record of its origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record its origin.')
             ->assertExitCode(0);
+    });
+
+    it('says what tolk:baseline records when several fields are untracked', function () {
+        $this->localize($this->makeEntry('articles', 'en', ['title' => 'By hand'], 'by-hand'), 'el', ['title' => 'Με το χέρι']);
+
+        [$exitCode, $output] = statusCommand(['--site' => ['el'], '--collection' => ['articles']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('2 fields were translated by hand without a record of their origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record the origin of each.')
+            ->and($output)->not->toContain('to record it.');
     });
 
     it('shows only the sites and containers named', function () {
