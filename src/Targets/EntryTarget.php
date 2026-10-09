@@ -277,7 +277,10 @@ final class EntryTarget implements Target
         $this->ensureRootExists();
 
         // The id comes first: an unsaved entry shares the Blink keys of its origin and blueprint with every other (§A11 "Create").
-        $localization = $this->source()->makeLocalization($this->site)->id(Stache::generateId())->published(false);
+        $source = $this->source();
+        $localization = $source->makeLocalization($this->site)->id(Stache::generateId())->published(false);
+        // Registered after core's callback, which appends the page to the end of its level, so it runs right after it.
+        $localization->afterSave(fn (EntryContract $saved) => $this->placeInTree($source, $saved));
         $warnings = [];
         $slug = $localization->slug();
 
@@ -302,6 +305,116 @@ final class EntryTarget implements Target
         $this->fields = null;
 
         return $warnings;
+    }
+
+    /**
+     * Moves a new localization from the end of its level, where core's makeLocalization() appends it and an orderable
+     * collection lists a new entry, to its origin's position among the pages already there: right after the nearest
+     * preceding origin sibling at that level, else right before the nearest following one, never before the target's
+     * home page. The pages already in the tree keep their order (§A11 "Create").
+     */
+    private function placeInTree(EntryContract $source, EntryContract $localization): void
+    {
+        $structure = $source->collection()->structure();
+        $tree = $structure?->in($this->site);
+        $siblings = self::levelOf($structure?->in($source->locale())?->tree() ?? [], (string) $source->id());
+
+        if ($tree === null || $siblings === null) {
+            return;
+        }
+
+        $at = array_search((string) $source->id(), $siblings, true);
+        $branches = $tree->tree();
+        $placed = $this->moved(
+            $branches,
+            (string) $localization->id(),
+            array_reverse(array_slice($siblings, 0, $at)),
+            array_slice($siblings, $at + 1),
+            $structure->expectsRoot(),
+        );
+
+        // Core stores no tree for a new entry of an orderable collection, which then lists it in whatever order its query returns.
+        if ($placed !== $branches || $source->collection()->orderable()) {
+            $tree->tree($placed)->save();
+        }
+    }
+
+    /**
+     * @param  list<string>  $before  the origin's preceding siblings, nearest first
+     * @param  list<string>  $after  the origin's following siblings, nearest first
+     */
+    private function moved(array $branches, string $id, array $before, array $after, bool $root): array
+    {
+        $level = self::entryIds($branches);
+        $at = array_search($id, $level, true);
+
+        if ($at === false) {
+            foreach ($branches as $i => $branch) {
+                if (isset($branch['children'])) {
+                    $branches[$i]['children'] = $this->moved($branch['children'], $id, $before, $after, false);
+                }
+            }
+
+            return $branches;
+        }
+
+        $moving = array_splice($branches, $at, 1);
+        $families = array_map(fn (string $entry) => $this->family($entry), self::entryIds($branches));
+        $position = function (array $siblings) use ($families): ?int {
+            foreach ($siblings as $sibling) {
+                $family = $this->family($sibling);
+
+                if ($family !== null && ($found = array_search($family, $families, true)) !== false) {
+                    return $found;
+                }
+            }
+
+            return null;
+        };
+
+        $preceding = $position($before);
+        $index = $preceding !== null ? $preceding + 1 : ($position($after) ?? count($branches));
+        array_splice($branches, $root ? max(1, $index) : $index, 0, $moving);
+
+        return $branches;
+    }
+
+    // The root of the entry's localization family, which every localization of a page shares.
+    private function family(string $id): ?string
+    {
+        $root = Entry::find($id)?->root();
+
+        return $root === null ? null : (string) $root->id();
+    }
+
+    /**
+     * The entry ids of the tree level that holds $id, or null.
+     *
+     * @return list<string>|null
+     */
+    private static function levelOf(array $branches, string $id): ?array
+    {
+        $level = self::entryIds($branches);
+
+        if (in_array($id, $level, true)) {
+            return $level;
+        }
+
+        foreach ($branches as $branch) {
+            if (($found = self::levelOf($branch['children'] ?? [], $id)) !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function entryIds(array $branches): array
+    {
+        return array_map(fn (array $branch) => (string) ($branch['entry'] ?? ''), array_values($branches));
     }
 
     /**

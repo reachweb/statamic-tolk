@@ -41,6 +41,7 @@ All notable changes to Tolk are documented in this file.
 - The editor says "Reviewed with …" only when the reviewer checked the text. Before, it said so whenever review was on, also when no review ran: nothing needed a model, every review failed, the provider rejected the reviewer, or the translation was cancelled first.
 - The editor's options offer **Review** with **Overwrite manual edits** checked on a localization whose fields were all edited by hand, such as one translated before Tolk was installed. Before, Review and the reviewer were only available while the form held machine translations.
 - After a failed translation the editor's banner still shows **Options** (and **Review** where it applies), so you can choose another model when the provider rejected one. Before, it offered only **Retry**, which repeated the rejected model.
+- A page that a run, Translate into… or the command line creates in a structured or orderable collection is placed at its origin's position among the pages already in the target site's tree, instead of at the end of its level in the order the translations finished. Pages already in the tree keep their order.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

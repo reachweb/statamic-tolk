@@ -354,6 +354,80 @@ describe('trees', function () {
             ->and(applyTarget($pages['rooms']->id(), 'de')->rootMissing())->toBeTrue()
             ->and(applyTarget($pages['rooms']->id())->rootMissing())->toBeFalse();
     });
+
+    it('places pages created out of tree order at their origin\'s position among their siblings', function () {
+        $pages = $this->makePages(['home', 'about', 'rooms' => ['suites', 'villas'], 'dining'], root: true);
+
+        // The order in which parallel lanes finish, or an editor translates pages over the weeks.
+        foreach (['home', 'rooms', 'dining', 'villas', 'about', 'suites'] as $slug) {
+            translateInto($pages[$slug]->id());
+        }
+
+        expect($this->treeOfSlugs('el'))->toBe(['home' => [], 'about' => [], 'rooms' => ['suites' => [], 'villas' => []], 'dining' => []]);
+    });
+
+    it('places a page translated later between its localized siblings, not at the end', function () {
+        $pages = $this->makePages(['home', 'about', 'rooms', 'dining'], root: true);
+
+        foreach (['home', 'about', 'dining', 'rooms'] as $slug) {
+            translateInto($pages[$slug]->id());
+        }
+
+        expect($this->treeOfSlugs('el'))->toBe(['home' => [], 'about' => [], 'rooms' => [], 'dining' => []]);
+    });
+
+    it('keeps the order the editors gave the target tree and places a new page after its nearest localized preceding sibling', function () {
+        $pages = $this->makePages(['home', 'about', 'rooms', 'dining', 'spa'], root: true);
+
+        foreach (['home', 'about', 'dining', 'spa'] as $slug) {
+            translateInto($pages[$slug]->id());
+        }
+
+        $tree = Collection::find('pages')->structure()->in('el');
+        [$home, $about, $dining, $spa] = $tree->tree();
+        $tree->tree([$home, $dining, $about, $spa])->save();
+
+        translateInto($pages['rooms']->id());
+
+        expect($this->treeOfSlugs('el'))->toBe(['home' => [], 'dining' => [], 'about' => [], 'rooms' => [], 'spa' => []]);
+    });
+
+    it('places a page before its nearest localized following sibling when no preceding one is localized', function () {
+        $pages = $this->makePages(['about', 'rooms', 'dining'], root: false);
+
+        foreach (['dining', 'rooms', 'about'] as $slug) {
+            translateInto($pages[$slug]->id());
+        }
+
+        expect($this->treeOfSlugs('el'))->toBe(['about' => [], 'rooms' => [], 'dining' => []]);
+    });
+
+    it('never places a page before the home page of the target tree', function () {
+        $pages = $this->makePages(['home', 'about', 'rooms'], root: true);
+        // Core's localize action made Rooms the Greek home page, as the first page saved into the empty tree.
+        ContentWriter::write(fn () => $this->localize($pages['rooms'], 'el'));
+
+        translateInto($pages['about']->id());
+
+        expect($this->treeOfSlugs('el'))->toBe(['rooms' => [], 'about' => []]);
+    });
+
+    it('places the entries of an orderable collection at their origin\'s position too', function () {
+        $this->makeCollection('team', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]], structured: true)
+            ->structureContents(['root' => false, 'max_depth' => 1])
+            ->save();
+        $members = collect(['anna', 'bob', 'chris', 'dora'])->mapWithKeys(fn (string $slug) => [$slug => $this->makeEntry('team', 'en', ['title' => ucfirst($slug)], $slug)]);
+        Collection::find('team')->structure()->in('en')->tree($members->map(fn ($entry) => ['entry' => $entry->id()])->values()->all())->save();
+
+        foreach (['dora', 'bob', 'anna', 'chris'] as $slug) {
+            translateInto($members[$slug]->id());
+        }
+
+        $order = fn (string $site) => Entry::query()->where('collection', 'team')->where('site', $site)->orderBy('order')->get()->map->slug()->all();
+
+        expect($order('el'))->toBe(['anna', 'bob', 'chris', 'dora'])
+            ->and(array_map(fn (array $branch) => Entry::find($branch['entry'])->slug(), Collection::find('team')->structure()->in('el')->tree()))->toBe(['anna', 'bob', 'chris', 'dora']);
+    });
 });
 
 it('gives a new localization its id before its first save, so it never reads another collection\'s blueprint or origin', function () {
