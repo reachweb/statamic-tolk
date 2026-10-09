@@ -207,6 +207,16 @@ describe('optionsRequest', () => {
         expect(optionsRequest({ review: false, ...reviewers })).toMatchObject({ review: false, reviewer: null });
     });
 
+    // The default reviewer is the settings' for the settings' model; for another model the server would resolve its own.
+    it('names the reviewer shown, the default too, while another model translates', () => {
+        const choice = { model: 'openai:gpt-6-luna', defaultModel: 'anthropic:claude-sonnet-5-5', review: true, defaultReviewer: 'openai:gpt-6.1-sol' };
+
+        expect(optionsRequest({ ...choice, reviewer: 'openai:gpt-6.1-sol' })).toMatchObject({ translator: 'openai:gpt-6-luna', reviewer: 'openai:gpt-6.1-sol' });
+        expect(optionsRequest({ ...choice, reviewer: 'gemini:gemini-3.8-flash' }).reviewer).toBe('gemini:gemini-3.8-flash');
+        expect(optionsRequest({ ...choice, reviewer: null }).reviewer).toBeNull();
+        expect(optionsRequest({ ...choice, review: false, reviewer: 'openai:gpt-6.1-sol' }).reviewer).toBeNull();
+    });
+
     it('names the model only when it is not the default', () => {
         expect(optionsRequest({ model: 'gemini:gemini-3.8-flash', defaultModel: 'anthropic:claude-sonnet-5-5' }).translator).toBe(
             'gemini:gemini-3.8-flash',
@@ -331,6 +341,22 @@ describe('translate', () => {
 
         expect(translations.translate).toHaveBeenCalledWith('base', { mode: 'update', overwriteManual: false, translator: null, review: true, reviewer: 'gemini:gemini-3.8-flash' });
         expect(preferences.set).toHaveBeenCalledExactlyOnceWith(REVIEWER_PREFERENCE, 'gemini:gemini-3.8-flash');
+    });
+
+    it('reviews with the default reviewer shown while another model translates, and remembers the default as none', async () => {
+        preferences = fakePreferences({ [REVIEWER_PREFERENCE]: 'gemini:gemini-3.8-flash' });
+        mount();
+        create().translate('base', {
+            model: 'openai:gpt-6-luna',
+            defaultModel: 'anthropic:claude-sonnet-5-5',
+            review: true,
+            reviewer: 'openai:gpt-6.1-sol',
+            defaultReviewer: 'openai:gpt-6.1-sol',
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(translations.translate.mock.calls[0][1]).toMatchObject({ translator: 'openai:gpt-6-luna', review: true, reviewer: 'openai:gpt-6.1-sol' });
+        expect(preferences.values).toEqual({ [TRANSLATOR_PREFERENCE]: 'openai:gpt-6-luna', [REVIEWER_PREFERENCE]: null });
     });
 
     it('leaves the remembered reviewer alone when the review is off', () => {
