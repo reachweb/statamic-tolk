@@ -211,7 +211,7 @@ function filterBy(value) {
                 </div>
                 <Description data-tolk-run-usage>
                     {{
-                        __(':input input and :output output tokens in :calls calls.', {
+                        __n(':input input and :output output tokens in :calls call.|:input input and :output output tokens in :calls calls.', usage.calls, {
                             input: formatNumber(usage.input),
                             output: formatNumber(usage.output),
                             calls: formatNumber(usage.calls),
