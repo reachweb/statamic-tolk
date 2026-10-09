@@ -14,8 +14,8 @@ use Throwable;
 /**
  * What LangTarget and FormsTarget share (§A16): the target is the translation file group() in `$lang`, read and written
  * through the LangFiles in `$files`, translated from `$sourceLang`, with the sites `$site` and `$sourceSite` for the
- * prompts and no CP surface. The using class names the reference in targetRef() and the source values whose order the
- * written file follows in sourceShape().
+ * prompts and no CP surface. The using class names the reference in targetRef() and the source file whose order and
+ * nesting the written file follows in sourceShape().
  */
 trait WritesLangFile
 {
@@ -32,7 +32,7 @@ trait WritesLangFile
     abstract private function targetRef(): TargetRef;
 
     /**
-     * @return array<string, mixed> the source file's flat keys and values, as LangFiles::write() takes them
+     * @return array<string, mixed> the source file's array, as LangFiles::write() takes it
      */
     abstract private function sourceShape(): array;
 

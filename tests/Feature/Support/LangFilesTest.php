@@ -79,7 +79,7 @@ it('round-trips a nested PHP file with its nesting', function () {
         'booking.rooms_left' => '{0} Keine Zimmer|{1} Ein Zimmer|[2,*] :count Zimmer',
         'days.0' => 'Montag',
         'booking.title' => 'Buchen Sie Ihren Aufenthalt',
-    ], [], $source);
+    ], [], langFiles()->contents('en', 'messages'));
 
     expect($source)->toBe([
         'booking.title' => 'Book your stay',
@@ -110,11 +110,52 @@ it('round-trips a nested PHP file with its nesting', function () {
         ]);
 });
 
+it('writes a key that holds a dot as one key, next to a key that is also its prefix, where the source has it', function () {
+    putLangFile('en/messages.php', <<<'PHP'
+        <?php
+
+        return [
+            'faq' => 'FAQ',
+            'faq.title' => 'Frequently asked questions',
+            'nav' => ['home' => 'Home'],
+            'nav.about' => 'About us',
+        ];
+        PHP);
+    putLangFile('de/messages.php', "<?php return ['faq' => ['title' => 'Alt'], 'own.key' => 'Eigen', 'own' => ['nested' => 'Verschachtelt']];");
+
+    langFiles()->write('de', 'messages', [
+        'nav.about' => 'Über uns',
+        'faq.title' => 'Häufige Fragen',
+        'faq' => 'FAQ',
+        'nav.home' => 'Startseite',
+    ], [], langFiles()->contents('en', 'messages'));
+
+    expect(langFiles()->read('en', 'messages'))->toBe(['faq' => 'FAQ', 'faq.title' => 'Frequently asked questions', 'nav.home' => 'Home', 'nav.about' => 'About us'])
+        ->and(file_get_contents(lang_path('de/messages.php')))->toBe(<<<'PHP'
+            <?php
+
+            return [
+                'faq' => 'FAQ',
+                'faq.title' => 'Häufige Fragen',
+                'nav' => [
+                    'home' => 'Startseite',
+                ],
+                'nav.about' => 'Über uns',
+                'own.key' => 'Eigen',
+                'own' => [
+                    'nested' => 'Verschachtelt',
+                ],
+            ];
+
+            PHP)
+        ->and(langFiles()->keepsLayout('de', 'messages'))->toBeTrue();
+});
+
 it('keeps the keys only the target has, after the source keys, and removes only the keys it is given', function () {
     putLangFile('en/messages.php', "<?php return ['a' => 'A', 'b' => 'B', 'c' => 'C'];");
     putLangFile('de/messages.php', "<?php return ['own' => ['x' => 'Eigen'], 'c' => 'Cee', 'b' => 'Bee'];");
 
-    langFiles()->write('de', 'messages', ['a' => 'Ah'], ['c'], langFiles()->read('en', 'messages'));
+    langFiles()->write('de', 'messages', ['a' => 'Ah'], ['c'], langFiles()->contents('en', 'messages'));
 
     expect(includeLangFile('de/messages.php'))->toBe(['a' => 'Ah', 'b' => 'Bee', 'own' => ['x' => 'Eigen']]);
 
@@ -130,7 +171,7 @@ it('carries values that are not text over from the source where the target has n
     putLangFile('en/settings.php', "<?php return ['limit' => 5, 'title' => 'Title', 'enabled' => true, 'empty' => [], 'none' => null];");
     putLangFile('de/settings.php', "<?php return ['limit' => 7];");
 
-    langFiles()->write('de', 'settings', ['title' => 'Titel'], [], langFiles()->read('en', 'settings'));
+    langFiles()->write('de', 'settings', ['title' => 'Titel'], [], langFiles()->contents('en', 'settings'));
 
     expect(includeLangFile('de/settings.php'))->toBe(['limit' => 7, 'title' => 'Titel', 'enabled' => true, 'empty' => [], 'none' => null]);
 });
@@ -157,7 +198,7 @@ it('writes a translation so that including the file returns exactly that string 
     ];
     putLangFile('en/messages.php', '<?php return '.var_export(array_map(fn () => 'x', $strings), true).';');
 
-    langFiles()->write('de', 'messages', $strings, [], langFiles()->read('en', 'messages'));
+    langFiles()->write('de', 'messages', $strings, [], langFiles()->contents('en', 'messages'));
 
     ob_start();
     $included = includeLangFile('de/messages.php');
@@ -183,7 +224,7 @@ it('leaves the old file in place when a write fails', function () {
     $files->shouldReceive('move')->andReturnFalse();
     $failing = new LangFiles($files);
 
-    expect(fn () => $failing->write('de', 'messages', ['a' => 'Neu'], [], $failing->read('en', 'messages')))->toThrow(RuntimeException::class, 'Unable to write the translation file lang/de/messages.php')
+    expect(fn () => $failing->write('de', 'messages', ['a' => 'Neu'], [], $failing->contents('en', 'messages')))->toThrow(RuntimeException::class, 'Unable to write the translation file lang/de/messages.php')
         ->and(includeLangFile('de/messages.php'))->toBe(['a' => 'Ah'])
         ->and($this->files->files(lang_path('de')))->toHaveCount(1);
 });
@@ -213,7 +254,7 @@ it('knows when a rewrite would lose the layout of a PHP file', function () {
         ->and(langFiles()->keepsLayout('en', '_json'))->toBeTrue()
         ->and(langFiles()->keepsLayout('de', 'messages'))->toBeTrue();
 
-    langFiles()->write('de', 'messages', ['a' => 'Ah'], [], langFiles()->read('en', 'messages'));
+    langFiles()->write('de', 'messages', ['a' => 'Ah'], [], langFiles()->contents('en', 'messages'));
 
     expect(langFiles()->keepsLayout('de', 'messages'))->toBeTrue();
 });

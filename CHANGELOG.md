@@ -22,6 +22,7 @@ All notable changes to Tolk are documented in this file.
 ### Fixed
 
 - Missing space between paragraphs in Translate into…, the offer and the push results.
+- `tolk:lang` writes a key of a PHP translation file that holds a dot (`'faq.title' => …`) as one key, as the source has it, instead of nesting it. A key that is also the start of another (`'faq'` next to `'faq.title'`) no longer loses its translation, which made `__()` return an array, and is no longer sent again on every run.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

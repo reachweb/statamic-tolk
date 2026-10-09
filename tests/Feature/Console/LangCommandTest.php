@@ -119,6 +119,24 @@ it('sends nothing on a second run', function () {
         ->and($output)->toContain('lang/de/messages.php: skipped, nothing to do');
 });
 
+it('writes a key that holds a dot as the source has it, so a key that is also its prefix keeps its translation', function () {
+    writeLang('en/help.php', "<?php\n\nreturn ['faq' => 'FAQ', 'faq.title' => 'Frequently asked questions', 'nav' => ['home' => 'Home']];\n");
+    $this->fakeTranslations();
+
+    [$exitCode] = langCommand(['sites' => ['de'], '--group' => ['help']]);
+    $calls = $this->modelCalls();
+    [, $second] = langCommand(['sites' => ['de'], '--group' => ['help']]);
+
+    expect($exitCode)->toBe(0)
+        ->and(readLang('de/help.php'))->toBe(['faq' => '[T] FAQ', 'faq.title' => '[T] Frequently asked questions', 'nav' => ['home' => '[T] Home']])
+        ->and(langTranslator('de')->get('help.faq'))->toBe('[T] FAQ')
+        ->and(langTranslator('de')->get('help.faq.title'))->toBe('[T] Frequently asked questions')
+        ->and(langTranslator('de')->get('help.nav.home'))->toBe('[T] Home')
+        ->and($this->modelCalls())->toBe($calls)
+        ->and($second)->toContain('lang/de/help.php: skipped, nothing to do')
+        ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, 'help', 'de'))->hasPending())->toBeFalse();
+});
+
 it('re-sends only the edited key in mode update', function () {
     $this->fakeTranslations();
     langCommand(['sites' => ['de']]);
