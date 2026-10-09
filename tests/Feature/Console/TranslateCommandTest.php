@@ -172,15 +172,16 @@ describe('dry run', function () {
             ->and($this->modelCalls())->toBe(1);
     });
 
-    it('shows a target that would fail because its root page is missing, unless the root is planned before it', function () {
+    it('shows a target that would be skipped because its root page is missing, as the run skips it, unless the root is planned before it', function () {
         $pages = $this->makePages(['home', 'rooms' => ['suites']]);
 
         [, $alone] = translateCommand(['--entry' => [$pages['rooms']->id()], '--site' => ['el'], '--dry-run' => true]);
         [, $all] = translateCommand(['--collection' => ['pages'], '--site' => ['el'], '--dry-run' => true]);
 
-        expect($alone)->toContain('Rooms → Greek: would fail, Translate Home into Greek first.')
+        expect($alone)->toContain('Rooms → Greek: would be skipped, Translate Home into Greek first.')
+            ->and($alone)->not->toContain('would fail')
             ->and($alone)->toContain('Dry run: 0 of 1 target would be translated')
-            ->and($all)->not->toContain('would fail')
+            ->and($all)->not->toContain('would be skipped')
             ->and($all)->toContain('Rooms → Greek: title (1 segment, 5 characters)')
             ->and($all)->toContain('Dry run: 3 of 3 targets would be translated');
     });
@@ -727,7 +728,7 @@ describe('review', function () {
         [, $output] = translateCommand(['--entry' => [$pages['rooms']->id()], '--site' => ['el'], '--mode' => 'review', '--dry-run' => true]);
 
         expect($output)->toContain('Rooms → Greek: nothing to do')
-            ->and($output)->not->toContain('would fail');
+            ->and($output)->not->toContain('would be skipped');
     });
 
     it('names the review in a dry run of a translation with --review', function () {
