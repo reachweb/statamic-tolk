@@ -147,9 +147,9 @@ final class LangTarget implements Target
         return new TargetRef(ContentType::Lang, $this->group, $this->lang);
     }
 
-    // The written file follows the source's order and carries over its values that are not text.
+    // The written file follows the source's order and nesting, and carries over its values that are not text.
     private function sourceShape(): array
     {
-        return $this->source();
+        return $this->files->contents($this->sourceLang, $this->group);
     }
 }

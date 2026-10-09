@@ -80,6 +80,17 @@ final class LangFiles
      */
     public function read(string $lang, string $group): array
     {
+        return self::flat($group, $this->contents($lang, $group));
+    }
+
+    /**
+     * The array the file holds, empty for a missing file: a PHP file's nested arrays stay nested, and a key that holds a
+     * dot stays one key.
+     *
+     * @throws InvalidLangFile for a file that is not a JSON object or does not return an array
+     */
+    public function contents(string $lang, string $group): array
+    {
         if (! $this->exists($lang, $group)) {
             return [];
         }
@@ -98,31 +109,34 @@ final class LangFiles
             throw InvalidLangFile::unreadable(self::name($lang, $group));
         }
 
-        return $group === self::JSON ? $data : Arr::dot($data);
+        return $data;
     }
 
     /**
      * Re-reads the file, sets and removes the given keys and keeps every other key with its value (§A16). Keys follow
-     * the source's order, then the keys the source lacks in their own order; a PHP file nests dot keys again, as its
-     * source does. The file is replaced through a temporary file, so it is never half-written, and a failure leaves it
-     * as it was.
+     * the source's order, then the keys the source lacks in their own order; a PHP file puts each key where its source
+     * has it, nested or as a key that holds a dot, and a key the source lacks where the file had it. The file is
+     * replaced through a temporary file, so it is never half-written, and a failure leaves it as it was.
      *
      * @param  array<string, string>  $set  flat key → value
      * @param  list<string>  $remove
-     * @param  array<string, mixed>  $sourceShape  the source file's flat keys and values, as read() gives them
+     * @param  array<string, mixed>  $sourceShape  the source file's array, as contents() gives it
      *
      * @throws InvalidLangFile
      */
     public function write(string $lang, string $group, array $set, array $remove, array $sourceShape): void
     {
-        $values = array_replace(array_diff_key($this->read($lang, $group), array_flip($remove)), $set);
+        $file = $this->contents($lang, $group);
+        $source = self::flat($group, $sourceShape);
+        $values = array_replace(array_diff_key(self::flat($group, $file), array_flip($remove)), $set);
         // Values that are not text are no fields: the source's are carried over as they are where the file has none.
-        $values += array_filter($sourceShape, fn (mixed $value) => ! is_string($value));
-        $values = array_replace(array_intersect_key($sourceShape, $values), $values);
+        $values += array_filter($source, fn (mixed $value) => ! is_string($value));
+        $values = array_replace(array_intersect_key($source, $values), $values);
         $name = self::name($lang, $group);
         $path = $this->path($lang, $group);
+        $contents = $group === self::JSON ? self::json($values) : self::php(self::nest($values, self::places($sourceShape) + self::places($file)), $name);
 
-        $this->writeAtomically($path, $group === self::JSON ? self::json($values) : self::php(Arr::undot($values), $name), "the translation file {$name}");
+        $this->writeAtomically($path, $contents, "the translation file {$name}");
 
         // A long-lived process with OPcache for the CLI would otherwise include the old file for a while.
         if (function_exists('opcache_invalidate')) {
@@ -141,10 +155,61 @@ final class LangFiles
         }
 
         try {
-            return $this->files->get($this->path($lang, $group)) === self::php(Arr::undot($this->read($lang, $group)), self::name($lang, $group));
+            return $this->files->get($this->path($lang, $group)) === self::php($this->contents($lang, $group), self::name($lang, $group));
         } catch (InvalidLangFile) {
             return false;
         }
+    }
+
+    private static function flat(string $group, array $data): array
+    {
+        return $group === self::JSON ? $data : Arr::dot($data);
+    }
+
+    /**
+     * Where each key of a PHP file's flat array is in the file: the keys of its path, any of which may hold a dot.
+     *
+     * @return array<string, list<int|string>>
+     */
+    private static function places(array $data, array $path = []): array
+    {
+        $places = [];
+
+        foreach ($data as $key => $value) {
+            $place = [...$path, $key];
+            // As Arr::dot() flattens: an empty array is a value.
+            $places += is_array($value) && $value !== [] ? self::places($value, $place) : [implode('.', $place) => $place];
+        }
+
+        return $places;
+    }
+
+    /**
+     * The flat values in their places; a key without one is nested at every dot, as Arr::undot() nests it. Laravel
+     * finds a key either as one key that holds its dots or nested at every dot, so neither may become the other.
+     *
+     * @param  array<string, list<int|string>>  $places
+     */
+    private static function nest(array $values, array $places): array
+    {
+        $nested = [];
+
+        foreach ($values as $key => $value) {
+            $nested = self::place($nested, $places[$key] ?? explode('.', (string) $key), $value);
+        }
+
+        return $nested;
+    }
+
+    /**
+     * @param  list<int|string>  $path
+     */
+    private static function place(array $array, array $path, mixed $value): array
+    {
+        $key = array_shift($path);
+        $array[$key] = $path === [] ? $value : self::place(is_array($array[$key] ?? null) ? $array[$key] : [], $path, $value);
+
+        return $array;
     }
 
     private static function json(array $values): string
