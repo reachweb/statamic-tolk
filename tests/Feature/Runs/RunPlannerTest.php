@@ -135,6 +135,7 @@ describe('build', function () {
                 'entry_ids' => [],
                 'term_ids' => [],
                 'reference' => null,
+                'assumed_sites' => [],
                 'skipped' => [],
                 'out_of_scope' => [],
             ])
@@ -237,6 +238,23 @@ describe('build', function () {
             ->and($entry->skipped)->toBe(['excluded_collection' => 2])
             ->and($single->items)->toBe([])
             ->and($single->skipped)->toBe(['site_not_in_collection' => 1]);
+    });
+
+    it('plans and estimates the containers a request assumes to have its sites, single-site ones included', function () {
+        $this->makeCollection('notes', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeEntry('notes', 'en', ['title' => 'Memo'], 'memo');
+        $this->makeTaxonomy('topics', ['en'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food']]);
+        $this->makeGlobalSet('brand', ['en' => null], ['tagline' => ['type' => 'text', 'localizable' => true]], ['en' => ['tagline' => 'Kyma Bay']]);
+        $assumed = ['collection:notes' => null, 'taxonomy:topics' => null, 'globals:brand' => 'en'];
+
+        $planned = planRun(['sites' => ['de'], 'collections' => ['*'], 'taxonomies' => ['*'], 'globals' => ['*'], 'assumedSites' => $assumed]);
+        $progress = app(RunPlanner::class)->estimate(storedRun($planned), 0, 60_000);
+
+        expect(array_map(fn (RunItem $item) => $item->title.'→'.$item->targetSite, $planned->items))->toEqualCanonicalizing(['Hello→de', 'World→de', 'Memo→de', 'Food→de', 'Brand→de'])
+            ->and($planned->skipped)->toBe([])
+            ->and($planned->run->scope['assumed_sites'])->toBe($assumed)
+            ->and($progress->estimate->segments)->toBe(7);
     });
 
     it('drops the targets a user may not edit and counts them', function () {

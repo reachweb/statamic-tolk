@@ -42,7 +42,7 @@ it('normalises the options it is given', function () {
 });
 
 it('describes what was asked for as the run scope', function () {
-    $request = new RunRequest(['de'], RunDriver::Queue, sourceSite: 'el', collections: ['pages'], navs: ['main'], entryIds: ['a', 'b'], termIds: ['tags::hotel']);
+    $request = new RunRequest(['de'], RunDriver::Queue, sourceSite: 'el', collections: ['pages'], navs: ['main'], entryIds: ['a', 'b'], termIds: ['tags::hotel'], assumedSites: ['collection:news' => null, 'globals:footer' => 'en']);
 
     expect($request->scope())->toBe([
         'sites' => ['de'],
@@ -54,7 +54,12 @@ it('describes what was asked for as the run scope', function () {
         'entry_ids' => ['a', 'b'],
         'term_ids' => ['tags::hotel'],
         'reference' => null,
+        'assumed_sites' => ['collection:news' => null, 'globals:footer' => 'en'],
     ]);
+
+    expect(RunRequest::assumed($request->assumedSites, 'collection'))->toBe(['news'])
+        ->and(RunRequest::assumed($request->assumedSites, 'globals'))->toBe(['footer'])
+        ->and(RunRequest::assumed($request->assumedSites, 'taxonomy'))->toBe([]);
 });
 
 it('refuses an invalid request', function (array $arguments, string $message) {
@@ -68,4 +73,5 @@ it('refuses an invalid request', function (array $arguments, string $message) {
     'invalid mode' => [['sites' => ['el'], 'options' => ['mode' => 'everything']], 'Invalid mode [everything]. Use missing, update, all or review.'],
     'invalid status' => [['sites' => ['el'], 'options' => ['new_status' => 'published']], 'Invalid new localization status [published]. Use draft or mirror.'],
     'translator not a string' => [['sites' => ['el'], 'options' => ['translator' => ['openai']]], 'The translator of a run request must be a model reference such as provider:model.'],
+    'assumed site of an unknown type' => [['sites' => ['el'], 'assumedSites' => ['nav:main' => null]], 'The assumed sites of a run request must map {type}:{handle} to a site or null.'],
 ]);

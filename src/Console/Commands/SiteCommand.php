@@ -48,7 +48,7 @@ class SiteCommand extends Command
 
     protected $description = 'Translate the whole website into one site';
 
-    /** @var array<string, true> `{type}:{handle}` of the containers a dry run would enable for the site */
+    /** @var array<string, ?string> `{type}:{handle}` of the containers a dry run would enable for the site, with a global set's origin (RunRequest::$assumedSites) */
     private array $wouldEnable = [];
 
     public function handle(Settings $settings, ModelCatalog $catalog, Providers $providers, SiteSetup $setup, Audit $audit): int
@@ -100,7 +100,7 @@ class SiteCommand extends Command
 
         $this->newLine();
 
-        $exitCode = $this->call('tolk:translate', array_filter([
+        $exitCode = $this->call($this->laravel->make(TranslateCommand::class)->assumingSites($this->wouldEnable), array_filter([
             '--all' => true,
             '--site' => [$site],
             '--mode' => Mode::Missing->value,
@@ -138,7 +138,7 @@ class SiteCommand extends Command
 
         if ($this->option('dry-run')) {
             foreach ($containers as $container) {
-                $this->wouldEnable["{$container['type']}:{$container['handle']}"] = true;
+                $this->wouldEnable["{$container['type']}:{$container['handle']}"] = null;
             }
 
             $this->line("  Dry run: nothing is changed. Without --dry-run, this command offers to enable {$this->siteLabel($site)} for them.");
@@ -191,7 +191,7 @@ class SiteCommand extends Command
 
         if ($this->option('dry-run')) {
             foreach ($fixable as $set) {
-                $this->wouldEnable["globals:{$set['handle']}"] = true;
+                $this->wouldEnable["globals:{$set['handle']}"] = $set['origin'];
             }
 
             $this->line("  Dry run: nothing is changed. Without --dry-run, this command offers to enable {$this->siteLabel($site)} for them, with these origins.");
@@ -233,7 +233,7 @@ class SiteCommand extends Command
      */
     private function offerLocalizableFields(Audit $audit, string $site): void
     {
-        $items = $this->forSite($audit->notLocalizable(), $site);
+        $items = $this->forSite($audit->notLocalizable($this->wouldEnable), $site);
 
         if ($items === []) {
             return;
@@ -260,7 +260,7 @@ class SiteCommand extends Command
      */
     private function acceptTechnicalFields(Audit $audit, string $site): bool
     {
-        $items = $this->forSite($audit->technicalFields(), $site);
+        $items = $this->forSite($audit->technicalFields($this->wouldEnable), $site);
 
         if ($items === []) {
             return true;
@@ -283,7 +283,7 @@ class SiteCommand extends Command
     private function forSite(array $items, string $site): array
     {
         return array_values(array_filter($items, function (array $item) use ($site) {
-            if (isset($this->wouldEnable["{$item['type']}:{$item['container']}"])) {
+            if (array_key_exists("{$item['type']}:{$item['container']}", $this->wouldEnable)) {
                 return true;
             }
 
