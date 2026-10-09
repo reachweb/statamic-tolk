@@ -46,6 +46,13 @@ function editedSince(ctx, planValues, handle) {
     return !sameText(ctx.values.value[handle], planValues[handle]);
 }
 
+// Core's Markdown fieldtype hands every new value to CodeMirror, which cannot take null and keeps showing the old text,
+// so a field the form holds text of is emptied with an empty string. A field put back to inherit from an empty origin
+// arrives as null, because the Markdown fieldtype has no `preProcess()`.
+function formValue(ctx, handle, value) {
+    return value === null && typeof ctx.values.value[handle] === 'string' ? '' : clone(value);
+}
+
 // Whether `restore()` puts a handle back: it holds a fill delivered since the snapshot was taken.
 export function filledSince(before, record) {
     return Boolean(record) && !record.pending && record.plan !== before.delivered?.plan;
@@ -127,7 +134,7 @@ export async function applyFields(
             ctx.setFieldMeta(handle, clone(payload.meta));
         }
 
-        ctx.setFieldValue(handle, clone(payload.value));
+        ctx.setFieldValue(handle, formValue(ctx, handle, payload.value));
 
         if (payload.sync) {
             // Back to inheriting from the origin: an unsaved change even when the value looks the same.
@@ -204,7 +211,7 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
             const before = snap.fields[handle];
 
             ctx.setFieldMeta(handle, clone(before.meta));
-            ctx.setFieldValue(handle, clone(before.value));
+            ctx.setFieldValue(handle, formValue(ctx, handle, before.value));
             setLocalized(ctx, handle, before.localized);
 
             if (before.delivered) {
