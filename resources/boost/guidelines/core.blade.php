@@ -2,7 +2,7 @@
 
 - This application uses Tolk (`reachweb/statamic-tolk`), a Statamic addon that translates multi-site content from an origin site into its localizations with large language models from Anthropic, OpenAI or Google Gemini, through the Laravel AI SDK (`laravel/ai`).
 - Editors translate in the entry and term forms (the translations are filled into the open form, unsaved, for them to review and save), one field at a time, in bulk from a listing, from the Overview under **Tools › Translations** (`cp/tolk/overview`), and from the command line.
-- The source of a translation is always the target's origin as Statamic defines it. Slugs are never translated; a new localization keeps its origin's slug.
+- The source of a translation is always the target's origin as Statamic defines it. A new localization keeps its origin's slug, unless its collection is in the `translated_slugs` setting, which makes its slug from the translated title. An existing slug is never changed.
 - Tolk tracks per field whether a translation is current, outdated (the origin changed since) or edited by hand, and updates only what changed. Text a human edited is never overwritten unless an operation asks for it (`--force`, "Overwrite manual edits").
 - The documentation is in `vendor/reachweb/statamic-tolk/docs/` (one file per topic) and `vendor/reachweb/statamic-tolk/README.md`. Read the topic file before changing how Tolk is set up.
 

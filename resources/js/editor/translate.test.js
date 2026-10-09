@@ -752,6 +752,7 @@ describe('a localization created in the form', () => {
         expect(slugToKeep({ created: false, slugKept: false, status })).toBeNull();
         expect(slugToKeep({ created: true, slugKept: true, status })).toBeNull();
         expect(slugToKeep({ created: true, slugKept: false, status: { localization: {} } })).toBeNull();
+        expect(slugToKeep({ created: true, slugKept: false, status: { localization: { origin_slug: 'home', translate_slug: true } } })).toBeNull();
         expect(slugToKeep({ created: true, slugKept: false, status: null })).toBeNull();
         expect(slugToKeep(null)).toBeNull();
     });
@@ -821,6 +822,20 @@ describe('a localization created in the form', () => {
 
         expect(keepSlug).not.toHaveBeenCalled();
         expect(recheckSlug).not.toHaveBeenCalled();
+    });
+
+    it('leaves the slug to core in a collection with translated slugs, which makes it from the translated title', async () => {
+        created();
+        base().status.localization.translate_slug = true;
+        const keepSlug = vi.fn();
+        const recheckSlug = vi.fn();
+        const t = translations({ keepSlug, recheckSlug, run: async () => summary({ delivered: ['intro'] }) });
+
+        await t.translate('base');
+
+        expect(keepSlug).not.toHaveBeenCalled();
+        expect(recheckSlug).not.toHaveBeenCalled();
+        expect(base().phase).toBe('done');
     });
 
     it('leaves the slug of a localization that existed before the form opened alone', async () => {

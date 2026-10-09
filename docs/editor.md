@@ -37,7 +37,7 @@ A field you typed into before pressing Translate is skipped, and the banner name
 
 ### Slugs
 
-Slugs are never translated. A new localization keeps its origin's slug: Statamic's form would normally derive the slug from the translated title, so Tolk puts the origin's slug back when it fills a localization you just created. A slug that already exists is never changed. Change a slug by hand if you want one in the target language.
+A new localization keeps its origin's slug: Statamic's form would normally derive the slug from the translated title, so Tolk puts the origin's slug back when it fills a localization you just created. In a collection of the **Translated slugs** setting, Tolk leaves the slug to Statamic instead, which makes it from the translated title when you save. A slug that already exists is never changed. Change a slug by hand if you want a different one.
 
 ### The offer
 
@@ -54,7 +54,7 @@ It appears when:
 
 **Translate** fills the fields, as the banner's Translate does; **Not now** (or Esc) leaves the form as Statamic created it. When the collection has more than two sites and lets you choose where a localization starts from, Statamic first asks which site to copy from; the offer comes after that.
 
-**Don't offer again** turns the offer off for your user only. Turn it back on with **Offer to translate new localizations** in the options menu. The offer never changes the slug (see above).
+**Don't offer again** turns the offer off for your user only. Turn it back on with **Offer to translate new localizations** in the options menu. The offer keeps the origin's slug, unless the collection has translated slugs (see above).
 
 Terms have no offer, because a term exists in every site of its taxonomy and the form never creates one. Use the banner's Translate there.
 

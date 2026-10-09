@@ -18,7 +18,7 @@ A field nested inside a Replicator, Grid, Group or Bard set has no `localizable`
 
 Two fields are special:
 
-- `slug` is never translated. A new localization keeps its origin's slug (see [Entries](#entries)).
+- `slug` is not translated as a field. A new localization keeps its origin's slug, or, in the collections of the **Translated slugs** setting, gets one made from its translated title (see [Entries](#entries)).
 - `title` is an ordinary text field, but it is left out on a collection that generates its titles, because Statamic writes it again on save.
 
 ### Fieldtypes
@@ -71,7 +71,7 @@ Bard data still stored in the format of Statamic 2 is left as it is and reported
 All the CP's ways and every command translate entries.
 
 - **New localizations** are created by Tolk server-side (runs, Translate into…, the command line) as **drafts**, unless the setting or the run says **Same as origin**: then they are published when their origin is, the user may publish, and every field was translated completely. In the editor nothing is saved until you save.
-- **Slugs** are never translated. A new localization keeps its origin's slug. When another entry of the collection in that site already uses it, Tolk appends `-2`, `-3`, … and adds a warning. An existing slug is never changed.
+- **Slugs**: a new localization keeps its origin's slug, unless its collection is in the **Translated slugs** setting (`translated_slugs`). Then Tolk makes its slug from its translated title, the way Statamic makes slugs in that site's language; while the title is not translated (excluded, or not translated completely, which adds a warning), it keeps the origin's. When another entry of the collection in that site already uses the slug, Tolk appends `-2`, `-3`, … and adds a warning. An existing slug is never changed, so adding a collection to the setting leaves the localizations it already has alone.
 - **Structure**: a new page is placed under its parent's localization in the target site's tree, so a run translates parents before children. In a collection whose tree has a root page, the first page placed in a site's empty tree becomes that site's home page, so the root page's localization is created first; a page whose root page has no localization there is skipped with "Translate Home into Greek first."
 - **Chains**: in a site translated from another localization (Swiss German from German), a field is translated only when that localization holds its own text for it. While it still inherits from its origin, the text would not be in the language the model is told, so the field waits ("not translated in its source yet").
 - **Revisions**: on a collection with revisions, translations of a published localization go to its working copy, as the CP's own saves do. See [Bulk translations and runs](bulk-and-runs.md#revisions).
@@ -121,4 +121,4 @@ Both track their strings like content: a second run sends nothing, and a string 
 - Asset alt text and other asset fields. A later version translates alt text.
 - `lang/vendor/` files, form texts inside Grid or Group fields, and texts written in templates.
 - Fields of third-party fieldtypes, such as those of SEO addons, until a handler is registered ([Extending](extending.md)).
-- Slugs, by design.
+- The slugs of existing localizations, and term slugs, by design.

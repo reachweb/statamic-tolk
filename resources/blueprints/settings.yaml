@@ -195,6 +195,14 @@ tabs:
               display: 'Excluded fields'
               instructions: 'Top-level fields that are never translated, in every blueprint. Enter each field by its handle, for example `internal_note`. For a field inside a Replicator, Grid or Bard set, switch off its "Translate automatically" option instead.'
               default: []
+          -
+            handle: translated_slugs
+            field:
+              type: collections
+              display: 'Translated slugs'
+              instructions: 'New localizations of these collections get a slug made from their translated title, as Statamic makes slugs. In other collections they keep the slug of their origin. A slug that already exists is never changed.'
+              mode: select
+              default: []
   providers:
     display: Providers
     sections:

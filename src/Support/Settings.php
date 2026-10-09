@@ -31,6 +31,7 @@ class Settings
         'excluded_collections' => [],
         'excluded_taxonomies' => [],
         'excluded_fields' => [],
+        'translated_slugs' => [],
     ];
 
     private ?array $values = null;
@@ -181,6 +182,14 @@ class Settings
     public function excludedFields(): array
     {
         return $this->handles('excluded_fields');
+    }
+
+    /**
+     * Whether a new localization of this collection gets a slug made from its translated title (D16).
+     */
+    public function translatesSlugs(string $collection): bool
+    {
+        return in_array($collection, $this->handles('translated_slugs'), true);
     }
 
     private function values(): array

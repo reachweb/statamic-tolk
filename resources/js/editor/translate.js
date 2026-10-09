@@ -59,8 +59,11 @@ export function remainingHandles(summary) {
 }
 
 // The origin's slug while the open localization was created in this form and its slug has not been kept yet (T5.9).
+// A collection with translated slugs keeps none: core's form makes the slug from the translated title (D16).
 export function slugToKeep(container) {
-    return container?.created && !container.slugKept ? (container.status?.localization?.origin_slug ?? null) : null;
+    const localization = container?.status?.localization;
+
+    return container?.created && !container.slugKept && !localization?.translate_slug ? (localization?.origin_slug ?? null) : null;
 }
 
 // Whether Undo has something to put back: a handle filled since the snapshot was taken.
