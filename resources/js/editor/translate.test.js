@@ -254,6 +254,17 @@ describe('reviewable', () => {
         expect(reviewable({ ...counts(0), delivered: { intro: { plan: 'p1', pending: true }, slug: { plan: 'p1', pending: false, sync: true } } })).toBe(false);
         expect(reviewable(null)).toBe(false);
     });
+
+    // A localization translated by hand before Tolk was installed: every field is manual, none up to date.
+    it('is true for fields edited by hand once Overwrite manual edits is checked, which only the options offer', () => {
+        const handTranslated = { status: { localization: { counts: { current: 0, outdated: 0, manual: 3, untracked: 3 } } } };
+
+        expect(reviewable(handTranslated, { overwriteManual: true })).toBe(true);
+        expect(reviewable(handTranslated, { overwriteManual: false })).toBe(false);
+        expect(reviewable(handTranslated)).toBe(false);
+        expect(reviewable(counts(0), { overwriteManual: true })).toBe(false);
+        expect(reviewable(null, { overwriteManual: true })).toBe(false);
+    });
 });
 
 describe('undoable', () => {
