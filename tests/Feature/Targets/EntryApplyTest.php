@@ -223,6 +223,102 @@ describe('slugs', function () {
             ->and($published->fresh()->slug())->toBe('hallo')
             ->and($published->fresh()->published())->toBeTrue();
     });
+
+    describe('in a collection with translated slugs', function () {
+        beforeEach(function () {
+            $this->withSettings(['translated_slugs' => ['articles']]);
+            $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? 'Γεια σου κόσμε' : '[T] '.$text);
+        });
+
+        it('gives a new localization the slug of its translated title, as the CP form makes it', function () {
+            $result = translateInto($this->origin);
+
+            $localization = $this->origin->fresh()->in('el');
+
+            expect($result->slug)->toBe('gia-su-kosme')
+                ->and($result->warnings)->toBe([])
+                ->and($localization->slug())->toBe('gia-su-kosme')
+                ->and($localization->get('title'))->toBe('Γεια σου κόσμε')
+                ->and(Entry::query()->where('collection', 'articles')->where('site', 'el')->count())->toBe(1)
+                ->and(glob(dirname($localization->path()).'/*'))->toBe([$localization->path()])
+                ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Current);
+        });
+
+        it('keeps the origin\'s slug in a collection that is not listed', function () {
+            $this->makeCollection('news', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+            $news = $this->makeEntry('news', 'en', ['title' => 'Hello'], 'hello');
+
+            expect(translateInto($news)->slug)->toBe('hello');
+        });
+
+        it('adds a suffix and one warning when another entry in the target site has the translated slug', function () {
+            $this->makeEntry('articles', 'el', ['title' => 'Άλλο'], 'hello');
+            $this->makeEntry('articles', 'el', ['title' => 'Τρίτο'], 'gia-su-kosme');
+
+            $result = translateInto($this->origin);
+
+            expect($result->slug)->toBe('gia-su-kosme-2')
+                ->and($this->origin->fresh()->in('el')->slug())->toBe('gia-su-kosme-2')
+                ->and($result->warnings)->toBe(['The slug "gia-su-kosme" is already used in Greek, so the new localization got "gia-su-kosme-2".']);
+        });
+
+        it('keeps the origin\'s slug while the title is not translated', function () {
+            $this->withSettings(['translated_slugs' => ['articles'], 'excluded_fields' => ['title']]);
+            $this->makeEntry('articles', 'el', ['title' => 'Άλλο'], 'hello');
+
+            $result = translateInto($this->origin);
+
+            expect($result->applied)->toBe(['intro', 'body'])
+                ->and($result->slug)->toBe('hello-2')
+                ->and($result->warnings)->toBe(['The slug "hello" is already used in Greek, so the new localization got "hello-2".']);
+        });
+
+        it('keeps the origin\'s slug, with a warning, when the title was not translated completely', function () {
+            $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? null : '[T] '.$text);
+
+            $result = translateInto($this->origin);
+
+            expect($result->slug)->toBe('hello')
+                ->and($this->origin->fresh()->in('el')->get('title'))->toBe('Hello')
+                ->and($result->warnings)->toContain('The title was not translated completely, so the new localization kept the slug of its origin.');
+        });
+
+        it('makes the slug from the generated title in a collection that generates its titles', function () {
+            Collection::find('articles')->titleFormats('{intro}')->save();
+
+            $result = translateInto($this->origin);
+
+            expect($result->slug)->toBe('t-a-short-intro')
+                ->and($this->origin->fresh()->in('el')->slug())->toBe('t-a-short-intro');
+        });
+
+        it('gives the slug to a localization created with revisions and published as its origin', function () {
+            Collection::find('articles')->revisionsEnabled(true)->save();
+            config(['statamic.revisions.enabled' => true]);
+            $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? 'Hallo Welt' : '[T] '.$text);
+
+            $result = translateInto($this->origin, 'de', new ApplyOptions(newStatus: 'mirror'));
+
+            $localization = $this->origin->fresh()->in('de');
+
+            expect($result->slug)->toBe('hallo-welt')
+                ->and($localization->slug())->toBe('hallo-welt')
+                ->and($localization->published())->toBeTrue()
+                ->and(Entry::query()->where('collection', 'articles')->where('site', 'de')->count())->toBe(1)
+                ->and(glob(dirname($localization->path()).'/*'))->toBe([$localization->path()]);
+        });
+
+        it('never changes the slug of an existing localization', function () {
+            $localization = $this->localize($this->origin, 'el');
+
+            $result = translateInto($this->origin);
+
+            expect($result->created)->toBeFalse()
+                ->and($result->slug)->toBeNull()
+                ->and($localization->fresh()->slug())->toBe('hello')
+                ->and($localization->fresh()->get('title'))->toBe('Γεια σου κόσμε');
+        });
+    });
 });
 
 describe('trees', function () {

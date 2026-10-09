@@ -149,6 +149,7 @@ final readonly class EditorStatus
             'counts' => $status->counts,
             'out_of_scope' => $this->outOfScope($target),
             'origin_slug' => $source->slug(),
+            'translate_slug' => $source instanceof EntryContract && $this->settings->translatesSlugs($source->collectionHandle()),
         ];
     }
 

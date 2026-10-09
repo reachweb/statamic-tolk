@@ -50,6 +50,7 @@ See [Context and glossary](context-and-glossary.md#the-glossary).
 | `excluded_collections` | Excluded collections | none | Entries of these collections are never translated: the banner, the offer and the field actions do not appear in their forms, the listing action is hidden for them, runs, the origin view's Translate into… and the commands leave them out with a warning, and the Overview and `tolk:status` do not list them. |
 | `excluded_taxonomies` | Excluded taxonomies | none | The same, for the terms of these taxonomies. |
 | `excluded_fields` | Excluded fields | none | Field handles that are never translated, in every blueprint of entries, terms and global sets. This applies to top-level fields; for a field inside a Replicator, Grid or Bard set, switch off its **Translate automatically** option instead (below). |
+| `translated_slugs` | Translated slugs | none | New localizations of these collections get a slug made from their translated title, the way Statamic makes slugs in the target site's language ("Hallo Welt" becomes `hallo-welt`). In every other collection a new localization keeps its origin's slug. An existing slug is never changed. See [Entries](content-types.md#entries). |
 
 ### Providers
 

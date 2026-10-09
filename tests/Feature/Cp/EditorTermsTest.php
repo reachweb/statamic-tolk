@@ -88,6 +88,7 @@ describe('status', function () {
                 'target' => ['site' => 'el', 'name' => 'Greek'],
                 'status' => 'untranslated',
                 'origin_slug' => 'food',
+                'translate_slug' => false,
             ])
             ->and(array_keys($response->json('localization.fields')))->toBe(['title', 'description'])
             ->and($response->json('localization.out_of_scope'))->toBe([

@@ -69,7 +69,21 @@ describe('a localization', function () {
                     ['handle' => 'note', 'label' => 'Note', 'type' => 'text', 'reason' => 'not_localizable'],
                 ],
                 'origin_slug' => 'hello',
+                'translate_slug' => false,
             ]);
+    });
+
+    it('says whether the collection gives new localizations translated slugs', function () {
+        $this->signInAdmin();
+        $greek = $this->localize($this->origin, 'el');
+
+        editorStatus($greek)->assertJsonPath('localization.translate_slug', false);
+
+        $this->withSettings(['translated_slugs' => [$this->origin->collectionHandle()]]);
+
+        editorStatus($greek)
+            ->assertJsonPath('localization.translate_slug', true)
+            ->assertJsonPath('localization.origin_slug', 'hello');
     });
 
     it('reads machine output as current and an origin edit as outdated', function () {

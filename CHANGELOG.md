@@ -7,6 +7,7 @@ All notable changes to Tolk are documented in this file.
 ### Added
 
 - **Settings** in the **Tools › Translations** menu, below **Audit**, for users who may edit Tolk's settings.
+- **Translated slugs**, a setting that lists the collections whose new localizations get a slug made from their translated title, the way Statamic makes slugs in the target site's language. It is empty by default, so new localizations keep their origin's slug as before, and an existing slug is never changed.
 - **Reset** on the Overview's usage card, which deletes the month's usage, and on the runs list, which deletes the finished runs; both ask first and are offered to users who may edit Tolk's settings.
 
 ### Changed

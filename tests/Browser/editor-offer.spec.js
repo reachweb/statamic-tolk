@@ -1,5 +1,5 @@
 import { expect, test } from './support/test.js';
-import { entryFile, openEntry, reset } from './support/sandbox.js';
+import { entryFile, openEntry, reset, tinker } from './support/sandbox.js';
 
 const banner = (page) => page.locator('[data-tolk-banner]');
 const offer = (page) => page.locator('[data-tolk-offer]');
@@ -88,6 +88,25 @@ for (const slug of ['about', 'dining']) {
         expect(browserErrors()).toEqual([]);
     });
 }
+
+test('in a collection with translated slugs, the offer leaves the slug to core, which makes it from the translated title', async ({ page, browserErrors }) => {
+    tinker("app(Reach\\StatamicTolk\\Support\\Settings::class)->save(['translated_slugs' => ['pages']]);");
+
+    const origin = await createGerman(page, 'dining');
+
+    await expect(offer(page)).toBeVisible();
+    await offer(page).locator('[data-tolk-offer-action="translate"]').click();
+
+    await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^5 fields translated with .+\.$/);
+    await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
+    await expect(page.locator('#field_slug')).toHaveValue('de-dining');
+
+    await quickSave(page);
+
+    expect(entryFile('pages', 'de', 'de-dining')).toMatchObject({ title: `[de] ${origin.title}`, origin: origin.id });
+    expect(entryFile('pages', 'de', 'dining')).toBeNull();
+    expect(browserErrors()).toEqual([]);
+});
 
 test('Not now leaves the form untouched', async ({ page, browserErrors }) => {
     const plans = [];
