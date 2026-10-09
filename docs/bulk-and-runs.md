@@ -139,7 +139,10 @@ With Statamic's git integration, a run makes one commit ("Content translated") w
 
 - Before a run starts, its page and `tolk:translate` show an estimate. Use it to compare models: the fast models cost a fraction of the quality ones.
 - During and after a run, its page shows the tokens and the cost of the calls it made.
-- The Overview shows the usage of the month per model, from every source: the editor, runs and the command line. The files are in `storage/statamic/tolk/usage/`, one per month.
+- The Overview shows the usage of the month per model (the files are in `storage/statamic/tolk/usage/`, one per month), and under each model where it came from:
+  - **Editor**: the entry and term editor, and **Generate** and **Test connection** in the settings.
+  - **Runs**: the runs started in the CP (the **Translate…** action, the Overview, **Translate into…** and **Update translations**) or with `--queue`.
+  - **Command line**: `tolk:translate` and `tolk:site` without `--queue`, `tolk:lang`, `tolk:forms` and `tolk:profile`. A command-line run resumed on its run page counts under Runs from then on.
 - Users who may edit Tolk's settings can **Reset** the month's usage on the Overview, after a confirmation: the month's file is deleted and counting starts again from zero. A run's page keeps showing the run's own usage.
 - Costs are computed from the prices in the model catalog (`models.*.price`). The monthly usage keeps the price of the day of each call; a run's page computes its cost from its tokens at the current prices. A model without a price makes the cost "unknown".
 - Tolk sets no budget caps. Set spending limits with the provider; when one is reached, the provider rejects the requests and the run is aborted with that message.

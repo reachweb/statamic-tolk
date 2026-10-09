@@ -13,6 +13,7 @@ use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\Mode;
+use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
@@ -719,7 +720,7 @@ final readonly class RunProcessor
     private function recorder(Run $run, RunItem $item): Closure
     {
         return function (ModelRef $model, Usage $usage) use ($run, $item): void {
-            $this->recorder->record($model, $usage, UsageSource::Run);
+            $this->recorder->record($model, $usage, $run->driver === RunDriver::Cli ? UsageSource::Cli : UsageSource::Run);
             $item->usage = $item->usage->add($model, $usage);
 
             try {
