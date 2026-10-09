@@ -49,6 +49,7 @@ All notable changes to Tolk are documented in this file.
 - Cancel with review on no longer drops the translations already on their way: they are still reviewed and filled into the form, instead of the summary saying that no fields were translated.
 - A Markdown field emptied in the origin shows empty in the localization after Update or "Translate from origin", instead of keeping its old text on screen until the page is reloaded.
 - After Translate, Update or Review the keyboard focus moves to Cancel while the translation runs, instead of resting on a status count whose tooltip covered the page's header.
+- The confirmation of "Translate from origin" gives the keyboard focus back to the field's actions menu after Esc or Cancel, and moves it to the banner's progress after Translate, instead of leaving it at the top of the page.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

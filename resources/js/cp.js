@@ -1,7 +1,8 @@
 import { PipelineStopped } from '@statamic/cms/save-pipeline';
 import EditorBanner from './components/EditorBanner.vue';
+import TranslateFieldConfirm from './components/TranslateFieldConfirm.vue';
 import { BANNER, banners } from './editor/banner.js';
-import { fieldActions } from './editor/fieldActions.js';
+import { CONFIRM, fieldActions } from './editor/fieldActions.js';
 import { offers } from './editor/offer.js';
 import { registry } from './editor/registry.js';
 import { createSaveHooks } from './editor/saveHooks.js';
@@ -15,6 +16,7 @@ import RunsShow from './pages/Runs/Show.vue';
 
 Statamic.booting(() => {
     Statamic.$components.register(BANNER, EditorBanner);
+    Statamic.$components.register(CONFIRM, TranslateFieldConfirm);
     Statamic.$components.register('tolk_model-fieldtype', ModelSelect);
     Statamic.$components.register('tolk_providers-fieldtype', ProvidersStatus);
     Statamic.$components.register('tolk_site_profile-fieldtype', SiteProfile);

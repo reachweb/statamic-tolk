@@ -1,9 +1,13 @@
 import { asMap } from '../api.js';
+import { CORE_CLOSE_MS } from '../modal.js';
 import { isTermReference } from './banner.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { describeSummary, needsSetup } from './statuses.js';
 import { useEditorStore } from './store.js';
 import { BUSY, translations as sharedTranslations } from './translate.js';
+
+// The confirmation the action opens (`components/TranslateFieldConfirm.vue`), registered under this name in `cp.js`.
+export const CONFIRM = 'tolk-translate-field-confirm';
 
 // Deep equality without regard to key order.
 function sameValue(a, b) {
@@ -34,6 +38,9 @@ export function createFieldActions({
     config = () => Statamic.$config,
     permissions = () => Statamic.$permissions,
     toast = () => Statamic.$toast,
+    components = () => Statamic.$components,
+    doc = () => globalThis.document,
+    wait = setTimeout,
 } = {}) {
     let registered = false;
 
@@ -111,18 +118,53 @@ export function createFieldActions({
         }
     }
 
+    // The field's actions menu: core's dropdown trigger in the header of the field its label names.
+    function trigger(handle) {
+        const label = [...(doc()?.querySelectorAll('label[for]') ?? [])].find((element) => element.getAttribute('for') === `field_${handle}`);
+
+        return label?.closest('[data-ui-input-group]')?.querySelector('[data-ui-field-header] [data-ui-dropdown-trigger]') ?? null;
+    }
+
+    // The banner shows the progress, and keeps the focus on its Cancel while the translation runs.
+    function progress() {
+        const banner = doc()?.querySelector('[data-tolk-banner]');
+
+        return banner?.querySelector('[data-tolk-action="cancel"]') ?? banner?.querySelector('[data-tolk-focus]') ?? null;
+    }
+
+    // Once the confirmation has closed, where the focus is lost to the page's body.
+    function moveFocus(target) {
+        for (const delay of [0, CORE_CLOSE_MS + 100]) {
+            wait(() => {
+                const active = doc()?.activeElement;
+
+                if (!active || active === doc().body) {
+                    target()?.focus();
+                }
+            }, delay);
+        }
+    }
+
     // Not async: core reads a returned promise from `payload.vm`, which composition-API fieldtypes such as `text` do
-    // not have (R3 §3.4). Progress shows in the banner.
+    // not have (R3 §3.4). Progress shows in the banner. The action asks first itself: core's confirmation leaves the
+    // focus on the page's body when it closes.
     function run(payload) {
-        translateField(payload).catch(() => toast().error(__('Something went wrong.')));
+        const confirmation = components().append(CONFIRM, { props: {} });
+
+        confirmation.on('confirm', () => {
+            confirmation.destroy();
+            translateField(payload).catch(() => toast().error(__('Something went wrong.')));
+            moveFocus(() => progress() ?? trigger(payload.handle));
+        });
+        confirmation.on('cancel', () => {
+            confirmation.destroy();
+            moveFocus(() => trigger(payload.handle));
+        });
     }
 
     const action = {
         get title() {
             return __('Translate from origin');
-        },
-        get confirm() {
-            return { text: __('The current content of this field will be replaced.'), buttonText: __('Translate') };
         },
         visible,
         run,
