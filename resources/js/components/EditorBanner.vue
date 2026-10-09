@@ -10,7 +10,7 @@ import { localizableUrl } from '../audit/checks.js';
 import { attachBanner, isTermReference } from '../editor/banner.js';
 import { registry } from '../editor/registry.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
-import { describe, describeSummary, fieldLabels } from '../editor/statuses.js';
+import { describe, describeSummary, fieldLabels, statusColor } from '../editor/statuses.js';
 import { useEditorStore } from '../editor/store.js';
 import { keptMessage, RESTART, reviewable, translations, undoable } from '../editor/translate.js';
 import { BANNER_MODALS, createFocusKeeper } from '../focus.js';
@@ -93,15 +93,6 @@ const focus = createFocusKeeper(() => card.value?.$el ?? null, { modals: BANNER_
 // Translate, Update, Retry and Translate into… leave with the phase they start.
 watch([phase, () => state.value?.push?.phase], () => focus.changing());
 
-const colors = {
-    untranslated: 'amber',
-    outdated: 'orange',
-    manual: 'sky',
-    attention: 'red',
-    untracked: 'default',
-    current: 'green',
-};
-
 function translate(mode) {
     translations.translate(name, { mode });
 }
@@ -133,18 +124,36 @@ async function undo() {
 
         <template v-else>
             <div v-if="banner.localization" class="space-y-2" data-tolk-localization>
-                <div class="flex flex-wrap items-center gap-2">
-                    <Icon name="dictionary-language-book" class="size-4 shrink-0 text-gray-500" aria-hidden="true" />
-                    <Text>{{ banner.localization.lead }}</Text>
-                    <Badge
-                        v-for="part in banner.localization.parts"
-                        :key="part.key"
-                        v-tooltip="part.description"
-                        :text="part.text"
-                        :color="colors[part.key]"
-                        tabindex="0"
-                        :data-tolk-part="part.key"
-                    />
+                <!-- The status and its actions share a line while there is room, so the banner keeps the form close. -->
+                <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Icon name="dictionary-language-book" class="size-4 shrink-0 text-gray-500" aria-hidden="true" />
+                        <Text>{{ banner.localization.lead }}</Text>
+                        <Badge
+                            v-for="part in banner.localization.parts"
+                            :key="part.key"
+                            v-tooltip="part.description"
+                            :text="part.text"
+                            :color="statusColor(part.key)"
+                            tabindex="0"
+                            :data-tolk-part="part.key"
+                        />
+                    </div>
+
+                    <div v-if="actions" class="flex flex-wrap items-center gap-2" data-tolk-actions>
+                        <template v-if="phase === 'idle'">
+                            <Button v-if="banner.localization.translate" variant="primary" size="sm" data-tolk-action="translate" @click="translate('missing')">
+                                {{ __('Translate') }}
+                            </Button>
+                            <Button v-if="banner.localization.update" size="sm" data-tolk-action="update" @click="translate('update')">
+                                {{ __('Update') }}
+                            </Button>
+                        </template>
+                        <Button v-if="canReview" size="sm" data-tolk-action="review" @click="translations.review(name)">
+                            {{ __('Review') }}
+                        </Button>
+                        <TranslateOptions :container-name="name" :status="state.status" />
+                    </div>
                 </div>
                 <Description v-if="banner.localization.incompleteNote">{{ banner.localization.incompleteNote }}</Description>
                 <Description v-if="banner.localization.hint" data-tolk-not-localizable>
@@ -152,21 +161,6 @@ async function undo() {
                     <a v-if="auditLink" :href="auditLink" data-tolk-audit-link>{{ __('Open the setup audit') }}</a>
                     <template v-else>{{ __('Run php please tolk:doctor for details.') }}</template>
                 </Description>
-
-                <div v-if="actions" class="flex flex-wrap gap-2 pt-1" data-tolk-actions>
-                    <template v-if="phase === 'idle'">
-                        <Button v-if="banner.localization.translate" variant="primary" size="sm" data-tolk-action="translate" @click="translate('missing')">
-                            {{ __('Translate') }}
-                        </Button>
-                        <Button v-if="banner.localization.update" size="sm" data-tolk-action="update" @click="translate('update')">
-                            {{ __('Update') }}
-                        </Button>
-                    </template>
-                    <Button v-if="canReview" size="sm" data-tolk-action="review" @click="translations.review(name)">
-                        {{ __('Review') }}
-                    </Button>
-                    <TranslateOptions :container-name="name" :status="state.status" />
-                </div>
             </div>
 
             <div v-if="phase === 'planning'" class="flex items-center gap-2" data-tolk-phase="planning">
@@ -196,7 +190,7 @@ async function undo() {
             </div>
 
             <div v-if="summary && (phase === 'done' || phase === 'error')" class="space-y-1" data-tolk-summary>
-                <Text v-if="summary.translated" data-tolk-summary-translated>{{ summary.translated }}</Text>
+                <Text v-if="summary.translated" as="p" data-tolk-summary-translated>{{ summary.translated }}</Text>
                 <div v-if="summary.reviewed" class="flex flex-wrap items-center gap-2">
                     <Text data-tolk-summary-reviewed>{{ summary.reviewed }}</Text>
                     <Button v-if="summary.corrections" size="sm" variant="ghost" data-tolk-action="view-changes" @click="changes.show()">
@@ -231,17 +225,18 @@ async function undo() {
                     <Icon name="dictionary-language-book" class="size-4 shrink-0 text-gray-500" aria-hidden="true" />
                     <Text>{{ term ? __('Translations of this term:') : __('Translations of this entry:') }}</Text>
                 </div>
-                <ul class="space-y-1 ps-6">
+                <!-- Each row spans the list's three columns, so names, badges and counts line up. -->
+                <ul class="grid grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 ps-6">
                     <li
                         v-for="localization in banner.origin.localizations"
                         :key="localization.site"
-                        class="flex flex-wrap items-center gap-2"
+                        class="col-span-3 grid grid-cols-subgrid items-center"
                         :data-tolk-site="localization.site"
                     >
                         <a v-if="localization.editUrl" :href="localization.editUrl" class="text-sm font-medium underline">{{ localization.name }}</a>
                         <Text v-else variant="strong">{{ localization.name }}</Text>
-                        <Badge :text="localization.label" />
-                        <Description v-if="localization.exists">{{ localization.summary }}</Description>
+                        <Badge :text="localization.label" :color="localization.color" class="justify-self-start" />
+                        <Description v-if="localization.exists && localization.summary">{{ localization.summary }}</Description>
                     </li>
                 </ul>
                 <OriginPush

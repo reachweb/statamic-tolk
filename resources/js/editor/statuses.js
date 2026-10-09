@@ -32,6 +32,22 @@ const PARTS = {
     },
 };
 
+// One colour per status wherever it shows: the banner's field counts, the origin's list and the Overview. The item
+// statuses run from red to amber, worst first; a person's attention is purple, hand-edited fields sky.
+const STATUS_COLORS = {
+    missing: 'red',
+    untranslated: 'orange',
+    outdated: 'amber',
+    attention: 'purple',
+    manual: 'sky',
+    untracked: 'default',
+    current: 'green',
+};
+
+export function statusColor(status) {
+    return STATUS_COLORS[status] ?? 'default';
+}
+
 export function itemStatusLabel(status) {
     return {
         missing: __('Missing'),
@@ -95,7 +111,7 @@ function describeLocalization(block, setup) {
         label: itemStatusLabel(block.status),
         parts,
         summary,
-        lead: parts.some((part) => part.key !== 'current') ? __('From :source:', { source: block.source?.name ?? '' }) : summary,
+        lead: parts.length > 0 ? __('From :source:', { source: block.source?.name ?? '' }) : summary,
         incomplete,
         incompleteNote: incomplete.length ? incompleteNote(incomplete) : null,
         notLocalizable,
@@ -151,6 +167,7 @@ function describeOrigin(block, setup) {
             exists: localization.exists,
             status: localization.status,
             label: itemStatusLabel(localization.status),
+            color: statusColor(localization.status),
             parts,
             summary: originSummary(localization, parts),
             editUrl: localization.edit_url ?? null,
@@ -173,6 +190,11 @@ function originSummary(localization, parts) {
 
     if (parts.length === 0) {
         return __('Nothing to translate.');
+    }
+
+    // Every field up to date: the status badge says it all.
+    if (parts.every((part) => part.key === 'current')) {
+        return null;
     }
 
     return parts.map((part) => part.text).join(', ');

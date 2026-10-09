@@ -283,8 +283,11 @@ test('a run is created on the Overview, started and followed to its end from the
     expect(browserErrors()).toEqual([]);
 });
 
-// Core's Combobox (reka-ui) names the list of its options in `aria-controls` before the list is rendered.
-const coreFindings = [(violation, node) => violation.id === 'aria-valid-attr-value' && node.target.join(' ').includes('[data-ui-combobox-trigger')];
+// Core's Combobox (reka-ui) names the list of its options in `aria-controls` before the list is rendered. A disabled
+// one has no `data-ui-combobox-trigger`, so the list's id in the finding tells it apart.
+const coreFindings = [
+    (violation, node) => violation.id === 'aria-valid-attr-value' && node.failureSummary.includes('aria-controls="reka-combobox-content-'),
+];
 
 // What axe finds against WCAG 2.2 AA in a part of the page (names, roles, text contrast and the like), as "rule: element",
 // once the page's transitions have finished: a modal or a tab fading in reads as low contrast.

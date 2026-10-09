@@ -70,7 +70,8 @@ describe('a localization', () => {
             status: 'current',
             label: 'Up to date',
             summary: 'Up to date with English.',
-            lead: 'Up to date with English.',
+            // The badge says it is up to date, so the lead does not say it again.
+            lead: 'From English:',
             incomplete: [],
             incompleteNote: null,
             notLocalizable: [],
@@ -273,6 +274,7 @@ describe('an origin', () => {
                 exists: true,
                 status: 'outdated',
                 label: 'Outdated',
+                color: 'amber',
                 parts: expect.any(Array),
                 summary: '1 field outdated, 3 fields up to date',
                 editUrl: '/cp/collections/articles/entries/el-id',
@@ -285,6 +287,7 @@ describe('an origin', () => {
                 exists: false,
                 status: 'missing',
                 label: 'Missing',
+                color: 'red',
                 parts: [],
                 summary: 'Not created yet.',
                 editUrl: null,
@@ -308,9 +311,10 @@ describe('an origin', () => {
         );
 
         expect(banner.origin).toMatchObject({ translateInto: false, update: false });
-        expect(banner.origin.localizations.map((l) => [l.label, l.summary])).toEqual([
-            ['Up to date', '4 fields up to date'],
-            ['Needs attention', '1 field edited by hand, 1 needs attention'],
+        // Every field up to date needs no line next to its badge.
+        expect(banner.origin.localizations.map((l) => [l.label, l.color, l.summary])).toEqual([
+            ['Up to date', 'green', null],
+            ['Needs attention', 'purple', '1 field edited by hand, 1 needs attention'],
         ]);
     });
 });

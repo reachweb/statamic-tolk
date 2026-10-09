@@ -91,7 +91,7 @@ function reload() {
             </Description>
         </div>
 
-        <Text v-if="push?.phase === 'starting'" data-tolk-push-phase="starting">{{ __('Starting the translation…') }}</Text>
+        <Text v-if="push?.phase === 'starting'" as="p" data-tolk-push-phase="starting">{{ __('Starting the translation…') }}</Text>
 
         <div v-if="push?.phase === 'running'" class="space-y-2" data-tolk-push-phase="running">
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -120,8 +120,8 @@ function reload() {
         </div>
 
         <div v-if="shown?.result" class="space-y-2" data-tolk-push-result :data-tolk-push-status="shown.result.status">
-            <Text>{{ shown.result.text }}</Text>
-            <Text v-if="shown.result.error" variant="danger">{{ shown.result.error }}</Text>
+            <Text as="p">{{ shown.result.text }}</Text>
+            <Text v-if="shown.result.error" as="p" variant="danger">{{ shown.result.error }}</Text>
             <ul class="space-y-1">
                 <li
                     v-for="item in shown.result.items"
@@ -159,7 +159,7 @@ function reload() {
             @update:open="modal.closed($event)"
         >
             <div class="space-y-6">
-                <Text>
+                <Text as="p">
                     {{
                         term
                             ? __('The saved term is translated and saved in each language you choose. This form stays as it is.')

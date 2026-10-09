@@ -33,16 +33,18 @@ function notNow() {
 
 <template>
     <Modal :open="open" :title="__('Translate this entry?')" icon="dictionary-language-book" data-tolk-offer @dismissed="notNow">
-        <Text data-tolk-offer-text>
-            {{
-                __n(
-                    'Translate :count field from :source into :target. Nothing is saved until you press Save.|Translate :count fields from :source into :target. Nothing is saved until you press Save.',
-                    offer.count,
-                    { source: offer.source, target: offer.target },
-                )
-            }}
-        </Text>
-        <Description v-if="offer.translator" data-tolk-offer-model>{{ __('Model: :model', { model: modelName(offer.translator) }) }}</Description>
+        <div class="space-y-1">
+            <Text as="p" data-tolk-offer-text>
+                {{
+                    __n(
+                        'Translate :count field from :source into :target. Nothing is saved until you press Save.|Translate :count fields from :source into :target. Nothing is saved until you press Save.',
+                        offer.count,
+                        { source: offer.source, target: offer.target },
+                    )
+                }}
+            </Text>
+            <Description v-if="offer.translator" data-tolk-offer-model>{{ __('Model: :model', { model: modelName(offer.translator) }) }}</Description>
+        </div>
         <Checkbox v-model="dontOfferAgain" :label="__('Don\'t offer again')" />
 
         <template #footer>
