@@ -9,6 +9,7 @@ use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use InvalidArgumentException;
+use Laravel\Prompts\Prompt;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Concerns\ReportsTranslations;
@@ -46,6 +47,8 @@ use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Throwable;
+
+use function Laravel\Prompts\confirm;
 
 /**
  * Translates entries, terms, global sets and navigation through a run (§A12): the run is estimated and confirmed here, then translated by `tolk:work`
@@ -244,7 +247,7 @@ class TranslateCommand extends Command
             $runs->delete($run);
             $this->components->warn($reviewOnly ? 'Nothing was reviewed.' : 'Nothing was translated.');
 
-            return self::SUCCESS;
+            return $this->interrupts > 0 ? self::FAILURE : self::SUCCESS;
         }
 
         if ($this->option('queue')) {
@@ -439,7 +442,11 @@ class TranslateCommand extends Command
     }
 
     /**
-     * A question blocks signal handlers until it is answered, so Ctrl-C ends the command at once while it is asked.
+     * Laravel Prompts reads the answer in raw mode, where Ctrl-C is a key: it declines the question and counts as an
+     * interrupt. A pending read blocks signal handlers until it returns, so the trap is removed while the question is
+     * asked, and a signal, or Ctrl-C where the question falls back to Symfony's (Windows), ends the command at once.
+     * Without a terminal Prompts would take the default without reading, so an answer piped in goes to Symfony's
+     * question, which reads it.
      */
     private function confirmed(bool $reviewOnly): bool
     {
@@ -447,11 +454,29 @@ class TranslateCommand extends Command
             return true;
         }
 
+        $question = $reviewOnly ? 'Review them and save the corrections?' : 'Translate and save them?';
         $this->untrap();
-        $confirmed = $this->confirm($reviewOnly ? 'Review them and save the corrections?' : 'Translate and save them?', true);
-        $this->trapInterrupts();
 
-        return $confirmed;
+        if (! (defined('STDIN') && stream_isatty(STDIN))) {
+            try {
+                return $this->confirm($question, true);
+            } finally {
+                $this->trapInterrupts();
+            }
+        }
+
+        Prompt::cancelUsing(function () {
+            $this->interrupts++;
+
+            return false;
+        });
+
+        try {
+            return confirm($question);
+        } finally {
+            Prompt::cancelUsing(null);
+            $this->trapInterrupts();
+        }
     }
 
     /**

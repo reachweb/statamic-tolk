@@ -94,7 +94,9 @@ Targets: 6 (Greek). Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5).
   Estimated tokens ................................. 8,978 input, 1,934 output
   Estimated cost ....................................................... $0.04
 
- Translate and save them? (yes/no) [yes]:
+ ┌ Translate and save them? ────────────────────────────────────┐
+ │ ● Yes / ○ No                                                 │
+ └──────────────────────────────────────────────────────────────┘
 ```
 
 Then it translates, with a progress bar, and ends with a line per target, a summary table, the failed targets with their errors, the fields left partly untranslated, and the text fields that were not translated, with the reason (not localizable, hidden, switched off, excluded, a generated title).
@@ -109,12 +111,12 @@ The command creates a run, like the CP's runs, and drives it itself. It starts `
 
 The run is listed on the CP's Runs page with its progress.
 
-- **Ctrl-C** cancels the run after the current requests: the workers stop before their next request, and everything saved stays saved. A second Ctrl-C stops the workers at once. The cancelled run can be resumed on its run page, which saves the items already translated and translates the rest. The command counts the targets translated but not saved: resume the run within `plan_ttl` (2 hours) to save them without paying for them again, since running the command again, or resuming later, translates them anew.
+- **Ctrl-C** at the question translates nothing and keeps no run. During the run it cancels the run after the current requests: the workers stop before their next request, and everything saved stays saved. A second Ctrl-C stops the workers at once. The cancelled run can be resumed on its run page, which saves the items already translated and translates the rest. The command counts the targets translated but not saved: resume the run within `plan_ttl` (2 hours) to save them without paying for them again, since running the command again, or resuming later, translates them anew.
 - **`--queue`** creates a queue run, starts its lane jobs and prints the run page's address; the command then ends and a queue worker does the work. It is refused on a connection without a worker, such as `sync`; use `--concurrency` there.
 
 ### Exit codes
 
-`0` when everything was translated or had nothing to do. `1` for invalid input, a provider without a key, a target that failed, or a run that was aborted or cancelled. A page skipped because its root page is missing is not a failure.
+`0` when everything was translated or had nothing to do, or the question was declined. `1` for invalid input, a provider without a key, a target that failed, a run that was aborted or cancelled, or Ctrl-C. A page skipped because its root page is missing is not a failure.
 
 ### Revisions
 
