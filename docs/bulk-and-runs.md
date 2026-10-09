@@ -39,6 +39,8 @@ Selecting a localization translates its whole family: the origin into every chos
 
 When text fields were left out because they are not localizable, the page says so and links to the [Audit page](#the-audit-page), so "nothing was translated" has an explanation.
 
+Users who may edit Tolk's settings can clear the list with **Reset** on the runs list: after a confirmation it deletes every completed, cancelled and aborted run they may see, with its results, so it can no longer be resumed or retried. Pending and running runs stay, and so do the translations the deleted runs saved. Without it, `tolk:prune` deletes runs after `runs.retention_days` days without activity.
+
 A run's status is one of *Not started*, *Running*, *Completed*, *Completed with errors*, *Cancelled* or *Aborted*. A run is aborted when a provider rejects the API key or a spending limit is reached, or when three items in a row failed because the provider stayed unavailable. An item fails after ten waits in a row for a provider that keeps asking to wait; such waits pause the item, not the run.
 
 ### The order of the items
@@ -138,5 +140,6 @@ With Statamic's git integration, a run makes one commit ("Content translated") w
 - Before a run starts, its page and `tolk:translate` show an estimate. Use it to compare models: the fast models cost a fraction of the quality ones.
 - During and after a run, its page shows the tokens and the cost of the calls it made.
 - The Overview shows the usage of the month per model, from every source: the editor, runs and the command line. The files are in `storage/statamic/tolk/usage/`, one per month.
+- Users who may edit Tolk's settings can **Reset** the month's usage on the Overview, after a confirmation: the month's file is deleted and counting starts again from zero. A run's page keeps showing the run's own usage.
 - Costs are computed from the prices in the model catalog (`models.*.price`). The monthly usage keeps the price of the day of each call; a run's page computes its cost from its tokens at the current prices. A model without a price makes the cost "unknown".
 - Tolk sets no budget caps. Set spending limits with the provider; when one is reached, the provider rejects the requests and the run is aborted with that message.

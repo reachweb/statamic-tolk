@@ -119,6 +119,30 @@ it('refuses a month that is not one', function (string $month) {
     $this->log->month($month);
 })->throws(InvalidArgumentException::class)->with(['../2026-10', '2026-13', '2026-1', 'october']);
 
+it('resets a month and leaves the others', function () {
+    $this->travelTo(now()->setDate(2026, 9, 30));
+    $this->log->add($this->sonnet, new Usage(input: 100, output: 10, calls: 1), UsageSource::Cli);
+    $this->travelTo(now()->setDate(2026, 10, 5));
+    $this->log->add($this->sonnet, new Usage(input: 300, output: 30, calls: 1), UsageSource::Editor);
+
+    $this->log->reset();
+
+    expect($this->log->month())->toBe([])
+        ->and($this->temporaryPath('usage/2026-10.json'))->not->toBeFile()
+        ->and($this->log->month('2026-09')[USAGE_TRANSLATOR])->toMatchArray(['input' => 100, 'calls' => 1]);
+
+    $this->log->add($this->sonnet, new Usage(input: 500, output: 50, calls: 1), UsageSource::Run);
+    $this->log->reset('2026-09');
+    $this->log->reset('2026-08');
+
+    expect($this->log->month('2026-09'))->toBe([])
+        ->and($this->log->month()[USAGE_TRANSLATOR])->toMatchArray(['input' => 500, 'calls' => 1]);
+});
+
+it('refuses to reset a month that is not one', function () {
+    $this->log->reset('../2026-10');
+})->throws(InvalidArgumentException::class);
+
 it('logs the translator and the reviewer under their own models', function () {
     $this->fakeTranslations();
     $this->fakeReview(['s1' => 'Γεια']);

@@ -95,9 +95,11 @@ function securityRoutes(): array
         'runs resume' => ['tolk.runs.resume', 'runs'],
         'runs retry' => ['tolk.runs.retry', 'runs'],
         'runs take over' => ['tolk.runs.take-over', 'runs'],
+        'runs reset' => ['tolk.runs.reset', 'settings'],
         'models' => ['tolk.models.index', 'models'],
         'providers test' => ['tolk.providers.test', 'settings'],
         'site profile generate' => ['tolk.site-profile.generate', 'settings'],
+        'usage reset' => ['tolk.usage.reset', 'settings'],
     ];
 }
 
@@ -150,9 +152,11 @@ function securityItemAccess(): array
         'runs resume' => ['edit' => false, 'site' => true],
         'runs retry' => ['edit' => false, 'site' => true],
         'runs take over' => ['edit' => false, 'site' => true],
+        'runs reset' => ['edit' => false, 'site' => false],
         'models' => ['edit' => false, 'site' => false],
         'providers test' => ['edit' => false, 'site' => false],
         'site profile generate' => ['edit' => false, 'site' => false],
+        'usage reset' => ['edit' => false, 'site' => false],
     ];
 }
 
@@ -206,9 +210,11 @@ function securityRequest(string $route): TestResponse
         'runs resume' => $t->postJson(cp_route('tolk.runs.resume', $run)),
         'runs retry' => $t->postJson(cp_route('tolk.runs.retry', $run)),
         'runs take over' => $t->postJson(cp_route('tolk.runs.take-over', $run)),
+        'runs reset' => $t->postJson(cp_route('tolk.runs.reset')),
         'models' => $t->getJson(cp_route('tolk.models.index')),
         'providers test' => $t->postJson(cp_route('tolk.providers.test'), ['provider' => 'anthropic']),
         'site profile generate' => $t->postJson(cp_route('tolk.site-profile.generate')),
+        'usage reset' => $t->postJson(cp_route('tolk.usage.reset'), ['month' => now()->format('Y-m')]),
     };
 }
 

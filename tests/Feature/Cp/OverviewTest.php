@@ -107,6 +107,41 @@ function greekCellsCached(): array
 
 const GREEK_CELLS = [['entry', 'articles'], ['term', 'topics'], ['globals', 'site_settings'], ['nav', 'main']];
 
+describe('usage reset', function () {
+    beforeEach(function () {
+        $this->log = app(UsageLog::class);
+        $this->log->add(ModelRef::fromString('openai:gpt-6.1-sol'), new Usage(input: 1000, output: 500, calls: 2), UsageSource::Run);
+    });
+
+    it('deletes the month\'s usage and answers it afresh', function () {
+        $this->signInAdmin();
+        $month = now()->format('Y-m');
+
+        $this->postJson(cp_route('tolk.usage.reset'), ['month' => $month])
+            ->assertOk()
+            ->assertExactJson(['usage' => ['month' => $month, 'models' => [], 'labels' => []]]);
+
+        expect($this->log->month())->toBe([]);
+    });
+
+    it('validates the month', function (mixed $month) {
+        $this->signInAdmin();
+
+        $this->postJson(cp_route('tolk.usage.reset'), ['month' => $month])->assertJsonValidationErrors('month');
+
+        expect($this->log->month())->not->toBe([]);
+    })->with([null, '', '2026-13', '2026-1', '../2026-10', [['2026-10']]]);
+
+    it('is offered and allowed only to a user who may edit the settings', function () {
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access en site', 'access el site']);
+
+        $this->get(cp_route('tolk.overview'))->assertOk()->assertInertia(fn (AssertableInertia $page) => $page->where('canResetUsage', false));
+        $this->postJson(cp_route('tolk.usage.reset'), ['month' => now()->format('Y-m')])->assertForbidden();
+
+        expect($this->log->month())->not->toBe([]);
+    });
+});
+
 describe('page', function () {
     it('renders the containers by type with their sites, the providers, the month\'s usage and the five latest runs', function () {
         $this->signInAdmin();
@@ -142,6 +177,7 @@ describe('page', function () {
                 ->where('usage.month', now()->format('Y-m'))
                 ->where('usage.models', fn ($models) => collect($models)->toArray() === $month)
                 ->where('usage.labels', ['openai:gpt-6.1-sol' => 'GPT-6.1 Sol', 'openai:my-own-model' => 'my-own-model'])
+                ->where('canResetUsage', true)
                 ->has('runs', 5)
                 ->where('runs.0.id', $runs->last()->id)
                 ->where('runs.0.url', cp_route('tolk.runs.show', $runs->last()->id))
@@ -150,6 +186,7 @@ describe('page', function () {
                     'store' => cp_route('tolk.runs.store'),
                     'runs' => cp_route('tolk.runs.index'),
                     'audit' => cp_route('tolk.audit'),
+                    'resetUsage' => cp_route('tolk.usage.reset'),
                 ]));
     });
 

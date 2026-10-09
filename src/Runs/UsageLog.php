@@ -54,12 +54,7 @@ final readonly class UsageLog
      */
     public function month(?string $month = null): array
     {
-        $month ??= now()->format('Y-m');
-
-        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month) !== 1) {
-            throw new InvalidArgumentException("[{$month}] is not a month. Use the format YYYY-MM.");
-        }
-
+        $month = $this->validMonth($month);
         $models = [];
 
         foreach ($this->read($month) as $model => $sources) {
@@ -90,6 +85,29 @@ final readonly class UsageLog
         ksort($models);
 
         return $models;
+    }
+
+    /**
+     * Deletes the month's usage. A call recorded meanwhile waits for the lock and starts the month again.
+     *
+     * @param  ?string  $month  `YYYY-MM`; null for the current month
+     */
+    public function reset(?string $month = null): void
+    {
+        $month = $this->validMonth($month);
+
+        $this->locked($month, fn () => $this->files->delete($this->path($month)));
+    }
+
+    private function validMonth(?string $month): string
+    {
+        $month ??= now()->format('Y-m');
+
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month) !== 1) {
+            throw new InvalidArgumentException("[{$month}] is not a month. Use the format YYYY-MM.");
+        }
+
+        return $month;
     }
 
     private function cost(array $entry): ?float

@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\RaisesTimeLimit;
 use Reach\StatamicTolk\Http\Requests\RunEstimateRequest;
 use Reach\StatamicTolk\Http\Requests\RunFollowRequest;
+use Reach\StatamicTolk\Http\Requests\RunResetRequest;
 use Reach\StatamicTolk\Http\Requests\RunStateRequest;
 use Reach\StatamicTolk\Http\Requests\RunStoreRequest;
 use Reach\StatamicTolk\Http\Requests\RunTickRequest;
@@ -30,6 +31,7 @@ use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Runs\WorkReport;
+use Reach\StatamicTolk\Support\Settings;
 use Statamic\Facades\User;
 
 /**
@@ -59,7 +61,19 @@ class RunsController extends Controller
     {
         return Inertia::render('tolk::Runs/Index', [
             'runs' => array_map($this->state->summary(...), RunStateRequest::visible($this->runs->recent(self::RECENT), User::current())),
+            'canReset' => Settings::editableBy(User::current()),
+            'urls' => ['reset' => cp_route('tolk.runs.reset')],
         ]);
+    }
+
+    /**
+     * Deletes every finished run the user may see, not only the listed ones; pending and running runs stay.
+     */
+    public function reset(RunResetRequest $request, RunProcessor $processor): JsonResponse
+    {
+        $runs = RunStateRequest::visible($this->runs->recent(PHP_INT_MAX), User::current());
+
+        return response()->json(['deleted' => count(array_filter($runs, $processor->delete(...)))]);
     }
 
     public function show(RunStateRequest $request): Response

@@ -173,6 +173,25 @@ final readonly class RunProcessor
     }
 
     /**
+     * Deletes a run that ended and fired RunFinished, under the status lock, so that it is not resumed or retried
+     * meanwhile. A run that is pending, running, still finishing or gone is left alone.
+     */
+    public function delete(Run $run): bool
+    {
+        return $this->locked($run, function () use ($run) {
+            $stored = $this->runs->find($run->id);
+
+            if ($stored === null || ! $stored->status->isFinal() || $stored->finalizedAt === null) {
+                return false;
+            }
+
+            $this->runs->delete($stored);
+
+            return true;
+        });
+    }
+
+    /**
      * Puts the failed items, and those skipped because a dependency failed, back to `pending`, and sets a run that ended
      * running again when it put any back; RunDispatcher::start() starts it. A pending run is left alone.
      *
