@@ -76,6 +76,14 @@ final class LangTarget implements Target
             ->all();
     }
 
+    /**
+     * The forms, whose texts the JSON file holds too (§A16); null for a PHP file.
+     */
+    public function sharesFileWith(): ?TargetRef
+    {
+        return $this->group === LangFiles::JSON ? new TargetRef(ContentType::Forms, $this->lang) : null;
+    }
+
     public function type(): ContentType
     {
         return ContentType::Lang;

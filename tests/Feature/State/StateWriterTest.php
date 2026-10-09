@@ -517,6 +517,28 @@ describe('forget', function () {
     });
 });
 
+describe('adopt', function () {
+    it('moves the records of fields the target has a value for but no record of', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Εισαγωγή.']);
+        StateFixtures::store($localization, ['intro' => StateFixtures::machine('A short intro.', 'Δική της.')]);
+        $from = TargetRef::parse('entry::other');
+        app(StateRepository::class)->update($from, fn (ItemState $state) => $state
+            ->withField('title', StateFixtures::machine('Hello', 'Γεια'))
+            ->withField('intro', StateFixtures::machine('A short intro.', 'Εισαγωγή.'))
+            ->withField('body', StateFixtures::machine('Body', 'Σώμα')));
+
+        $adopted = writer()->adopt(writerTarget($this->origin), $from);
+
+        expect($adopted)->toBe(['title'])
+            ->and(storedState($localization)->field('title'))->toEqual(StateFixtures::machine('Hello', 'Γεια'))
+            ->and(storedState($localization)->field('intro'))->toEqual(StateFixtures::machine('A short intro.', 'Δική της.'))
+            ->and(array_keys(app(StateRepository::class)->get($from)->fields))->toBe(['intro', 'body'])
+            ->and(writerStatus($this->origin)->fields['title']->status)->toBe(FieldStatus::Current)
+            ->and(writer()->adopt(writerTarget($this->origin), $from))->toBe([])
+            ->and(writer()->adopt(writerTarget($this->origin, 'de'), $from))->toBe([]);
+    });
+});
+
 describe('git', function () {
     beforeEach(function () {
         Queue::fake();
