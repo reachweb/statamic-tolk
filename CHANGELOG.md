@@ -53,6 +53,7 @@ All notable changes to Tolk are documented in this file.
 - `tolk:site --dry-run` plans and estimates the content of the collections, taxonomies and global sets it would enable for the site, and lists their fields that are not localizable, as the run does. It used to leave them out, so the dry run of a new site found almost nothing to translate.
 - After Ctrl-C or an abort, `tolk:translate` and `tolk:site` count the targets translated but not saved apart from those not translated, and advise resuming the run in the Control Panel within `plan_ttl` (two hours by default) to save them without paying for them again. They no longer advise running the command again when that would translate them anew, or when the cause of an abort would stop it too.
 - Ctrl-C at the question of `tolk:translate` and `tolk:site` ("Translate and save them?") deletes the run it prepared, instead of leaving it on the Runs page as not started, where anyone allowed to run bulk translations could start it. The question is now asked with Laravel Prompts.
+- `tolk:translate` refuses `--from` when it names the only `--site`, and warns that the navigation of the `--from` site is left out when it is one of several sites, instead of leaving it out without a word.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

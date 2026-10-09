@@ -87,6 +87,7 @@ describe('validation', function () {
         'unknown global set' => [['--globals' => ['colours'], '--site' => ['el']], 'Global set [colours] not found.'],
         'unknown navigation' => [['--nav' => ['footer'], '--site' => ['el']], 'Navigation [footer] not found.'],
         'unknown source site' => [['--collection' => ['articles'], '--site' => ['el'], '--from' => 'fr'], 'Unknown site [fr].'],
+        'the source site as the only site' => [['--nav' => ['main'], '--site' => ['el'], '--from' => 'el'], '--from [el] is the site to translate from, so it cannot be the only --site.'],
         '--queue with --concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true], '--concurrency cannot be combined with --queue'],
         'invalid concurrency' => [['--collection' => ['articles'], '--site' => ['el'], '--concurrency' => '0'], 'Invalid concurrency [0]. Use a whole number of at least 1.'],
         '--queue on a connection without a worker' => [['--collection' => ['articles'], '--site' => ['el'], '--queue' => true, '--concurrency' => null], 'The queue connection [sync] has no worker, so --queue would run the whole run inside this command.'],
@@ -538,6 +539,18 @@ describe('navigation', function () {
 
         expect($exitCode)->toBe(0)
             ->and(Nav::findByHandle('footer')->in('el')->tree())->toBe([['id' => 'legal', 'title' => '[T] Impressum']]);
+    });
+
+    it('reports the navigation of the --from site, which the other sites are translated from', function () {
+        $this->fakeTranslations();
+        $this->makeNav('footer', ['en' => [['id' => 'legal', 'title' => 'Legal']], 'de' => [['id' => 'legal', 'title' => 'Impressum']]]);
+
+        [$exitCode, $output] = translateCommand(['--nav' => ['footer'], '--site' => ['el', 'de'], '--from' => 'de', '--mode' => 'all']);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('1 target is a navigation in the site it is translated from (--from).')
+            ->and(Nav::findByHandle('footer')->in('el')->tree())->toBe([['id' => 'legal', 'title' => '[T] Impressum']])
+            ->and(Nav::findByHandle('footer')->in('de')->tree())->toBe([['id' => 'legal', 'title' => 'Impressum']]);
     });
 });
 

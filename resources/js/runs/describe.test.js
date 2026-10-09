@@ -134,9 +134,10 @@ describe('what the run translates', () => {
     });
 
     it('explains the targets left out when the run was created', () => {
-        expect(describeLeftOut({ skipped: { excluded_collection: 1, unauthorized: 4, site_not_in_collection: 0, new_reason: 2 } })).toEqual([
+        expect(describeLeftOut({ skipped: { excluded_collection: 1, unauthorized: 4, site_not_in_collection: 0, from_site: 1, new_reason: 2 } })).toEqual([
             { reason: 'excluded_collection', text: '1 target is in a collection excluded in the settings.' },
             { reason: 'unauthorized', text: '4 targets are ones you may not edit.' },
+            { reason: 'from_site', text: '1 target is a navigation in the site it is translated from.' },
             { reason: 'new_reason', text: '2 targets left out: new reason.' },
         ]);
         expect(describeLeftOut({ skipped: [] })).toEqual([]);

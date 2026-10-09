@@ -50,7 +50,7 @@ Translates entries, terms, global sets and navigation into other sites, and save
 | `--nav=` | Translate this navigation. Repeatable. |
 | `--all` | Every collection, taxonomy and global set that has more than one site, and every navigation. Not with the five options above. |
 | `--site=` | The site to translate into. Required; repeatable. |
-| `--from=` | The site to translate a missing localization from, where the entry has one there, and a navigation from, where it has a tree there. By default a localization is translated from its origin and a navigation from the default site's tree. Terms are always translated from their taxonomy's first site, and a global set from the origin it names for each site. |
+| `--from=` | The site to translate a missing localization from, where the entry has one there, and a navigation from, where it has a tree there. By default a localization is translated from its origin and a navigation from the default site's tree. Terms are always translated from their taxonomy's first site, and a global set from the origin it names for each site. It cannot be the only `--site`; next to other sites, its own navigation is the source and is left out. |
 | `--mode=` | `missing` (the default: only what is not translated yet), `update` (also outdated translations), `all` (everything again) or `review` (review the existing machine translations and save the corrections; see [Review](review.md#reviewing-existing-translations)). |
 | `--force` | Overwrite fields edited by hand. In mode `review`: review them too; they stay edited by hand. |
 | `--publish` | Publish a new localization when its origin is published, instead of saving it as a draft. Without it, the `new_localization_status` setting decides. |
@@ -147,7 +147,7 @@ php please tolk:site de
 
 The site must exist: Tolk does not create sites. Add it under **Sites** in the CP first. The command checks everything it was given before it changes anything, then runs six steps, each with its own question:
 
-1. **The site.** It must exist, and it must not be the site the others are translated from.
+1. **The site.** It must exist, and it must not be the site the others are translated from: the `--from` site, or the default site without `--from`.
 2. **Collections and taxonomies** that do not include the site are listed, with the offer to add it (default yes). A collection that should stay out belongs in the **Excluded collections** setting, which this step skips.
 3. **Global sets** where the site is not enabled, or has no origin, are listed with the offer to enable it, with `--from` or the default site as its origin, or another site of the set when it has neither (default yes).
 4. **Routes**: collections whose route is a per-site map without an entry for the site are named, so you can add one.

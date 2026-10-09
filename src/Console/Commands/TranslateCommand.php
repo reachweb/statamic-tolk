@@ -91,6 +91,7 @@ class TranslateCommand extends Command
         GlobalsTarget::NO_ORIGIN => ['target is in a site its global set has no origin for', 'targets are in sites their global set has no origin for'],
         GlobalsTarget::NO_BLUEPRINT => ['target is in a global set without a blueprint, so none of its fields is localizable', 'targets are in global sets without a blueprint, so none of their fields is localizable'],
         NavTarget::NO_SOURCE_TREE => ['target is in a navigation without a tree in the site it is translated from', 'targets are in navigations without a tree in the site they are translated from'],
+        NavTarget::FROM_SITE => ['target is a navigation in the site it is translated from (--from)', 'targets are navigations in the site they are translated from (--from)'],
         RunItem::UNAUTHORIZED => ['target is one you may not edit', 'targets are ones you may not edit'],
     ];
 
@@ -158,6 +159,11 @@ class TranslateCommand extends Command
             $mode = $this->mode();
             $review = $this->review($mode);
             $sourceSite = $this->sourceSite();
+
+            if ($sourceSite !== null && $sites === [$sourceSite]) {
+                throw new InvalidArgumentException("--from [{$sourceSite}] is the site to translate from, so it cannot be the only --site.");
+            }
+
             [$collections, $entryIds, $taxonomies, $globals, $navs] = $this->selection();
             $concurrency = $this->concurrency();
             $this->checkQueue();
