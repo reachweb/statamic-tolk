@@ -54,6 +54,20 @@ abstract class StructuredAgent implements Agent, HasProviderOptions, HasStructur
 
     public function providerOptions(Lab|string $provider): array
     {
-        return $this->providerOptions;
+        return [...$this->cacheOptions(), ...$this->providerOptions];
+    }
+
+    /**
+     * From GPT-5.6 on, OpenAI's default implicit mode writes the whole request to the cache at 1.25 times the input
+     * price, and no later request reads it back, because each ends in a different user message. Explicit mode without
+     * a breakpoint writes nothing (§A9). Earlier models refuse the key with a 400.
+     */
+    private function cacheOptions(): array
+    {
+        if ($this->model->provider !== 'openai' || ! preg_match('/^gpt-(\d+(?:\.\d+)?)/', $this->model->model, $version)) {
+            return [];
+        }
+
+        return version_compare($version[1], '5.6', '>=') ? ['prompt_cache_options' => ['mode' => 'explicit']] : [];
     }
 }

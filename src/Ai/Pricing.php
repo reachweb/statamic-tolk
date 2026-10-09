@@ -7,8 +7,8 @@ use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 class Pricing
 {
     /**
-     * An approximation: providers bill cache reads at about 10% of the input price and cache writes at about 125% (R6 §0),
-     * but the exact rates differ per provider and cache lifetime.
+     * For a model whose catalog entry has no cache prices: providers bill cache reads at about 10% of the input price and
+     * cache writes at about 125% (R6 §0), but the exact rates differ per model and cache lifetime.
      */
     public const float CACHE_READ_RATE = 0.1;
 
@@ -29,8 +29,8 @@ class Pricing
         $uncached = max(0, $usage->input - $usage->cacheRead - $usage->cacheWrite);
 
         return ($uncached * $price['input']
-            + $usage->cacheRead * $price['input'] * self::CACHE_READ_RATE
-            + $usage->cacheWrite * $price['input'] * self::CACHE_WRITE_RATE
+            + $usage->cacheRead * ($price['cache_read'] ?? $price['input'] * self::CACHE_READ_RATE)
+            + $usage->cacheWrite * ($price['cache_write'] ?? $price['input'] * self::CACHE_WRITE_RATE)
             + $usage->output * $price['output']) / 1_000_000;
     }
 

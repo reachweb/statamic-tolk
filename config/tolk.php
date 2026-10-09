@@ -44,9 +44,12 @@ return [
     | as they are, so they must never contain `output_config` (Anthropic),
     | `text` (OpenAI) or `response_format` (Gemini): each would replace the
     | structured output format. Never add temperature, top_p or top_k.
+    | OpenAI's models from GPT-5.6 on also get `prompt_cache_options` in
+    | explicit mode, unless their options hold a `prompt_cache_options`.
     | `reasoning_headroom` is the number of output tokens reserved for
     | thinking, 0 when the model does not think with these options. Prices
-    | are USD per million tokens.
+    | are USD per million tokens; `cache_read` and `cache_write` are needed
+    | only where a model's differ from 10% and 125% of its input price.
     |
     */
 
@@ -80,7 +83,8 @@ return [
                 'options' => ['reasoning' => ['effort' => 'low']],
                 'max_output_tokens' => 128000,
                 'reasoning_headroom' => 4000,
-                'price' => ['input' => 2.0, 'output' => 10.0],
+                // OpenAI bills Sol's cache reads at 5% of its input price, where most models read at 10%.
+                'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
             ],
             [
                 'id' => 'gpt-6-luna',

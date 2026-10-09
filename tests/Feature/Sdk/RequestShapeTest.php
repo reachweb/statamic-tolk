@@ -164,6 +164,20 @@ describe('openai', function () {
             ->and(collect($body['input'])->last()['role'])->toBe('user');
     });
 
+    it('sends a prompt_cache_options option at the top level, and the instructions without a cache breakpoint', function () {
+        $body = ProviderFixtures::prompt('openai', 'quality', [
+            'systemPrompt' => 'Translate into Greek.',
+            'options' => ['reasoning' => ['effort' => 'low'], 'prompt_cache_options' => ['mode' => 'explicit']],
+        ])->data();
+
+        expect($body['prompt_cache_options'])->toBe(['mode' => 'explicit'])
+            ->and($body['reasoning'])->toBe(['effort' => 'low'])
+            ->and($body['store'])->toBeFalse()
+            ->and($body['text']['format']['type'])->toBe('json_schema')
+            ->and($body['input'][0])->toBe(['role' => 'system', 'content' => 'Translate into Greek.'])
+            ->and(Arr::dot($body))->not->toHaveKey('input.0.content.0.prompt_cache_breakpoint');
+    });
+
     it('sends reasoning effort none for the fast model and no output cap when the agent sets none', function () {
         $body = ProviderFixtures::prompt('openai', 'fast')->data();
 

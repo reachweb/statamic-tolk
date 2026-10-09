@@ -246,7 +246,7 @@ final readonly class TranslationEngine implements Engine
             'source_chars' => $call->sourceChars(),
             'max_tokens' => $agent->maxTokens,
             'timeout' => $call->timeout,
-            'options' => array_keys($agent->providerOptions),
+            'options' => array_keys($agent->providerOptions($call->model->provider)),
         ]);
 
         return RequestRejected::from($call->model->provider, $error);

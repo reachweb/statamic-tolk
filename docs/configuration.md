@@ -133,10 +133,11 @@ Each entry has these keys:
 | `id` | The provider's model id. |
 | `label` | The name shown in the CP and the commands. |
 | `tier` | `quality` or `fast`. The first model of a tier is the provider's default for it; Automatic uses the quality one. |
-| `options` | Provider options merged into every request, such as reasoning settings. Never put `output_config` (Anthropic), `text` (OpenAI) or `response_format` (Gemini) here: each would replace the structured output format Tolk relies on. Never add `temperature`, `top_p` or `top_k`. |
+| `options` | Provider options merged into every request, such as reasoning settings. Never put `output_config` (Anthropic), `text` (OpenAI) or `response_format` (Gemini) here: each would replace the structured output format Tolk relies on. Never add `temperature`, `top_p` or `top_k`. OpenAI's models from GPT-5.6 on also get `prompt_cache_options: {mode: explicit}` (see [How much context costs](context-and-glossary.md#how-much-context-costs)), unless their options hold a `prompt_cache_options` of their own. |
 | `max_output_tokens` | The model's output limit. |
 | `reasoning_headroom` | Output tokens reserved for the model's thinking with these options; `0` when it does not think. |
 | `price.input`, `price.output` | USD per million tokens, for the estimates and the usage figures. Without a price the cost reads "unknown". |
+| `price.cache_read`, `price.cache_write` | Optional: USD per million tokens read from or written to the provider's prompt cache. Without them, reads cost 10% of the input price and writes 125%, the usual rates; GPT-6.1 Sol sets `cache_read`, because OpenAI bills its reads at 5%. |
 
 Claude Haiku 5.5 is priced by prompt length; the catalog holds its rate for prompts up to 100,000 tokens, which Tolk's requests stay well below. Gemini 3.8 Flash is priced at its rate from January 2027, so until then the estimates for it are about twice the cost.
 
