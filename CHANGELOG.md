@@ -36,6 +36,7 @@ All notable changes to Tolk are documented in this file.
 - On the page of a stopped run, the error is on a line of its own instead of running into the result ("0 done.The AI provider…").
 - On a narrow screen, the tables of the Overview, the runs list and a run's page scroll sideways inside their card, as Statamic's listings do, instead of running off the card and scrolling the whole page.
 - The description of the **Translate content** permission no longer says it gives the listing action, which needs **Run bulk translations**; it now names what it gives, as the installation guide does.
+- The editor's options review with the reviewer they show when you choose another model. Before, the reviewer marked "(default)" was replaced by the one the settings would pick for that model.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

@@ -51,6 +51,12 @@ function chosen(model, defaultModel) {
     return model && model !== defaultModel ? model : null;
 }
 
+// The reviewer the request names. The default reviewer is the one the settings resolve for the settings' translator;
+// for another translator the server resolves its own Automatic reviewer, so the reviewer shown is named.
+function chosenReviewer(reviewer, defaultReviewer, translator) {
+    return translator ? reviewer || null : chosen(reviewer, defaultReviewer);
+}
+
 // Translate in the options: everything that needs work (mode `update`), or everything (`all`). "Review after
 // translating" sends `review` (null leaves it to the settings), and the reviewer only while it is on.
 export function optionsRequest({
@@ -62,12 +68,14 @@ export function optionsRequest({
     reviewer = null,
     defaultReviewer = null,
 } = {}) {
+    const translator = chosen(model, defaultModel);
+
     return {
         mode: retranslate ? 'all' : 'update',
         overwriteManual,
-        translator: chosen(model, defaultModel),
+        translator,
         review,
-        reviewer: review === true ? chosen(reviewer, defaultReviewer) : null,
+        reviewer: review === true ? chosenReviewer(reviewer, defaultReviewer, translator) : null,
     };
 }
 
@@ -137,7 +145,7 @@ export function createOptions({
         remember(TRANSLATOR_PREFERENCE, request.translator);
 
         if (request.review === true) {
-            remember(REVIEWER_PREFERENCE, request.reviewer);
+            remember(REVIEWER_PREFERENCE, chosen(choice.reviewer, choice.defaultReviewer));
         }
 
         return translations.translate(name, request);
