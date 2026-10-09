@@ -13,6 +13,14 @@ export function isTermReference(reference) {
     return typeof reference === 'string' && reference.startsWith('term::');
 }
 
+// The banner's action row is there whenever a model is: "Retranslate everything" and the state actions also have work
+// on an entry that is up to date. After a translation the counts are those of the stored entry until Save, so only
+// Review and the options stay, for a review of the filled form with the same reviewer or another one (D8), and after
+// an error for another model than the one that failed.
+export function showsActions(phase, banner) {
+    return ['idle', 'done', 'error'].includes(phase) && Boolean(banner?.localization) && !banner?.setup;
+}
+
 // Only the full-page form of a saved entry or term gets a banner. A stacked inline editor is named
 // `relate-fieldtype-inline-{n}` and also shows `entry::` references; the create page has no reference yet.
 export function shouldPush(payload) {

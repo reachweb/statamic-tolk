@@ -7,7 +7,7 @@ import ProgressBar from './ProgressBar.vue';
 import TranslateOffer from './TranslateOffer.vue';
 import TranslateOptions from './TranslateOptions.vue';
 import { localizableUrl } from '../audit/checks.js';
-import { attachBanner, isTermReference } from '../editor/banner.js';
+import { attachBanner, isTermReference, showsActions } from '../editor/banner.js';
 import { registry } from '../editor/registry.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary, fieldLabels, statusColor } from '../editor/statuses.js';
@@ -35,10 +35,7 @@ const summary = computed(() => describeSummary(state.value?.summary ?? null, sta
 const canUndo = computed(() => undoable(state.value));
 const restart = computed(() => RESTART.includes(state.value?.error?.code));
 const notSaved = computed(() => (state.value?.notSaved?.length ? notSavedMessage(state.value.notSaved, state.value.status) : null));
-// The options are there whenever a model is: "Retranslate everything" and the state actions also have work on an entry that
-// is up to date. After a translation the counts are those of the stored entry until Save, so only Review and the options
-// stay, for a review of the filled form with the same reviewer or another one (D8).
-const actions = computed(() => ['idle', 'done'].includes(phase.value) && Boolean(banner.value.localization) && !banner.value.setup);
+const actions = computed(() => showsActions(phase.value, banner.value));
 const canReview = computed(() => reviewable(state.value));
 // A translation of one field, such as the field action's, names it.
 const workingField = computed(() => {

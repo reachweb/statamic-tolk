@@ -17,6 +17,7 @@ import {
 } from './options.js';
 import { createRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
+import { createTranslations } from './translate.js';
 
 let store;
 let registry;
@@ -423,6 +424,87 @@ describe('translate', () => {
 
         expect(toast.error).toHaveBeenCalledWith('Your choice could not be saved.');
         expect(translations.translate).toHaveBeenCalled();
+    });
+});
+
+describe('after a rejected model', () => {
+    const REJECTED = 'anthropic:claude-nonexistent-9';
+
+    beforeEach(() => {
+        vi.stubGlobal('Statamic', { $pinia: { defineStore }, $dirty: { add: () => {}, remove: () => {}, has: () => false } });
+    });
+
+    // The translation unit spawns its review unit, which the provider rejects while the plan's reviewer is REJECTED.
+    function rejectingApi() {
+        const plans = [];
+        const units = [];
+        const title = { value: '[el] Hello', meta: null, incomplete: false, warnings: [], corrections: [], reviewer: 'gemini:gemini-3.8-flash' };
+
+        return {
+            plans,
+            units,
+            get: vi.fn(),
+            post: vi.fn(async (path, data) => {
+                if (path === 'editor/plan') {
+                    plans.push(data);
+
+                    return { plan: `p${plans.length}`, units: [{ id: 'b1', fields: ['title'], chars: 5 }], fields: ['title'], skipped: [], ready: [], warnings: [], reviewer: data.reviewer };
+                }
+
+                units.push(`${data.plan}/${data.unit}`);
+
+                if (data.unit === 'b1') {
+                    return { fields: {}, unchanged: [], spawned: [{ id: 'b1.v', fields: ['title'], chars: 5 }], failed: [], warnings: [], usage: {} };
+                }
+
+                if (plans[Number(data.plan.slice(1)) - 1].reviewer === REJECTED) {
+                    throw new ApiError({ status: 502, code: 'provider_rejected', message: `The AI provider [anthropic] does not offer the model [${REJECTED}].`, data: null });
+                }
+
+                return { fields: { title }, unchanged: [], spawned: [], failed: [], warnings: [], usage: {}, reviewed: true };
+            }),
+        };
+    }
+
+    function mountForm() {
+        const ctx = {
+            name: ref('base'),
+            reference: ref('entry::el'),
+            site: ref('el'),
+            values: ref({ title: 'Hello' }),
+            originValues: ref({ title: 'Hello' }),
+            meta: ref({}),
+            localizedFields: ref([]),
+            readOnly: ref(false),
+            setFieldMeta: () => {},
+            setFieldValue: (handle, value) => (ctx.values.value[handle] = value),
+            desyncField: () => {},
+            withoutDirtying: (callback) => callback(),
+        };
+
+        registry.attachContext('base', ctx);
+        store.switched('base', 'entry::el', 0);
+        store.container('base').status = status({ untranslated: 1 });
+    }
+
+    it('translates from the error phase with another reviewer, which then replaces the request Retry repeats', async () => {
+        const api = rejectingApi();
+        const fill = (ctx, payloads) => ({ applied: Object.keys(payloads), skipped: {}, stale: false });
+
+        translations = createTranslations({ store: () => store, registry, api, fill, concurrency: () => 1 });
+        mountForm();
+        const options = create(api);
+
+        await options.translate('base', { review: true, reviewer: REJECTED, defaultReviewer: 'openai:gpt-6.1-sol' });
+
+        expect(store.containers.base.phase).toBe('error');
+        expect(store.containers.base.error.code).toBe('provider_rejected');
+
+        await options.translate('base', { review: true, reviewer: 'gemini:gemini-3.8-flash', defaultReviewer: 'openai:gpt-6.1-sol' });
+
+        expect(api.plans.map((body) => body.reviewer)).toEqual([REJECTED, 'gemini:gemini-3.8-flash']);
+        expect(store.containers.base.phase).toBe('done');
+        expect(store.containers.base.request.reviewer).toBe('gemini:gemini-3.8-flash');
     });
 });
 
