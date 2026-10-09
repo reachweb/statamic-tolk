@@ -5,6 +5,7 @@ namespace Reach\StatamicTolk\Targets;
 use Illuminate\Support\Collection;
 use Illuminate\Translation\MessageSelector;
 use LogicException;
+use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\Handlers\LangStringHandler;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -17,7 +18,7 @@ use Statamic\Fields\Fields;
 
 /**
  * One Laravel translation file in one language, translated from the same group in the source language (§A16). Each
- * string of the source is a synthetic `text` field, whose handle and label are its key and whose walk is
+ * string of the source with text is a synthetic `text` field, whose handle and label are its key and whose walk is
  * LangStringHandler's. Prompts use the languages of the sites given: the first site with each `lang()`. There is no
  * CP surface, so no user may translate it there. Build it with TargetFactory.
  */
@@ -36,6 +37,7 @@ final class LangTarget implements Target
         private readonly LangFiles $files,
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
+        private readonly ContentWalker $walker,
     ) {}
 
     /**
@@ -97,7 +99,9 @@ final class LangTarget implements Target
     }
 
     /**
-     * One field per string of the source, in its order. Other values are not text: write() carries them over.
+     * One field per string of the source that has text, in its order. Other values have nothing to translate, such as
+     * numbers, URLs and email addresses: write() carries them over. An empty string is a field, so a string the source
+     * emptied is removed from the file (§A7).
      */
     public function fields(): Collection
     {
@@ -108,7 +112,8 @@ final class LangTarget implements Target
                 'type' => self::FIELDTYPE,
                 'display' => (string) $key,
                 'tolk_handler' => LangStringHandler::HANDLE,
-            ])]);
+            ])])
+            ->filter(fn (Field $field, int|string $key) => $this->source()[$key] === '' || $this->walker->leaves($field, $this->source()[$key]) !== []);
     }
 
     public function sourceHasValue(string $handle): bool
@@ -139,7 +144,7 @@ final class LangTarget implements Target
 
     public function fresh(): static
     {
-        return new self($this->group, $this->lang, $this->sourceLang, $this->site, $this->sourceSite, $this->files, $this->resolver, $this->stateWriter);
+        return new self($this->group, $this->lang, $this->sourceLang, $this->site, $this->sourceSite, $this->files, $this->resolver, $this->stateWriter, $this->walker);
     }
 
     private function targetRef(): TargetRef
@@ -151,5 +156,10 @@ final class LangTarget implements Target
     private function sourceShape(): array
     {
         return $this->files->contents($this->sourceLang, $this->group);
+    }
+
+    private function carried(): array
+    {
+        return array_keys(array_diff_key($this->source(), $this->fields()->all()));
     }
 }

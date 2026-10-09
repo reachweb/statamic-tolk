@@ -161,6 +161,25 @@ it('tracks keys that read as integers, so their translations read current and up
         ->and(readLang('de/errors.php'))->toBe(['404' => '[T] This page was not found', '500' => '[T] Something went wrong', 'title' => '[T] Error']);
 });
 
+it('copies the strings with nothing to translate, such as URLs and email addresses, where the target file has none', function () {
+    writeLang('en.json', json_encode(['Book now' => 'Book now', 'site.url' => 'https://kymabay.example', 'site.email' => 'info@kymabay.example', 'site.phone' => '+30 28210 12345'], JSON_PRETTY_PRINT));
+    writeLang('el.json', json_encode(['site.url' => 'https://kymabay.example/el']));
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de', 'el'], '--group' => ['_json']]);
+    [, $second] = langCommand(['sites' => ['de', 'el'], '--group' => ['_json']]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('lang/de.json: done, created, 1 field')
+        ->and(readLang('de.json'))->toBe(['Book now' => '[T] Book now', 'site.url' => 'https://kymabay.example', 'site.email' => 'info@kymabay.example', 'site.phone' => '+30 28210 12345'])
+        ->and(readLang('el.json'))->toBe(['Book now' => '[T] Book now', 'site.url' => 'https://kymabay.example/el', 'site.email' => 'info@kymabay.example', 'site.phone' => '+30 28210 12345'])
+        ->and(langTranslator('de')->get('site.url'))->toBe('https://kymabay.example')
+        ->and(langTranslator('de')->get('site.email'))->toBe('info@kymabay.example')
+        ->and($second)->toContain('lang/de.json: skipped, nothing to do')
+        ->and($second)->toContain('lang/el.json: skipped, nothing to do')
+        ->and($second)->not->toContain('manual edits kept');
+});
+
 it('re-sends only the edited key in mode update', function () {
     $this->fakeTranslations();
     langCommand(['sites' => ['de']]);

@@ -65,6 +65,18 @@ it('has a field for each string of the source, keyed and labelled by its key', f
         ->and(langTarget('_json')->name())->toBe('lang/de.json');
 });
 
+it('has no field for a string with nothing to translate, but one for an empty string', function () {
+    file_put_contents(lang_path('en.json'), json_encode([
+        'Book now' => 'Book now',
+        'site.url' => 'https://kymabay.example',
+        'site.email' => 'info@kymabay.example',
+        'site.phone' => '+30 28210 12345',
+        'Coming soon' => '',
+    ]));
+
+    expect(langTarget('_json')->fields()->keys()->all())->toBe(['Book now', 'Coming soon']);
+});
+
 it('uses the first site with each language for prompts, and has no CP surface', function () {
     Site::setSites([
         'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],

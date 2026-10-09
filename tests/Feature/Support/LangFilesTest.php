@@ -167,13 +167,13 @@ it('keeps the keys only the target has, after the source keys, and removes only 
     expect(json_decode(file_get_contents(lang_path('de.json')), true))->toBe(['One' => 'Eins', 'Two' => 'Zwei', 'Mine' => 'Meins']);
 });
 
-it('carries values that are not text over from the source where the target has none', function () {
-    putLangFile('en/settings.php', "<?php return ['limit' => 5, 'title' => 'Title', 'enabled' => true, 'empty' => [], 'none' => null];");
+it('carries the values it is told to over from the source where the target has none', function () {
+    putLangFile('en/settings.php', "<?php return ['limit' => 5, 'title' => 'Title', 'enabled' => true, 'empty' => [], 'none' => null, 'url' => 'https://kymabay.example', 'other' => 'Other'];");
     putLangFile('de/settings.php', "<?php return ['limit' => 7];");
 
-    langFiles()->write('de', 'settings', ['title' => 'Titel'], [], langFiles()->contents('en', 'settings'));
+    langFiles()->write('de', 'settings', ['title' => 'Titel'], [], langFiles()->contents('en', 'settings'), ['limit', 'enabled', 'empty', 'none', 'url']);
 
-    expect(includeLangFile('de/settings.php'))->toBe(['limit' => 7, 'title' => 'Titel', 'enabled' => true, 'empty' => [], 'none' => null]);
+    expect(includeLangFile('de/settings.php'))->toBe(['limit' => 7, 'title' => 'Titel', 'enabled' => true, 'empty' => [], 'none' => null, 'url' => 'https://kymabay.example']);
 });
 
 it('writes a JSON file without keys as an object, and numeric keys as keys', function () {
