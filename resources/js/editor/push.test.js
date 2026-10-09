@@ -1,7 +1,7 @@
 import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api.js';
-import { createPushes, describePush, missingSites, pushChoices, updateSites } from './push.js';
+import { awaitsUpdate, createPushes, describePush, EXPECT_DELAYS, missingSites, pushChoices, updateSites } from './push.js';
 import { useEditorStore } from './store.js';
 
 function translate(key, replacements = {}) {
@@ -115,11 +115,11 @@ function fakeApi({ post, get } = {}) {
     };
 }
 
-function setup({ api = fakeApi({ post: pushAnswer(), get: status() }), followers = fakeFollowers() } = {}) {
+function setup({ api = fakeApi({ post: pushAnswer(), get: status() }), followers = fakeFollowers(), wait = async () => {} } = {}) {
     store.switched('base', REFERENCE);
     store.container('base').status = status();
 
-    return { api, followers, pushes: createPushes({ store: () => store, api, createFollower: followers.create }) };
+    return { api, followers, pushes: createPushes({ store: () => store, api, createFollower: followers.create, wait }) };
 }
 
 describe('choices', () => {
@@ -495,5 +495,104 @@ describe('adopt', () => {
 
         expect(followers.create).not.toHaveBeenCalled();
         expect(describePush(store.container('base').push, status()).failure).toBe('Down');
+    });
+});
+
+describe('after a save', () => {
+    const outdated = (extra = {}) => status([localization('el', 'Greek', true, { status: 'outdated' })], { origin: { localizations: [localization('el', 'Greek', true, { status: 'outdated' })], auto_update: 'save' }, ...extra });
+    const current = () => status([localization('el', 'Greek', true)], { origin: { localizations: [localization('el', 'Greek', true)], auto_update: 'save' } });
+    const running = () => ({ ...current(), active_run: { ...pushAnswer({ driver: 'cli' }), automatic: true } });
+
+    it('knows which localizations an automatic update would translate', () => {
+        expect(awaitsUpdate(outdated())).toBe(true);
+        expect(awaitsUpdate(status([localization('el', 'Greek', false)]))).toBe(true);
+        expect(awaitsUpdate(status([localization('el', 'Greek', true, { status: 'untranslated' })]))).toBe(true);
+        expect(awaitsUpdate(current())).toBe(false);
+        expect(awaitsUpdate(null)).toBe(false);
+    });
+
+    it('follows the run the save started', async () => {
+        const { api, followers, pushes } = setup({ api: fakeApi({ get: (url) => runState({ driver: 'cli' }) }) });
+
+        await pushes.afterSave('base', running());
+
+        expect(store.container('base').push).toMatchObject({ phase: 'running', run: '01RUN', driver: 'cli', automatic: true });
+        expect(followers.made).toHaveLength(1);
+        expect(api.requests.map((request) => request.url)).toEqual(['https://cp.test/cp/tolk/runs/01RUN/state']);
+    });
+
+    it('looks for the automatic update a few times until its run shows, and follows it', async () => {
+        const answers = [outdated(), running()];
+        const waits = [];
+        const { api, followers, pushes } = setup({
+            api: fakeApi({ get: (url) => (url === 'editor/status' ? answers.shift() : runState({ driver: 'cli' })) }),
+            wait: async (ms) => waits.push(ms),
+        });
+
+        await pushes.afterSave('base', outdated());
+
+        expect(waits).toEqual(EXPECT_DELAYS.slice(0, 2));
+        expect(api.requests.filter((request) => request.url === 'editor/status')).toEqual([
+            { method: 'get', url: 'editor/status', data: { reference: REFERENCE } },
+            { method: 'get', url: 'editor/status', data: { reference: REFERENCE } },
+        ]);
+        expect(store.container('base').push).toMatchObject({ phase: 'running', automatic: true });
+        expect(followers.made).toHaveLength(1);
+    });
+
+    it('stops looking once nothing awaits an update, and shows that status', async () => {
+        const { api, pushes } = setup({ api: fakeApi({ get: current() }) });
+
+        await pushes.afterSave('base', outdated());
+
+        expect(api.get).toHaveBeenCalledTimes(1);
+        expect(store.container('base').status).toEqual(current());
+        expect(store.container('base').push).toBeNull();
+    });
+
+    it('gives up after the last look', async () => {
+        const { api, pushes } = setup({ api: fakeApi({ get: outdated() }) });
+
+        await pushes.afterSave('base', outdated());
+
+        expect(api.get).toHaveBeenCalledTimes(EXPECT_DELAYS.length);
+        expect(store.container('base').push).toBeNull();
+    });
+
+    it('does not look without automatic updates on save, or when nothing awaits one', async () => {
+        const { api, pushes } = setup();
+
+        await pushes.afterSave('base', outdated({ origin: { localizations: [localization('el', 'Greek', true, { status: 'outdated' })], auto_update: 'publish' } }));
+        await pushes.afterSave('base', status([localization('el', 'Greek', true, { status: 'outdated' })]));
+        await pushes.afterSave('base', current());
+        await pushes.afterSave('base', null);
+
+        expect(api.get).not.toHaveBeenCalled();
+    });
+
+    it('stops looking when the form shows another item, or when a status cannot be read', async () => {
+        const switching = setup({
+            wait: async () => store.switched('base', 'entry::other'),
+        });
+
+        await switching.pushes.afterSave('base', outdated());
+
+        expect(switching.api.get).not.toHaveBeenCalled();
+
+        const failing = setup({ api: fakeApi({ get: () => Promise.reject(new ApiError('Server Error', 500)) }) });
+
+        await failing.pushes.afterSave('base', outdated());
+
+        expect(failing.api.get).toHaveBeenCalledTimes(1);
+        expect(toasts).toEqual([]);
+    });
+});
+
+describe('describePush of an automatic update', () => {
+    it('says that it is automatic', () => {
+        const push = { phase: 'running', run: '01RUN', driver: 'cli', automatic: true, sites: null, state: runState({ driver: 'cli' }), failures: [], missing: [] };
+
+        expect(describePush(push, status())).toMatchObject({ automatic: true, keepOpen: false });
+        expect(describePush({ ...push, automatic: false }, status()).automatic).toBe(false);
     });
 });

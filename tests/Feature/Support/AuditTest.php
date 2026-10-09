@@ -197,6 +197,18 @@ describe('queue', function () {
         'the default' => [null, 'ok', 'retry_after is 90 seconds, enough for a provider call of up to 45 seconds (tolk.http.timeout.web).'],
     ]);
 
+    it('says how automatic updates run while they are on', function () {
+        expect(implode("\n", auditItems('queue')))->not->toContain('Automatic updates');
+
+        $this->withSettings(['auto_update' => true]);
+
+        expect(auditItems('queue'))->toContain('ok: Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response. A queue worker keeps that process free.');
+
+        config(['queue.connections.jobs' => ['driver' => 'database', 'table' => 'jobs'], 'tolk.runs.queue.connection' => 'jobs']);
+
+        expect(auditItems('queue'))->toContain('ok: Automatic updates are on: saving a published entry starts a run of it on jobs after 10 seconds.');
+    });
+
     it('warns that an SQS connection needs retry_after set to its visibility timeout', function () {
         config([
             'queue.connections.sqs' => ['driver' => 'sqs', 'queue' => 'default'],

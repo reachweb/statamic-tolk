@@ -160,17 +160,21 @@ describe('what the run translates', () => {
         expect(describeScope({ collections: ['articles', 'pages'], sites: ['el', 'de'] }, siteName)).toEqual({
             what: 'articles, pages',
             sites: 'Greek, German',
+            automatic: false,
         });
         expect(describeScope({ collections: ['*'], entry_ids: ['a'], sites: ['el'] }, siteName)).toEqual({
             what: 'All collections, 1 selected entry',
             sites: 'Greek',
+            automatic: false,
         });
-        expect(describeScope({ collections: [], entry_ids: ['a', 'b'], sites: [] })).toEqual({ what: '2 selected entries', sites: '' });
+        expect(describeScope({ collections: [], entry_ids: ['a', 'b'], sites: [] })).toEqual({ what: '2 selected entries', sites: '', automatic: false });
+        expect(describeScope({ entry_ids: ['a'], sites: ['el'], automatic: true }, siteName)).toEqual({ what: '1 selected entry', sites: 'Greek', automatic: true });
         expect(describeScope({ collections: ['articles'], taxonomies: ['topics', 'tags'], sites: ['el'] }, siteName).what).toBe('articles, topics, tags');
         expect(describeScope({ collections: ['*'], taxonomies: ['*'], term_ids: ['topics::food'] }).what).toBe('All collections, All taxonomies, 1 selected term');
         expect(describeScope({ term_ids: ['topics::food', 'topics::wellness'], sites: ['el', 'de'] }, siteName)).toEqual({
             what: '2 selected terms',
             sites: 'Greek, German',
+            automatic: false,
         });
         expect(describeScope({ taxonomies: ['topics'], globals: ['site_settings', 'footer'], sites: ['el'] }, siteName).what).toBe('topics, site_settings, footer');
         expect(describeScope({ collections: ['*'], taxonomies: ['*'], globals: ['*'] }).what).toBe('All collections, All taxonomies, All global sets');

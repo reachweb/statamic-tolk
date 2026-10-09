@@ -103,6 +103,20 @@ When it has finished, the banner shows a line per site with a link to the locali
 
 You need only `translate content` for this: you follow and cancel the run you started from the entry, and it continues when you open the entry again, without seeing the Runs pages. A cancelled or aborted run is resumed on the Runs pages, which need `run bulk translations`; otherwise start the translation again from the entry.
 
+### Automatic updates
+
+With **Update translations automatically** on in the settings (the Automation tab, see [Configuration](configuration.md#automation)), you do not need the button: each time you save a published entry in its origin, Tolk starts the same run as **Update translations**, into every localization of the entry. It translates the fields whose origin changed and the fields not translated yet, and keeps the fields edited by hand. With **Create missing localizations** on, it also translates the entry into the sites of its collection that have none, as **Translate into…** does.
+
+- The origin's banner says when it happens: "Translations are updated automatically each time this entry is saved", or "…when this entry is published" for a draft, and in a collection with revisions, where Save goes to the working copy and only Publish saves the entry.
+- After a save, the banner shows the run's progress and its result, as for **Update translations**, and says "Updating the translations automatically into…". You can leave the page: the run does not need it.
+- A save that changes no text starts nothing. A save while an earlier run of the entry is still going waits for it, so the same fields are not paid for twice.
+- The run translates as you: the sites you may not edit are left out. It is listed on the Runs page as an automatic update, and its cost counts under **Automatic updates** on the Overview.
+- The localization's banner says when an automatic update last saved it, "Updated automatically from English on 9 Oct 2026, 10:42.", with "not published yet" while the update waits in the working copy of a published localization in a collection with revisions (unless **Publish updates** is on).
+- Saves from code (an import, a form handler) count too, when the entry is published.
+- Entries only: terms, global sets and the navigation are updated with **Update translations**, bulk runs or the command line.
+
+How the run is driven, with and without a queue worker, is in [Bulk translations and runs](bulk-and-runs.md#automatic-updates).
+
 ## Collections with revisions
 
 In the editor, Tolk only fills the form, and Statamic saves it as it always does: on a collection with revisions, your Save goes to the working copy, and publishing stays a separate step. What happens when Tolk saves server-side (Translate into…, bulk runs, the command line) is in [Bulk translations and runs](bulk-and-runs.md#revisions).

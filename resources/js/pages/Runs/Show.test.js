@@ -145,3 +145,14 @@ describe('the result of a run', () => {
         expect(lines(html)).toEqual(['The run was stopped: 0 done.', 'The AI provider rejected the request: the API key is not valid.']);
     });
 });
+
+describe('a run that stopped moving', () => {
+    const stalled = (driver, automatic) =>
+        render('data-tolk-stalled', { stalled: true, run: { driver }, scope: { automatic }, actions: { takeOver: false }, busy: null, follower: {}, act: () => {} });
+
+    it('blames the process of an automatic update, the command, or the queue', async () => {
+        expect(text(await stalled('cli', true))).toContain('The process that updates these translations has not worked on them for a while');
+        expect(text(await stalled('cli', false))).toContain('The command running this run has not worked on it for a while');
+        expect(text(await stalled('queue', true))).toContain('No queue worker has worked on this run for a while');
+    });
+});

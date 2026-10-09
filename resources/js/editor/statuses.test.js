@@ -342,6 +342,32 @@ describe('an origin whose translations', () => {
     });
 });
 
+describe('automatic updates', () => {
+    const origin = (autoUpdate) =>
+        describeStatus(
+            payload({
+                origin: { localizations: [{ site: 'el', name: 'Greek', exists: true, status: 'outdated', counts: { ...zero, outdated: 1 } }], auto_update: autoUpdate },
+            }),
+        ).origin;
+
+    it('says when saving or publishing the origin updates its translations', () => {
+        expect(origin('save').autoUpdate).toBe('Translations are updated automatically each time this entry is saved.');
+        expect(origin('publish').autoUpdate).toBe('Translations are updated automatically when this entry is published.');
+        expect(origin(null).autoUpdate).toBeNull();
+        expect(origin(undefined).autoUpdate).toBeNull();
+    });
+
+    it('tells a localization when an automatic update last saved it, and that it waits to be published', () => {
+        const note = (autoUpdated) => describeStatus(payload({ localization: localization({}, {}, { auto_updated: autoUpdated }) })).localization.autoUpdated;
+        const date = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(Date.parse('2026-10-09T08:30:00Z'));
+
+        expect(note({ at: '2026-10-09T08:30:00Z', unpublished: false })).toBe(`Updated automatically from English on ${date}.`);
+        expect(note({ at: '2026-10-09T08:30:00Z', unpublished: true })).toBe(`Updated automatically from English on ${date}, not published yet.`);
+        expect(note(null)).toBeNull();
+        expect(note({ at: 'nonsense', unpublished: false })).toBeNull();
+    });
+});
+
 it('describes both blocks for an entry in the middle of a chain', () => {
     const banner = describeStatus(
         payload({
