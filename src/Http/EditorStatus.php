@@ -204,7 +204,17 @@ final readonly class EditorStatus
             ];
         }
 
-        return $localizations === [] ? null : ['localizations' => $localizations, 'auto_update' => $this->autoUpdate($item)];
+        if ($localizations === []) {
+            return null;
+        }
+
+        $autoUpdate = $this->autoUpdate($item);
+
+        return [
+            'localizations' => $localizations,
+            'auto_update' => $autoUpdate,
+            'auto_update_sites' => $autoUpdate === null ? [] : $this->updater->sites($item),
+        ];
     }
 
     /**
