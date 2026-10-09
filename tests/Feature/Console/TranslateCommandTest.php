@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\ProviderError;
+use Reach\StatamicTolk\Console\Commands\TranslateCommand;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
@@ -35,6 +36,7 @@ use Reach\StatamicTolk\Tests\Support\TerminalTranslate;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Term;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process as SymfonyProcess;
 
@@ -858,6 +860,8 @@ describe('summary and git', function () {
             ->and($run->status)->toBe(RunStatus::Aborted)
             ->and($run->error)->toContain('Invalid API key.')
             ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
+            ->and($output)->toMatch('/(?<!Scanning) 1\/2 \[/')
+            ->and($output)->not->toMatch('/(?<!Scanning) 2\/2 \[/')
             ->and($output)->toContain('1 target was not translated. Resume the run in the Control Panel once the cause above is fixed:')
             ->and($output)->not->toContain('Run the command again')
             ->and($output)->toContain("\n  ".cp_route('tolk.runs.show', $run->id)."\n");
@@ -1148,6 +1152,8 @@ describe('the run engine', function () {
             ->and($output)->toContain('Cancelling the run.')
             ->and($output)->toContain('Hello → Greek: done, created, 2 fields')
             ->and($output)->toContain('1 target was not translated. Run the command again to translate it, or resume the run in the Control Panel:')
+            ->and($output)->toMatch('/(?<!Scanning) 1\/2 \[/')
+            ->and($output)->not->toMatch('/(?<!Scanning) 2\/2 \[/')
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello')
             ->and($this->world->fresh()->existsIn('el'))->toBeFalse()
             ->and($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE])
@@ -1161,10 +1167,16 @@ describe('the run engine', function () {
 
         pcntl_signal(SIGINT, fn () => null);
         $this->fakeTranslations();
-        // The scan reads the site profile for the prompt it estimates.
+        $interrupted = false;
+        // The scan reads the site profile for the prompt it estimates. The pause uses up the scan's budget, so the scan
+        // stops after the first target, as it does on a large site.
         $settings = Mockery::mock(Settings::class)->makePartial();
-        $settings->shouldReceive('siteProfile')->andReturnUsing(function () {
-            posix_kill(getmypid(), SIGINT);
+        $settings->shouldReceive('siteProfile')->andReturnUsing(function () use (&$interrupted) {
+            if (! $interrupted) {
+                $interrupted = true;
+                posix_kill(getmypid(), SIGINT);
+                usleep((TranslateCommand::ESTIMATE_BUDGET_MS + 50) * 1000);
+            }
 
             return '';
         });
@@ -1178,8 +1190,27 @@ describe('the run engine', function () {
 
         expect($exitCode)->toBe(1)
             ->and($output)->toContain('Nothing was translated.')
+            ->and($output)->toContain('Scanning 1/2 [')
+            ->and($output)->not->toContain('Scanning 2/2 [')
             ->and(app(RunRepository::class)->recent(10))->toBe([]);
         $this->assertNoModelCalls();
+    });
+
+    it('leaves the bar of an aborted run where it stopped, and resets the terminal\'s progress indicator', function () {
+        ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
+            ? ScriptedEngine::translated($call)
+            : throw ProviderRejected::from($call->model, new ProviderError(ProviderErrorKind::Rejected, 'Invalid API key.', 401)));
+        $terminal = new BufferedOutput(decorated: true);
+
+        $exitCode = Artisan::call('tolk:translate', ['--yes' => true, '--concurrency' => 1, '--collection' => ['articles'], '--site' => ['el']], $terminal);
+        $output = $terminal->fetch();
+        // Symfony 7.4 and later also show a bar's progress in the terminal's tab or taskbar (OSC 9;4), until it is reset.
+        preg_match_all('/\e\]9;4;\d+;\d+\e\\\\/', $output, $indicators);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toMatch('/(?<!Scanning) 1\/2 \[/')
+            ->and($output)->not->toMatch('/(?<!Scanning) 2\/2 \[/')
+            ->and($indicators[0] === [] || end($indicators[0]) === "\e]9;4;0;0\e\\")->toBeTrue();
     });
 
     it('traps Ctrl-C again after asking for confirmation', function () {
