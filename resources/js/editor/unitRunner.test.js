@@ -387,6 +387,77 @@ describe('runPlan', () => {
         expect(summary.failedUnits).toEqual([]);
     });
 
+    it('still runs what the units in flight spawn after an abort, so their fields are filled, and starts no other unit', async () => {
+        const server = fakeApi({
+            'b1~s2': [response({}, { spawned: [unit('b1~s2.v', ['title'])] })],
+            'b1.v': [response({ intro: payload('intro') })],
+            'b1~s2.v': [response({ title: payload('title') })],
+        });
+        const controller = new AbortController();
+        const onFields = vi.fn();
+        const done = runPlan({ api: server.api, plan: plan([unit('b1', ['title', 'intro']), unit('b2', ['body'])]), signal: controller.signal, onFields });
+
+        await flush();
+        // With review on, a translation unit delivers nothing itself: its review, and here a repair, hold its fields.
+        controller.abort();
+        await server.answer('b1', response({}, { spawned: [unit('b1~s2', ['title']), unit('b1.v', ['intro'])] }));
+
+        const summary = await done;
+
+        expect(server.requests).toEqual(['b1', 'b1~s2', 'b1.v', 'b1~s2.v']);
+        expect(onFields).toHaveBeenCalledTimes(2);
+        expect(summary.delivered).toEqual(['intro', 'title']);
+        expect(summary.aborted).toBe(true);
+        expect(summary.cancelledUnits.map((u) => u.id)).toEqual(['b2']);
+    });
+
+    it('also runs a spawned unit that was still waiting for a lane when the abort came', async () => {
+        const server = fakeApi({ 'a.v': [response({ a: payload('a') })] });
+        const controller = new AbortController();
+        const done = runPlan({ api: server.api, plan: plan([unit('a'), unit('b'), unit('c')]), signal: controller.signal });
+
+        await flush();
+        await server.answer('a', response({}, { spawned: [unit('a.v', ['a'])] }));
+        controller.abort();
+        await server.answer('b', response({ b: payload('b') }));
+
+        const summary = await done;
+
+        expect(server.requests).toEqual(['a', 'b', 'a.v']);
+        expect(summary.delivered).toEqual(['b', 'a']);
+        expect(summary.cancelledUnits.map((u) => u.id)).toEqual(['c']);
+    });
+
+    it('runs nothing more after an abort it is not to finish, such as a switch', async () => {
+        const server = fakeApi();
+        const controller = new AbortController();
+        const done = runPlan({ api: server.api, plan: plan([unit('b1', ['title']), unit('b2', ['body'])]), signal: controller.signal, finishing: () => false });
+
+        await flush();
+        controller.abort();
+        await server.answer('b1', response({}, { spawned: [unit('b1.v', ['title'])] }));
+
+        const summary = await done;
+
+        expect(server.requests).toEqual(['b1']);
+        expect(summary.delivered).toEqual([]);
+        expect(summary.cancelledUnits.map((u) => u.id)).toEqual(['b2', 'b1.v']);
+    });
+
+    it('runs no spawned unit once everything stopped', async () => {
+        const server = fakeApi();
+        const done = runPlan({ api: server.api, plan: plan([unit('a'), unit('b')]), concurrency: 2 });
+
+        await flush();
+        await server.answer('a', error(409, 'source_changed'));
+        await server.answer('b', response({}, { spawned: [unit('b.v', ['b'])] }));
+
+        const summary = await done;
+
+        expect(server.requests).toEqual(['a', 'b']);
+        expect(summary.cancelledUnits.map((u) => u.id)).toEqual(['b.v']);
+    });
+
     it('resolves only once every fill has resolved, and counts what was filled', async () => {
         const server = fakeApi({
             a: [response({ title: payload('title'), intro: payload('intro', { incomplete: true }) })],
