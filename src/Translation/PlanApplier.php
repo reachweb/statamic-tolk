@@ -19,13 +19,19 @@ final readonly class PlanApplier
     public function __construct(private Pipeline $pipeline) {}
 
     /**
-     * Assembles every field from the given target and saves the fields that assembled. Pass a target resolved after the
-     * units ran, so a source edited meanwhile raises SourceChanged. A review saves only the fields it corrected; a field
-     * that failed in strict mode is listed as failed and the others are still saved.
+     * Assembles every field and saves the fields that assembled, under the write lock and from the target resolved again
+     * once ContentWriter reloaded what other processes saved, so a source edited while the units ran raises
+     * SourceChanged even when this process still holds it in memory. A review saves only the fields it corrected; a
+     * field that failed in strict mode is listed as failed and the others are still saved.
      *
      * @throws SourceChanged
      */
     public function apply(Plan $plan, Target $target, ApplyOptions $options): TargetResult
+    {
+        return ContentWriter::write(fn () => $this->applyFresh($plan, $target->fresh(), $options));
+    }
+
+    private function applyFresh(Plan $plan, Target $target, ApplyOptions $options): TargetResult
     {
         $assembled = $failed = $unchanged = $corrections = [];
         $warnings = $plan->noteList();
@@ -69,7 +75,7 @@ final readonly class PlanApplier
             );
         }
 
-        $applied = ContentWriter::write(fn () => $target->fresh()->apply(array_values($assembled), $options));
+        $applied = $target->apply(array_values($assembled), $options);
         $fields = $failed;
 
         foreach ($applied->applied as $handle) {

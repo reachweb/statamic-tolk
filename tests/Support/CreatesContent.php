@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Statamic\Contracts\Entries\Collection as CollectionContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
@@ -14,6 +15,7 @@ use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Stache;
 use Statamic\Facades\Taxonomy;
 use Statamic\Facades\Term;
 use Statamic\Fields\Blueprint as BlueprintObject;
@@ -126,6 +128,19 @@ trait CreatesContent
         $localization->save();
 
         return $localization;
+    }
+
+    /**
+     * Changes an entry as another process saves it: its file and the Stache's cached item change, while what this
+     * process holds in memory, such as the origin a localization keeps in Blink, stays as it was. A save in this
+     * process would also run the save's side effects here.
+     */
+    protected function saveEntryElsewhere(string $id, array $changes): void
+    {
+        $entry = Entry::find($id)->merge($changes);
+
+        File::put($entry->path(), $entry->fileContents());
+        Stache::cacheStore()->forever("stache::items::entries::{$entry->collectionHandle()}::{$id}", $entry);
     }
 
     protected function makeTaxonomy(string $handle, array $sites, array $fields = []): TaxonomyContract

@@ -426,6 +426,19 @@ describe('unit', function () {
         expect(greekState('title')->pending)->toBe([]);
     });
 
+    it('answers 409 when another process changed the origin while the unit ran', function () {
+        greekEditor();
+        $plan = editorPlan($this->greek)->json('plan');
+        $this->fakeTranslations(function (string $text) {
+            $this->saveEntryElsewhere($this->origin->id(), ['intro' => 'A longer intro.']);
+
+            return '[T] '.$text;
+        });
+
+        editorUnit($plan, 'b1')->assertConflict()->assertJsonPath('code', 'source_changed');
+        expect(greekState('title')->pending)->toBe([]);
+    });
+
     it('answers 429 with the wait while the provider is paused', function () {
         greekEditor();
         $plan = editorPlan($this->greek)->json('plan');

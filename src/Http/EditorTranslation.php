@@ -15,6 +15,7 @@ use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\UnitBusy;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
 use Reach\StatamicTolk\Runs\UsageRecorder;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Translation\EditorDelivery;
 use Reach\StatamicTolk\Translation\Pipeline;
 use Reach\StatamicTolk\Translation\Plan;
@@ -85,6 +86,10 @@ final readonly class EditorTranslation
         });
 
         $ready = array_intersect($this->pipeline->readyFields($plan), $this->fieldsOf($plan, $unit));
+
+        // The source may have been saved by another request while the model worked; this process would still hold it.
+        ContentWriter::refreshStache();
+
         [$fields, $failed, $warnings, $unchanged] = $this->deliver($plan, $target->fresh(), array_values($ready));
 
         return [

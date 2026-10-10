@@ -310,6 +310,25 @@ describe('failures', function () {
         assertPlansForgotten($this->planKeys);
     });
 
+    it('plans again once when another process changed the origin of an existing localization while its units ran', function () {
+        $this->localize($this->origin, 'el');
+        $edits = 0;
+        $this->fakeTranslations(function (string $text) use (&$edits) {
+            if ($text === 'A short intro.' && $edits++ === 0) {
+                $this->saveEntryElsewhere($this->origin->id(), ['intro' => 'An edited intro.']);
+            }
+
+            return '[T] '.$text;
+        });
+
+        $result = translateTarget($this->origin);
+
+        expect($result->status)->toBe(TargetResultStatus::Done)
+            ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('[T] An edited intro.')
+            ->and($this->modelCalls())->toBe(2)
+            ->and(StateFixtures::statuses($this->origin))->each->toBe(FieldStatus::Current);
+    });
+
     it('fails the target when the source changed again', function () {
         $edits = 0;
         $this->fakeTranslations(function (string $text) use (&$edits) {
