@@ -115,30 +115,86 @@ export function clone(value) {
 // its own.
 const NOT_TEXT = new Set(['type', 'id', '_id', 'marks']);
 
-// The text of a value: its strings in key order, without the keys above. Numbers, booleans and nulls do not count,
-// so what Bard does when it re-emits a value (`textAlign: null`, a list's `start: 1`, a table cell's `colspan: 1`, a
-// block image wrapped in a paragraph, adjacent runs joined) changes nothing. Whether a field holds an edit is decided
-// by its text alone, as the server decides whether a field is machine output (D27).
-export function textOf(value) {
+// The keys of a ProseMirror node, the shape of a Bard value.
+const NODE_KEYS = new Set(['type', 'attrs', 'content', 'marks', 'text']);
+
+// The texts of a value, null when it has none: a string as it is, a map's texts by key without the keys above, a
+// list's by position without the empty items at its end. Numbers, booleans and nulls do not count, so what Bard does
+// when it re-emits a value (`textAlign: null`, a list's `start: 1`, a table cell's `colspan: 1`) changes nothing. In
+// Bard's nodes a text runs from one node boundary to the next, so adjacent runs joined, or a block image wrapped in a
+// paragraph, change nothing either, while text moved to another paragraph, row or field does. Whether a field holds an
+// edit is decided by its texts alone, as the server decides whether a field is machine output (D27).
+export function textsOf(value) {
     if (typeof value === 'string') {
-        return value;
+        return value === '' ? null : value;
     }
 
     if (Array.isArray(value)) {
-        return value.map(textOf).join('');
+        return value.length > 0 && value.every(isNode) ? runsOf(value) : listOf(value);
     }
 
     if (value === null || typeof value !== 'object') {
-        return '';
+        return null;
     }
 
-    return Object.keys(value)
+    const entries = Object.keys(value)
         .filter((key) => !NOT_TEXT.has(key))
         .sort()
-        .map((key) => textOf(value[key]))
-        .join('');
+        .map((key) => [key, textsOf(value[key])])
+        .filter(([, texts]) => texts !== null);
+
+    return entries.length ? Object.fromEntries(entries) : null;
+}
+
+function listOf(items) {
+    const texts = items.map(textsOf);
+
+    while (texts.length && texts[texts.length - 1] === null) {
+        texts.pop();
+    }
+
+    return texts.length ? texts : null;
+}
+
+function isNode(value) {
+    return value !== null && typeof value === 'object' && typeof value.type === 'string' && Object.keys(value).every((key) => NODE_KEYS.has(key));
+}
+
+// The runs of text in document order, and on their own the texts of a node's attributes (an image's alt, a set's
+// values).
+function runsOf(nodes) {
+    const texts = [];
+    let run = '';
+
+    const add = (value) => {
+        if (run !== '') {
+            texts.push(run);
+            run = '';
+        }
+
+        if (value !== null) {
+            texts.push(value);
+        }
+    };
+
+    const walk = (node) => {
+        if (!isNode(node)) {
+            add(textsOf(node));
+        } else if (node.type === 'text') {
+            run += typeof node.text === 'string' ? node.text : '';
+        } else {
+            add(textsOf(node.attrs));
+            (Array.isArray(node.content) ? node.content : []).forEach(walk);
+            add(null);
+        }
+    };
+
+    nodes.forEach(walk);
+    add(null);
+
+    return texts.length ? texts : null;
 }
 
 export function sameText(a, b) {
-    return textOf(a) === textOf(b);
+    return JSON.stringify(textsOf(a)) === JSON.stringify(textsOf(b));
 }

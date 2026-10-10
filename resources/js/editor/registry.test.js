@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { computed, ref } from 'vue';
-import { clone, createRegistry, sameText, textOf } from './registry.js';
+import { clone, createRegistry, sameText, textsOf } from './registry.js';
 
 function bus() {
     const handlers = {};
@@ -93,16 +93,21 @@ const reemittedBard = () => [
     { type: 'set', attrs: { id: 'b2', enabled: true, values: { type: 'quote', text: 'Wonderful.' } } },
 ];
 
-describe('textOf and sameText', () => {
-    it('reads the strings of a value in key order', () => {
-        expect(textOf('Hello')).toBe('Hello');
-        expect(textOf(['a', 'b'])).toBe('ab');
-        expect(textOf({ question: 'Q', answer: 'A' })).toBe(textOf({ answer: 'A', question: 'Q' }));
-        expect([textOf(null), textOf(undefined), textOf(3), textOf(true)]).toEqual(['', '', '', '']);
+describe('textsOf and sameText', () => {
+    it('reads the strings of a value by key and position', () => {
+        expect(textsOf('Hello')).toBe('Hello');
+        expect(textsOf(['a', 'b'])).toEqual(['a', 'b']);
+        expect(JSON.stringify(textsOf({ question: 'Q', answer: 'A' }))).toBe(JSON.stringify(textsOf({ answer: 'A', question: 'Q' })));
+        expect([textsOf(null), textsOf(undefined), textsOf(3), textsOf(true), textsOf(''), textsOf([]), textsOf({})]).toEqual([null, null, null, null, null, null, null]);
     });
 
     it('leaves out types, ids and marks', () => {
-        expect(textOf([{ _id: 'x', id: 'y', type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toBe('A');
+        expect(textsOf([{ _id: 'x', id: 'y', type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toEqual([{ text: 'A' }]);
+        expect(textsOf([{ type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toEqual(['A']);
+    });
+
+    it('reads a Bard value as its runs of text and its attributes', () => {
+        expect(textsOf(storedBard())).toEqual(['Welcome', 'See our rooms.', { alt: 'The pool', src: 'asset::assets::pool.jpg' }, 'One', { values: { text: 'Wonderful.' } }]);
     });
 
     it('finds the same text in a Bard value Bard re-emitted', () => {
@@ -127,6 +132,26 @@ describe('textOf and sameText', () => {
         expect(sameText(changed((value) => value.splice(3, 1)), storedBard())).toBe(false);
         expect(sameText({ rows: [{ cells: ['A', 'B'] }] }, { rows: [{ cells: ['B', 'A'] }] })).toBe(false);
         expect(sameText('A', undefined)).toBe(false);
+    });
+
+    it('tells text moved to another field, row, cell or paragraph apart', () => {
+        const paragraphs = (...texts) => texts.map((text) => ({ type: 'paragraph', content: [{ type: 'text', text }] }));
+
+        expect(sameText({ heading: '', body: 'Hello world' }, { heading: 'Hello world', body: '' })).toBe(false);
+        expect(sameText([{ _id: 'a', text: 'Hello' }, { _id: 'b', text: ' world' }], [{ _id: 'a', text: 'Hello world' }, { _id: 'b', text: '' }])).toBe(false);
+        expect(sameText({ rows: [{ cells: ['A', 'B'] }] }, { rows: [{ cells: ['AB', ''] }] })).toBe(false);
+        expect(sameText(['a', 'b'], ['ab'])).toBe(false);
+        expect(sameText(paragraphs('Hello ', 'world'), paragraphs('Hello world'))).toBe(false);
+        expect(sameText(paragraphs('One', 'Two'), [{ type: 'bulletList', content: [{ type: 'listItem', content: paragraphs('One', 'Two') }] }])).toBe(true);
+    });
+
+    it('finds the same text in runs Bard joined and items it left empty', () => {
+        const runs = [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello ' }, { type: 'text', text: 'world' }] }];
+        const joined = [{ type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'text', text: 'Hello world' }] }, { type: 'paragraph' }];
+
+        expect(sameText(runs, joined)).toBe(true);
+        expect(sameText(['a', 'b', ''], ['a', 'b'])).toBe(true);
+        expect(sameText({ title: 'A', note: '' }, { title: 'A', note: null })).toBe(true);
     });
 });
 

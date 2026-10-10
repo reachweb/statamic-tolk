@@ -299,6 +299,22 @@ describe('applyFields', () => {
         expect(Object.keys(delivered)).toEqual(['title']);
     });
 
+    it('skips a field whose text the editor moved to another field of a set or another paragraph', async () => {
+        const block = (heading, body) => [{ id: 's1', type: 'block', enabled: true, heading, body }];
+        const ctx = container({ values: { ...stored(), blocks: block('', 'Hello world'), body: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello world' }] }] } });
+        const planValues = clone(ctx.values.value);
+        ctx.values.value.blocks = block('Hello world', '');
+        ctx.values.value.body = [
+            { type: 'paragraph', content: [{ type: 'text', text: 'Hello ' }] },
+            { type: 'paragraph', content: [{ type: 'text', text: 'world' }] },
+        ];
+
+        const result = await settled(fill(ctx, { blocks: { value: block('', '[de] Hello world') }, body: { value: [], meta: { existing: {} } } }, { planValues }));
+
+        expect(result.skipped).toEqual({ blocks: 'edited', body: 'edited' });
+        expect(ctx.values.value.blocks).toEqual(block('Hello world', ''));
+    });
+
     it('does not count new random row ids as an edit', async () => {
         const ctx = container();
         const planValues = clone(ctx.values.value);
