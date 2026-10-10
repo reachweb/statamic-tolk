@@ -9,13 +9,17 @@ use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
+use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
+use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\UnitBusy;
+use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Exceptions\UnknownUnit;
 use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Translation\EditorDelivery;
 use Reach\StatamicTolk\Translation\Pipeline;
 use Reach\StatamicTolk\Translation\Plan;
@@ -41,6 +45,7 @@ final readonly class EditorTranslation
         private Pipeline $pipeline,
         private EditorDelivery $delivery,
         private UsageRecorder $recorder,
+        private TargetFactory $targets,
     ) {}
 
     /**
@@ -70,12 +75,41 @@ final readonly class EditorTranslation
     }
 
     /**
+     * The target a plan was made for, as this process sees it now: the localization the plan's reference names, built
+     * again from the plan's description, with its source. The unit endpoint checks it before a unit runs, and unit()
+     * again before it delivers.
+     *
+     * @throws TargetNotFound when the origin or the term no longer exists, the origin has no localization in the site any
+     *                        more (deleted or detached), its localization there is not the one the plan's reference
+     *                        names (deleted and created again), or the site no longer fits the description
+     *                        (InvalidTarget, UnknownSite)
+     */
+    public function target(Plan $plan): Target
+    {
+        try {
+            $target = $this->targets->fromDescription($plan->target);
+        } catch (InvalidTarget|UnknownSite) {
+            throw TargetNotFound::reference((string) $plan->reference);
+        }
+
+        // fromDescription() finds the origin or the term, so a deleted one has thrown already; reading the source keeps
+        // this check from depending on that.
+        $target->sourceSite();
+
+        return $target->exists() && (string) $target->ref() === $plan->reference
+            ? $target
+            : throw TargetNotFound::reference((string) $plan->reference);
+    }
+
+    /**
      * Runs one unit and delivers the fields it completed: those it holds a part of that no runnable unit holds a part of
-     * any more. A unit that already ran makes no call and delivers its fields again.
+     * any more. A unit that already ran makes no call and delivers its fields again. The fields are delivered from the
+     * target as stored once the unit ran; a unit that completes no field reads no content.
      *
      * @throws UnknownUnit|UnitBusy|TransientProviderFailure|ProviderRejected|SourceChanged
+     * @throws TargetNotFound when the target is gone once the unit ran (target())
      */
-    public function unit(Plan $plan, Target $target, string $unitId): array
+    public function unit(Plan $plan, string $unitId): array
     {
         $unit = $this->pipeline->units($plan)[$unitId] ?? throw UnknownUnit::in($plan->id, $unitId);
         $usage = new UsageMap;
@@ -85,12 +119,8 @@ final readonly class EditorTranslation
             $this->recorder->record($model, $call, UsageSource::Editor);
         });
 
-        $ready = array_intersect($this->pipeline->readyFields($plan), $this->fieldsOf($plan, $unit));
-
-        // The source may have been saved by another request while the model worked; this process would still hold it.
-        ContentWriter::refreshStache();
-
-        [$fields, $failed, $warnings, $unchanged] = $this->deliver($plan, $target->fresh(), array_values($ready));
+        $ready = array_values(array_intersect($this->pipeline->readyFields($plan), $this->fieldsOf($plan, $unit)));
+        [$fields, $failed, $warnings, $unchanged] = $ready === [] ? [[], [], [], []] : $this->deliver($plan, $this->current($plan), $ready);
 
         return [
             'fields' => $fields,
@@ -104,6 +134,21 @@ final readonly class EditorTranslation
             'review_skipped' => $unit->kind === UnitKind::Review && $outcome->model === null,
             'reviewed' => $unit->kind === UnitKind::Review && $outcome->model !== null,
         ];
+    }
+
+    /**
+     * The plan's target as stored now. Another request may have saved or deleted it or its source while the model
+     * worked, and this process may still hold them as they were: a localization's origin and an entry's localizations
+     * in Blink, a localization detached elsewhere in the memoized `origin` index (07-spike-findings.md "Stache and
+     * parallel writers"). Delivery assembles from it, and that assembly is the delivery's only source check.
+     *
+     * @throws TargetNotFound
+     */
+    private function current(Plan $plan): Target
+    {
+        ContentWriter::refreshStache();
+
+        return $this->target($plan);
     }
 
     private function payload(Plan $plan, Target $target): array

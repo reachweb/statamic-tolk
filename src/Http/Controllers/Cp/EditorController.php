@@ -13,7 +13,6 @@ use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
-use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
@@ -47,6 +46,7 @@ use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
@@ -109,22 +109,22 @@ class EditorController extends Controller
         }
 
         try {
-            $target = $this->targets->fromDescription($plan->target);
-        } catch (TargetNotFound|InvalidTarget|UnknownSite) {
-            $target = null;
-        }
-
-        if (! $target?->exists()) {
-            $this->fail(410, 'target_missing', ($plan->target['type'] ?? null) === ContentType::Term->value
-                ? __('The term this translation was made for no longer exists.')
-                : __('The entry this translation was made for no longer exists.'));
+            $target = $translation->target($plan);
+        } catch (TargetNotFound) {
+            $this->targetMissing($plan);
         }
 
         $this->authorized($target, $user);
         // Time for the unit's one provider call.
         $this->raiseTimeLimit((int) config('tolk.http.timeout.web', 45) + 15);
 
-        return $this->attempt(fn () => $translation->unit($plan, $target, $request->validated('unit')));
+        try {
+            return $this->attempt(fn () => $translation->unit($plan, $request->validated('unit')));
+        } catch (TargetNotFound) {
+            // The localization, its origin or the term was deleted, or the localization detached or deleted and created
+            // again, while the unit ran.
+            $this->targetMissing($plan);
+        }
     }
 
     public function confirm(EditorConfirmRequest $request, StateWriter $stateWriter, EditorStatus $status): JsonResponse
@@ -319,6 +319,16 @@ class EditorController extends Controller
         } catch (InvalidTargetRef|TargetNotFound|NotALocalization) {
             return null;
         }
+    }
+
+    /**
+     * 410 for a plan whose target is gone (EditorTranslation::target()), worded for what the plan was made for.
+     */
+    private function targetMissing(Plan $plan): never
+    {
+        $this->fail(410, 'target_missing', ($plan->target['type'] ?? null) === ContentType::Term->value
+            ? __('The term this translation was made for no longer exists.')
+            : __('The entry this translation was made for no longer exists.'));
     }
 
     private function unknownReference(string $reference): never

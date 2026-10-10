@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\StateWriter;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -441,6 +442,78 @@ describe('unit', function () {
 
         editorUnit($plan, 'b1')->assertConflict()->assertJsonPath('code', 'source_changed');
         expect(greekState('title')->pending)->toBe([]);
+    });
+
+    it('answers 410 when the localization was deleted and created again after planning', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $plan = editorPlan($this->greek)->json('plan');
+        $this->greek->delete();
+        Blink::flush();
+        $again = $this->localize($this->origin, 'el');
+
+        editorUnit($plan, 'b1')->assertStatus(410)->assertJsonPath('code', 'target_missing');
+        expect(StateFixtures::stored($again)->field('title')->pending)->toBe([]);
+        $this->assertNoModelCalls();
+    });
+
+    it('answers 410 when another process deleted, detached or replaced the localization, or deleted the origin, while the unit ran', function (Closure $elsewhere) {
+        greekEditor();
+        $plan = editorPlan($this->greek)->json('plan');
+        $done = false;
+        $this->fakeTranslations(function (string $text) use (&$done, $elsewhere) {
+            if (! $done) {
+                $done = true;
+                $elsewhere->call($this);
+            }
+
+            return '[T] '.$text;
+        });
+
+        editorUnit($plan, 'b1')
+            ->assertStatus(410)
+            ->assertJsonPath('code', 'target_missing')
+            ->assertJsonPath('message', 'The entry this translation was made for no longer exists.');
+
+        ContentWriter::refreshStache();
+        $now = Entry::find($this->origin->id())?->in('el');
+
+        expect(greekState('title')->pending)->toBe([])
+            ->and($now === null ? [] : StateFixtures::stored($now)->field('title')->pending)->toBe([]);
+    })->with([
+        'the localization deleted' => fn () => $this->deleteEntryElsewhere($this->greek->id()),
+        'the localization detached' => fn () => $this->detachLocalizationsElsewhere($this->origin->id()),
+        'the localization deleted and created again' => function () {
+            $this->deleteEntryElsewhere($this->greek->id());
+            $this->localizeEntryElsewhere($this->origin->id(), 'el');
+        },
+        'the origin deleted with its localizations' => fn () => $this->deleteEntryElsewhere($this->origin->id(), 'delete'),
+        'the origin deleted after its localizations were detached' => fn () => $this->deleteEntryElsewhere($this->origin->id(), 'detach'),
+    ]);
+
+    it('does not reload the Stache for a unit that completes no field', function () {
+        $this->makeCollection('guides', ['en', 'el'], [
+            'faq' => ['type' => 'grid', 'localizable' => true, 'fields' => [
+                ['handle' => 'question', 'field' => ['type' => 'text']],
+            ]],
+        ]);
+        $origin = $this->makeEntry('guides', 'en', ['faq' => [['question' => 'What is it?'], ['question' => 'Who is it for?']]]);
+        $greek = $this->localize($origin, 'el');
+        config(['tolk.batch.max_chars.web' => 12]);
+        $this->fakeTranslations();
+        $this->signInAdmin();
+        $plan = editorPlan($greek)->assertOk()->json();
+        Blink::put('tolk-test-sentinel', true);
+
+        $first = editorUnit($plan['plan'], 'b1')->assertOk();
+
+        expect($plan['units'])->toBe([
+            ['id' => 'b1', 'fields' => ['faq'], 'chars' => 11],
+            ['id' => 'b2', 'fields' => ['faq'], 'chars' => 14],
+        ])
+            ->and($first->json('fields'))->toBe([])
+            ->and(Blink::has('tolk-test-sentinel'))->toBeTrue()
+            ->and(editorUnit($plan['plan'], 'b2')->json('fields.faq.value.*.question'))->toBe(['[T] What is it?', '[T] Who is it for?']);
     });
 
     it('answers 429 with the wait while the provider is paused', function () {

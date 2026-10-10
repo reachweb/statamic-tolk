@@ -30,4 +30,13 @@ final class TargetNotFound extends RuntimeException
     {
         return new self(__('Translation file [:file] not found.', ['file' => $file]));
     }
+
+    /**
+     * Any type: the target a reference names, such as a plan's, is gone, or what now stands in its place is not the
+     * one it names (a localization deleted and created again).
+     */
+    public static function reference(string $reference): self
+    {
+        return new self(__('[:reference] no longer exists.', ['reference' => $reference]));
+    }
 }

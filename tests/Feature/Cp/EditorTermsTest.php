@@ -229,6 +229,27 @@ describe('translating in the term form', function () {
             ->assertJsonPath('message', 'The term this translation was made for no longer exists.');
         expect(app(PlanStore::class)->get($plan))->not->toBeNull();
     });
+
+    it('answers 410 with the term\'s wording when another process deleted the term while the unit ran', function () {
+        termEditor();
+        $plan = $this->postJson(cp_route('tolk.editor.plan'), ['reference' => FOOD_EL, 'mode' => 'missing'])->assertOk()->json('plan');
+        $deleted = false;
+        $this->fakeTranslations(function (string $text) use (&$deleted) {
+            if (! $deleted) {
+                $deleted = true;
+                $this->deleteTermElsewhere('topics::food');
+            }
+
+            return '[T] '.$text;
+        });
+
+        $this->postJson(cp_route('tolk.editor.unit'), ['plan' => $plan, 'unit' => 'b1'])
+            ->assertStatus(410)
+            ->assertJsonPath('code', 'target_missing')
+            ->assertJsonPath('message', 'The term this translation was made for no longer exists.');
+        expect(greekTermState('title')->pending)->toBe([])
+            ->and(greekTermState('description')->pending)->toBe([]);
+    });
 });
 
 describe('push', function () {

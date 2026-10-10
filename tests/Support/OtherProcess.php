@@ -8,6 +8,7 @@ use RuntimeException;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
+use Statamic\Facades\Term;
 
 use function Orchestra\Testbench\default_skeleton_path;
 
@@ -41,6 +42,9 @@ final class OtherProcess extends TestCase
         match ($job['job']) {
             'save-entry' => $process->saveEntry(...$job['arguments']),
             'delete-entry' => $process->deleteEntry(...$job['arguments']),
+            'detach-localizations' => $process->detachLocalizations(...$job['arguments']),
+            'localize-entry' => $process->localizeEntry(...$job['arguments']),
+            'delete-term' => $process->deleteTerm(...$job['arguments']),
         };
 
         return ['done' => $job['job']];
@@ -84,9 +88,41 @@ final class OtherProcess extends TestCase
         $this->entry($id)->merge($changes)->save() ?: throw new RuntimeException("A listener stopped the save of the entry [{$id}].");
     }
 
-    private function deleteEntry(string $id): void
+    /**
+     * As the CP's Delete action deletes an entry of a multi-site collection (DeleteMultisiteEntry): its localizations
+     * deleted or detached first when $localizations says so.
+     *
+     * @param  'delete'|'detach'|null  $localizations
+     */
+    private function deleteEntry(string $id, ?string $localizations = null): void
     {
-        $this->entry($id)->delete() ?: throw new RuntimeException("A listener stopped the deletion of the entry [{$id}].");
+        $entry = $this->entry($id);
+
+        match ($localizations) {
+            'delete' => $entry->deleteDescendants(),
+            'detach' => $entry->detachLocalizations(),
+            null => null,
+        };
+
+        $entry->delete() ?: throw new RuntimeException("A listener stopped the deletion of the entry [{$id}].");
+    }
+
+    private function detachLocalizations(string $id): void
+    {
+        $this->entry($id)->detachLocalizations();
+    }
+
+    private function localizeEntry(string $id, string $site, array $data = []): void
+    {
+        $this->entry($id)->makeLocalization($site)->merge($data)->save() ?: throw new RuntimeException("A listener stopped the save of the localization of the entry [{$id}] in [{$site}].");
+    }
+
+    // As the CP deletes a term: the term of every site, through the localization its listing holds.
+    private function deleteTerm(string $id): void
+    {
+        $term = Term::find($id) ?? throw new RuntimeException("The term [{$id}] does not exist.");
+
+        $term->delete() ?: throw new RuntimeException("A listener stopped the deletion of the term [{$id}].");
     }
 
     private function entry(string $id): EntryContract

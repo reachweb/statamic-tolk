@@ -72,7 +72,7 @@ final class ContentWriter
      * parallel writers"). StacheRefreshTest fails when Statamic renames what this clears.
      *
      * write() runs it under the lock, before its callback. Readers that waited run it without the lock, because they
-     * save nothing: the editor's delivery after a model call, and a run worker before it plans an item.
+     * save nothing: the editor's delivery once a unit has completed a field, and a run worker before it plans an item.
      */
     public static function refreshStache(): void
     {

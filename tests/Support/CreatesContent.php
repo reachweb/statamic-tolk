@@ -147,11 +147,43 @@ trait CreatesContent
 
     /**
      * Entry::delete() in another PHP process, as saveEntryElsewhere() saves, so the addon's listener forgets the
-     * entry's state there. Core refuses to delete an entry that has localizations.
+     * entry's state there. Core refuses to delete an entry that has localizations: $localizations `delete` or `detach`
+     * first deletes them or detaches them, as the CP's Delete action offers for an origin (deleteDescendants(),
+     * detachLocalizations()).
+     *
+     * @param  'delete'|'detach'|null  $localizations
      */
-    protected function deleteEntryElsewhere(string $id): void
+    protected function deleteEntryElsewhere(string $id, ?string $localizations = null): void
     {
-        $this->elsewhere('delete-entry', ['id' => $id]);
+        $this->elsewhere('delete-entry', ['id' => $id, 'localizations' => $localizations]);
+    }
+
+    /**
+     * Entry::detachLocalizations() in another PHP process, as saveEntryElsewhere() saves: each localization of the
+     * entry is saved without an origin, holding the values it inherited. This process still finds them through the
+     * entry until ContentWriter::refreshStache().
+     */
+    protected function detachLocalizationsElsewhere(string $id): void
+    {
+        $this->elsewhere('detach-localizations', ['id' => $id]);
+    }
+
+    /**
+     * Entry::makeLocalization() saved in another PHP process, as saveEntryElsewhere() saves. This process finds the new
+     * localization through the entry only after ContentWriter::refreshStache().
+     */
+    protected function localizeEntryElsewhere(string $id, string $site, array $data = []): void
+    {
+        $this->elsewhere('localize-entry', ['id' => $id, 'site' => $site, 'data' => $data]);
+    }
+
+    /**
+     * Deletes a term in another PHP process, as the CP does (LocalizedTerm::delete(), with events). Until
+     * ContentWriter::refreshStache() this process still finds it, with no data, and caches that empty term again.
+     */
+    protected function deleteTermElsewhere(string $id): void
+    {
+        $this->elsewhere('delete-term', ['id' => $id]);
     }
 
     /**

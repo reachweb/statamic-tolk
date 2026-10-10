@@ -182,6 +182,7 @@ describe('PHP', function () {
             TargetNotFound::term('topics::news', 'el'),
             TargetNotFound::globalSet('footer', 'el'),
             TargetNotFound::nav('main', 'el'),
+            TargetNotFound::reference('entry::1'),
             UnknownSite::for('fr'),
             WriterBusy::waited(30),
         ])->map->getMessage();
