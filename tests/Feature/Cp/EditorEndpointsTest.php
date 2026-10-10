@@ -429,8 +429,12 @@ describe('unit', function () {
     it('answers 409 when another process changed the origin while the unit ran', function () {
         greekEditor();
         $plan = editorPlan($this->greek)->json('plan');
-        $this->fakeTranslations(function (string $text) {
-            $this->saveEntryElsewhere($this->origin->id(), ['intro' => 'A longer intro.']);
+        $saved = false;
+        $this->fakeTranslations(function (string $text) use (&$saved) {
+            if (! $saved) {
+                $saved = true;
+                $this->saveEntryElsewhere($this->origin->id(), ['intro' => 'A longer intro.']);
+            }
 
             return '[T] '.$text;
         });

@@ -64,11 +64,14 @@ abstract class TestCase extends AddonTestCase
             $this->deleteAddonSettingsFile();
         }
 
-        parent::tearDown();
-
-        if ($this->temporaryDirectory) {
-            (new Filesystem)->deleteDirectory($this->temporaryDirectory);
-            $this->temporaryDirectory = null;
+        // Finally: Testbench throws an exception from a beforeApplicationDestroyed() callback at the end of its tearDown().
+        try {
+            parent::tearDown();
+        } finally {
+            if ($this->temporaryDirectory) {
+                (new Filesystem)->deleteDirectory($this->temporaryDirectory);
+                $this->temporaryDirectory = null;
+            }
         }
     }
 

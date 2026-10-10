@@ -2,8 +2,9 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use LogicException;
+use RuntimeException;
 use Statamic\Contracts\Entries\Collection as CollectionContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
@@ -15,10 +16,12 @@ use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
-use Statamic\Facades\Stache;
+use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Statamic\Facades\Term;
 use Statamic\Fields\Blueprint as BlueprintObject;
+use Symfony\Component\Process\Process;
+use Throwable;
 
 trait CreatesContent
 {
@@ -131,16 +134,63 @@ trait CreatesContent
     }
 
     /**
-     * Changes an entry as another process saves it: its file and the Stache's cached item change, while what this
-     * process holds in memory, such as the origin a localization keeps in Blink, stays as it was. A save in this
-     * process would also run the save's side effects here.
+     * Entry::save() in another PHP process, with events, the addon's default settings and the suite's base config, on
+     * this test's content, Stache and file cache: the entry's file, its Stache item and indexes and its localizations,
+     * which core saves after it, change, while this process keeps what it memoized, such as the origin a localization
+     * keeps in Blink, until ContentWriter::refreshStache(). A save in this process afterwards needs that refresh first,
+     * or it writes the memoized indexes back over the other process's. About 0.2 s.
      */
     protected function saveEntryElsewhere(string $id, array $changes): void
     {
-        $entry = Entry::find($id)->merge($changes);
+        $this->elsewhere('save-entry', ['id' => $id, 'changes' => $changes]);
+    }
 
-        File::put($entry->path(), $entry->fileContents());
-        Stache::cacheStore()->forever("stache::items::entries::{$entry->collectionHandle()}::{$id}", $entry);
+    /**
+     * Entry::delete() in another PHP process, as saveEntryElsewhere() saves, so the addon's listener forgets the
+     * entry's state there. Core refuses to delete an entry that has localizations.
+     */
+    protected function deleteEntryElsewhere(string $id): void
+    {
+        $this->elsewhere('delete-entry', ['id' => $id]);
+    }
+
+    /**
+     * Runs a job of OtherProcess, through Symfony's Process rather than Laravel's, which Process::fake() answers. A
+     * failure (one the other process reports, a wrong acknowledgement, input JSON cannot carry, a start that fails or
+     * the 30 s timeout) is thrown as a RuntimeException, and thrown again when the test ends, because the code under
+     * test may catch it (RunProcessor reports an exception and fails the item), so a test cannot expect one. Only the
+     * LogicException of a test without useFileCache() is thrown once.
+     */
+    private function elsewhere(string $job, array $arguments): void
+    {
+        if (config('cache.default') !== 'tolk-test-file' || config('statamic.stache.cache_store') !== null) {
+            throw new LogicException('Another process shares the Stache of a test only through its file cache: call useFileCache() first.');
+        }
+
+        $process = new Process([PHP_BINARY, '-d', 'display_errors=stderr', OtherProcess::SCRIPT], env: ['TEST_TOKEN' => false], timeout: 30);
+        $failure = null;
+
+        try {
+            $process->setInput(json_encode([
+                'job' => $job,
+                'arguments' => $arguments,
+                'directory' => $this->temporaryPath(),
+                'cache' => config('cache.stores.tolk-test-file.path'),
+                'sites' => Site::config(),
+            ], JSON_THROW_ON_ERROR))->run();
+        } catch (Throwable $failure) {
+        }
+
+        if ($failure === null && $process->isSuccessful() && json_decode($process->getOutput(), true) === ['done' => $job]) {
+            return;
+        }
+
+        $reason = $failure?->getMessage() ?? "exit code {$process->getExitCode()}";
+        $output = $process->isStarted() ? $process->getErrorOutput().$process->getOutput() : '';
+        $exception = new RuntimeException("Another process failed the job [{$job}] ({$reason}):\n{$output}", previous: $failure);
+        $this->beforeApplicationDestroyed(fn () => throw $exception);
+
+        throw $exception;
     }
 
     protected function makeTaxonomy(string $handle, array $sites, array $fields = []): TaxonomyContract
