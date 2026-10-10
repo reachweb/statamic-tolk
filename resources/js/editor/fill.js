@@ -162,7 +162,8 @@ export async function applyFields(
 
     // A fieldtype such as Bard re-emits what was filled, which desyncs the field again; a synced field must undo that.
     // What the form holds afterwards is recorded as delivered while it has the filled text. Other text was typed by the
-    // editor meanwhile, so what was filled is recorded, and Undo keeps their text.
+    // editor meanwhile, so what was filled is recorded, Undo keeps their text, and a synced field stays localized, or
+    // Save would leave it out.
     await sleep(REEMIT_MS);
 
     if (!current()) {
@@ -171,7 +172,7 @@ export async function applyFields(
         return stale();
     }
 
-    synced.forEach((handle) => setLocalized(ctx, handle, false));
+    synced.filter((handle) => sameText(ctx.values.value[handle], filled[handle])).forEach((handle) => setLocalized(ctx, handle, false));
 
     for (const handle of result.applied) {
         const value = ctx.values.value[handle];
@@ -232,7 +233,10 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
             return;
         }
 
-        result.restored.forEach((handle) => setLocalized(ctx, handle, snap.fields[handle].localized));
+        // Text the editor typed since keeps the flag its update gave it, or Save would leave it out.
+        result.restored
+            .filter((handle) => snap.fields[handle].localized || sameText(ctx.values.value[handle], snap.fields[handle].value))
+            .forEach((handle) => setLocalized(ctx, handle, snap.fields[handle].localized));
 
         if (!snap.dirty && registry.dirtyHandles(ctx.name.value).length === 0) {
             Statamic.$dirty.remove(ctx.name.value);

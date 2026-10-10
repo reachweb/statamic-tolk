@@ -408,6 +408,20 @@ describe('applyFields', () => {
         expect(ctx.localizedFields.value).toEqual([]);
     });
 
+    it('keeps a synced field localized when the editor corrects it before the read-back, so Save posts it', async () => {
+        const ctx = container({ values: { ...stored(), intro: 'Eigene Einleitung' }, localized: ['title', 'intro'] });
+        const promise = fill(ctx, { intro: { value: 'Origin intro', meta: null, sync: true } });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        // Core's update handler sets what the editor typed and desyncs the field.
+        ctx.values.value.intro = 'Origin intro, corrected';
+        ctx.desyncField('intro');
+        await settled(promise);
+
+        expect(ctx.values.value.intro).toBe('Origin intro, corrected');
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
+    });
+
     it('records what the form holds after the fieldtype re-emitted, not the payload', async () => {
         const normalise = (nodes) => nodes.map((node) => ({ ...node, attrs: { textAlign: null } }));
         const ctx = container({ reemit: { body: normalise } });
@@ -610,6 +624,22 @@ describe('restore', () => {
         // The re-emitted value has the snapshot's text, so nothing is left to save.
         expect(ctx.values.value.body).toEqual(normalise(stored().body));
         expect(dirty.has('base')).toBe(false);
+    });
+
+    it('keeps a field localized when the editor types into it right after Undo, so Save posts it', async () => {
+        const ctx = attached();
+        const { snap, delivered } = await translate(ctx, { title: translated('Title') });
+        const promise = restore(ctx, snap, delivered, { registry });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.title = 'Title, by hand';
+        ctx.desyncField('title');
+        const result = await settled(promise);
+
+        expect(result.restored).toEqual(['title']);
+        expect(ctx.values.value.title).toBe('Title, by hand');
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(dirty.has('base')).toBe(true);
     });
 
     it('restores a field its fieldtype re-emitted again after the delivery was recorded', async () => {
