@@ -25,7 +25,7 @@ export function createRegistry() {
     function created(payload) {
         const mounted = (entries.get(payload.name)?.mounted ?? 0) + 1;
 
-        entries.set(payload.name, { payload, context: null, clean: null, mounted });
+        entries.set(payload.name, { payload, context: null, clean: null, saved: null, mounted });
     }
 
     function destroyed({ name }) {
@@ -43,7 +43,7 @@ export function createRegistry() {
     }
 
     function update(name, changes) {
-        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, mounted: 0 };
+        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, saved: null, mounted: 0 };
 
         entries.set(name, { ...entry, ...changes });
     }
@@ -54,12 +54,13 @@ export function createRegistry() {
         update(name, { context, clean: entries.get(name)?.clean ?? clone(context.values.value) });
     }
 
-    // After a site or entry switch and after a save, the values in the form are what is stored.
-    function refreshClean(name) {
+    // After a site or entry switch and after a save, the values in the form are what is stored. `saved` are the values
+    // a save response holds, which core puts into the form after the save hooks: their texts count as stored too.
+    function refreshClean(name, saved = null) {
         const values = currentValues(name);
 
         if (values !== null) {
-            update(name, { clean: clone(values) });
+            update(name, { clean: clone(values), saved: saved === null ? null : clone(saved) });
         }
     }
 
@@ -69,10 +70,11 @@ export function createRegistry() {
         return (entry?.context ?? entry?.payload)?.values?.value ?? null;
     }
 
-    // Top-level handles whose text differs from the clean values, in the form's order. A value that only changed its
-    // shape is not dirty: Bard re-emits its value with attributes of its own.
+    // Top-level handles whose text differs from the clean values and from the saved ones, in the form's order. A value
+    // that only changed its shape is not dirty: Bard re-emits its value with attributes of its own.
     function dirtyHandles(name) {
         const clean = entries.get(name)?.clean;
+        const saved = entries.get(name)?.saved ?? {};
         const values = currentValues(name);
 
         if (!clean || values === null) {
@@ -81,7 +83,9 @@ export function createRegistry() {
 
         const handles = [...new Set([...Object.keys(values), ...Object.keys(clean)])];
 
-        return handles.filter((handle) => !sameText(values[handle], clean[handle]));
+        return handles.filter(
+            (handle) => !sameText(values[handle], clean[handle]) && !(Object.hasOwn(saved, handle) && sameText(values[handle], saved[handle])),
+        );
     }
 
     return {

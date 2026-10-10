@@ -183,19 +183,29 @@ describe('entry.saved', () => {
         expect(store.container('base')).toMatchObject({ phase: 'idle', summary: null, snapshot: null, request: null });
     });
 
-    it('takes the clean values again once the fieldtypes have settled, unless something changed since', async () => {
+    it('counts the values of the save response as clean, which core puts into the form after the hooks', async () => {
         const ctx = mount();
-        await run(hooks().saved, savedPayload());
+        const payload = savedPayload();
+        payload.response.data.data.values = { title: 'Startseite', intro: 'Normalised by the save' };
+        await run(hooks().saved, payload);
 
-        ctx.values.value.intro = 'Normalised after the save';
-        await vi.advanceTimersByTimeAsync(SETTLE_MS);
+        ctx.values.value.intro = 'Normalised by the save';
         expect(registry.dirtyHandles('base')).toEqual([]);
 
-        await run(hooks().saved, savedPayload());
-        store.saved('base', Date.now() + 100);
-        ctx.values.value.intro = 'Typed after another save';
         await vi.advanceTimersByTimeAsync(SETTLE_MS);
-        expect(registry.dirtyHandles('base')).toEqual(['intro']);
+        expect(registry.dirtyHandles('base')).toEqual([]);
+    });
+
+    it('keeps a correction typed right after the save as an edit, so a translation leaves it alone', async () => {
+        const ctx = mount();
+        const payload = savedPayload();
+        payload.response.data.data.values = { title: 'Startseite', intro: 'Intro' };
+        await run(hooks().saved, payload);
+
+        ctx.values.value.title = 'Startseite, korrigiert';
+        await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+        expect(registry.dirtyHandles('base')).toEqual(['title']);
     });
 
     it('ignores a stacked editor saving another entry', async () => {

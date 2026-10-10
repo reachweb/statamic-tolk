@@ -221,6 +221,23 @@ describe('dirtyHandles', () => {
         expect(registry.dirtyHandles('base')).toEqual(['intro']);
     });
 
+    it('counts the texts of the saved values as clean until the clean values are taken again', () => {
+        base.context.values.value.title = 'Νέος τίτλος';
+        registry.refreshClean('base', { ...stored(), title: 'Νέος τίτλος (normalised)' });
+
+        // Core puts the response's values into the form after the save hooks.
+        base.context.values.value.title = 'Νέος τίτλος (normalised)';
+        expect(registry.dirtyHandles('base')).toEqual([]);
+
+        base.context.values.value.title = 'Typed after the save';
+        expect(registry.dirtyHandles('base')).toEqual(['title']);
+
+        base.context.values.value.title = 'Νέος τίτλος (normalised)';
+        registry.refreshClean('base');
+        base.context.values.value.title = 'Νέος τίτλος';
+        expect(registry.dirtyHandles('base')).toEqual(['title']);
+    });
+
     it('is empty after a site switch until the next change', () => {
         base.context.values.value.intro = 'Unsaved Greek';
 

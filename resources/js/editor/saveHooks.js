@@ -1,5 +1,4 @@
 import * as defaultApi from '../api.js';
-import { SETTLE_MS } from './fill.js';
 import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
@@ -25,7 +24,6 @@ export function createSaveHooks({
     registry = sharedRegistry,
     api = defaultApi,
     now = Date.now,
-    settleMs = SETTLE_MS,
     onConfirmed = (name, status) => pushes.afterSave(name, status),
 }) {
     let listening = false;
@@ -78,19 +76,11 @@ export function createSaveHooks({
             return;
         }
 
-        const at = now();
-        const delivered = editor.saved(BASE, at);
+        const delivered = editor.saved(BASE, now());
 
-        registry.refreshClean(BASE);
-
-        // Fieldtypes that re-emit a normalised value after the save would otherwise count as edited.
-        setTimeout(() => {
-            const latest = editor.containers[BASE];
-
-            if (latest?.lastChangeAt === at && latest.reference === reference) {
-                registry.refreshClean(BASE);
-            }
-        }, settleMs);
+        // With revisions, core then puts the response's values into the form, and its fieldtypes re-emit them. Text typed
+        // meanwhile is an edit, which a translation must leave alone.
+        registry.refreshClean(BASE, savedValues(payload));
 
         // What was filled is saved now; the summary and Undo no longer apply.
         if (container.phase === 'done' || container.phase === 'error') {
@@ -119,6 +109,13 @@ export function createSaveHooks({
     }
 
     return { listen, saving, saved };
+}
+
+// The values the response holds, as the form shows them.
+function savedValues(payload) {
+    const values = payload?.response?.data?.data?.values;
+
+    return values !== null && typeof values === 'object' && !Array.isArray(values) ? values : null;
 }
 
 // The response names the saved entry. A term's response has only its id, which is the same in every site, so the term
