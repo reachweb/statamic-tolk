@@ -127,7 +127,8 @@ const lines = (text) => text.replace(/\r\n?/g, '\n');
 // what Bard does when it re-emits a value (`textAlign: null`, a list's `start: 1`, a table cell's `colspan: 1`) changes
 // nothing. In Bard's nodes a text runs from one node boundary to the next, so adjacent runs joined, or a block image
 // wrapped in a paragraph, change nothing either, while text moved to another paragraph, row or field does. Whether a
-// field holds an edit is decided by its texts alone, as the server decides whether a field is machine output (D27).
+// field holds an edit is decided by its texts alone, as the server decides whether a field is machine output (D27);
+// whether Save must post a field Tolk put back is `sameContent()`'s question.
 export function textsOf(value) {
     if (typeof value === 'string') {
         return value === '' ? null : lines(value);
@@ -201,4 +202,30 @@ function runsOf(nodes) {
 
 export function sameText(a, b) {
     return JSON.stringify(textsOf(a)) === JSON.stringify(textsOf(b));
+}
+
+const isScalar = (value) => typeof value === 'boolean' || typeof value === 'number';
+
+const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// Whether the booleans and numbers both values hold in one place are the same, by key and position without types, ids
+// and marks. A place only one of them has does not count: a fieldtype that re-emits a value adds attributes with their
+// defaults (Bard's `start: 1` and `colspan: 1`, a set's `enabled: true`).
+function sameScalars(a, b) {
+    if (Array.isArray(a) && Array.isArray(b)) {
+        return a.every((item, index) => index >= b.length || sameScalars(item, b[index]));
+    }
+
+    if (isMap(a) && isMap(b)) {
+        return Object.keys(a).every((key) => NOT_TEXT.has(key) || !Object.hasOwn(b, key) || sameScalars(a[key], b[key]));
+    }
+
+    return !(isScalar(a) || isScalar(b)) || a === b;
+}
+
+// Whether a value still holds what another held, so that Save need not post it: the same texts, and the same booleans
+// and numbers where both hold one, so a switched toggle, a changed number or heading level, or a disabled set differs.
+// Marks, node and set types, and rows or sets without text that only one value has do not, or Bard's re-emit would.
+export function sameContent(a, b) {
+    return sameText(a, b) && sameScalars(a, b);
 }

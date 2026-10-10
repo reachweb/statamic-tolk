@@ -1,4 +1,4 @@
-import { registry as sharedRegistry, clone, sameText } from './registry.js';
+import { registry as sharedRegistry, clone, sameContent, sameText } from './registry.js';
 
 export { clone };
 
@@ -163,8 +163,9 @@ export async function applyFields(
 
     // A fieldtype such as Bard re-emits what was filled, which desyncs the field again; a synced field must undo that.
     // What the form holds afterwards is recorded as delivered while it has the filled text. Other text was typed by the
-    // editor meanwhile, so what was filled is recorded, Undo keeps their text, and a synced field stays localized, or
-    // Save would leave it out.
+    // editor meanwhile, so what was filled is recorded and Undo keeps their text. A synced field whose texts, booleans
+    // or numbers differ from the filled ones (a toggle switched in a Group or in a padded Grid row) keeps the flag its
+    // update gave it, or Save would leave it out.
     await sleep(REEMIT_MS);
 
     if (!current()) {
@@ -173,7 +174,7 @@ export async function applyFields(
         return stale();
     }
 
-    synced.filter((handle) => sameText(ctx.values.value[handle], filled[handle])).forEach((handle) => setLocalized(ctx, handle, false));
+    synced.filter((handle) => sameContent(ctx.values.value[handle], filled[handle])).forEach((handle) => setLocalized(ctx, handle, false));
 
     for (const handle of result.applied) {
         const value = ctx.values.value[handle];
@@ -234,12 +235,15 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
             return;
         }
 
-        // Text the editor typed since keeps the flag its update gave it, or Save would leave it out.
+        // A field whose texts, booleans or numbers the editor changed since keeps the flag its update gave it, or Save
+        // would leave it out, and keeps the form dirty, or leaving it would not ask first.
+        const changed = result.restored.filter((handle) => !sameContent(ctx.values.value[handle], snap.fields[handle].value));
+
         result.restored
-            .filter((handle) => snap.fields[handle].localized || sameText(ctx.values.value[handle], snap.fields[handle].value))
+            .filter((handle) => snap.fields[handle].localized || !changed.includes(handle))
             .forEach((handle) => setLocalized(ctx, handle, snap.fields[handle].localized));
 
-        if (!snap.dirty && registry.dirtyHandles(ctx.name.value).length === 0) {
+        if (!snap.dirty && !changed.length && registry.dirtyHandles(ctx.name.value).length === 0) {
             Statamic.$dirty.remove(ctx.name.value);
         }
     };

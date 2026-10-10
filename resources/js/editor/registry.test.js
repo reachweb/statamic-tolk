@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { computed, ref } from 'vue';
-import { clone, createRegistry, sameText, textsOf } from './registry.js';
+import { clone, createRegistry, sameContent, sameText, textsOf } from './registry.js';
 
 function bus() {
     const handlers = {};
@@ -164,6 +164,34 @@ describe('textsOf and sameText', () => {
         expect(sameText(runs, joined)).toBe(true);
         expect(sameText(['a', 'b', ''], ['a', 'b'])).toBe(true);
         expect(sameText({ title: 'A', note: '' }, { title: 'A', note: null })).toBe(true);
+    });
+});
+
+describe('sameContent', () => {
+    const changed = (value, edit) => {
+        edit(value);
+
+        return value;
+    };
+
+    it('tells a switched toggle, a changed number or heading level, or a disabled set apart', () => {
+        expect(sameContent({ flag: false, title: null }, { flag: true, title: null })).toBe(false);
+        expect(sameContent([{ _id: 'r1', count: 1, label: null }], [{ _id: 'r1', count: 2, label: null }])).toBe(false);
+        expect(sameContent({ count: 1 }, { count: null })).toBe(false);
+        expect(sameContent(changed(storedBard(), (value) => (value[0].attrs.level = 3)), storedBard())).toBe(false);
+        expect(sameContent(changed(reemittedBard(), (value) => (value[4].attrs.enabled = false)), reemittedBard())).toBe(false);
+        expect(sameContent(changed(storedBard(), (value) => (value[1].content[0].text = 'See all our ')), storedBard())).toBe(false);
+    });
+
+    it('ignores what only one value holds, ids and types, as a fieldtype re-emits them', () => {
+        const list = (attrs) => [{ type: 'orderedList', ...attrs, content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'One' }] }] }] }];
+
+        expect(sameContent(list({}), list({ attrs: { start: 1, type: null } }))).toBe(true);
+        expect(sameContent([{ _id: 'x1', type: 'text', text: 'A' }], [{ type: 'text', text: 'A', _id: 'y9', enabled: true }])).toBe(true);
+        expect(sameContent([{ id: 1, text: 'A' }], [{ id: 2, text: 'A' }])).toBe(true);
+        expect(sameContent(reemittedBard(), storedBard())).toBe(true);
+        expect(sameContent(storedBard(), reemittedBard())).toBe(true);
+        expect(sameContent('Line one\r\nLine two', 'Line one\nLine two')).toBe(true);
     });
 });
 

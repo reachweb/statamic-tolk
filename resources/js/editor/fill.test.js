@@ -425,6 +425,74 @@ describe('applyFields', () => {
         expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
     });
 
+    // A sync value is the origin's empty value, preprocessed: a Group's nested defaults (a toggle arrives as false), a
+    // Grid with `min_rows` padded with default rows. A nested field's update desyncs the top-level field, as typing does.
+    it('keeps a synced Group localized when the editor switches a toggle in it before the read-back, so Save posts it', async () => {
+        const ctx = container({ values: { ...stored(), group: { flag: false, title: 'Eigener Titel' } }, localized: ['group'] });
+        const promise = fill(ctx, { group: { value: { flag: false, title: null }, meta: null, sync: true } });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.group = { flag: true, title: null };
+        ctx.desyncField('group');
+        await settled(promise);
+
+        expect(ctx.values.value.group).toEqual({ flag: true, title: null });
+        expect(ctx.localizedFields.value).toEqual(['group']);
+    });
+
+    it('keeps a synced Grid localized when the editor switches a toggle in a padded row before the read-back', async () => {
+        const ctx = container({ values: { ...stored(), rows: [{ _id: 'r1', flag: true, label: 'Eigene' }] }, localized: ['rows'] });
+        const promise = fill(ctx, { rows: { value: [{ _id: 'r1', flag: false, label: null }], meta: null, sync: true } });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.rows = [{ _id: 'r1', flag: true, label: null }];
+        ctx.desyncField('rows');
+        await settled(promise);
+
+        expect(ctx.localizedFields.value).toEqual(['rows']);
+    });
+
+    // Guard: core's Integer, Float and Range fieldtypes pass a typed number up as a string, which is text.
+    it('keeps a synced Grid localized when the editor types a number into a padded row before the read-back', async () => {
+        const ctx = container({ values: { ...stored(), rows: [{ _id: 'r1', count: 3, label: 'Eigene' }] }, localized: ['rows'] });
+        const promise = fill(ctx, { rows: { value: [{ _id: 'r1', count: 1, label: null }], meta: null, sync: true } });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.rows = [{ _id: 'r1', count: '2', label: null }];
+        ctx.desyncField('rows');
+        await settled(promise);
+
+        expect(ctx.localizedFields.value).toEqual(['rows']);
+    });
+
+    // Guard: the field the editor did not touch still goes back to inheriting.
+    it('takes a synced Bard field out again when it re-emits while the editor types into another field', async () => {
+        const emptyParagraph = (nodes) => (nodes.length ? nodes : [{ type: 'paragraph', attrs: { textAlign: null } }]);
+        const ctx = container({ localized: ['body'], reemit: { body: emptyParagraph } });
+        const promise = fill(ctx, { body: { value: [], meta: { existing: {} }, sync: true } });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.title = 'Title, by hand';
+        ctx.desyncField('title');
+        await settled(promise);
+
+        expect(ctx.localizedFields.value).toEqual(['title']);
+    });
+
+    // Guard: an upload finishing, a Replicator set added once its fetch answers or a fieldtype with a longer debounce
+    // changes a field with no input from anyone in the window. What the field holds decides, never the lack of input.
+    it('keeps a synced field localized when a change the editor started earlier lands during the read-back', async () => {
+        const ctx = container({ values: { ...stored(), group: { photo: [], caption: 'Eigene' } }, localized: ['group'] });
+        const promise = fill(ctx, { group: { value: { photo: [], caption: null }, meta: null, sync: true } });
+
+        await vi.advanceTimersByTimeAsync(50);
+        ctx.values.value.group = { photo: ['assets::pool.jpg'], caption: null };
+        ctx.desyncField('group');
+        await settled(promise);
+
+        expect(ctx.localizedFields.value).toEqual(['group']);
+    });
+
     it('records what the form holds after the fieldtype re-emitted, not the payload', async () => {
         const normalise = (nodes) => nodes.map((node) => ({ ...node, attrs: { textAlign: null } }));
         const ctx = container({ reemit: { body: normalise } });
@@ -657,6 +725,72 @@ describe('restore', () => {
         expect(ctx.values.value.title).toBe('Title, by hand');
         expect(ctx.localizedFields.value).toEqual(['title']);
         expect(dirty.has('base')).toBe(true);
+    });
+
+    it('keeps a field localized when the editor switches a toggle in a set right after Undo, so Save posts it', async () => {
+        const sets = (heading, flag) => [{ _id: 's1', type: 'block', enabled: true, heading, flag }];
+        const ctx = attached({ values: { ...stored(), blocks: sets('Heading', false) } });
+        const { snap, delivered } = await translate(ctx, { blocks: { value: sets('[de] Heading', false), meta: null } });
+        const promise = restore(ctx, snap, delivered, { registry });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.blocks = sets('Heading', true);
+        ctx.desyncField('blocks');
+        const result = await settled(promise);
+
+        expect(result.restored).toEqual(['blocks']);
+        expect(ctx.localizedFields.value).toEqual(['blocks']);
+        expect(dirty.has('base')).toBe(true);
+    });
+
+    it('keeps a Bard field localized when the editor changes a heading level right after Undo', async () => {
+        const heading = (text, level) => [{ type: 'heading', attrs: { level }, content: [{ type: 'text', text }] }];
+        const ctx = attached({ values: { ...stored(), body: heading('Welcome', 2) } });
+        const { snap, delivered } = await translate(ctx, { body: { value: heading('[de] Welcome', 2), meta: { existing: {} } } });
+        const promise = restore(ctx, snap, delivered, { registry });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.body = heading('Welcome', 3);
+        ctx.desyncField('body');
+        await settled(promise);
+
+        expect(ctx.localizedFields.value).toEqual(['body']);
+        expect(dirty.has('base')).toBe(true);
+    });
+
+    // Guard: attributes Bard adds with their defaults when it re-emits are not a change.
+    it('puts a Bard field back to inheriting when it re-emits a list with its default attributes after Undo', async () => {
+        const list = (text) => [{ type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }] }];
+        const normalise = (nodes) =>
+            nodes.map((node) => ({
+                ...node,
+                attrs: { start: 1, type: null },
+                content: node.content.map((item) => ({ ...item, content: item.content.map((paragraph) => ({ ...paragraph, attrs: { textAlign: null } })) })),
+            }));
+        const ctx = attached({ values: { ...stored(), body: list('One') }, reemit: { body: normalise } });
+        const { snap, delivered } = await translate(ctx, { body: { value: list('[de] One'), meta: { existing: {} } } });
+
+        const result = await settled(restore(ctx, snap, delivered, { registry }));
+
+        expect(result).toEqual({ restored: ['body'], kept: [] });
+        expect(ctx.values.value.body).toEqual(normalise(list('One')));
+        expect(ctx.localizedFields.value).toEqual([]);
+        expect(dirty.has('base')).toBe(false);
+    });
+
+    // Guard: an upload the editor started before Undo lands without input from anyone in the window.
+    it('keeps a field localized when an upload the editor started before Undo lands right after it', async () => {
+        const sets = (heading, images) => [{ _id: 's1', type: 'gallery', enabled: true, heading, images }];
+        const ctx = attached({ values: { ...stored(), blocks: sets('Heading', []) } });
+        const { snap, delivered } = await translate(ctx, { blocks: { value: sets('[de] Heading', []), meta: null } });
+        const promise = restore(ctx, snap, delivered, { registry });
+
+        await vi.advanceTimersByTimeAsync(100);
+        ctx.values.value.blocks = sets('Heading', ['assets::pool.jpg']);
+        ctx.desyncField('blocks');
+        await settled(promise);
+
+        expect(ctx.localizedFields.value).toEqual(['blocks']);
     });
 
     it('restores a field its fieldtype re-emitted again after the delivery was recorded', async () => {
