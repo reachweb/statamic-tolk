@@ -156,7 +156,7 @@ export function describeMonth(usage) {
 }
 
 export function sourceLabel(source) {
-    return { editor: __('Editor'), run: __('Runs'), cli: __('Command line') }[source] ?? source;
+    return { editor: __('Editor'), run: __('Runs'), cli: __('Command line'), auto: __('Automatic updates') }[source] ?? source;
 }
 
 // `YYYY-MM` as the month's name.

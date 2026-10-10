@@ -137,7 +137,7 @@ final class WorkRun implements ShouldQueue
      * Seconds until the lane can do something again: at once when a deadline ended its work or an apply sent items back,
      * otherwise the earliest wait it was given, and at least 1 second when nothing could be claimed.
      */
-    private static function waitSeconds(WorkReport $work, ApplyReport $applied): int
+    public static function waitSeconds(WorkReport $work, ApplyReport $applied): int
     {
         $waits = array_filter([
             $work->remains ? $work->wait : null,

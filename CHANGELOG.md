@@ -8,6 +8,7 @@ All notable changes to Tolk are documented in this file.
 
 - **Settings** in the **Tools › Translations** menu, below **Audit**, for users who may edit Tolk's settings.
 - **Translated slugs**, a setting that lists the collections whose new localizations get a slug made from their translated title, the way Statamic makes slugs in the target site's language. It is empty by default, so new localizations keep their origin's slug as before, and an existing slug is never changed.
+- **Automatic updates**, off by default (the settings' new Automation tab): saving a published entry in its origin updates its localizations in the background, as **Update translations** does, and with **Create missing localizations** also translates it into the sites that have none. They can be limited to some collections, and in collections with revisions published at once. Each update is a run, listed as an automatic update, followed in the origin's banner after the save, and counted under **Automatic updates** in the Overview's usage; the localization's banner says when an automatic update last saved it. With a queue worker the update runs on the queue; without one, in the process that saved the entry, after its response.
 - **Reset** on the Overview's usage card, which deletes the month's usage, and on the runs list, which deletes the finished runs; both ask first and are offered to users who may edit Tolk's settings.
 
 ### Changed

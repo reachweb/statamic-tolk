@@ -721,7 +721,11 @@ final readonly class RunProcessor
     private function recorder(Run $run, RunItem $item): Closure
     {
         return function (ModelRef $model, Usage $usage) use ($run, $item): void {
-            $this->recorder->record($model, $usage, $run->driver === RunDriver::Cli ? UsageSource::Cli : UsageSource::Run);
+            $this->recorder->record($model, $usage, match (true) {
+                ($run->scope['automatic'] ?? false) === true => UsageSource::Auto,
+                $run->driver === RunDriver::Cli => UsageSource::Cli,
+                default => UsageSource::Run,
+            });
             $item->usage = $item->usage->add($model, $usage);
 
             try {

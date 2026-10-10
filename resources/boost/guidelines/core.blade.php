@@ -61,6 +61,8 @@ Every command works with `php please` and `php artisan`. They run without a CP u
 
 A command that translates calls a paid provider and saves content. Prefer `--dry-run` while exploring, and do not run `tolk:translate` or `tolk:site` unless asked to.
 
+With the `auto_update` setting on (**Update translations automatically**, off by default), every save of a published entry in its origin, from code, an import or a seeder too, starts a run that updates its localizations, and with `auto_update_create` creates the missing ones, calling a paid provider. Check `resources/addons/statamic-tolk.yaml` before saving entries in bulk from code, and ask before an import that would trigger it.
+
 ### Translating another fieldtype
 
 - A fieldtype of this application or of another addon is translated once a **handler** is registered for it: a class implementing `Reach\StatamicTolk\Contracts\FieldHandler` with one method, `map(Field $field, mixed $value, Closure $translate, WalkContext $context): mixed`, which returns the value with every piece of text replaced by `$translate($leaf)` and nothing else changed. The rule: when `$translate` returns each leaf's own text, `map()` returns a value identical (`===`) to the one it was given.
@@ -109,7 +111,7 @@ final class SeoMetaHandler implements FieldHandler
 Three events in `Reach\StatamicTolk\Events`, fired by server-side saves only (runs, Translate into…, the commands). The editor saves nothing itself: when an editor saves a translated localization, Statamic fires its own `EntrySaved` or `TermSaved`.
 
 - `TargetTranslated`: translations were saved into one target. `ref` (a `TargetRef` with `type`, `id` and `site`), `handles` (the fields saved), `models` (as `provider:model`) and `usage`.
-- `RunStarted`: a run moved from pending to running. `runId`, `driver` (`RunDriver`: `browser`, `queue` or `cli`), `createdBy` (`['id' => …, 'name' => …]`, or `null` from the command line) and `counts` (items per status).
+- `RunStarted`: a run moved from pending to running. `runId`, `driver` (`RunDriver`: `browser`, `queue` or `cli`), `createdBy` (`['id' => …, 'name' => …]`, or `null` from the command line and for an automatic update of an entry saved without a signed-in user) and `counts` (items per status).
 - `RunFinished`: a run ended, completed, completed with errors, cancelled or aborted; a resumed run fires it again when it ends. `runId`, `status` (`RunStatus`), `counts` and `usage`.
 - `usage` is a `UsageMap`; `$event->usage->toArray()` gives, per model, the input, output, cache read, cache write and reasoning tokens and the number of calls.
 

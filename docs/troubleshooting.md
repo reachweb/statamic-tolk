@@ -56,7 +56,12 @@ To force one way, set `runs.execution` to `queue` or `browser`. `tolk:doctor` re
 
 - **A queue run**: no worker has worked on it for a while. Start one (`php artisan queue:work`, or check your process manager), then press **Resume**; or press **Run in this browser instead** to let the page drive it.
 - **A command-line run**: the command that ran it stopped (closed terminal, Ctrl-C, a crash). Press **Resume** on its run page to continue it in the CP (on the queue when it has a worker, otherwise driven by the page), or start the command again.
+- **An automatic update**: the PHP process that saved the entry stopped before the run ended, usually because the web server stops requests after a fixed time. Press **Resume** on its run page, or save the entry again. A queue worker avoids it ([Automatic updates](bulk-and-runs.md#automatic-updates)).
 - `tolk:prune` stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes): it marks them aborted and commits what they saved, so **Resume** continues them. Schedule it daily ([`tolk:prune`](cli.md#tolkprune)).
+
+### Saving an entry does not update its translations
+
+Automatic updates need **Update translations automatically** on (the settings' Automation tab), and only these saves count: of an entry in a collection with more than one site, not excluded, and among **Collections** when that list is not empty; in the entry's origin, not in a localization without localizations of its own; while the entry is published (with revisions, when it is published). A save that changes no text starts nothing, and the user who saved must be allowed to edit the localizations. With a queue worker the update starts about 10 seconds after the save. Each update is listed on the Runs page. See [Automatic updates](editor.md#automatic-updates).
 
 ### Items fail with "No worker finished this item in 3 attempts."
 
