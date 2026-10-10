@@ -11,6 +11,8 @@ use Reach\StatamicTolk\Support\Settings;
 
 class ModelCatalog
 {
+    private static ?array $tolkModels = null;
+
     public function __construct(private readonly Providers $providers) {}
 
     /**
@@ -24,6 +26,9 @@ class ModelCatalog
     }
 
     /**
+     * Tolk's models of the provider with the entries of `tolk.models` merged in by id: an entry replaces the keys it
+     * names of the model with its id, and a model Tolk does not have follows Tolk's. Entries without an id are left out.
+     *
      * @return list<array>
      */
     public function forProvider(string $provider): array
@@ -32,7 +37,27 @@ class ModelCatalog
             return [];
         }
 
-        return array_values(array_filter(Arr::wrap(config("tolk.models.{$provider}")), 'is_array'));
+        $models = [];
+
+        foreach ([...self::tolkModels($provider), ...Arr::wrap(config("tolk.models.{$provider}"))] as $entry) {
+            if (is_array($entry) && is_string($entry['id'] ?? null)) {
+                $models[$entry['id']] = array_replace($models[$entry['id']] ?? [], $entry);
+            }
+        }
+
+        return array_values($models);
+    }
+
+    /**
+     * Tolk's own models of the provider, which come with each release; a site changes them through `tolk.models`.
+     *
+     * @return list<array>
+     */
+    private static function tolkModels(string $provider): array
+    {
+        self::$tolkModels ??= require dirname(__DIR__, 2).'/resources/models.php';
+
+        return self::$tolkModels[$provider] ?? [];
     }
 
     /**

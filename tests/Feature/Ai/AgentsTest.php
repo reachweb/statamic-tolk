@@ -116,7 +116,7 @@ it('switches off OpenAI\'s implicit prompt caching for every agent', function (s
 })->with([TranslationAgent::class, ReviewAgent::class, SiteProfileAgent::class, ConnectionTestAgent::class]);
 
 it('lets a catalog entry\'s options choose OpenAI\'s cache mode', function () {
-    config(['tolk.models.openai.0.options.prompt_cache_options' => ['mode' => 'implicit']]);
+    config(['tolk.models.openai' => [['id' => 'gpt-6.1-sol', 'options' => ['reasoning' => ['effort' => 'low'], 'prompt_cache_options' => ['mode' => 'implicit']]]]]);
 
     $body = promptTranslationAgent('openai')->data();
 

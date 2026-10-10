@@ -44,7 +44,7 @@ final class ProviderFixtures
     ];
 
     /**
-     * The first catalog model of the tier, as configured in tolk.models.
+     * The first catalog model of the tier.
      */
     public static function model(string $provider, string $tier = 'quality'): array
     {

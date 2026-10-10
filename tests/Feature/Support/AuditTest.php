@@ -164,7 +164,7 @@ describe('providers and models', function () {
     });
 
     it('fails when the catalog has no quality model for a provider with a key', function () {
-        config(['tolk.models.openai' => [['id' => 'gpt-6-luna', 'tier' => 'fast']]]);
+        config(['tolk.models.openai' => [['id' => 'gpt-6.1-sol', 'tier' => 'fast']]]);
 
         expect(auditItems('providers'))->toContain('error: The model catalog (tolk.models) has no quality model for [openai]. Tolk uses it whenever no model is chosen in the settings. Add one to tolk.models in config/tolk.php.');
     });

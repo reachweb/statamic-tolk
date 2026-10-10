@@ -13,6 +13,7 @@ All notable changes to Tolk are documented in this file.
 
 ### Changed
 
+- Tolk's model catalog is no longer part of `config/tolk.php`, so each update of Tolk brings its new models, prices and request options to every site, including a site that published the config. `models` in the config now only adds models or changes Tolk's, by id: an entry replaces the keys it names and keeps Tolk's others. **If you published the config from 1.0.0-beta.1**, delete the entries under `models`, or keep only the keys you changed: each entry of the copy keeps replacing Tolk's model with the same id, and the copy's Claude Haiku 5.5 sends a thinking option that Anthropic refuses.
 - The editor's translation options are grouped and shorter, so they fit a laptop screen: the model and the reviewer side by side, the reviewer enabled only while it has something to do, the actions that take effect at once under their own heading, and the offer preference as a switch.
 - The banner of a localization shows its counts and its buttons on one line, without repeating that it is up to date; the origin's list of translations lines up and colours each status.
 - A status has the same colour in the banner, the origin's list and the Overview.
