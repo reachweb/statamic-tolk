@@ -79,6 +79,24 @@ final class EntryFamilies
     }
 
     /**
+     * The sites the entry is the origin of (§A11 "Entries"): those of its direct localizations and, for the root of the
+     * family when $missing, the sites of its collection the family has no localization in yet. In the order of the
+     * collection's sites.
+     *
+     * @return list<string>
+     */
+    public function originSites(EntryContract $entry, bool $missing = true): array
+    {
+        $children = $entry->directDescendants();
+        $family = $missing && $entry->isRoot() ? $entry->descendants() : null;
+
+        return $entry->collection()->sites()
+            ->filter(fn (string $site) => $site !== $entry->locale() && ($children->has($site) || ($family !== null && ! $family->has($site))))
+            ->values()
+            ->all();
+    }
+
+    /**
      * Every family × site pair that is a target: the collection is available in the site, and the site is not the
      * root's own. In family order, then in the order of the sites.
      *

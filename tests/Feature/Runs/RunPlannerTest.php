@@ -136,6 +136,7 @@ describe('build', function () {
                 'term_ids' => [],
                 'reference' => null,
                 'assumed_sites' => [],
+                'automatic' => false,
                 'skipped' => [],
                 'out_of_scope' => [],
             ])

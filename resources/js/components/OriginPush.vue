@@ -57,13 +57,25 @@ function update() {
     pushes.start(props.containerName, { reference: props.reference, sites: updateSites(props.origin), mode: 'update' });
 }
 
+const working = computed(() =>
+    shown.value?.automatic
+        ? __('Updating the translations automatically into :sites…', { sites: shown.value.sites })
+        : __('Translating into :sites…', { sites: shown.value.sites }),
+);
+
+const updated = computed(() => __('The translations into :sites were updated automatically.', { sites: shown.value?.sites ?? '' }));
+
 // What a screen reader announces as the run moves on.
 const announcement = computed(() => {
     switch (push.value?.phase) {
         case 'starting':
             return __('Starting the translation…');
+        case 'expecting':
+            return working.value;
+        case 'updated':
+            return updated.value;
         case 'running':
-            return shown.value.failure ? __('The translations stopped: :message', { message: shown.value.failure }) : __('Translating into :sites…', { sites: shown.value.sites });
+            return shown.value.failure ? __('The translations stopped: :message', { message: shown.value.failure }) : working.value;
         case 'error':
             return shown.value?.error ?? '';
         default:
@@ -93,10 +105,17 @@ function reload() {
 
         <Text v-if="push?.phase === 'starting'" as="p" data-tolk-push-phase="starting">{{ __('Starting the translation…') }}</Text>
 
+        <Text v-if="push?.phase === 'expecting'" as="p" data-tolk-push-phase="expecting">{{ working }}</Text>
+
+        <div v-if="push?.phase === 'updated'" class="flex flex-wrap items-center gap-2" data-tolk-push-phase="updated">
+            <Text>{{ updated }}</Text>
+            <Button size="sm" variant="ghost" data-tolk-action="push-close" @click="pushes.dismiss(containerName)">{{ __('Close') }}</Button>
+        </div>
+
         <div v-if="push?.phase === 'running'" class="space-y-2" data-tolk-push-phase="running">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <Text v-if="push.cancelling">{{ __('Cancelling. Translations already being saved are still saved.') }}</Text>
-                <Text v-else>{{ __('Translating into :sites…', { sites: shown.sites }) }}</Text>
+                <Text v-else data-tolk-push-working>{{ working }}</Text>
                 <Button size="sm" variant="ghost" :disabled="push.cancelling" data-tolk-action="push-cancel" @click="pushes.cancel(containerName)">
                     {{ __('Cancel') }}
                 </Button>

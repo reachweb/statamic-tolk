@@ -129,6 +129,12 @@ const created = computed(() => {
     const by = run.value.created_by?.name;
     const at = formatDate(run.value.created_at);
 
+    if (scope.value.automatic) {
+        return by
+            ? __('Started automatically on :date, when :name saved the entry.', { name: by, date: at })
+            : __('Started automatically on :date, when the entry was saved.', { date: at });
+    }
+
     return by ? __('Created by :name on :date', { name: by, date: at }) : __('Created on :date from the command line', { date: at });
 });
 
@@ -228,7 +234,10 @@ function filterBy(value) {
 
         <Alert v-if="stalled" variant="warning" :heading="__('This run is not moving')" data-tolk-stalled>
             <div class="space-y-3">
-                <Text v-if="run.driver === 'cli'">{{ __('The command running this run has not worked on it for a while and may have stopped. Resume continues the run from here.') }}</Text>
+                <Text v-if="run.driver === 'cli' && scope.automatic">{{
+                    __('The process that updates these translations has not worked on them for a while and may have stopped. Resume continues the run from here.')
+                }}</Text>
+                <Text v-else-if="run.driver === 'cli'">{{ __('The command running this run has not worked on it for a while and may have stopped. Resume continues the run from here.') }}</Text>
                 <Text v-else>{{ __('No queue worker has worked on this run for a while. Start a worker for the queue, or run it in this browser instead.') }}</Text>
                 <div class="flex flex-wrap gap-2">
                     <Button size="sm" :text="__('Resume')" :loading="busy === 'resume'" :disabled="busy !== null" data-tolk-action="resume" @click="act('resume', follower.resume)" />

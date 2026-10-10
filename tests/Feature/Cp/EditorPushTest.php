@@ -311,6 +311,7 @@ describe('active_run', function () {
         expect($active)->toBe([
             'run' => $response->json('run'),
             'driver' => 'browser',
+            'automatic' => false,
             'lanes' => config('tolk.concurrency.browser'),
             'urls' => $response->json('urls'),
         ]);

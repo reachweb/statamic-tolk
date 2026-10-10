@@ -7,6 +7,7 @@ Runs are started from:
 - the **Translate…** action in entry and term listings and in a structured collection's tree view;
 - the [Overview](#the-overview), which also translates global sets and navigation;
 - an origin entry's **Translate into…** and **Update translations** ([The editor](editor.md#in-the-origin)), a run of that one entry;
+- saving a published origin entry, when automatic updates are on ([Automatic updates](#automatic-updates));
 - the command line, `tolk:translate` and `tolk:site` ([The command line](cli.md)).
 
 In the CP they need the `run bulk translations` permission, except the origin entry's buttons, which need `translate content`. The commands need no permission.
@@ -63,6 +64,8 @@ A run started in the CP is driven in one of two ways, decided by `runs.execution
 
 Runs from the command line are driven by the command, with worker processes (see [The command line](cli.md#how-the-command-runs)). Their page shows their progress like any other.
 
+Automatic updates have no page to drive them, so they run on the queue or in the process that saved the entry ([Automatic updates](#automatic-updates)).
+
 ### "Keep this tab open"
 
 With the browser driver, the run moves only while its page is open: "Keep this tab open while the run is in progress. Closing it pauses the run until you open it again." The page warns before you leave it while it drives the run. Nothing is lost when it closes: the next time anyone who may see the run opens its page, the run continues. An item the closed page was working on is picked up again after about 80 seconds. A scheduled `tolk:prune` stops a run that made no progress for five minutes, a browser-driven one whose page stayed closed included; its page then offers **Resume** ([Stalled runs](#stalled-runs)).
@@ -94,9 +97,20 @@ With a `retry_after` of 120, each lane job starts requests for up to 30 seconds 
 
 A lane that is killed is started again, up to five times in a row. If no worker works on a queue run for a while, its page shows "This run is not moving" with **Resume** and **Run in this browser instead**, which hands the run to the page (the browser driver) for a site whose queue has no worker after all.
 
+### Automatic updates
+
+With `auto_update` on ([Configuration](configuration.md#automation)), saving a published origin entry starts a run of that entry, as its **Update translations** button does ([The editor](editor.md#automatic-updates)). A run with nothing to translate is not kept. No page drives it:
+
+- **With a queue worker** (`runs.execution` is `auto` or `queue`, and the connection has a worker), a job waits 10 seconds on the queue, so quick saves of the entry make one update, then starts the run with queue lanes, as above.
+- **Without one**, or with `runs.execution` set to `browser`, the PHP process that saved the entry runs it after it has sent its response, so the editor does not wait. That process stays busy until the run ends, without PHP's time limit, sleeping through the waits a provider asks for. A web server that stops a request after a fixed time (PHP-FPM's `request_terminate_timeout`) stops the run with it; the run then stalls, and **Resume** on its page finishes it in the browser. Run a queue worker on a site whose entries are long or have many sites.
+
+A save while an earlier run of the entry is still moving waits for that run (up to 15 minutes), so the same fields are not translated twice. A run started from the entry's banner counts too.
+
+On the runs list an automatic run says **Automatic update**, and its page "Started automatically on …, when … saved the entry." It translates as the user who saved the entry: the sites they may not edit are left out. A save without a signed-in user, from code or a command, may update every site.
+
 ### Stalled runs
 
-A run whose driver has gone (a closed command, a dead worker) is shown as not moving on its page. `tolk:prune` stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes by default): it marks them aborted and commits what they saved, so their page offers **Resume**, which translates and saves the rest. See [The command line](cli.md#tolkprune).
+A run whose driver has gone (a closed command, a dead worker, the process of an automatic update) is shown as not moving on its page. `tolk:prune` stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes by default): it marks them aborted and commits what they saved, so their page offers **Resume**, which translates and saves the rest. See [The command line](cli.md#tolkprune).
 
 ## Why one writer
 
@@ -143,6 +157,7 @@ With Statamic's git integration, a run makes one commit ("Content translated") w
   - **Editor**: the entry and term editor, and **Generate** and **Test connection** in the settings.
   - **Runs**: the runs started in the CP (the **Translate…** action, the Overview, **Translate into…** and **Update translations**) or with `--queue`.
   - **Command line**: `tolk:translate` and `tolk:site` without `--queue`, `tolk:lang`, `tolk:forms` and `tolk:profile`. A command-line run resumed on its run page counts under Runs from then on.
+  - **Automatic updates**: the runs started by saving an origin entry ([Automatic updates](#automatic-updates)).
 - Users who may edit Tolk's settings can **Reset** the month's usage on the Overview, after a confirmation: the month's file is deleted and counting starts again from zero. A run's page keeps showing the run's own usage.
 - Costs are computed from the prices in the model catalog (`models.*.price`). The monthly usage keeps the price of the day of each call; a run's page computes its cost from its tokens at the current prices. A model without a price makes the cost "unknown".
 - Tolk sets no budget caps. Set spending limits with the provider; when one is reached, the provider rejects the requests and the run is aborted with that message.
