@@ -111,6 +111,7 @@ export async function applyFields(
     }
 
     const synced = [];
+    const filled = {};
 
     for (const handle of handles) {
         const payload = fields[handle];
@@ -134,7 +135,8 @@ export async function applyFields(
             ctx.setFieldMeta(handle, clone(payload.meta));
         }
 
-        ctx.setFieldValue(handle, formValue(ctx, handle, payload.value));
+        filled[handle] = formValue(ctx, handle, payload.value);
+        ctx.setFieldValue(handle, clone(filled[handle]));
 
         if (payload.sync) {
             // Back to inheriting from the origin: an unsaved change even when the value looks the same.
@@ -159,7 +161,8 @@ export async function applyFields(
     }
 
     // A fieldtype such as Bard re-emits what was filled, which desyncs the field again; a synced field must undo that.
-    // What the form holds afterwards is recorded as delivered.
+    // What the form holds afterwards is recorded as delivered while it has the filled text. Other text was typed by the
+    // editor meanwhile, so what was filled is recorded, and Undo keeps their text.
     await sleep(REEMIT_MS);
 
     if (!current()) {
@@ -171,7 +174,9 @@ export async function applyFields(
     synced.forEach((handle) => setLocalized(ctx, handle, false));
 
     for (const handle of result.applied) {
-        delivered[handle] = { ...delivered[handle], value: clone(ctx.values.value[handle]), pending: false };
+        const value = ctx.values.value[handle];
+
+        delivered[handle] = { ...delivered[handle], value: sameText(value, filled[handle]) ? clone(value) : filled[handle], pending: false };
     }
 
     return result;

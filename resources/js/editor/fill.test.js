@@ -409,6 +409,22 @@ describe('applyFields', () => {
         expect(delivered.body.value).not.toBe(ctx.values.value.body);
     });
 
+    it('records what was delivered when the editor changes the text before the read-back', async () => {
+        const normalise = (nodes) => nodes.map((node) => ({ ...node, attrs: { textAlign: null } }));
+        const ctx = container({ reemit: { body: normalise } });
+        const delivered = {};
+        const body = [{ type: 'paragraph', content: [{ type: 'text', text: '[de] Body' }] }];
+        const promise = fill(ctx, { title: translated('Title'), body: { value: body, meta: { existing: {} } } }, { delivered });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.title = 'Human correction';
+        ctx.values.value.body = [{ type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'text', text: 'Body, by hand' }] }];
+        await settled(promise);
+
+        expect(delivered.title.value).toBe('[de] Title');
+        expect(delivered.body.value).toEqual(body);
+    });
+
     it('records nothing when the editor switches before the read-back', async () => {
         const ctx = container();
         const delivered = {};
@@ -506,6 +522,21 @@ describe('restore', () => {
         expect(ctx.localizedFields.value).toEqual(['intro']);
         expect(Object.keys(delivered)).toEqual(['intro']);
         expect(dirty.has('base')).toBe(true);
+    });
+
+    it('keeps a correction typed while the fill waited for its fieldtype to re-emit', async () => {
+        const ctx = attached();
+        const snap = snapshot(ctx, ['title'], {});
+        const delivered = {};
+        const promise = fill(ctx, { title: translated('Title') }, { delivered });
+
+        await vi.advanceTimersByTimeAsync(REEMIT_MS - 50);
+        ctx.values.value.title = 'Human correction';
+        await settled(promise);
+        const result = await settled(restore(ctx, snap, delivered, { registry }));
+
+        expect(result).toEqual({ restored: [], kept: ['title'] });
+        expect(ctx.values.value.title).toBe('Human correction');
     });
 
     it('keeps the dirty flag when the form was dirty before the translation', async () => {
