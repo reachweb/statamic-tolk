@@ -163,6 +163,7 @@ async function undo() {
                         <TranslateOptions :container-name="name" :status="state.status" />
                     </div>
                 </div>
+                <Description v-if="banner.localization.autoUpdated" data-tolk-auto-updated>{{ banner.localization.autoUpdated }}</Description>
                 <Description v-if="banner.localization.incompleteNote">{{ banner.localization.incompleteNote }}</Description>
                 <Description v-if="banner.localization.hint" data-tolk-not-localizable>
                     {{ banner.localization.hint }}
@@ -247,6 +248,7 @@ async function undo() {
                         <Description v-if="localization.exists && localization.summary">{{ localization.summary }}</Description>
                     </li>
                 </ul>
+                <Description v-if="banner.origin.autoUpdate" class="ps-6" data-tolk-auto-update>{{ banner.origin.autoUpdate }}</Description>
                 <OriginPush
                     :container-name="name"
                     :reference="state.reference"

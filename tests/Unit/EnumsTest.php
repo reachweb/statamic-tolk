@@ -58,7 +58,7 @@ it('pins every case and its value', function (string $enum, array $cases) {
     ]],
     'TargetResultStatus' => [TargetResultStatus::class, ['Done' => 'done', 'Skipped' => 'skipped', 'Failed' => 'failed']],
     'RunDriver' => [RunDriver::class, ['Queue' => 'queue', 'Browser' => 'browser', 'Cli' => 'cli']],
-    'UsageSource' => [UsageSource::class, ['Editor' => 'editor', 'Run' => 'run', 'Cli' => 'cli']],
+    'UsageSource' => [UsageSource::class, ['Editor' => 'editor', 'Run' => 'run', 'Cli' => 'cli', 'Auto' => 'auto']],
     'Finish' => [Finish::class, ['Stop' => 'stop', 'Length' => 'length', 'Refused' => 'refused', 'Empty' => 'empty']],
     'ProviderErrorKind' => [ProviderErrorKind::class, [
         'Paused' => 'paused',

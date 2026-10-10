@@ -1,5 +1,6 @@
 import * as defaultApi from '../api.js';
 import { SETTLE_MS } from './fill.js';
+import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
 import { useEditorStore } from './store.js';
@@ -25,6 +26,7 @@ export function createSaveHooks({
     api = defaultApi,
     now = Date.now,
     settleMs = SETTLE_MS,
+    onConfirmed = (name, status) => pushes.afterSave(name, status),
 }) {
     let listening = false;
 
@@ -102,6 +104,8 @@ export function createSaveHooks({
             if (latest?.reference === reference) {
                 latest.status = status;
                 latest.notSaved = notSaved;
+                // Not awaited: the save hooks would wait for an automatic update to start.
+                onConfirmed(BASE, status);
             }
 
             if (notSaved.length) {

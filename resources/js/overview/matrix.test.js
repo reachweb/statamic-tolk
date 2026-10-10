@@ -11,6 +11,7 @@ import {
     matrixCells,
     matrixColumns,
     siteRun,
+    sourceLabel,
     statusColor,
     statusLabel,
 } from './matrix.js';
@@ -188,6 +189,10 @@ describe('the page', () => {
         usage.models['openai:custom'] = { input: 1, output: 1, calls: 1, cost: null, sources: { editor: {} } };
         expect(describeMonth(usage).cost).toBeNull();
         expect(describeMonth({ month: '2026-10', models: [], labels: [] })).toMatchObject({ rows: [], calls: 0, cost: 0 });
+    });
+
+    it('names where the usage came from', () => {
+        expect(['editor', 'run', 'cli', 'auto', 'other'].map(sourceLabel)).toEqual(['Editor', 'Runs', 'Command line', 'Automatic updates', 'other']);
     });
 
     it('names the month', () => {

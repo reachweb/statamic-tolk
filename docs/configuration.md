@@ -52,6 +52,17 @@ See [Context and glossary](context-and-glossary.md#the-glossary).
 | `excluded_fields` | Excluded fields | none | Field handles that are never translated, in every blueprint of entries, terms and global sets. This applies to top-level fields; for a field inside a Replicator, Grid or Bard set, switch off its **Translate automatically** option instead (below). |
 | `translated_slugs` | Translated slugs | none | New localizations of these collections get a slug made from their translated title, the way Statamic makes slugs in the target site's language ("Hallo Welt" becomes `hallo-welt`). In every other collection a new localization keeps its origin's slug. An existing slug is never changed. See [Entries](content-types.md#entries). |
 
+### Automation
+
+| Key | Field | Default | Meaning |
+| --- | --- | --- | --- |
+| `auto_update` | Update translations automatically | off | Each time an entry is saved published in its origin, its localizations are updated in the background: the fields whose origin changed and the fields not translated yet, as **Update translations** does. Fields edited by hand are never overwritten. Every save that changes text spends API credit. See [Automatic updates](editor.md#automatic-updates). |
+| `auto_update_create` | Create missing localizations | off | Also translates the entry into the sites of its collection that have no localization of it yet, as **Translate into…** does. New localizations follow `new_localization_status`. Shown only while `auto_update` is on, like the two below; their values are kept while they are hidden. |
+| `auto_update_collections` | Collections | none | Only the entries of these collections are updated automatically. Empty: every collection that is not excluded. |
+| `auto_update_publish` | Publish updates | off | In collections with revisions, an update of a published localization goes into its working copy and waits until someone publishes it. On: it is published at once, unless the localization already had unpublished changes. |
+
+Entries only: terms, global sets and the navigation are not updated automatically.
+
 ### Providers
 
 `providers` (Providers) shows, for Anthropic, OpenAI and Gemini, whether a key is set, whether it is Tolk's own, from the addon's config (`TOLK_*_API_KEY` by default), or comes from `config/ai.php`, which Tolk shares with the rest of the site, and, without a key, which variables to set, with **Test connection**: one small request to the provider's fast model, with a 20-second timeout, answered with the time it took or a readable error. The field stores nothing.
