@@ -745,6 +745,18 @@ describe('the writer', function () {
             ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
     });
 
+    it('throws for a field whose source changed after it was assembled, before anything is written', function () {
+        $localization = $this->localize($this->origin, 'el');
+        $fields = applyAssembled($this->origin);
+        $data = $localization->fresh()->data()->all();
+        $state = StateFixtures::stored($localization)->toArray();
+        $this->origin->fresh()->set('intro', 'An edited intro.')->save();
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(SourceChanged::class, 'The source of the field [intro] changed')
+            ->and($localization->fresh()->data()->all())->toBe($data)
+            ->and(StateFixtures::stored($localization)->toArray())->toBe($state);
+    });
+
     it('throws ApplyFailed when a listener cancels the save', function () {
         $this->localize($this->origin, 'el');
         $fields = applyAssembled($this->origin);

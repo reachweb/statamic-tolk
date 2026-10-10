@@ -4,9 +4,11 @@ namespace Reach\StatamicTolk\Contracts;
 
 use Illuminate\Support\Collection;
 use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Reach\StatamicTolk\Translation\AssembledField;
 use Statamic\Contracts\Auth\User;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fields;
@@ -104,12 +106,21 @@ interface Target
     public function authorize(User $user): bool;
 
     /**
-     * The same target, with everything resolved again from new queries.
+     * The same target, with everything resolved again from new queries. Core answers some of them from this process's
+     * Blink, which it does not drop: a localization's origin (`origin-Entry-{id}`), an entry's localizations
+     * (`entry-descendants-{id}`), a global set's variables (`global-set-localizations-{id}`) and form blueprints (the
+     * store `blueprints.found`). So what another process saved since is seen only after ContentWriter::refreshStache(),
+     * which ContentWriter::write() runs first, and apply() checks the sources again there.
      */
     public function fresh(): static;
 
     /**
-     * Saves assembled fields into the target (§A11). Only inside ContentWriter::write().
+     * Saves assembled fields into the target (§A11), once each is still in scope and its source is still the value it
+     * was assembled from. Only inside ContentWriter::write().
+     *
+     * @param  list<AssembledField>  $fields
+     *
+     * @throws SourceChanged before anything is written
      */
     public function apply(array $fields, ApplyOptions $options): ApplyResult;
 }

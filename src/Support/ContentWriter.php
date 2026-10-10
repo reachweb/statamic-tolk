@@ -70,6 +70,9 @@ final class ContentWriter
      * Makes this process see what other processes saved: core's between-jobs reset, each store's memoized keys and index
      * usage (protected, so cleared through a bound closure), and every Blink store (07-spike-findings.md "Stache and
      * parallel writers"). StacheRefreshTest fails when Statamic renames what this clears.
+     *
+     * write() runs it under the lock, before its callback. Readers that waited run it without the lock, because they
+     * save nothing: the editor's delivery after a model call, and a run worker before it plans an item.
      */
     public static function refreshStache(): void
     {

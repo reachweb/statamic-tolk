@@ -6,6 +6,7 @@ use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
+use Reach\StatamicTolk\Exceptions\WriterBusy;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 
@@ -19,19 +20,18 @@ final readonly class PlanApplier
     public function __construct(private Pipeline $pipeline) {}
 
     /**
-     * Assembles every field and saves the fields that assembled, under the write lock and from the target resolved again
-     * once ContentWriter reloaded what other processes saved, so a source edited while the units ran raises
-     * SourceChanged even when this process still holds it in memory. A review saves only the fields it corrected; a
-     * field that failed in strict mode is listed as failed and the others are still saved.
+     * Assembles every field from the given target and saves the fields that assembled through ContentWriter::write(),
+     * whose Target::apply() checks their sources again under the write lock. Pass a target resolved after the units ran,
+     * so a source edited meanwhile raises SourceChanged before this call takes the lock (a run already holds it); a
+     * source that another process saved, which this process may still hold as it was (Target::fresh()), raises it under
+     * the lock. Only a save takes the lock: a review without corrections and a strict plan whose every field failed
+     * return without it. A review saves only the fields it corrected; a field that failed in strict mode is listed as
+     * failed and the others are still saved.
      *
      * @throws SourceChanged
+     * @throws WriterBusy when there is something to save and the write lock was not free in time
      */
     public function apply(Plan $plan, Target $target, ApplyOptions $options): TargetResult
-    {
-        return ContentWriter::write(fn () => $this->applyFresh($plan, $target->fresh(), $options));
-    }
-
-    private function applyFresh(Plan $plan, Target $target, ApplyOptions $options): TargetResult
     {
         $assembled = $failed = $unchanged = $corrections = [];
         $warnings = $plan->noteList();
@@ -75,7 +75,7 @@ final readonly class PlanApplier
             );
         }
 
-        $applied = $target->apply(array_values($assembled), $options);
+        $applied = ContentWriter::write(fn () => $target->apply(array_values($assembled), $options));
         $fields = $failed;
 
         foreach ($applied->applied as $handle) {

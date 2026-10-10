@@ -2,11 +2,13 @@
 
 use Illuminate\Filesystem\Filesystem;
 use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
+use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\StatusResolver;
@@ -16,6 +18,7 @@ use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\LangTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Translation\Pipeline;
 use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
@@ -158,6 +161,24 @@ it('writes only the applied keys inside the writer, and skips a key edited since
     expect($applied->applied)->toBe(['booking.rooms'])
         ->and($applied->skipped)->toBe(['booking.title' => 'target_changed'])
         ->and(app(LangFiles::class)->read('de', 'messages')['booking.title'])->toBe('Ihr Aufenthalt');
+});
+
+it('throws for a string whose source changed after it was assembled, before anything is written', function () {
+    $this->fakeTranslations();
+    $target = langTarget(LangFiles::JSON);
+    $plan = app(Planner::class)->plan($target, PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']));
+    $pipeline = app(Pipeline::class);
+
+    while (($runnable = $pipeline->runnable($plan)) !== []) {
+        $pipeline->runUnit($plan, array_key_first($runnable));
+    }
+
+    $fields = array_map(fn (string $handle) => $pipeline->assemble($plan, $target->fresh(), $handle), $plan->fieldHandles());
+    file_put_contents(lang_path('en.json'), '{"Book now": "Book today"}');
+
+    expect(fn () => ContentWriter::write(fn () => langTarget(LangFiles::JSON)->apply($fields, new ApplyOptions)))->toThrow(SourceChanged::class, 'The source of the field [Book now] changed')
+        ->and(file_exists(lang_path('de.json')))->toBeFalse()
+        ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, LangFiles::JSON, 'de'))->isEmpty())->toBeTrue();
 });
 
 it('fails the target when its file cannot be written', function () {

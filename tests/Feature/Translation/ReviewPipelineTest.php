@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Sleep;
 use Laravel\Ai\Prompts\AgentPrompt;
@@ -17,6 +18,7 @@ use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -306,6 +308,22 @@ describe('reviewing and saving', function () {
             ->and(reviewExistingLocalization($this->origin)->data()->all())->toBe($localization->data()->all());
         Event::assertNotDispatched(EntrySaved::class);
         Event::assertNotDispatched(TargetTranslated::class);
+    });
+
+    it('does not wait for the write lock when the reviewer has no corrections', function () {
+        reviewExistingTranslate($this->origin);
+        $localization = reviewExistingLocalization($this->origin);
+        $state = StateFixtures::stored($localization)->toArray();
+        $this->fakeReview();
+        config(['tolk.write.wait_seconds' => 0]);
+        Cache::lock(ContentWriter::LOCK, 60)->get();
+
+        $result = reviewExistingReview($this->origin);
+
+        expect($result->status)->toBe(TargetResultStatus::Skipped)
+            ->and($result->reason)->toBe(TargetResult::NO_CORRECTIONS)
+            ->and($result->fields)->toBe(array_fill_keys(['title', 'intro', 'body'], TargetResult::NO_CORRECTIONS))
+            ->and(StateFixtures::stored($localization)->toArray())->toBe($state);
     });
 
     it('sends nothing for a target without machine output', function () {

@@ -6,8 +6,10 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
+use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\LangFiles;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
@@ -15,6 +17,8 @@ use Reach\StatamicTolk\Targets\FormsTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\FormFixtures;
+use Reach\StatamicTolk\Translation\Pipeline;
+use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Facades\Form;
@@ -215,6 +219,24 @@ it('shares the JSON file with the _json translation file without dropping its ke
         ->and(array_slice($written, 0, 2))->toBe(['Contact us' => '[T] Contact us', 'Book now' => '[T] Book now'])
         ->and($written['Your name'])->toBe('[T] Your name')
         ->and(formsStatuses(formsTarget())['Your name'])->toBe(FieldStatus::Current);
+});
+
+it('throws for a text a form dropped after it was assembled, before anything is written', function () {
+    $this->fakeTranslations();
+    $target = formsTarget();
+    $plan = app(Planner::class)->plan($target, PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']));
+    $pipeline = app(Pipeline::class);
+
+    while (($runnable = $pipeline->runnable($plan)) !== []) {
+        $pipeline->runUnit($plan, array_key_first($runnable));
+    }
+
+    $fields = array_map(fn (string $handle) => $pipeline->assemble($plan, $target->fresh(), $handle), $plan->fieldHandles());
+    FormFixtures::make('newsletter', 'Newsletter', ['email' => ['type' => 'text', 'display' => 'Your email address']]);
+
+    expect(fn () => ContentWriter::write(fn () => formsTarget()->apply($fields, new ApplyOptions)))->toThrow(SourceChanged::class, 'The source of the field [Interests] changed')
+        ->and(file_exists(lang_path('de.json')))->toBeFalse()
+        ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Forms, 'de'))->isEmpty())->toBeTrue();
 });
 
 it('names the keys it translated that no form uses any more', function () {

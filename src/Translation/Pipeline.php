@@ -141,20 +141,19 @@ final readonly class Pipeline
 
     /**
      * Builds the field's target value from its current source value, or for a review plan from the value under review.
-     * Pass a target resolved after the units ran, so a source edited meanwhile is noticed.
+     * Pass a target resolved after the units ran, so a source edited meanwhile is noticed. This process may still hold
+     * a source that another process saved since (Target::fresh()), so Target::apply() makes the same SourceCheck again
+     * under the write lock, where that save is seen.
      *
-     * @throws SourceChanged when the source value is not the one that was planned
+     * @throws SourceChanged when the field is out of scope or its source value is not the one that was planned
      * @throws FieldFailed when a part failed for good and the plan is strict
      */
     public function assemble(Plan $plan, Target $target, string $handle): AssembledField
     {
         $planned = $plan->fields[$handle] ?? throw new InvalidArgumentException("The plan [{$plan->id}] has no field [{$handle}].");
+        SourceCheck::verify($target, $handle, $planned['source_hash']);
         $field = $target->fields()->get($handle);
         $sourceValue = $target->sourceValue($handle);
-
-        if ($field === null || Fingerprint::of($sourceValue) !== $planned['source_hash']) {
-            throw SourceChanged::field($handle);
-        }
 
         $resolved = $this->resolve($plan);
         $segments = $plan->segmentsOfField($handle);

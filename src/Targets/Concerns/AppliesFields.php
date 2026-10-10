@@ -11,21 +11,27 @@ use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Translation\AssembledField;
+use Reach\StatamicTolk\Translation\SourceCheck;
 use Reach\StatamicTolk\Translation\TargetResult;
 
 /**
- * The steps of Target::apply() that the targets share (§A11): the check of the fields against the plan, the
- * target_changed check, the normalisation of a target with a blueprint, the pending entries before the save and the
- * confirm after it.
+ * The steps of Target::apply() that the targets share (§A11): the check of the fields and their sources against the
+ * plan, the target_changed check, the normalisation of a target with a blueprint, the pending entries before the save
+ * and the confirm after it.
  * Writing the values and saving are each target's own, in applyFresh(). The using class holds the StatusResolver in
  * `$resolver` and the StateWriter in `$stateWriter`.
  */
 trait AppliesFields
 {
     /**
-     * Resolves the target fresh and confirms it (§A11 step 1), then applies on that fresh copy.
+     * Resolves the target fresh, checks that every field is still in scope and that its source is still the value it was
+     * assembled from, and confirms it (§A11 step 1), then applies on that fresh copy. ContentWriter::write() has just
+     * reloaded what other processes saved, so the check sees a source that another process saved after the fields were
+     * assembled, or before, while the target they were assembled from still held it as it was (Target::fresh()).
      *
      * @param  list<AssembledField>  $fields
+     *
+     * @throws SourceChanged before anything is written, state included
      */
     public function apply(array $fields, ApplyOptions $options): ApplyResult
     {
@@ -34,6 +40,11 @@ trait AppliesFields
         }
 
         $target = $this->fresh();
+
+        foreach ($fields as $field) {
+            SourceCheck::verify($target, $field->handle, $field->sourceHash);
+        }
+
         $this->stateWriter->confirm($target);
 
         return $target->applyFresh($fields, $options);
@@ -45,24 +56,14 @@ trait AppliesFields
     abstract private function applyFresh(array $fields, ApplyOptions $options): ApplyResult;
 
     /**
+     * The fields by handle; apply() has checked that each is in scope.
+     *
      * @param  list<AssembledField>  $fields
      * @return array<string, AssembledField>
-     *
-     * @throws SourceChanged when a field is no longer in scope
      */
     private function keyByHandle(array $fields): array
     {
-        $keyed = [];
-
-        foreach ($fields as $field) {
-            if (! $this->fields()->has($field->handle)) {
-                throw SourceChanged::field($field->handle);
-            }
-
-            $keyed[$field->handle] = $field;
-        }
-
-        return $keyed;
+        return array_column($fields, null, 'handle');
     }
 
     /**

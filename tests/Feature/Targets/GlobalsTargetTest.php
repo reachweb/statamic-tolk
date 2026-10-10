@@ -343,6 +343,15 @@ describe('applying', function () {
             ->and(GlobalSet::findByHandle('site_settings')->in('el')->data()->all())->toBe([]);
     });
 
+    it('throws for a field whose source changed after it was assembled, before anything is written', function () {
+        $fields = globalsAssembled();
+        GlobalSet::findByHandle('site_settings')->in('en')->merge(['footer' => 'Open from April to October.'])->save();
+
+        expect(fn () => applyGlobals($fields))->toThrow(SourceChanged::class, 'The source of the field [footer] changed')
+            ->and(GlobalSet::findByHandle('site_settings')->in('el')->data()->all())->toBe([])
+            ->and(app(StateRepository::class)->get(globalsTarget()->ref())->isEmpty())->toBeTrue();
+    });
+
     it('throws ApplyFailed when a listener cancels the save', function () {
         $fields = globalsAssembled();
         Event::listen(GlobalVariablesSaving::class, fn () => false);

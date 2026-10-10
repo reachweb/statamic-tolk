@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -450,6 +451,19 @@ describe('failures', function () {
             ->and($result->warnings)->toHaveCount(3)
             ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
         Event::assertNotDispatched(TargetTranslated::class);
+    });
+
+    it('does not wait for the write lock when every field failed with strict fields', function () {
+        ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Refused));
+        config(['tolk.write.wait_seconds' => 0]);
+        Cache::lock(ContentWriter::LOCK, 60)->get();
+
+        $result = translateTarget($this->origin, options: translatorOptions(['strict' => true]));
+
+        expect($result->status)->toBe(TargetResultStatus::Failed)
+            ->and($result->reason)->toBe(TargetResult::FIELDS_FAILED)
+            ->and($result->fields)->toBe(['title' => 'refused', 'intro' => 'refused', 'body' => 'refused'])
+            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse();
     });
 
     it('skips a field a human edited while its units ran', function () {

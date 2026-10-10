@@ -302,6 +302,15 @@ describe('applying', function () {
             ->and(Term::find('topics::food')->in('el')->data()->all())->toBe([]);
     });
 
+    it('throws for a field whose source changed after it was assembled, before anything is written', function () {
+        $fields = termAssembled();
+        Term::find('topics::food')->in('en')->merge(['description' => 'Eat very well.'])->save();
+
+        expect(fn () => applyTerm($fields))->toThrow(SourceChanged::class, 'The source of the field [description] changed')
+            ->and(Term::find('topics::food')->in('el')->data()->all())->toBe([])
+            ->and(app(StateRepository::class)->get(termTarget()->ref())->isEmpty())->toBeTrue();
+    });
+
     it('throws ApplyFailed when a listener cancels the save', function () {
         $fields = termAssembled();
         Event::listen(TermSaving::class, fn () => false);
