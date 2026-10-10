@@ -75,6 +75,12 @@ interface RunRepository
     public function breakdown(Run $run): array;
 
     /**
+     * Whether nothing holds the item back: each of its dependencies is done or skipped, and no item of an earlier stage
+     * is unfinished in its site. claimNext() hands out only such items.
+     */
+    public function isReady(Run $run, int $index): bool;
+
+    /**
      * Hands out, atomically, the item this worker already holds, else the lowest eligible `pending` item that is
      * available, else a `translating` item whose claim expired (an attempt; the third fails it). Null while the run is
      * pending, cancelled or aborted, or when nothing can be claimed now.

@@ -98,8 +98,10 @@ final readonly class RunPlanner
 
     /**
      * Plans the run's pending items from $fromIndex on, without storing the plans, until the budget is used (at least
-     * one item), adds them to the run's estimate, and marks an item whose plan is empty `skipped`. Index 0 starts the
-     * estimate over; a call from any index other than where the last one stopped (a retried request) adds nothing.
+     * one item), adds them to the run's estimate, and marks an item whose plan is empty `skipped` unless it waits for
+     * other items: the run may give it something to do before its turn, by translating its source or creating the
+     * localizations its navigation links (§A12), and it is planned again then. Index 0 starts the estimate over; a call
+     * from any index other than where the last one stopped (a retried request) adds nothing.
      *
      * @param  ?Closure(RunItem, Plan): void  $planned  called with each item and its plan, empty or not
      */
@@ -637,7 +639,9 @@ final readonly class RunPlanner
         }
 
         if ($plan->isEmpty()) {
-            $this->skipUnclaimed($run, $index, $plan);
+            if ($this->runs->isReady($run, $index)) {
+                $this->skipUnclaimed($run, $index, $plan);
+            }
 
             return new Estimate;
         }

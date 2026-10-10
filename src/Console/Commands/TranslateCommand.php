@@ -488,14 +488,14 @@ class TranslateCommand extends Command
     /**
      * Estimates the run item by item behind a progress bar and collects, per item, the line a dry run prints.
      *
-     * @param  array<int, string>  $lines  item index → what its plan does
+     * @param  array<int, ?string>  $lines  item index → what its plan does, null when it has nothing to do
      * @param  int  $targets  the plans that have something to do
      */
     private function scan(RunPlanner $planner, Run $run, array &$lines, int &$targets): Estimate
     {
         $total = array_sum($this->runs->counts($run));
         $collect = function (RunItem $item, Plan $plan) use (&$lines, &$targets) {
-            $lines[$item->index] = $this->describePlan($plan);
+            $lines[$item->index] = $plan->isEmpty() ? null : $this->describePlan($plan);
 
             if (! $plan->isEmpty()) {
                 $targets++;
@@ -566,7 +566,7 @@ class TranslateCommand extends Command
      * A line per item: what its plan does, or why it would be skipped, as the run's report says; then the totals of the
      * plans.
      *
-     * @param  array<int, string>  $lines
+     * @param  array<int, ?string>  $lines
      * @param  int  $targets  the plans that have something to do
      */
     private function dryRun(Run $run, array $lines, int $targets, ?Estimate $estimate, PlanOptions $options): void
@@ -577,6 +577,10 @@ class TranslateCommand extends Command
         foreach ($items as $item) {
             $line = match (true) {
                 isset($lines[$item->index]) => $lines[$item->index],
+                // The scan keeps an item that waits for others pending: the run plans it again when its turn comes.
+                array_key_exists($item->index, $lines) => $item->status === RunItemStatus::Pending
+                    ? '<comment>nothing to do yet</comment>, planned again once the targets it waits for are translated'
+                    : '<comment>nothing to do</comment>',
                 $item->reason === TargetResult::ROOT_MISSING => '<comment>would be skipped</comment>, '.$item->error,
                 default => null,
             };

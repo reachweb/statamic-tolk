@@ -181,6 +181,13 @@ final class FileRunRepository implements RunRepository
         return array_values($groups);
     }
 
+    public function isReady(Run $run, int $index): bool
+    {
+        $entries = $this->readIndex($run->id);
+
+        return isset($entries[$index]) && $this->ready($entries, $entries[$index], $this->openStages($entries));
+    }
+
     public function claimNext(Run $run, string $workerId, int $ttl): ?RunItem
     {
         return $this->claim($run, $workerId, $ttl, RunItemStatus::Pending, RunItemStatus::Translating);
@@ -297,7 +304,7 @@ final class FileRunRepository implements RunRepository
         foreach ($index as $entry) {
             $wait = match (true) {
                 $entry['status'] === RunItemStatus::Translating->value => $this->claimOf($entry)?->isExpired() === false ? null : 0,
-                $entry['status'] === RunItemStatus::Pending->value && $this->isReady($index, $entry, $openStages) => max(0, (self::storedTime($entry, 'available_at') ?? $now)->getTimestamp() - $now->getTimestamp()),
+                $entry['status'] === RunItemStatus::Pending->value && $this->ready($index, $entry, $openStages) => max(0, (self::storedTime($entry, 'available_at') ?? $now)->getTimestamp() - $now->getTimestamp()),
                 default => null,
             };
 
@@ -357,7 +364,7 @@ final class FileRunRepository implements RunRepository
 
         foreach ($index as $i => $entry) {
             if ($entry['status'] === $from->value) {
-                if ($this->isAvailable($entry, $now) && ($openStages === null || $this->isReady($index, $entry, $openStages))) {
+                if ($this->isAvailable($entry, $now) && ($openStages === null || $this->ready($index, $entry, $openStages))) {
                     $fresh[] = $i;
                 }
 
@@ -515,7 +522,7 @@ final class FileRunRepository implements RunRepository
      * Whether every dependency is done or skipped and no item of an earlier stage is unfinished in the item's site.
      * A dependency that is not in the run does not hold the item back.
      */
-    private function isReady(array $index, array $entry, array $openStages): bool
+    private function ready(array $index, array $entry, array $openStages): bool
     {
         foreach ($entry['depends_on'] as $dependency) {
             if (! isset($index[$dependency])) {

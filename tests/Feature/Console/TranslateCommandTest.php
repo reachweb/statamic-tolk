@@ -172,6 +172,20 @@ describe('dry run', function () {
             ->and($this->modelCalls())->toBe(1);
     });
 
+    it('shows a target whose source the run translates first as nothing to do yet', function () {
+        $this->fakeTranslations();
+        translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el']]);
+        $this->localize($this->hello->fresh()->in('el'), 'de');
+        translateCommand(['--entry' => [$this->hello->id()], '--site' => ['de']]);
+        $this->hello->fresh()->set('title', 'Hello there')->save();
+
+        [, $output] = translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el', 'de'], '--mode' => 'update', '--dry-run' => true]);
+
+        expect($output)->toContain('Hello there → Greek: title (1 segment, 11 characters)')
+            ->and($output)->toContain('[T] Hello → German: nothing to do yet, planned again once the targets it waits for are translated')
+            ->and($output)->toContain('Dry run: 1 of 2 targets would be translated');
+    });
+
     it('shows a target that would be skipped because its root page is missing, as the run skips it, unless the root is planned before it', function () {
         $pages = $this->makePages(['home', 'rooms' => ['suites']]);
 

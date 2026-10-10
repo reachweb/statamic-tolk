@@ -762,6 +762,48 @@ describe('estimate', function () {
             ->and(app(RunRepository::class)->item($run, 1))->toMatchObject(['status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do']);
     });
 
+    it('keeps an item pending while its source waits to be translated, and skips it after a source that was skipped', function () {
+        $greek = $this->hello->in('el');
+        $this->localize($greek, 'de');
+        translateArticle($greek, 'de');
+        $planner = app(RunPlanner::class);
+        $current = storedRun(planRun(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]));
+
+        $planner->estimate($current, 0, 60_000);
+
+        expect(RunFixtures::statuses($current))->toBe(['skipped', 'skipped']);
+
+        $this->hello->set('title', 'Hello there')->save();
+        $run = storedRun(planRun(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]));
+
+        $planner->estimate($run, 0, 60_000);
+
+        expect(RunFixtures::statuses($run))->toBe(['pending', 'pending']);
+
+        app(RunProcessor::class)->start($run);
+        RunFixtures::finish($run);
+
+        expect(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and(Entry::find($this->hello->id())->in('de')->value('title'))->toBe('[T] [T] Hello there');
+    });
+
+    it('keeps a navigation pending until the entries of its site are translated, and links the localizations they create', function () {
+        $this->makeNav('main', ['en' => [['id' => 'world', 'entry' => $this->world->id(), 'title' => 'Our world']]]);
+        $run = storedRun(planRun(['sites' => ['el'], 'entryIds' => [$this->world->id()], 'navs' => ['main']]));
+
+        app(RunPlanner::class)->estimate($run, 0, 60_000);
+
+        expect(RunFixtures::statuses($run))->toBe(['pending', 'pending']);
+
+        app(RunProcessor::class)->start($run);
+        RunFixtures::finish($run);
+
+        expect(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and(Nav::findByHandle('main')->in('el')->tree())->toBe([
+                ['id' => 'world', 'entry' => $this->world->in('el')->id(), 'title' => '[T] Our world'],
+            ]);
+    });
+
     it('does not plan or skip an item a worker has taken', function () {
         $run = storedRun(planRun(['sites' => ['el'], 'entryIds' => [$this->hello->id(), $this->world->id()]]));
         $run->status = RunStatus::Running;
