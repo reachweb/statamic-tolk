@@ -2,8 +2,9 @@ import { registry as sharedRegistry, clone, sameText } from './registry.js';
 
 export { clone };
 
-// Core keeps dirty tracking off for 500 ms after a site switch, a localization's creation and a save (R3 §1.3).
-// Inside that window `desyncField` does nothing, and Save drops a filled field silently (T2.2 check 6).
+// Core's entry form keeps dirty tracking off for 500 ms after a site switch, a localization's creation and a save (R3
+// §1.3); after a save the window opens once the `entry.saved` hooks have resolved. Inside it `desyncField` does
+// nothing, and Save drops a filled field silently (T2.2 check 6). The term form has no such window.
 export const SETTLE_MS = 600;
 
 // Fieldtypes pass changes up through a 150 ms debounce; Bard, lists and arrays re-emit their own value after a fill.

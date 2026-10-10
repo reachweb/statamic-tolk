@@ -78,9 +78,12 @@ export function createSaveHooks({
 
         const delivered = editor.saved(BASE, now());
 
-        // With revisions, core then puts the response's values into the form, and its fieldtypes re-emit them. Text typed
-        // meanwhile is an edit, which a translation must leave alone.
-        registry.refreshClean(BASE, savedValues(payload));
+        // Core's request step has already put the response's values into the form (SavePipeline's `Request`, before the
+        // `*.saved` hooks); with revisions core sets them again after the hooks. No later refresh: text typed after the
+        // save is an edit, which a translation must leave alone, and a fieldtype that re-emits the saved values with
+        // other text reads as edited until the next switch (a field that keeps inheriting, again after each save), so
+        // its field is skipped rather than overwritten.
+        registry.refreshClean(BASE);
 
         // What was filled is saved now; the summary and Undo no longer apply.
         if (container.phase === 'done' || container.phase === 'error') {
@@ -109,13 +112,6 @@ export function createSaveHooks({
     }
 
     return { listen, saving, saved };
-}
-
-// The values the response holds, as the form shows them.
-function savedValues(payload) {
-    const values = payload?.response?.data?.data?.values;
-
-    return values !== null && typeof values === 'object' && !Array.isArray(values) ? values : null;
 }
 
 // The response names the saved entry. A term's response has only its id, which is the same in every site, so the term

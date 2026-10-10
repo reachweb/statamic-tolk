@@ -106,6 +106,9 @@ function markdown(ctx, handle) {
     return ctx;
 }
 
+// What CodeMirror makes of a value it is given: it splits lines on `\r\n`, `\r` and `\n` and joins them with `\n`.
+const lineFeeds = (text) => text.replace(/\r\n?/g, '\n');
+
 // Runs every timer, the fill's guards and read-back included, and returns what the promise resolved with.
 async function settled(promise) {
     await vi.runAllTimersAsync();
@@ -455,6 +458,20 @@ describe('applyFields', () => {
         expect(delivered.body.value).toEqual(body);
     });
 
+    it('records what a Markdown field passed up with other line breaks, so Undo restores it', async () => {
+        const registry = createRegistry();
+        const ctx = container({ values: { ...stored(), content: 'Line one\nLine two' }, reemit: { content: lineFeeds } });
+        registry.attachContext('base', ctx);
+        const snap = snapshot(ctx, ['content'], {});
+        const delivered = {};
+
+        await settled(fill(ctx, { content: { value: '[de] Line one\r\n[de] Line two', meta: null } }, { delivered }));
+
+        expect(delivered.content.value).toBe('[de] Line one\n[de] Line two');
+        expect(await settled(restore(ctx, snap, delivered, { registry }))).toEqual({ restored: ['content'], kept: [] });
+        expect(ctx.values.value.content).toBe('Line one\nLine two');
+    });
+
     it('records nothing when the editor switches before the read-back', async () => {
         const ctx = container();
         const delivered = {};
@@ -651,6 +668,19 @@ describe('restore', () => {
 
         expect(result).toEqual({ restored: ['body'], kept: [] });
         expect(ctx.values.value.body).toEqual(stored().body);
+    });
+
+    it('puts an inherited Markdown field back to inheriting when CodeMirror passes the restored value up with line feeds', async () => {
+        // Inherited from an origin whose `.md` body holds CRLF; the form shows it as loaded.
+        const ctx = attached({ values: { ...stored(), content: 'Line one\r\nLine two' }, reemit: { content: lineFeeds } });
+        const { snap, delivered } = await translate(ctx, { content: { value: '[de] Line one\n[de] Line two', meta: null } });
+
+        const result = await settled(restore(ctx, snap, delivered, { registry }));
+
+        expect(result).toEqual({ restored: ['content'], kept: [] });
+        expect(ctx.values.value.content).toBe('Line one\nLine two');
+        expect(ctx.localizedFields.value).toEqual([]);
+        expect(dirty.has('base')).toBe(false);
     });
 
     it('puts back an empty string for a value that was null while the form holds text', async () => {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { ApiError } from '../api.js';
 import { SETTLE_MS } from './fill.js';
-import { createRegistry } from './registry.js';
+import { clone, createRegistry } from './registry.js';
 import { createSaveHooks, notSavedMessage } from './saveHooks.js';
 import { useEditorStore } from './store.js';
 
@@ -68,6 +68,19 @@ function run(callback, payload) {
 }
 
 const savedPayload = (reference = 'entry::de') => ({ collection: 'pages', reference: 'entry::stale', response: { data: { data: { reference } } } });
+
+// A save as core runs it: its request step puts the response's values into the form before the `entry.saved` hooks
+// run (SavePipeline's `Request`). Returns the hooks' payload.
+function respond(ctx, values, reference = 'entry::de') {
+    ctx.values.value = clone(values);
+
+    return { collection: 'pages', reference: 'entry::stale', response: { data: { data: { reference, values } } } };
+}
+
+// A fieldtype passing a value up through core's 150 ms update debounce, as CodeMirror does after a value it changed.
+function reemit(ctx, handle, value) {
+    setTimeout(() => (ctx.values.value[handle] = value), 150);
+}
 
 describe('listen', () => {
     it('registers the hooks of the entry and term forms once', () => {
@@ -183,27 +196,37 @@ describe('entry.saved', () => {
         expect(store.container('base')).toMatchObject({ phase: 'idle', summary: null, snapshot: null, request: null });
     });
 
-    it('counts the values of the save response as clean, which core puts into the form after the hooks', async () => {
+    it('does not list a field whose fieldtype re-emits the saved text with other line breaks', async () => {
         const ctx = mount();
-        const payload = savedPayload();
-        payload.response.data.data.values = { title: 'Startseite', intro: 'Normalised by the save' };
-        await run(hooks().saved, payload);
 
-        ctx.values.value.intro = 'Normalised by the save';
-        expect(registry.dirtyHandles('base')).toEqual([]);
-
+        // A Markdown or code field holding a value stored with CRLF; CodeMirror passes it up with LF.
+        await run(hooks().saved, respond(ctx, { title: 'Startseite', intro: 'Line one\r\nLine two' }));
+        reemit(ctx, 'intro', 'Line one\nLine two');
         await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+        expect(ctx.values.value.intro).toBe('Line one\nLine two');
         expect(registry.dirtyHandles('base')).toEqual([]);
+    });
+
+    it('keeps listing a field whose fieldtype re-emits the saved values with other text after the hooks', async () => {
+        const ctx = mount();
+
+        // No fieldtype of core 6.35.0 does this once line breaks read alike. A re-emit reaches the form as typing does,
+        // so the field reads as edited until the next switch (one that keeps inheriting, again after each save):
+        // skipped, never overwritten.
+        await run(hooks().saved, respond(ctx, { title: 'Startseite', intro: 'Intro ' }));
+        reemit(ctx, 'intro', 'Intro');
+        await vi.advanceTimersByTimeAsync(SETTLE_MS * 2);
+
+        expect(registry.dirtyHandles('base')).toEqual(['intro']);
     });
 
     it('keeps a correction typed right after the save as an edit, so a translation leaves it alone', async () => {
         const ctx = mount();
-        const payload = savedPayload();
-        payload.response.data.data.values = { title: 'Startseite', intro: 'Intro' };
-        await run(hooks().saved, payload);
+        await run(hooks().saved, respond(ctx, { title: 'Startseite', intro: 'Intro' }));
 
         ctx.values.value.title = 'Startseite, korrigiert';
-        await vi.advanceTimersByTimeAsync(SETTLE_MS);
+        await vi.advanceTimersByTimeAsync(SETTLE_MS * 2);
 
         expect(registry.dirtyHandles('base')).toEqual(['title']);
     });

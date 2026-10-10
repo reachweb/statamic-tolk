@@ -180,6 +180,24 @@ describe('skipHandles', () => {
         expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
     });
 
+    it('leaves out an untranslated field whose text differs from the origin\'s only in its line breaks', () => {
+        // An inherited Markdown field whose origin's `.md` body holds CRLF: CodeMirror passes it up with LF.
+        const ctx = mount({
+            values: { ...stored(), content: 'Line one\r\nLine two' },
+            originValues: { ...origin(), content: 'Line one\r\nLine two' },
+            fields: { content: field('untranslated', 'Content') },
+        });
+
+        ctx.values.value.content = 'Line one\nLine two';
+        ctx.localizedFields.value.push('content');
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
+
+        registry.refreshClean('base');
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
+    });
+
     it('leaves out an untranslated field the CP stored as a copy of the origin', () => {
         const ctx = mount({ localized: ['title', 'intro'] });
 

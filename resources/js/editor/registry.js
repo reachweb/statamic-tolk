@@ -25,7 +25,7 @@ export function createRegistry() {
     function created(payload) {
         const mounted = (entries.get(payload.name)?.mounted ?? 0) + 1;
 
-        entries.set(payload.name, { payload, context: null, clean: null, saved: null, mounted });
+        entries.set(payload.name, { payload, context: null, clean: null, mounted });
     }
 
     function destroyed({ name }) {
@@ -43,7 +43,7 @@ export function createRegistry() {
     }
 
     function update(name, changes) {
-        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, saved: null, mounted: 0 };
+        const entry = entries.get(name) ?? { payload: null, context: null, clean: null, mounted: 0 };
 
         entries.set(name, { ...entry, ...changes });
     }
@@ -54,13 +54,12 @@ export function createRegistry() {
         update(name, { context, clean: entries.get(name)?.clean ?? clone(context.values.value) });
     }
 
-    // After a site or entry switch and after a save, the values in the form are what is stored. `saved` are the values
-    // a save response holds, which core puts into the form after the save hooks: their texts count as stored too.
-    function refreshClean(name, saved = null) {
+    // After a site or entry switch and after a save, the values in the form are what is stored.
+    function refreshClean(name) {
         const values = currentValues(name);
 
         if (values !== null) {
-            update(name, { clean: clone(values), saved: saved === null ? null : clone(saved) });
+            update(name, { clean: clone(values) });
         }
     }
 
@@ -70,11 +69,10 @@ export function createRegistry() {
         return (entry?.context ?? entry?.payload)?.values?.value ?? null;
     }
 
-    // Top-level handles whose text differs from the clean values and from the saved ones, in the form's order. A value
-    // that only changed its shape is not dirty: Bard re-emits its value with attributes of its own.
+    // Top-level handles whose text differs from the clean values, in the form's order. A value that only changed its
+    // shape is not dirty: Bard re-emits its value with attributes of its own.
     function dirtyHandles(name) {
         const clean = entries.get(name)?.clean;
-        const saved = entries.get(name)?.saved ?? {};
         const values = currentValues(name);
 
         if (!clean || values === null) {
@@ -83,9 +81,7 @@ export function createRegistry() {
 
         const handles = [...new Set([...Object.keys(values), ...Object.keys(clean)])];
 
-        return handles.filter(
-            (handle) => !sameText(values[handle], clean[handle]) && !(Object.hasOwn(saved, handle) && sameText(values[handle], saved[handle])),
-        );
+        return handles.filter((handle) => !sameText(values[handle], clean[handle]));
     }
 
     return {
@@ -122,15 +118,19 @@ const NOT_TEXT = new Set(['type', 'id', '_id', 'marks']);
 // The keys of a ProseMirror node, the shape of a Bard value.
 const NODE_KEYS = new Set(['type', 'attrs', 'content', 'marks', 'text']);
 
-// The texts of a value, null when it has none: a string as it is, a map's texts by key without the keys above, a
-// list's by position without the empty items at its end. Numbers, booleans and nulls do not count, so what Bard does
-// when it re-emits a value (`textAlign: null`, a list's `start: 1`, a table cell's `colspan: 1`) changes nothing. In
-// Bard's nodes a text runs from one node boundary to the next, so adjacent runs joined, or a block image wrapped in a
-// paragraph, change nothing either, while text moved to another paragraph, row or field does. Whether a field holds an
-// edit is decided by its texts alone, as the server decides whether a field is machine output (D27).
+// Line breaks read as `\n`: CodeMirror-based fieldtypes (Markdown, code, YAML) pass `\r\n` and `\r` up as `\n`, and no
+// CP input lets a person type a carriage return.
+const lines = (text) => text.replace(/\r\n?/g, '\n');
+
+// The texts of a value, null when it has none: a string with its line breaks read as `\n`, a map's texts by key without
+// the keys above, a list's by position without the empty items at its end. Numbers, booleans and nulls do not count, so
+// what Bard does when it re-emits a value (`textAlign: null`, a list's `start: 1`, a table cell's `colspan: 1`) changes
+// nothing. In Bard's nodes a text runs from one node boundary to the next, so adjacent runs joined, or a block image
+// wrapped in a paragraph, change nothing either, while text moved to another paragraph, row or field does. Whether a
+// field holds an edit is decided by its texts alone, as the server decides whether a field is machine output (D27).
 export function textsOf(value) {
     if (typeof value === 'string') {
-        return value === '' ? null : value;
+        return value === '' ? null : lines(value);
     }
 
     if (Array.isArray(value)) {
@@ -172,7 +172,7 @@ function runsOf(nodes) {
 
     const add = (value) => {
         if (run !== '') {
-            texts.push(run);
+            texts.push(lines(run));
             run = '';
         }
 

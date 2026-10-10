@@ -145,6 +145,18 @@ describe('textsOf and sameText', () => {
         expect(sameText(paragraphs('One', 'Two'), [{ type: 'bulletList', content: [{ type: 'listItem', content: paragraphs('One', 'Two') }] }])).toBe(true);
     });
 
+    it('reads CRLF and CR line breaks as line feeds, in strings and in Bard\'s runs of text', () => {
+        const paragraph = (...texts) => [{ type: 'paragraph', content: texts.map((text) => ({ type: 'text', text })) }];
+
+        expect(textsOf({ code: 'a\r\nb' })).toEqual({ code: 'a\nb' });
+        expect(sameText('Line one\r\nLine two\rLine three', 'Line one\nLine two\nLine three')).toBe(true);
+        expect(sameText(paragraph('Line one\r\nLine two'), paragraph('Line one\nLine two'))).toBe(true);
+        expect(sameText(paragraph('Line one\r', '\nLine two'), paragraph('Line one\nLine two'))).toBe(true);
+        expect(sameText({ rows: [{ text: 'a\r\nb' }] }, { rows: [{ text: 'a\nb' }] })).toBe(true);
+        expect(sameText('a\nb', 'a\n\nb')).toBe(false);
+        expect(sameText('a\r\nb', 'a b')).toBe(false);
+    });
+
     it('finds the same text in runs Bard joined and items it left empty', () => {
         const runs = [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello ' }, { type: 'text', text: 'world' }] }];
         const joined = [{ type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'text', text: 'Hello world' }] }, { type: 'paragraph' }];
@@ -221,21 +233,18 @@ describe('dirtyHandles', () => {
         expect(registry.dirtyHandles('base')).toEqual(['intro']);
     });
 
-    it('counts the texts of the saved values as clean until the clean values are taken again', () => {
-        base.context.values.value.title = 'Νέος τίτλος';
-        registry.refreshClean('base', { ...stored(), title: 'Νέος τίτλος (normalised)' });
+    it('does not count line breaks a fieldtype passed up as line feeds', () => {
+        base.context.values.value.content = 'Line one\r\nLine two';
+        registry.refreshClean('base');
 
-        // Core puts the response's values into the form after the save hooks.
-        base.context.values.value.title = 'Νέος τίτλος (normalised)';
+        // CodeMirror's re-emit of a value stored with CRLF, as the Markdown fieldtype passes it up.
+        base.context.values.value.content = 'Line one\nLine two';
+
         expect(registry.dirtyHandles('base')).toEqual([]);
 
-        base.context.values.value.title = 'Typed after the save';
-        expect(registry.dirtyHandles('base')).toEqual(['title']);
+        base.context.values.value.content = 'Line one\n\nLine two';
 
-        base.context.values.value.title = 'Νέος τίτλος (normalised)';
-        registry.refreshClean('base');
-        base.context.values.value.title = 'Νέος τίτλος';
-        expect(registry.dirtyHandles('base')).toEqual(['title']);
+        expect(registry.dirtyHandles('base')).toEqual(['content']);
     });
 
     it('is empty after a site switch until the next change', () => {
