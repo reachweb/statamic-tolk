@@ -59,6 +59,7 @@ All notable changes to Tolk are documented in this file.
 - The progress bars of `tolk:translate` and `tolk:site` stop where the work stopped after Ctrl-C or an abort, instead of jumping to 100%, and the terminal's progress indicator is reset.
 - The dry run of `tolk:translate` says a page whose home page is not translated into the site yet "would be skipped", as the run skips it, instead of "would fail".
 - `tolk:status` and the Overview say that `tolk:baseline` records the origin of each field translated by hand, instead of "to record it", which could be read as recording the change.
+- `php please tolk:site` no longer stops with a `TypeError` when it hands over to `tolk:translate`, after the questions that change the configuration. `php artisan tolk:site` was not affected.
 
 ## 1.0.0-beta.1 - 2026-10-08
 

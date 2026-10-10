@@ -31,7 +31,9 @@ class SiteCommand extends Command
 {
     use OffersLocalizableFields;
     use ResolvesTranslationOptions;
-    use RunsInPlease;
+    use RunsInPlease {
+        resolveCommand as resolveCommandInPlease;
+    }
 
     protected $signature = 'tolk:site
         {site : The site to translate the website into}
@@ -119,6 +121,15 @@ class SiteCommand extends Command
         $this->notCovered($site);
 
         return $exitCode;
+    }
+
+    /**
+     * Under php please, RunsInPlease reads $command as a name, but handle() calls tolk:translate as an instance that
+     * assumes the sites a dry run would enable; Laravel's own resolveCommand() takes both.
+     */
+    protected function resolveCommand($command)
+    {
+        return is_string($command) ? $this->resolveCommandInPlease($command) : parent::resolveCommand($command);
     }
 
     /**

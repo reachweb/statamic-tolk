@@ -12,6 +12,8 @@ use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Taxonomy;
 use Statamic\Facades\Term;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -155,6 +157,18 @@ it('plans and estimates in a dry run what the run translates once steps 2 and 3 
         ->and($dry)->not->toContain('does not have')
         ->and(siteCommandPlan($dry))->toHaveCount(8)
         ->and(siteCommandPlan($dry))->toBe(siteCommandPlan($real));
+});
+
+it('translates when run with php please, whose commands resolve the commands they call by name', function () {
+    $this->fakeTranslations();
+    $command = Artisan::all()['tolk:site'];
+    $command->setRunningInPlease();
+    $output = new BufferedOutput;
+
+    $exitCode = $command->run(new ArrayInput(['site' => 'de', '--yes' => true, '--concurrency' => 1]), $output);
+
+    expect($exitCode)->toBe(0)
+        ->and($output->fetch())->toContain('Big news → German: done, created');
 });
 
 it('plans in a dry run the pages of a structured collection that step 2 would enable, below their home page', function () {
