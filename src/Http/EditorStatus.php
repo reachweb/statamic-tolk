@@ -13,9 +13,11 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Contracts\Auth\User;
@@ -50,6 +52,8 @@ final readonly class EditorStatus
         private Providers $providers,
         private Settings $settings,
         private EditorPush $push,
+        private EntryFamilies $families,
+        private AutoUpdater $updater,
     ) {}
 
     /**
@@ -82,7 +86,7 @@ final readonly class EditorStatus
             return $this->payload(self::EXCLUDED);
         }
 
-        $localization = $target === null ? null : $this->localization($target, $source);
+        $localization = $target === null ? null : $this->localization($target, $item, $source);
         $origin = $this->origin($item, $user);
 
         if ($localization === null && $origin === null) {
@@ -132,7 +136,7 @@ final readonly class EditorStatus
             : $this->settings->excludes(ContentType::Term, $item->taxonomyHandle());
     }
 
-    private function localization(Target $target, EntryContract|TermContract $source): array
+    private function localization(Target $target, EntryContract|TermContract $item, EntryContract|TermContract $source): array
     {
         $status = $this->resolver->resolve($target);
 
@@ -150,6 +154,27 @@ final readonly class EditorStatus
             'out_of_scope' => $this->outOfScope($target),
             'origin_slug' => $source->slug(),
             'translate_slug' => $source instanceof EntryContract && $this->settings->translatesSlugs($source->collectionHandle()),
+            'auto_updated' => $this->autoUpdated($item, $source),
+        ];
+    }
+
+    /**
+     * When an automatic update from the origin last saved the localization, and whether that update waits in its
+     * working copy (T11.1). Looked up only while the settings update the origin's collection automatically.
+     *
+     * @return ?array{at: string, unpublished: bool}
+     */
+    private function autoUpdated(EntryContract|TermContract $item, EntryContract|TermContract $source): ?array
+    {
+        if (! $item instanceof EntryContract || ! $source instanceof EntryContract || ! $this->updater->covers($source)) {
+            return null;
+        }
+
+        $at = $this->updater->lastUpdate($source, $item->locale());
+
+        return $at === null ? null : [
+            'at' => $at->toIso8601ZuluString(),
+            'unpublished' => $item->revisionsEnabled() && $item->published() && $item->hasWorkingCopy(),
         ];
     }
 
@@ -179,7 +204,17 @@ final readonly class EditorStatus
             ];
         }
 
-        return $localizations === [] ? null : ['localizations' => $localizations];
+        if ($localizations === []) {
+            return null;
+        }
+
+        $autoUpdate = $this->autoUpdate($item);
+
+        return [
+            'localizations' => $localizations,
+            'auto_update' => $autoUpdate,
+            'auto_update_sites' => $autoUpdate === null ? [] : $this->updater->sites($item),
+        ];
     }
 
     /**
@@ -187,17 +222,24 @@ final readonly class EditorStatus
      */
     private function originOf(EntryContract|TermContract $item): array
     {
-        if ($item instanceof TermContract) {
-            return $item->isRoot() ? $this->sitesOf($item)->reject(fn (string $site) => $site === $item->locale())->values()->all() : [];
+        if ($item instanceof EntryContract) {
+            return $this->families->originSites($item);
         }
 
-        $children = $item->directDescendants();
-        $family = $item->isRoot() ? $item->descendants() : null;
+        return $item->isRoot() ? $this->sitesOf($item)->reject(fn (string $site) => $site === $item->locale())->values()->all() : [];
+    }
 
-        return $this->sitesOf($item)
-            ->filter(fn (string $site) => $site !== $item->locale() && ($children->has($site) || ($family !== null && ! $family->has($site))))
-            ->values()
-            ->all();
+    /**
+     * When the settings update the entry's translations automatically (T11.1): `save` when each save of the entry does,
+     * `publish` when only its publishing does (with revisions, or while it is a draft), null when nothing does.
+     */
+    private function autoUpdate(EntryContract|TermContract $item): ?string
+    {
+        if (! $item instanceof EntryContract || ! $this->updater->covers($item) || $this->updater->sites($item) === []) {
+            return null;
+        }
+
+        return $item->published() && ! $item->revisionsEnabled() ? 'save' : 'publish';
     }
 
     /**

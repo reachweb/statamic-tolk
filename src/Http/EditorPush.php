@@ -10,8 +10,9 @@ use Reach\StatamicTolk\Runs\RunDispatcher;
 use Statamic\Contracts\Auth\User;
 
 /**
- * The runs an editor pushes from an origin into its localizations (T8.13): the one still running for the item they
- * have open, and what the banner needs to follow a run as its creator (§A14).
+ * The runs an editor pushes from an origin into its localizations (T8.13), or starts by saving it with automatic
+ * updates on (T11.1): the one still running for the item they have open, and what the banner needs to follow a run as
+ * its creator (§A14).
  */
 final readonly class EditorPush
 {
@@ -51,13 +52,14 @@ final readonly class EditorPush
     }
 
     /**
-     * @return array{run: string, driver: string, lanes: int, urls: array<string, string>}
+     * @return array{run: string, driver: string, automatic: bool, lanes: int, urls: array<string, string>}
      */
     public function payload(Run $run): array
     {
         return [
             'run' => $run->id,
             'driver' => $run->driver->value,
+            'automatic' => ($run->scope['automatic'] ?? false) === true,
             'lanes' => RunDispatcher::browserLanes(),
             'urls' => Arr::only($this->state->urls($run), self::URLS),
         ];

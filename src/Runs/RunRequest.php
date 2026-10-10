@@ -49,11 +49,13 @@ final readonly class RunRequest
      * @param  list<string>  $navs  handles, or [ALL] for every navigation
      * @param  list<string>  $entryIds  any entry of each family
      * @param  list<string>  $termIds  term ids, `{taxonomy}::{default slug}`
-     * @param  ?string  $reference  the item open in the editor when the run was pushed from it (T8.13)
+     * @param  ?string  $reference  the item open in the editor when the run was pushed from it (T8.13), or the saved
+     *                              entry an automatic update translates (T11.1)
      * @param  array<string, ?string>  $assumedSites  `{type}:{handle}` of collections (`collection`), taxonomies
      *                                                (`taxonomy`) and global sets (`globals`) to plan as if they had
      *                                                the sites, with the site a global set is translated from (null for
      *                                                the others): what tolk:site would enable, for its dry run
+     * @param  bool  $automatic  whether saving the entry started the run (T11.1)
      */
     public function __construct(
         array $sites,
@@ -69,6 +71,7 @@ final readonly class RunRequest
         public ?User $user = null,
         public ?string $reference = null,
         public array $assumedSites = [],
+        public bool $automatic = false,
     ) {
         if ($sites === []) {
             throw new InvalidArgumentException('A run needs at least one site to translate into.');
@@ -162,6 +165,7 @@ final readonly class RunRequest
             'term_ids' => $this->termIds,
             'reference' => $this->reference,
             'assumed_sites' => $this->assumedSites,
+            'automatic' => $this->automatic,
         ];
     }
 }

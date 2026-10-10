@@ -119,7 +119,23 @@ function describeLocalization(block, setup) {
         hint: notLocalizable.length ? notLocalizableText(labels(notLocalizable), notLocalizable.length) : null,
         translate: !setup && (counts.untranslated ?? 0) > 0,
         update: !setup && (counts.outdated ?? 0) > 0,
+        autoUpdated: autoUpdatedNote(block.auto_updated, block.source),
     };
+}
+
+// When an automatic update from the origin last saved the localization (T11.1).
+function autoUpdatedNote(update, source) {
+    const time = Date.parse(update?.at ?? '');
+
+    if (Number.isNaN(time)) {
+        return null;
+    }
+
+    const replacements = { source: source?.name ?? '', date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(time) };
+
+    return update.unpublished
+        ? __('Updated automatically from :source on :date, not published yet.', replacements)
+        : __('Updated automatically from :source on :date.', replacements);
 }
 
 function localizationSummary(block, parts) {
@@ -183,6 +199,11 @@ function describeOrigin(block, setup) {
         upToDate: localizations.length > 0 && localizations.every((localization) => localization.status === 'current'),
         translateInto: !setup && localizations.some((localization) => localization.translate),
         update: !setup && localizations.some((localization) => localization.update),
+        autoUpdate:
+            {
+                save: __('Translations are updated automatically each time this entry is saved.'),
+                publish: __('Translations are updated automatically when this entry is published.'),
+            }[block.auto_update] ?? null,
     };
 }
 

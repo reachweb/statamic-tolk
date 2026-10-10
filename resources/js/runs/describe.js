@@ -254,6 +254,8 @@ export function describeScope(scope, siteName = (handle) => handle) {
     return {
         what: parts.join(', ') || __('Nothing selected'),
         sites: list('sites').map(siteName).join(', '),
+        // Saving the entry started the run (T11.1).
+        automatic: scope?.automatic === true,
     };
 }
 

@@ -70,6 +70,7 @@ describe('a localization', function () {
                 ],
                 'origin_slug' => 'hello',
                 'translate_slug' => false,
+                'auto_updated' => null,
             ]);
     });
 
@@ -132,7 +133,9 @@ describe('an origin', function () {
                     'counts' => statusCounts(['untranslated' => 2]),
                     'edit_url' => null,
                 ],
-            ]);
+            ])
+            ->assertJsonPath('origin.auto_update', null)
+            ->assertJsonPath('origin.auto_update_sites', []);
     });
 
     it('lists only the sites the user may access', function () {

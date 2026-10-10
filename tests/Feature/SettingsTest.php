@@ -24,7 +24,7 @@ it('registers the settings blueprint with its tabs', function () {
 
     expect($addon->hasSettingsBlueprint())->toBeTrue()
         ->and($addon->settingsBlueprint()->tabs()->keys()->all())
-        ->toBe(['general', 'context', 'glossary', 'content', 'providers'])
+        ->toBe(['general', 'context', 'glossary', 'content', 'automation', 'providers'])
         ->and($addon->settingsBlueprint()->fields()->all()->keys()->all())
         ->toBe([...array_keys(Settings::DEFAULTS), 'providers']);
 });
@@ -58,6 +58,17 @@ it('shows the reviewer only while review is on, and keeps it while hidden', func
 
     expect($reviewer['if'])->toBe(['review_enabled' => 'equals true'])
         ->and($reviewer['always_save'])->toBeTrue();
+});
+
+it('shows the options of automatic updates only while they are on, and keeps them while hidden', function () {
+    $fields = tolkSettingsBlueprintFields();
+
+    foreach (['auto_update_create', 'auto_update_collections', 'auto_update_publish'] as $handle) {
+        expect($fields[$handle]['if'])->toBe(['auto_update' => 'equals true'], "[{$handle}] is not tied to auto_update.")
+            ->and($fields[$handle]['always_save'])->toBeTrue();
+    }
+
+    expect($fields['auto_update'])->not->toHaveKey('if');
 });
 
 it('gives every field a label and instructions', function () {
@@ -95,7 +106,11 @@ it('returns the defaults when nothing is saved', function () {
         ->and($settings->glossary('el'))->toBe([])
         ->and($settings->excludedCollections())->toBe([])
         ->and($settings->excludedTaxonomies())->toBe([])
-        ->and($settings->excludedFields())->toBe([]);
+        ->and($settings->excludedFields())->toBe([])
+        ->and($settings->autoUpdate())->toBeFalse()
+        ->and($settings->autoUpdateCreate())->toBeFalse()
+        ->and($settings->autoUpdateCollections())->toBe([])
+        ->and($settings->autoUpdatePublish())->toBeFalse();
 });
 
 it('lets saved raw values win over the defaults', function () {
@@ -118,6 +133,10 @@ it('lets saved raw values win over the defaults', function () {
         'excluded_collections' => ['notes'],
         'excluded_taxonomies' => ['tags'],
         'excluded_fields' => ['internal_note'],
+        'auto_update' => true,
+        'auto_update_create' => true,
+        'auto_update_collections' => ['articles'],
+        'auto_update_publish' => true,
     ]);
 
     expect($settings->translatorModel())->toEqual(new ModelRef('openai', 'gpt-6.1-sol'))
@@ -135,7 +154,11 @@ it('lets saved raw values win over the defaults', function () {
         ])
         ->and($settings->excludedCollections())->toBe(['notes'])
         ->and($settings->excludedTaxonomies())->toBe(['tags'])
-        ->and($settings->excludedFields())->toBe(['internal_note']);
+        ->and($settings->excludedFields())->toBe(['internal_note'])
+        ->and($settings->autoUpdate())->toBeTrue()
+        ->and($settings->autoUpdateCreate())->toBeTrue()
+        ->and($settings->autoUpdateCollections())->toBe(['articles'])
+        ->and($settings->autoUpdatePublish())->toBeTrue();
 });
 
 it('keeps booleans as booleans, where core stringifies them', function () {
@@ -198,6 +221,10 @@ it('reads what the settings page saves', function () {
         'excluded_collections' => ['pages'],
         'excluded_taxonomies' => ['tags'],
         'excluded_fields' => ['internal_note'],
+        'auto_update' => true,
+        'auto_update_create' => false,
+        'auto_update_collections' => ['pages'],
+        'auto_update_publish' => true,
         'providers' => null,
     ]);
 
@@ -227,7 +254,12 @@ it('reads what the settings page saves', function () {
         ])
         ->and($settings->excludedCollections())->toBe(['pages'])
         ->and($settings->excludedTaxonomies())->toBe(['tags'])
-        ->and($settings->excludedFields())->toBe(['internal_note']);
+        ->and($settings->excludedFields())->toBe(['internal_note'])
+        ->and($stored['auto_update'])->toBeTrue()
+        ->and($settings->autoUpdate())->toBeTrue()
+        ->and($settings->autoUpdateCreate())->toBeFalse()
+        ->and($settings->autoUpdateCollections())->toBe(['pages'])
+        ->and($settings->autoUpdatePublish())->toBeTrue();
 });
 
 it('falls back to the defaults for empty and unknown values', function () {

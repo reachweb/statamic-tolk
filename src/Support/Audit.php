@@ -17,7 +17,9 @@ use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Jobs\UpdateTranslations;
 use Reach\StatamicTolk\Jobs\WorkRun;
+use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\Runs\RunDispatcher;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\State\StatusScanner;
@@ -318,6 +320,12 @@ final class Audit
             $runDriver === RunDriver::Browser => $this->item(AuditLevel::Ok, __('Runs started in the Control Panel are driven by their run page, which must stay open until the run ends.')),
             default => null,
         };
+
+        if ($runDriver !== null && $this->settings->autoUpdate()) {
+            $items[] = AutoUpdater::queued()
+                ? $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry starts a run of it on :connection after :seconds seconds.', ['connection' => $connection, 'seconds' => UpdateTranslations::DELAY_SECONDS]))
+                : $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response. A queue worker keeps that process free.'));
+        }
 
         if (RunDispatcher::hasWorker()) {
             $retryAfter = WorkRun::retryAfter();

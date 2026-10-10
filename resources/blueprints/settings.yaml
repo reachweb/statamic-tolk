@@ -203,6 +203,49 @@ tabs:
               instructions: 'New localizations of these collections get a slug made from their translated title, as Statamic makes slugs. In other collections they keep the slug of their origin. A slug that already exists is never changed.'
               mode: select
               default: []
+  automation:
+    display: Automation
+    sections:
+      -
+        fields:
+          -
+            handle: auto_update
+            field:
+              type: toggle
+              display: 'Update translations automatically'
+              instructions: 'Each time an entry is saved published in the site its localizations are translated from, they are updated in the background: the fields whose origin changed and the fields not translated yet. Fields edited by hand are never overwritten. Every such save that changes text spends API credit. Each update is a run on the Translations › Runs page.'
+              default: false
+          -
+            handle: auto_update_create
+            field:
+              type: toggle
+              display: 'Create missing localizations'
+              instructions: 'Also translate the entry into the sites of its collection that have no localization of it yet. New localizations are drafts, or published when their origin is, as the New localizations setting on the General tab says.'
+              default: false
+              always_save: true
+              if:
+                auto_update: 'equals true'
+          -
+            handle: auto_update_collections
+            field:
+              type: collections
+              display: Collections
+              instructions: 'Only the entries of these collections are updated automatically. Leave empty for every collection that is not excluded.'
+              mode: select
+              default: []
+              always_save: true
+              if:
+                auto_update: 'equals true'
+          -
+            handle: auto_update_publish
+            field:
+              type: toggle
+              display: 'Publish updates'
+              instructions: 'In collections with revisions, an update of a published localization is saved as a working copy and waits until someone publishes it. Turn this on to publish it at once, unless the localization already had unpublished changes.'
+              default: false
+              always_save: true
+              if:
+                auto_update: 'equals true'
   providers:
     display: Providers
     sections:

@@ -6,7 +6,7 @@ Tolk translates multi-site Statamic content from an origin site into its localiz
 - **One field at a time**: "Translate from origin" in a field's actions.
 - **In bulk**: a listing action, an Overview of every collection, taxonomy, global set and navigation by language, and runs with an estimate before they start, progress, cancel and resume. No queue or database needed.
 - **From the command line**: translate collections, or the whole website into a new language in one command, plus the app's `lang/` files and the texts of forms.
-- **Updates, not retranslations**: when the origin changes, only the changed paragraphs are sent again. Text a human edited is never overwritten unless you ask.
+- **Updates, not retranslations**: when the origin changes, only the changed paragraphs are sent again. Text a human edited is never overwritten unless you ask. Optionally, saving an entry updates its translations by itself.
 - **Quality**: a site profile, instructions, per-language formality and a glossary go with every request; an optional second model reviews each translation and its corrections are applied and listed with reasons.
 - **Your own API keys**, from `.env`. Cost estimates before every bulk run, and usage per run and per month.
 

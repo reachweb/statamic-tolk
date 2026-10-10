@@ -55,7 +55,11 @@ it('describes what was asked for as the run scope', function () {
         'term_ids' => ['tags::hotel'],
         'reference' => null,
         'assumed_sites' => ['collection:news' => null, 'globals:footer' => 'en'],
+        'automatic' => false,
     ]);
+
+    expect((new RunRequest(['de'], RunDriver::Queue, entryIds: ['a'], reference: 'entry::a', automatic: true))->scope())
+        ->toMatchArray(['entry_ids' => ['a'], 'reference' => 'entry::a', 'automatic' => true]);
 
     expect(RunRequest::assumed($request->assumedSites, 'collection'))->toBe(['news'])
         ->and(RunRequest::assumed($request->assumedSites, 'globals'))->toBe(['footer'])

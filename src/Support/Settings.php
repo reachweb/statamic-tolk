@@ -32,6 +32,10 @@ class Settings
         'excluded_taxonomies' => [],
         'excluded_fields' => [],
         'translated_slugs' => [],
+        'auto_update' => false,
+        'auto_update_create' => false,
+        'auto_update_collections' => [],
+        'auto_update_publish' => false,
     ];
 
     private ?array $values = null;
@@ -190,6 +194,38 @@ class Settings
     public function translatesSlugs(string $collection): bool
     {
         return in_array($collection, $this->handles('translated_slugs'), true);
+    }
+
+    /**
+     * Whether saving a published entry in its origin updates its translations (T11.1).
+     */
+    public function autoUpdate(): bool
+    {
+        return $this->bool('auto_update');
+    }
+
+    /**
+     * Whether an automatic update also creates the localizations the entry has not got yet.
+     */
+    public function autoUpdateCreate(): bool
+    {
+        return $this->bool('auto_update_create');
+    }
+
+    /**
+     * @return list<string> the collections whose entries are updated automatically; empty for every collection
+     */
+    public function autoUpdateCollections(): array
+    {
+        return $this->handles('auto_update_collections');
+    }
+
+    /**
+     * Whether an automatic update of a published localization with revisions is published (ApplyOptions::$publishChanges).
+     */
+    public function autoUpdatePublish(): bool
+    {
+        return $this->bool('auto_update_publish');
     }
 
     private function values(): array
