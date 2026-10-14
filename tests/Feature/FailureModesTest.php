@@ -569,6 +569,44 @@ describe('two runs over the same target', function () {
     });
 });
 
+describe('a form opened before a run', function () {
+    it('puts back the text it was opened with when it is saved after the run, and the next update sends the fields again whole', function () {
+        $this->signInAdmin();
+        $origin = failingArticle('hello', [failingParagraph('Breakfast is served until ten.'), failingParagraph('The pool opens at eight.')]);
+        failingModel($prompts);
+        failingTranslate($origin, ['fields' => ['body']]);
+        $greek = failingGreek($origin);
+
+        // The Greek form opens now, with the body it has and the title it inherits, and posts them as they were.
+        $form = ['title' => 'Hello', 'body' => $greek->get('body'), 'slug' => 'hello', 'published' => true, '_localized' => ['body']];
+
+        Entry::find($origin->id())->set('body', [failingParagraph('Breakfast is served until eleven.'), failingParagraph('The pool opens at eight.')])->save();
+        $sent = count(failingSent($prompts));
+        failingDrive(failingRun(['entry_ids' => [$origin->id()], 'options' => ['mode' => 'update']]));
+
+        expect(array_slice(failingSent($prompts), $sent))->toEqualCanonicalizing(['Hello', 'Breakfast is served until eleven.'])
+            ->and(failingGreek($origin)->get('title'))->toBe('[T] Hello')
+            ->and(failingTexts(failingGreek($origin)->get('body')))->toBe(['[T] Breakfast is served until eleven.', '[T] The pool opens at eight.'])
+            ->and(StateFixtures::statuses($origin))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+
+        $this->patchJson(cp_route('collections.entries.update', ['articles', $greek->id()]), $form)->assertOk();
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $greek->reference(), 'delivered' => []])
+            ->assertOk()
+            ->assertJsonPath('localization.fields.title.status', 'untranslated')
+            ->assertJsonPath('localization.fields.body.status', 'outdated');
+
+        expect(failingGreek($origin)->has('title'))->toBeFalse()
+            ->and(failingTexts(failingGreek($origin)->get('body')))->toBe(['[T] Breakfast is served until ten.', '[T] The pool opens at eight.']);
+
+        $sent = count(failingSent($prompts));
+        failingTranslate($origin, ['mode' => 'update']);
+
+        // The earlier translation that came back is not reused: its unchanged paragraph is sent again too.
+        expect(array_slice(failingSent($prompts), $sent))->toEqualCanonicalizing(['Hello', 'Breakfast is served until eleven.', 'The pool opens at eight.'])
+            ->and(StateFixtures::statuses($origin))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+    });
+});
+
 describe('web requests', function () {
     beforeEach(function () {
         Sleep::fake();

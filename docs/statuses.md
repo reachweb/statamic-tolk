@@ -65,7 +65,7 @@ The first time an editor saves origin content in the CP that was written another
 
 ### Saving without changes
 
-Opening a localization and saving it without editing a text changes no status.
+Opening a localization and saving it without editing a text changes no status, as long as nothing saved the localization while its form was open. A form saves what it was opened with: when a run or an automatic update translated the localization in the meantime, the save puts the earlier text back. A field it inherited before then reads untranslated, and a field whose earlier translation came back reads outdated ([Forms opened before a run](editor.md#forms-opened-before-a-run)).
 
 ### An earlier translation saved again
 
@@ -74,6 +74,8 @@ A field that holds a translation Tolk made, after a newer translation replaced i
 ## How Update reuses earlier work
 
 When a field is outdated and nobody edited its text, Update sends only the paragraphs whose origin text changed (or that are new, or were left untranslated before). Every unchanged paragraph keeps its earlier translation, even when paragraphs were added, removed or moved around it. A changed paragraph is sent with its neighbours as context. A field whose origin changed only in structure is rebuilt without a model call.
+
+Paragraphs are reused only from the field's latest translation. A field outdated because an older translation came back (a form opened before a run was saved, a revision was restored) is sent in full.
 
 Mode `all` (**Retranslate everything**) reuses nothing.
 

@@ -12,6 +12,8 @@ Runs are started from:
 
 In the CP they need the `run bulk translations` permission, except the origin entry's buttons, which need `translate content`. The commands need no permission.
 
+A run saves the content, not a form that is open on it. A form opened before the run (an entry's, a term's or a global set's) puts back what it was opened with when it is saved after the run ([Forms opened before a run](editor.md#forms-opened-before-a-run)).
+
 ## The listing action
 
 Select entries or terms in a listing (or open a page's dropdown in the tree view) and choose **Translate…**:

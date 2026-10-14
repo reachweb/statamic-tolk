@@ -78,6 +78,7 @@ Content is saved by one process at a time, under a lock ([Why one writer](bulk-a
 - **A field reads untranslated although it was saved.** It holds a copy of the origin's text that nobody translated; Statamic's form can save one by itself for a Bard field. Translate replaces it, and **Protect this entry from updates** keeps it if it is meant to stay.
 - **A site translated by hand before Tolk** reads "edited by hand" and untracked: run `tolk:baseline` so origin changes are noticed.
 - **A page removed from a translated navigation came back after Update**, or pages moved by hand returned to the source's order. Only text marks a tree edited by hand, so Update rebuilt it from the source's tree. Protect the tree with `tolk:baseline --nav=main --site=el --protect` after changing it ([Navigation](content-types.md#navigation)).
+- **Translations a run saved read untranslated or outdated again.** A form of the localization that was open before the run was saved afterwards, and put back the text it was opened with. **Update** translates them again; reload a localization a run may have saved before you edit it ([Forms opened before a run](editor.md#forms-opened-before-a-run)).
 
 ## The interface is in English
 
