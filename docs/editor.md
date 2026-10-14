@@ -26,7 +26,7 @@ The banner shows how many fields are untranslated, outdated, edited by hand, nee
 
 While a translation runs, the fields fill in as their parts come back, a progress bar shows how far it is, and **Cancel** stops it. Fields already on their way are still filled in. Save is refused while a translation runs ("A translation is in progress. Wait for it to finish, or cancel it."), because the form would be saved half translated.
 
-When it has finished, the banner says what happened: how many fields were translated and with which model, and which fields were skipped or failed. **Undo** puts back the fields as they were before the translation, as long as you have not saved; text you typed into a field after it was filled is kept. **Retry** (or **Start again**, when the translation cannot continue where it stopped) repeats a translation that failed. To use another model after an error, such as a model the provider rejected, choose it in **Options**: Retry repeats the same one.
+When it has finished, the banner says what happened: how many fields were translated and with which model, and which fields were skipped or failed. **Undo** puts back the fields as they were before the translation, as long as you have not saved; text you typed into a field after it was filled is kept, and so is a link or bold you added there. **Retry** (or **Start again**, when the translation cannot continue where it stopped) repeats a translation that failed. To use another model after an error, such as a model the provider rejected, choose it in **Options**: Retry repeats the same one.
 
 The filled fields are not saved yet. Read them, change what you like, then press Save. After the save, Tolk records what it translated:
 
@@ -34,7 +34,7 @@ The filled fields are not saved yet. Read them, change what you like, then press
 - A field whose text you changed before saving counts as edited by hand: Translate and Update leave it alone from then on (see [Statuses](statuses.md#manual-fields)).
 - A field you set back to follow the origin with Statamic's sync button keeps following the origin and stays untranslated.
 
-A field you typed into before pressing Translate is skipped, and the banner names it ("Intro was skipped because you edited it."), so your text is never overwritten. A field that a condition hides is skipped too ("Button label was skipped because it is hidden. Show it and translate again."), because Statamic would save it empty. A field that a condition hid after it was filled is left out of the save and keeps following the origin; the banner lists it so you can show it and translate it again. A field that already had text of its own is different: when a condition hides it as you save, Statamic saves it empty, whether Tolk filled it or not, so show it before you save.
+A field you typed into before pressing Translate, or in which you linked a word or made it bold, is skipped, and the banner names it ("Intro was skipped because you edited it."), so your text is never overwritten. A field that a condition hides is skipped too ("Button label was skipped because it is hidden. Show it and translate again."), because Statamic would save it empty. A field that a condition hid after it was filled is left out of the save and keeps following the origin; the banner lists it so you can show it and translate it again. A field that already had text of its own is different: when a condition hides it as you save, Statamic saves it empty, whether Tolk filled it or not, so show it before you save.
 
 ### Slugs
 

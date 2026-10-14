@@ -42,9 +42,9 @@ Because the records live next to the content and are compared, not trusted, Tolk
 
 ### Only text makes a field manual
 
-A field counts as machine-translated as long as its text is exactly what Tolk produced. Changes that are not text are not tracked:
+A field counts as machine-translated as long as its text is exactly what Tolk produced. In a Bard field, where formatting starts and ends and a link's title count as text: linking a word, making it bold or changing a link's title is an edit. Changes that are not text are not tracked:
 
-- swapping an image, toggling an option or changing a link target in a translated field does not make it "edited by hand";
+- swapping an image, toggling an option, changing a link target or turning bold into italic in a translated field does not make it "edited by hand";
 - neither do the ids, `enabled` flags and other values Statamic's forms add when they save content.
 
 The other side: **Update rebuilds a field from the origin's structure.** When it translates an outdated field again, it takes the origin's current value and puts the translations into it, so a non-text change made only in the localization (a different image in a Bard field) is replaced by the origin's. The same goes for a navigation's pages: a page added, removed or moved by hand in a translated tree, without a change to any title, leaves the tree up to date, and once it reads outdated, Update puts the origin's pages back in the origin's order ([Navigation](content-types.md#navigation)). If a localization is meant to differ in more than its text, protect it ([below](#protecting-translations)) or mark the field as edited by hand by changing a word.

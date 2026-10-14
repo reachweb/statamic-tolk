@@ -13,6 +13,7 @@ use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Fields\Field;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -170,6 +171,25 @@ describe('field status', function () {
 
         expect($field->status)->toBe(FieldStatus::Untranslated)
             ->and($field->targetHash)->toBe($field->sourceTextHash);
+    });
+
+    // The editor's `registry.js` `textsOf()` draws the same line, so it skips and keeps what a save would make manual.
+    it('reads a word linked or made bold, formatting moved and a link title changed in a Bard value as other text, and a link target changed or bold turned italic as the same', function () {
+        $field = new Field('content', ['type' => 'bard', 'localizable' => true, 'buttons' => ['bold', 'italic', 'anchor']]);
+        $hash = fn (array ...$content) => app(StatusResolver::class)->targetHash($field, [['type' => 'paragraph', 'content' => $content]]);
+        $text = fn (string $text, array ...$marks) => $marks === [] ? ['type' => 'text', 'text' => $text] : ['type' => 'text', 'marks' => $marks, 'text' => $text];
+        $link = fn (array $attrs = []) => ['type' => 'link', 'attrs' => ['href' => 'statamic://entry::rooms', ...$attrs]];
+        $bold = ['type' => 'bold'];
+        $linked = $hash($text('See our '), $text('rooms', $link()), $text('.'));
+
+        expect($linked)->not->toBe($hash($text('See our rooms.')))
+            ->and($hash($text('See our '), $text('rooms', $bold), $text('.')))->not->toBe($hash($text('See our rooms.')))
+            ->and($hash($text('Hello ', $bold), $text('world')))->not->toBe($hash($text('Hello '), $text('world', $bold)))
+            ->and($hash($text('Hello ', $bold), $text('world', $bold, ['type' => 'italic'])))->not->toBe($hash($text('Hello world', $bold)))
+            ->and($hash($text('See our '), $text('rooms', $link(['title' => 'Our rooms'])), $text('.')))->not->toBe($linked)
+            ->and($hash($text('See our '), $text('rooms', $link(['href' => 'statamic://entry::suites'])), $text('.')))->toBe($linked)
+            ->and($hash($text('See our '), $text('rooms', $link(['rel' => null, 'title' => ' '])), $text('.')))->toBe($linked)
+            ->and($hash($text('See our '), $text('rooms', ['type' => 'italic']), $text('.')))->toBe($hash($text('See our '), $text('rooms', $bold), $text('.')));
     });
 
     it('reads a copy of the source\'s text as manual once a human vouched for it, and a copy of a source without text as manual', function () {

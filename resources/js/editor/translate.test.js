@@ -180,6 +180,29 @@ describe('skipHandles', () => {
         expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual([]);
     });
 
+    it('lists a Bard field in which the editor linked a word or changed a link title, which the server reads as manual', () => {
+        const paragraph = (...content) => [{ type: 'paragraph', content }];
+        const linked = (title) => paragraph(
+            { type: 'text', text: 'Unsere ' },
+            { type: 'text', marks: [{ type: 'link', attrs: { href: 'statamic://entry::rooms', title } }], text: 'Zimmer' },
+            { type: 'text', text: '.' },
+        );
+        const ctx = mount({
+            values: { ...stored(), content: paragraph({ type: 'text', text: 'Unsere Zimmer.' }) },
+            localized: ['title', 'content'],
+            fields: { content: field('outdated', 'Content') },
+        });
+
+        ctx.values.value.content = linked(null);
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual(['content']);
+
+        registry.refreshClean('base');
+        ctx.values.value.content = linked('Unsere Zimmer');
+
+        expect(skipHandles(ctx, base().status, { name: 'base', registry })).toEqual(['content']);
+    });
+
     it('leaves out an untranslated field whose text differs from the origin\'s only in its line breaks', () => {
         // An inherited Markdown field whose origin's `.md` body holds CRLF: CodeMirror passes it up with LF.
         const ctx = mount({

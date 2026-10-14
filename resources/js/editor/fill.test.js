@@ -347,6 +347,17 @@ describe('applyFields', () => {
         expect(ctx.values.value.blocks).toEqual(block('Hello world', ''));
     });
 
+    it('skips a Bard field in which the editor linked a word since the plan was made', async () => {
+        const ctx = container();
+        const planValues = clone(ctx.values.value);
+        ctx.values.value.body = [{ _id: 'r1', type: 'paragraph', content: [{ type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'Body' }] }];
+
+        const result = await settled(fill(ctx, { body: { value: [], meta: { existing: {} } } }, { planValues }));
+
+        expect(result.skipped).toEqual({ body: 'edited' });
+        expect(ctx.values.value.body[0].content[0].marks).toHaveLength(1);
+    });
+
     it('does not count new random row ids as an edit', async () => {
         const ctx = container();
         const planValues = clone(ctx.values.value);
@@ -677,6 +688,23 @@ describe('restore', () => {
         expect(ctx.values.value.intro).toBe('[de] Intro, by hand');
         expect(ctx.localizedFields.value).toEqual(['intro']);
         expect(Object.keys(delivered)).toEqual(['intro']);
+        expect(dirty.has('base')).toBe(true);
+    });
+
+    it('leaves a Bard field in which the editor made a phrase bold or linked a word after the delivery', async () => {
+        const paragraph = (...content) => [{ type: 'paragraph', content }];
+        const ctx = attached();
+        const { snap, delivered } = await translate(ctx, {
+            body: { value: paragraph({ type: 'text', text: '[de] Body text' }), meta: { existing: {} } },
+            title: { value: [{ type: 'text', text: '[de] Title' }], meta: null },
+        });
+        ctx.values.value.body = paragraph({ type: 'text', text: '[de] ' }, { type: 'text', marks: [{ type: 'bold' }], text: 'Body' }, { type: 'text', text: ' text' });
+        ctx.values.value.title = [{ type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com', title: null } }], text: '[de] Title' }];
+
+        const result = await settled(restore(ctx, snap, delivered, { registry }));
+
+        expect(result).toEqual({ restored: [], kept: ['body', 'title'] });
+        expect(ctx.values.value.body[0].content[1].marks).toEqual([{ type: 'bold' }]);
         expect(dirty.has('base')).toBe(true);
     });
 

@@ -101,13 +101,14 @@ describe('textsOf and sameText', () => {
         expect([textsOf(null), textsOf(undefined), textsOf(3), textsOf(true), textsOf(''), textsOf([]), textsOf({})]).toEqual([null, null, null, null, null, null, null]);
     });
 
-    it('leaves out types, ids and marks', () => {
+    it('leaves out types, ids and marks, and reads a Bard text with marks as a part of its own with its link\'s title', () => {
         expect(textsOf([{ _id: 'x', id: 'y', type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toEqual([{ text: 'A' }]);
-        expect(textsOf([{ type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toEqual(['A']);
+        expect(textsOf([{ type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }], text: 'A' }])).toEqual([[{ text: 'A' }]]);
+        expect(textsOf([{ type: 'text', marks: [{ type: 'link', attrs: { href: 'https://example.com', title: 'Example' } }], text: 'A' }])).toEqual([[{ text: 'A', title: 'Example' }]]);
     });
 
     it('reads a Bard value as its runs of text and its attributes', () => {
-        expect(textsOf(storedBard())).toEqual(['Welcome', 'See our rooms.', { alt: 'The pool', src: 'asset::assets::pool.jpg' }, 'One', { values: { text: 'Wonderful.' } }]);
+        expect(textsOf(storedBard())).toEqual(['Welcome', ['See our ', { text: 'rooms' }, '.'], { alt: 'The pool', src: 'asset::assets::pool.jpg' }, 'One', { values: { text: 'Wonderful.' } }]);
     });
 
     it('finds the same text in a Bard value Bard re-emitted', () => {
@@ -155,6 +156,42 @@ describe('textsOf and sameText', () => {
         expect(sameText({ rows: [{ text: 'a\r\nb' }] }, { rows: [{ text: 'a\nb' }] })).toBe(true);
         expect(sameText('a\nb', 'a\n\nb')).toBe(false);
         expect(sameText('a\r\nb', 'a b')).toBe(false);
+    });
+
+    // The server reads a Bard block's text with its formatted runs as numbered pairs (`See our <1>rooms</1>.`) and each
+    // link title as a leaf of its own, so these make a field manual once saved. (A mark named after a Tailwind utility
+    // would add that class to the CP build, which scans these files.)
+    describe('formatting', () => {
+        const paragraph = (...content) => [{ type: 'paragraph', content }];
+        const text = (value, ...marks) => (marks.length ? { type: 'text', marks, text: value } : { type: 'text', text: value });
+        const bold = { type: 'bold' };
+        const strike = { type: 'strike' };
+        const link = (attrs = {}) => ({ type: 'link', attrs: { href: 'statamic://entry::rooms', ...attrs } });
+        const plain = () => paragraph(text('See our rooms.'));
+        const linked = (attrs) => paragraph(text('See our '), text('rooms', link(attrs)), text('.'));
+        const image = (...marks) => paragraph(text('See '), { type: 'image', marks, attrs: { src: 'asset::assets::pool.jpg' } });
+
+        it('tells text linked or made bold, formatting moved or split, and a link title changed apart', () => {
+            expect(sameText(linked(), plain())).toBe(false);
+            expect(sameText(paragraph(text('See our '), text('rooms', bold), text('.')), plain())).toBe(false);
+            expect(sameText(paragraph(text('See '), text('our', bold), text(' rooms.')), paragraph(text('See our '), text('rooms', bold), text('.')))).toBe(false);
+            expect(sameText(paragraph(text('Hello ', bold), text('world')), paragraph(text('Hello '), text('world', bold)))).toBe(false);
+            expect(sameText(paragraph(text('Hello ', bold), text('world', bold, strike)), paragraph(text('Hello world', bold)))).toBe(false);
+            expect(sameText([{ type: 'heading', attrs: { level: 2 }, content: [text('Welcome', bold)] }], [{ type: 'heading', attrs: { level: 2 }, content: [text('Welcome')] }])).toBe(false);
+            expect(sameText(linked({ title: 'Our rooms' }), linked())).toBe(false);
+            expect(sameText(linked({ title: 'Our rooms' }), linked({ title: 'All rooms' }))).toBe(false);
+            expect(sameText(image(link({ title: 'Our pool' })), image(link()))).toBe(false);
+        });
+
+        it('finds the same text where only a link target, the kind of formatting or empty attributes differ', () => {
+            expect(sameText(linked({ href: 'statamic://entry::suites' }), linked())).toBe(true);
+            expect(sameText(paragraph(text('See our '), text('rooms', strike), text('.')), paragraph(text('See our '), text('rooms', bold), text('.')))).toBe(true);
+            expect(sameText(linked({ rel: null, target: null, title: null }), linked())).toBe(true);
+            expect(sameText(linked({ title: '  ' }), linked())).toBe(true);
+            expect(sameText(paragraph(text('Hello ', link({ title: null })), text('world', link())), paragraph(text('Hello world', link())))).toBe(true);
+            expect(sameText(paragraph(text('Hello ', bold), text(''), text('world', bold)), paragraph(text('Hello world', bold)))).toBe(true);
+            expect(sameText(paragraph(text('Line one\r\n', bold), text('Line two')), paragraph(text('Line one\n', bold), text('Line two')))).toBe(true);
+        });
     });
 
     it('finds the same text in runs Bard joined and items it left empty', () => {
