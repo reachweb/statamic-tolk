@@ -662,6 +662,44 @@ describe('translate', () => {
         expect(base()).toMatchObject({ phase: 'idle', summary: null });
     });
 
+    it('puts a busy phase back to idle on abort, so Save is not refused for a translation that no longer runs', async () => {
+        mount();
+        const plan = deferred();
+        const finish = deferred();
+        const t = translations({ api: fakeApi(plan.promise, planResponse()), run: () => finish.promise });
+
+        t.translate('base');
+        t.abort('base');
+
+        expect(base().phase).toBe('idle');
+        plan.resolve(planResponse());
+        await flush();
+        expect(base().phase).toBe('idle');
+
+        t.translate('base');
+        await flush();
+        expect(base().phase).toBe('working');
+
+        t.abort('base');
+        finish.resolve(summary({ delivered: ['intro'] }));
+        await flush();
+
+        expect(base()).toMatchObject({ phase: 'idle', summary: null });
+        expect(t.running('base')).toBe(false);
+    });
+
+    it('leaves the phase alone on abort when nothing runs', () => {
+        mount();
+        const t = translations();
+
+        store.setPhase('base', 'error', { message: 'Rate limited' });
+        t.abort('base');
+        t.abort('relate-fieldtype-inline-1');
+
+        expect(base()).toMatchObject({ phase: 'error', error: { message: 'Rate limited' } });
+        expect(store.containers['relate-fieldtype-inline-1']).toBeUndefined();
+    });
+
     it('tells the fill it is no longer active after a switch', async () => {
         mount();
         const finish = deferred();

@@ -119,11 +119,19 @@ describe('entry.saving', () => {
         mount();
         store.setPhase('base', phase);
 
-        const outcome = await run(hooks().saving, { collection: 'pages', values: {} });
+        const outcome = await run(hooks({ running: (name) => name === 'base' }).saving, { collection: 'pages', values: {} });
 
         expect(outcome.resolved).toBe(false);
         expect(outcome.reason).toBeInstanceOf(PipelineStopped);
         expect(toasts).toEqual([['error', 'A translation is in progress. Wait for it to finish, or cancel it.', undefined]]);
+    });
+
+    it('lets a save through when the phase says busy but no translation runs any more', async () => {
+        mount();
+        store.setPhase('base', 'working');
+
+        expect((await run(hooks({ running: () => false }).saving, {})).resolved).toBe(true);
+        expect(toasts).toEqual([]);
     });
 
     it.each(['idle', 'offer', 'done', 'error'])('lets a save through while %s', async (phase) => {

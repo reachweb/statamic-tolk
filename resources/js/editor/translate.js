@@ -186,13 +186,19 @@ export function createTranslations({
     const runs = new Map();
     const undoing = new Set();
 
-    // A site or entry switch, or a new container: fills still in flight are discarded.
+    // A site or entry switch, or a container created or destroyed: fills still in flight are discarded, and a phase
+    // left on `planning` or `working` goes back to idle, since it would refuse every Save.
     function abort(name) {
         const current = runs.get(name);
+        const editor = store();
 
         if (current) {
             runs.delete(name);
             current.controller.abort();
+        }
+
+        if (BUSY.includes(editor.containers[name]?.phase)) {
+            editor.setPhase(name, 'idle');
         }
     }
 

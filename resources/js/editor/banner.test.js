@@ -5,7 +5,9 @@ import { ApiError } from '../api.js';
 import { attachBanner, createBanners, isTermReference, shouldPush, showsActions } from './banner.js';
 import { SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
+import { createSaveHooks } from './saveHooks.js';
 import { useEditorStore } from './store.js';
+import { createTranslations } from './translate.js';
 
 function bus() {
     const handlers = {};
@@ -163,6 +165,40 @@ describe('createBanners', () => {
         events.$emit('publish-container-created', container('relate-fieldtype-inline-3').payload);
 
         expect(abort.mock.calls).toEqual([['base'], ['relate-fieldtype-inline-3']]);
+    });
+
+    it('also starts a form without a banner afresh, so the create page does not inherit a translation in progress', () => {
+        store.switched('base', 'entry::a', 1_000);
+        store.setPhase('base', 'working');
+
+        events.$emit('publish-container-created', container('base', '').payload);
+
+        expect(abort).toHaveBeenCalledExactlyOnceWith('base');
+        expect(store.containers.base).toBeUndefined();
+        expect(store.phaseOf('base')).toBe('idle');
+    });
+
+    it('stops the translation and forgets the state once the last container of a name is destroyed', () => {
+        events.$emit('publish-container-created', container().payload);
+        store.switched('base', 'entry::a', 1_000);
+        store.setPhase('base', 'working');
+
+        events.$emit('publish-container-destroyed', { name: 'base' });
+
+        expect(abort.mock.calls).toEqual([['base'], ['base']]);
+        expect(store.containers.base).toBeUndefined();
+    });
+
+    it('keeps the state of a container that replaced its predecessor before that one was destroyed', () => {
+        events.$emit('publish-container-created', container('base', 'entry::a').payload);
+        events.$emit('publish-container-created', container('base', 'entry::b').payload);
+        store.switched('base', 'entry::b', 1_000);
+        store.setPhase('base', 'working');
+
+        events.$emit('publish-container-destroyed', { name: 'base' });
+
+        expect(abort).toHaveBeenCalledTimes(2);
+        expect(store.containers.base).toMatchObject({ reference: 'entry::b', phase: 'working' });
     });
 
     it('destroys the banner with its container', () => {
@@ -412,5 +448,128 @@ describe('attachBanner', () => {
 
         expect(loadStatus).toHaveBeenCalledOnce();
         expect(store.container('base').reference).toBe('entry::a');
+    });
+});
+
+describe('leaving a form while it translates', () => {
+    class PipelineStopped extends Error {}
+
+    let events;
+    let registry;
+    let posted;
+    let answers;
+    let translations;
+    let saving;
+    let toasts;
+    let dirty;
+
+    const plan = {
+        plan: 'p1',
+        units: ['u1', 'u2', 'u3', 'u4', 'u5', 'u6'].map((id) => ({ id, fields: ['intro'], chars: 10 })),
+        fields: ['intro'],
+        skipped: [],
+        ready: [],
+    };
+
+    const unitResponse = () => ({ fields: { intro: { value: '[el] Intro', meta: null, incomplete: false, warnings: [] } }, spawned: [], failed: [], warnings: [], usage: {} });
+
+    beforeEach(() => {
+        vi.useFakeTimers({ now: 100_000 });
+        toasts = [];
+        dirty = new Set();
+        vi.stubGlobal('Statamic', {
+            ...Statamic,
+            $dirty: { add: (name) => dirty.add(name), remove: (name) => dirty.delete(name), has: (name) => dirty.has(name) },
+            $toast: { error: (message) => toasts.push(message) },
+        });
+        vi.stubGlobal('__', (key) => key);
+        events = bus();
+        registry = createRegistry();
+        registry.listen(events);
+        posted = [];
+        answers = [];
+
+        const api = {
+            post: vi.fn((path, data) => {
+                if (path === 'editor/plan') {
+                    return Promise.resolve(plan);
+                }
+
+                posted.push(data.unit);
+
+                return new Promise((resolve) => answers.push(resolve));
+            }),
+        };
+
+        translations = createTranslations({ store: () => store, registry, api, concurrency: () => 2 });
+        createBanners({ abort: (name) => translations.abort(name) }).listen(events);
+        saving = createSaveHooks({ PipelineStopped, store: () => store, registry, running: (name) => translations.running(name) }).saving;
+    });
+
+    // The German page of an entry with its banner attached, translating with two units in flight.
+    async function translating() {
+        const entry = container('base', 'entry::a', { title: 'Titel', intro: 'Einleitung' });
+        const ctx = {
+            ...entry.context,
+            originValues: ref({ title: 'Title', intro: 'Intro' }),
+            meta: ref({ title: null, intro: null }),
+            setFieldMeta: vi.fn(),
+            setFieldValue: vi.fn((handle, value) => (ctx.values.value[handle] = value)),
+            desyncField: vi.fn(),
+            withoutDirtying: (callback) => callback(),
+        };
+
+        const loadStatus = async () => ({ translatable: true, localization: { fields: { intro: { status: 'outdated' } } } });
+
+        events.$emit('publish-container-created', entry.payload);
+        attachBanner({ name: 'base', ctx, store, registry, loadStatus, onStatus: () => {} });
+        await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+        translations.translate('base');
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(store.phaseOf('base')).toBe('working');
+        expect(posted).toEqual(['u1', 'u2']);
+
+        return ctx;
+    }
+
+    function save() {
+        return new Promise((resolve) => saving(() => resolve(true), () => resolve(false), {}));
+    }
+
+    async function answerAll() {
+        while (answers.length) {
+            answers.shift()(unitResponse());
+            await vi.advanceTimersByTimeAsync(SETTLE_MS);
+        }
+    }
+
+    it('lets the create page that replaces it save, and posts no further unit', async () => {
+        const ctx = await translating();
+
+        events.$emit('publish-container-created', container('base', '').payload);
+        events.$emit('publish-container-destroyed', { name: 'base' });
+
+        expect(await save()).toBe(true);
+        expect(toasts).toEqual([]);
+
+        await answerAll();
+
+        expect(posted).toEqual(['u1', 'u2']);
+        expect(ctx.values.value.intro).toBe('Einleitung');
+        expect(dirty.size).toBe(0);
+    });
+
+    it('stops when the editor leaves for a page without a form', async () => {
+        const ctx = await translating();
+
+        events.$emit('publish-container-destroyed', { name: 'base' });
+        await answerAll();
+
+        expect(posted).toEqual(['u1', 'u2']);
+        expect(ctx.values.value.intro).toBe('Einleitung');
+        expect(translations.running('base')).toBe(false);
+        expect(store.containers.base).toBeUndefined();
     });
 });

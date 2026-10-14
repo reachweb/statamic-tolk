@@ -51,21 +51,23 @@ export function createBanners({ store = useEditorStore, abort = (name) => transl
         events.$on('publish-container-destroyed', destroyed);
     }
 
+    // A translation still running for the container this one replaces must not fill the new form, and its state must
+    // not stay either, with or without a banner: a phase left busy refuses every save, also on the create page, which
+    // has no banner to cancel it.
     function created(payload) {
         let banner = null;
 
-        // A translation still running for the container this one replaces must not fill the new form.
-        abort(payload.name);
+        stop(payload.name);
 
         if (shouldPush(payload)) {
-            // A new container starts afresh; only a banner re-mounted inside the same container keeps the state.
-            store().forget(payload.name);
             banner = payload.pushComponent(BANNER, { props: { containerName: payload.name } });
         }
 
         containers.set(payload.name, [...(containers.get(payload.name) ?? []), banner]);
     }
 
+    // Once the last container of the name is gone, the editor has left the form: its translation stops, so no further
+    // unit is paid for and nothing fills the form after it.
     function destroyed({ name }) {
         const [banner, ...rest] = containers.get(name) ?? [];
 
@@ -75,7 +77,15 @@ export function createBanners({ store = useEditorStore, abort = (name) => transl
             containers.set(name, rest);
         } else {
             containers.delete(name);
+            stop(name);
         }
+    }
+
+    // A new container starts afresh; only a banner re-mounted inside the same container keeps the state (Live Preview,
+    // which fires neither event).
+    function stop(name) {
+        abort(name);
+        store().forget(name);
     }
 
     return {

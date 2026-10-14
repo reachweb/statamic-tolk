@@ -4,7 +4,7 @@ import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
 import { useEditorStore } from './store.js';
-import { BUSY } from './translate.js';
+import { BUSY, translations } from './translate.js';
 
 export function notSavedMessage(handles, status) {
     return __n(
@@ -27,6 +27,7 @@ export function createSaveHooks({
     registry = sharedRegistry,
     api = defaultApi,
     now = Date.now,
+    running = (name) => translations.running(name),
     onConfirmed = (name, status) => pushes.afterSave(name, status),
 }) {
     let listening = false;
@@ -45,11 +46,12 @@ export function createSaveHooks({
     }
 
     // Hook callbacks get `(resolve, reject, payload)`. A stacked editor saves through the same hook; it is refused too
-    // while the page's translation runs.
+    // while the page's translation runs. A busy phase with no translation behind it refuses nothing: there would be no
+    // Cancel to end it, and nothing left to fill the form.
     function saving(resolve, reject) {
         const editor = store();
 
-        if (BUSY.includes(editor.phaseOf(BASE))) {
+        if (BUSY.includes(editor.phaseOf(BASE)) && running(BASE)) {
             Statamic.$toast.error(__('A translation is in progress. Wait for it to finish, or cancel it.'));
             reject(new PipelineStopped());
 
