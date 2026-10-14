@@ -483,6 +483,26 @@ it('keeps only the history once the override is removed, with the machine output
         ->and((new FieldState(sourceHash: '1111111111111111'))->removed()->isEmpty())->toBeTrue();
 });
 
+it('reads a record with only the history of a removed override as describing no value, and keeps that history in the record that replaces it', function () {
+    $removed = new FieldState(history: [
+        ['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222'],
+        ['source_hash' => '0000000000000000', 'target_hash' => '5555555555555555'],
+    ]);
+    $copy = machineState('6666666666666666', '5555555555555555', [['source_hash' => '7777777777777777', 'target_hash' => '8888888888888888']]);
+
+    expect((new FieldState)->describesNoValue())->toBeTrue()
+        ->and($removed->describesNoValue())->toBeTrue()
+        ->and((new FieldState(sourceHash: '1111111111111111'))->describesNoValue())->toBeFalse()
+        ->and(machineState('1111111111111111', '2222222222222222')->describesNoValue())->toBeFalse()
+        ->and((new FieldState(pending: [pendingState('3333333333333333')]))->describesNoValue())->toBeFalse()
+        ->and($copy->replacing($removed)->history)->toBe([
+            ['source_hash' => '7777777777777777', 'target_hash' => '8888888888888888'],
+            ['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222'],
+        ])
+        ->and($copy->replacing($removed)->sourceHash)->toBe('6666666666666666')
+        ->and($copy->replacing(new FieldState))->toEqual($copy);
+});
+
 it('writes a baseline from the newest pending entry whose plan saw other text', function () {
     $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
     $unchanged = pendingState('t2', ['targetBefore' => 'edited', 'createdAt' => $now->subMinute()]);

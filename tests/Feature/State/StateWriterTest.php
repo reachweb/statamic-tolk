@@ -471,6 +471,37 @@ describe('Bard copies saved', function () {
             ->and(StateFixtures::statuses($origin)['content'])->toBe(FieldStatus::Outdated);
     });
 
+    it('records the copy of a field whose translation Update removed, keeping the history of that translation', function () {
+        $this->fakeTranslations();
+        $update = fn () => $this->artisan('tolk:translate', ['--collection' => ['stories'], '--site' => ['el'], '--mode' => 'update', '--yes' => true, '--concurrency' => 1])->assertExitCode(0);
+        $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'content' => $this->text], 'story');
+        $greek = $this->localize($origin, 'el', ['title' => 'Ιστορία']);
+        $update();
+        $translation = Entry::find($greek->id())->get('content');
+        Entry::find($origin->id())->remove('content')->save();
+        $update();
+        $removed = storedState($greek)->field('content');
+        Entry::find($origin->id())->set('content', $this->rule)->save();
+
+        // The save of a form whose inherited Bard field desynced itself.
+        Entry::find($greek->id())->set('content', $this->rule)->save();
+        $recorded = [storedState($greek)->field('content'), StateFixtures::statuses($origin)['content']];
+        Entry::find($origin->id())->set('content', $this->text)->save();
+        $outdated = StateFixtures::statuses($origin)['content'];
+        // A restored revision that puts the removed translation back.
+        Entry::find($greek->id())->set('content', $translation)->save();
+
+        expect($removed->sourceHash)->toBeNull()
+            ->and($removed->targetHash)->toBeNull()
+            ->and($removed->history)->not->toBe([])
+            ->and($recorded[0]->sourceHash)->toBe(Fingerprint::of($this->rule))
+            ->and($recorded[0]->targetHash)->toBe(Fingerprint::ofLeaves([]))
+            ->and($recorded[0]->history)->toBe($removed->history)
+            ->and($recorded[1])->toBe(FieldStatus::Current)
+            ->and($outdated)->toBe(FieldStatus::Outdated)
+            ->and(StateFixtures::statuses($origin)['content'])->toBe(FieldStatus::Outdated);
+    });
+
     it('records it for a term saved in another site, global variables and the working copy of a collection with revisions', function () {
         $this->makeTaxonomy('topics', ['en', 'el'], ['description' => ['type' => 'bard', 'localizable' => true]]);
         $this->makeTerm('topics', 'drinks', ['en' => ['title' => 'Drinks', 'description' => $this->rule]]);
@@ -862,6 +893,22 @@ describe('adopt', function () {
             ->and(writerStatus($this->origin)->fields['title']->status)->toBe(FieldStatus::Current)
             ->and(writer()->adopt(writerTarget($this->origin), $from))->toBe([])
             ->and(writer()->adopt(writerTarget($this->origin, 'de'), $from))->toBe([]);
+    });
+
+    it('moves the record of a field whose own record keeps only the history of an override Update removed, with that history', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hi', 'Γεια σας')->removed()]);
+        $removed = storedState($localization)->field('title');
+        $from = TargetRef::parse('entry::other');
+        app(StateRepository::class)->update($from, fn (ItemState $state) => $state->withField('title', StateFixtures::machine('Hello', 'Γεια')));
+
+        $adopted = writer()->adopt(writerTarget($this->origin), $from);
+
+        expect($removed->history)->toBe([['source_hash' => Fingerprint::of('Hi'), 'target_hash' => Fingerprint::ofLeaves(['Γεια σας'])]])
+            ->and($adopted)->toBe(['title'])
+            ->and(storedState($localization)->field('title'))->toEqual(new FieldState(...[...get_object_vars(StateFixtures::machine('Hello', 'Γεια')), 'history' => $removed->history]))
+            ->and(app(StateRepository::class)->get($from)->isEmpty())->toBeTrue()
+            ->and(writerStatus($this->origin)->fields['title']->status)->toBe(FieldStatus::Current);
     });
 });
 

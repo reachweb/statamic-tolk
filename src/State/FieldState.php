@@ -67,6 +67,32 @@ final readonly class FieldState
         return $this->sourceHash === null && $this->targetHash === null && $this->history === [] && $this->pending === [];
     }
 
+    /**
+     * A record that says nothing about the value the field holds: an empty one, or one with only the history that Update
+     * keeps of an override it removed (removed()). The record of a value can still be given to the field (replacing()).
+     */
+    public function describesNoValue(): bool
+    {
+        return $this->sourceHash === null && $this->targetHash === null && $this->pending === [];
+    }
+
+    /**
+     * This record given to a field whose record $replaced describes no value, with the outputs of its history too, so
+     * one of them that a form or a restored revision saves again still reads outdated.
+     */
+    public function replacing(self $replaced): self
+    {
+        $history = [];
+
+        foreach ([...$this->history, ...$replaced->history] as $pair) {
+            if ($pair['target_hash'] !== $this->targetHash) {
+                $history[$pair['target_hash']] ??= $pair;
+            }
+        }
+
+        return new self(...[...get_object_vars($this), 'history' => array_slice(array_values($history), 0, self::MAX_HISTORY)]);
+    }
+
     public function inHistory(string $targetHash): bool
     {
         return in_array($targetHash, array_column($this->history, 'target_hash'), true);

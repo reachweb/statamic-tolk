@@ -233,7 +233,8 @@ final readonly class StateWriter
 
     /**
      * Moves to the target's state the records that the state of $from holds for fields the target has a value for but
-     * no record of its own. A key of `lang/{lang}.json` that moves between the source language's JSON file and the forms
+     * no record of its own, or one with only the history of an override Update removed, which the moved record keeps
+     * (FieldState::describesNoValue()). A key of `lang/{lang}.json` that moves between the source language's JSON file and the forms
      * changes the target it belongs to (§A16), and without its record its translation would read as edited by hand.
      * The other target may walk the value differently, so its fingerprint of the value the target holds is replaced in
      * the record by the target's own.
@@ -275,8 +276,10 @@ final readonly class StateWriter
             $adopted = [];
 
             foreach ($records as $handle => $record) {
-                if ($state->field((string) $handle)->isEmpty()) {
-                    $state = $state->withField((string) $handle, $record);
+                $current = $state->field((string) $handle);
+
+                if ($current->describesNoValue()) {
+                    $state = $state->withField((string) $handle, $record->replacing($current));
                     $adopted[] = (string) $handle;
                 }
             }
@@ -434,7 +437,7 @@ final readonly class StateWriter
 
     /**
      * The reconcile of confirm() applied to a stored state, with the records of $copies given to the target's fields
-     * that still have none.
+     * whose records still describe no value, keeping their history.
      *
      * @param  array<string, FieldStatusInfo>  $statuses
      * @param  array<string, FieldState>  $copies
@@ -446,8 +449,10 @@ final readonly class StateWriter
 
         // State written since it was read belongs to the field.
         foreach ($copies as $handle => $record) {
-            if ($state->field((string) $handle)->isEmpty()) {
-                $state = $state->withField((string) $handle, $record);
+            $current = $state->field((string) $handle);
+
+            if ($current->describesNoValue()) {
+                $state = $state->withField((string) $handle, $record->replacing($current));
                 $copied[] = (string) $handle;
             }
         }
@@ -487,7 +492,8 @@ final readonly class StateWriter
     }
 
     /**
-     * The records for the Bard fields without a record whose own value has no text, like their source: the CP saves
+     * The records for the Bard fields without a record of their value, such as one with only the history of an override
+     * Update removed, whose own value has no text, like their source: the CP saves
      * such a copy when an inherited Bard field desyncs itself while the form loads (T6.11). Recorded as output made
      * from that source, the field reads current, and outdated once the source changes, so Update translates it; without
      * a record it would read as emptied by hand once the source has text, and never be translated (D5). A Bard field
@@ -503,7 +509,7 @@ final readonly class StateWriter
         $none = Fingerprint::ofLeaves([]);
 
         foreach ($target->fields() as $handle => $field) {
-            if ($field->type() !== 'bard' || ! $stored->field((string) $handle)->isEmpty() || $this->resolver->currentTargetHash($target, $field) !== $none) {
+            if ($field->type() !== 'bard' || ! $stored->field((string) $handle)->describesNoValue() || $this->resolver->currentTargetHash($target, $field) !== $none) {
                 continue;
             }
 
