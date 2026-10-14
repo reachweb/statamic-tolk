@@ -11,6 +11,7 @@ import {
     SLUG_RECHECK_MS,
     SLUG_RESET_TIMEOUT_MS,
     snapshot,
+    takeBack,
 } from './fill.js';
 import { createRegistry } from './registry.js';
 
@@ -917,6 +918,41 @@ describe('restore', () => {
         expect(ctx.syncField).not.toHaveBeenCalled();
         expect(ctx.values.value.intro).toBe('Intro');
         expect(ctx.localizedFields.value).toEqual(['intro']);
+    });
+});
+
+describe('takeBack', () => {
+    it('puts the fields back as the snapshot holds them, a fill being read back and one edited since included', async () => {
+        const ctx = container({ localized: ['title'] });
+        const before = { values: clone(ctx.values.value), meta: clone(ctx.meta.value) };
+        const snap = snapshot(ctx, ['title', 'intro', 'seo_title'], {});
+        const delivered = {};
+
+        await settled(fill(ctx, { title: translated('Title'), intro: { value: '[de] Intro', meta: { counter: 1 }, incomplete: false } }, { delivered }));
+        ctx.values.value.title = '[de] Title, by hand';
+        fill(ctx, { seo_title: translated('SEO title') }, { plan: 'plan-2', delivered });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(delivered.seo_title.pending).toBe(true);
+
+        expect(takeBack(ctx, snap, ['title', 'intro', 'seo_title', 'body'])).toEqual(['title', 'intro', 'seo_title']);
+        expect(ctx.values.value).toEqual(before.values);
+        expect(ctx.meta.value).toEqual(before.meta);
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(ctx.withoutDirtying).toHaveBeenCalledOnce();
+    });
+
+    it('puts nothing back after a switch to another item, or without a snapshot', async () => {
+        const ctx = container();
+        const snap = snapshot(ctx, ['title'], {});
+
+        await settled(fill(ctx, { title: translated('Title') }));
+        ctx.reference.value = 'entry::el';
+
+        expect(takeBack(ctx, snap, ['title'])).toEqual([]);
+        expect(takeBack(ctx, null, ['title'])).toEqual([]);
+        expect(ctx.values.value.title).toBe('[de] Title');
+        expect(ctx.withoutDirtying).not.toHaveBeenCalled();
     });
 });
 

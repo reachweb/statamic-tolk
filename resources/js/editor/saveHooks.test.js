@@ -2,7 +2,7 @@ import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { ApiError } from '../api.js';
-import { SETTLE_MS } from './fill.js';
+import { applyFields, REEMIT_MS, SETTLE_MS, snapshot } from './fill.js';
 import { clone, createRegistry } from './registry.js';
 import { createSaveHooks, notSavedMessage } from './saveHooks.js';
 import { useEditorStore } from './store.js';
@@ -12,6 +12,7 @@ class PipelineStopped extends Error {}
 let store;
 let registry;
 let toasts;
+let dirty;
 
 function translate(key, replacements = {}) {
     return Object.entries(replacements).reduce((text, [name, value]) => text.split(`:${name}`).join(value), key);
@@ -20,8 +21,10 @@ function translate(key, replacements = {}) {
 beforeEach(() => {
     vi.useFakeTimers({ now: 50_000 });
     toasts = [];
+    dirty = new Set();
     vi.stubGlobal('Statamic', {
         $pinia: { defineStore },
+        $dirty: { add: (name) => dirty.add(name), remove: (name) => dirty.delete(name), has: (name) => dirty.has(name) },
         $toast: {
             error: (message, options) => toasts.push(['error', message, options]),
             info: (message) => toasts.push(['info', message]),
@@ -499,7 +502,6 @@ describe('entry.published', () => {
         mount('entry::en');
         const api = statusApi();
         const onConfirmed = vi.fn();
-        store.container('base').delivered = { intro: { plan: 'p1' } };
 
         const outcome = await run(hooks({ api, onConfirmed }).published, publishedPayload());
         await vi.advanceTimersByTimeAsync(0);
@@ -508,7 +510,6 @@ describe('entry.published', () => {
         expect(api.get).toHaveBeenCalledExactlyOnceWith('editor/status', { reference: 'entry::en' });
         expect(api.post).not.toHaveBeenCalled();
         expect(store.container('base').status).toEqual(publishedStatus());
-        expect(store.container('base').delivered).toEqual({ intro: { plan: 'p1' } });
         expect(onConfirmed).toHaveBeenCalledExactlyOnceWith('base', publishedStatus(), { published: true });
         expect(toasts).toEqual([]);
     });
@@ -576,5 +577,198 @@ describe('entry.published', () => {
 
         expect(store.container('base')).toMatchObject({ reference: 'entry::el', status: null });
         expect(onConfirmed).not.toHaveBeenCalled();
+    });
+});
+
+describe('entry.published while a translation fills the form', () => {
+    // A localization in a collection with revisions: its title is its own, its intro inherits the origin's. Core's
+    // `desyncField` localizes a field the editor or a fill changes.
+    const stored = () => ({ title: 'Startseite', intro: 'Welcome' });
+
+    function form() {
+        const ctx = {
+            name: ref('base'),
+            reference: ref('entry::de'),
+            values: ref(stored()),
+            meta: ref({ title: null, intro: null }),
+            localizedFields: ref(['title']),
+            setFieldMeta: vi.fn((handle, value) => (ctx.meta.value[handle] = value)),
+            setFieldValue: vi.fn((handle, value) => (ctx.values.value[handle] = value)),
+            desyncField: vi.fn((handle) => {
+                if (!ctx.localizedFields.value.includes(handle)) {
+                    ctx.localizedFields.value.push(handle);
+                }
+
+                dirty.add('base');
+            }),
+            withoutDirtying: vi.fn((callback) => callback()),
+        };
+
+        registry.attachContext('base', ctx);
+        store.switched('base', 'entry::de', 1_000);
+        store.container('base').status = freshStatus();
+
+        return ctx;
+    }
+
+    // A translation as `translations.start()` runs it: the snapshot taken when it started, its fills recorded in the
+    // container's delivered map, and `stop` as `translations.abort()` (no fill lands any more, a busy phase goes idle).
+    function translating(ctx, fields) {
+        const container = store.container('base');
+        const translation = {};
+        let active = true;
+
+        container.snapshot = snapshot(ctx, Object.keys(ctx.values.value), container.delivered);
+        store.setPhase('base', 'working');
+
+        const filling = applyFields(ctx, fields, {
+            reference: 'entry::de',
+            plan: 'plan-1',
+            planValues: clone(ctx.values.value),
+            delivered: container.delivered,
+            active: () => active,
+        });
+
+        const stop = vi.fn((name) => {
+            active = false;
+
+            if (['planning', 'working'].includes(store.phaseOf(name))) {
+                store.setPhase(name, 'idle');
+            }
+        });
+
+        return { filling, stop, running: () => (active ? translation : null) };
+    }
+
+    const api = () => ({ get: vi.fn(async () => freshStatus()), post: vi.fn(async () => ({ ...freshStatus(), not_saved: [] })) });
+
+    const payload = (reference = 'entry::de') => ({
+        collection: 'pages',
+        reference: 'entry::de',
+        message: null,
+        response: { data: { data: { reference, values: stored() }, saved: true } },
+    });
+
+    // Core's PublishActions after its request: the `entry.published` hooks, then, with "continue editing", the form's
+    // `publishActionCompleted()`, which clears the dirty state and puts the published values into the form, keeping
+    // its localized fields and meta.
+    async function publish(save, ctx, reference = 'entry::de') {
+        const outcome = await run(save.published, payload(reference));
+
+        dirty.delete('base');
+        ctx.values.value = stored();
+
+        return outcome;
+    }
+
+    const discarded = ['info', 'Publishing discarded the unsaved translation. Translate again to fill in the form.'];
+
+    it('takes back what it filled, which Publish replaces, so the next save stores no origin text as the localization\'s own', async () => {
+        const ctx = form();
+        const service = api();
+        const translation = translating(ctx, { intro: { value: '[de] Willkommen', meta: { counter: 1 } } });
+        await vi.advanceTimersByTimeAsync(REEMIT_MS);
+
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
+
+        const save = hooks({ api: service, running: translation.running, stop: translation.stop });
+
+        expect((await publish(save, ctx)).resolved).toBe(true);
+        expect(translation.stop).toHaveBeenCalledExactlyOnceWith('base');
+        expect(ctx.values.value).toEqual(stored());
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(ctx.meta.value).toEqual({ title: null, intro: null });
+        expect(store.container('base')).toMatchObject({ phase: 'idle', delivered: {}, summary: null, snapshot: null, request: null });
+        expect(toasts).toEqual([discarded]);
+
+        // The next save confirms nothing as translated.
+        await run(save.saved, respond(ctx, stored()));
+
+        expect(service.post).toHaveBeenCalledExactlyOnceWith('editor/confirm', { reference: 'entry::de', delivered: [] });
+    });
+
+    it('takes back a fill still being read back, which an aborted translation stops recording', async () => {
+        const ctx = form();
+        const translation = translating(ctx, { intro: { value: '[de] Willkommen' } });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(store.container('base').delivered.intro).toMatchObject({ pending: true });
+
+        await publish(hooks({ api: api(), running: translation.running, stop: translation.stop }), ctx);
+        await vi.advanceTimersByTimeAsync(REEMIT_MS);
+        await translation.filling;
+
+        expect(ctx.values.value).toEqual(stored());
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(store.container('base').delivered).toEqual({});
+    });
+
+    it('takes back the fills of a translation that finished while the Publish dialog was open', async () => {
+        const ctx = form();
+        const translation = translating(ctx, { intro: { value: '[de] Willkommen' } });
+        await vi.advanceTimersByTimeAsync(REEMIT_MS);
+        Object.assign(store.container('base'), { summary: { delivered: ['intro'] }, request: { mode: 'missing' } });
+        store.setPhase('base', 'done');
+
+        await publish(hooks({ api: api(), running: () => null, stop: translation.stop }), ctx);
+
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(store.container('base')).toMatchObject({ phase: 'idle', delivered: {}, summary: null, snapshot: null, request: null });
+        expect(toasts).toEqual([discarded]);
+    });
+
+    it('stops a translation still planning, whose fills would land after core put the published values in', async () => {
+        const ctx = form();
+        const translation = translating(ctx, {});
+        store.setPhase('base', 'planning');
+
+        await publish(hooks({ api: api(), running: translation.running, stop: translation.stop }), ctx);
+
+        expect(translation.stop).toHaveBeenCalledExactlyOnceWith('base');
+        expect(store.container('base')).toMatchObject({ phase: 'idle', snapshot: null });
+        expect(toasts).toEqual([discarded]);
+    });
+
+    it('takes the publish as the form\'s last change, so the next translation waits out core\'s window without dirty tracking', async () => {
+        const ctx = form();
+
+        await publish(hooks({ api: api(), stop: vi.fn() }), ctx);
+
+        expect(store.container('base').lastChangeAt).toBe(50_000);
+        expect(SETTLE_MS).toBeGreaterThan(500);
+    });
+
+    it('says nothing for a busy phase with no translation behind it', async () => {
+        const ctx = form();
+        store.setPhase('base', 'working');
+
+        await publish(hooks({ api: api(), running: () => null, stop: vi.fn() }), ctx);
+
+        expect(store.container('base').phase).toBe('idle');
+        expect(toasts).toEqual([]);
+    });
+
+    it('leaves the form and the banner alone when nothing was filled since the last save', async () => {
+        const ctx = form();
+        store.setPhase('base', 'offer');
+
+        await publish(hooks({ api: api(), stop: vi.fn() }), ctx);
+
+        expect(ctx.setFieldValue).not.toHaveBeenCalled();
+        expect(store.container('base').phase).toBe('offer');
+        expect(toasts).toEqual([]);
+    });
+
+    it('leaves a translation alone when a stacked editor publishes another entry', async () => {
+        const ctx = form();
+        const translation = translating(ctx, { intro: { value: '[de] Willkommen' } });
+        await vi.advanceTimersByTimeAsync(REEMIT_MS);
+
+        await run(hooks({ api: api(), running: translation.running, stop: translation.stop }).published, payload('entry::related'));
+
+        expect(translation.stop).not.toHaveBeenCalled();
+        expect(ctx.values.value.intro).toBe('[de] Willkommen');
+        expect(Object.keys(store.container('base').delivered)).toEqual(['intro']);
+        expect(store.container('base').phase).toBe('working');
     });
 });

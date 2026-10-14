@@ -310,6 +310,31 @@ export async function restore(ctx, snap, delivered, { registry = sharedRegistry,
     return result;
 }
 
+// Puts the given fields back as the snapshot holds them, their value, meta and localized flag, whatever they hold now and
+// whether or not their fill was read back. For Publish, after which core puts the published values into the form but
+// keeps its localized fields and meta (saveHooks.js). Returns the handles put back.
+export function takeBack(ctx, snap, handles) {
+    if (!snap || ctx.reference.value !== snap.reference) {
+        return [];
+    }
+
+    const known = handles.filter((handle) => Object.hasOwn(snap.fields, handle));
+
+    if (known.length) {
+        ctx.withoutDirtying(() => {
+            for (const handle of known) {
+                const before = snap.fields[handle];
+
+                ctx.setFieldMeta(handle, clone(before.meta));
+                ctx.setFieldValue(handle, formValue(ctx, handle, before.value));
+                setLocalized(ctx, handle, before.localized);
+            }
+        });
+    }
+
+    return known;
+}
+
 // Slugs are never translated (D16). On `localization.created` core resets the new localization's slug to follow the
 // title, so filling a translated title would give it a translated slug. Once the reset has finished, which turns
 // `meta.slug.auto` on, setting the origin's slug stops the following. Waits for the 600 ms guard and gives up waiting

@@ -1,5 +1,5 @@
 import * as defaultApi from '../api.js';
-import { leaveOutHidden, savedFills } from './fill.js';
+import { leaveOutHidden, savedFills, takeBack } from './fill.js';
 import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
@@ -19,8 +19,9 @@ export function notSavedMessage(handles, status) {
 // localized and be stored in the origin's language on the next save (T2.2 check 12); in either form it would be left
 // out of the save. Otherwise they leave a filled field that a condition hides out of `_localized` (`leaveOutHidden()`):
 // core's request step reads that array afterwards. `entry.saved` and `term.saved` tell the server which fields were
-// saved (`editor/confirm`). `entry.published` reads the status again after Publish, which neither saving hook sees
-// (below). `PipelineStopped` comes from `@statamic/cms/save-pipeline`; core stays silent for a save stopped with it.
+// saved (`editor/confirm`). `entry.published` reads the status again after Publish, which neither saving hook sees,
+// and discards a translation the form has not saved (below). `PipelineStopped` comes from
+// `@statamic/cms/save-pipeline`; core stays silent for a save stopped with it.
 export function createSaveHooks({
     PipelineStopped,
     store = useEditorStore,
@@ -29,6 +30,8 @@ export function createSaveHooks({
     now = Date.now,
     // The translation running in a container, the same object for as long as it runs, or null.
     running = (name) => translations.current(name),
+    // Stops the translation running in a container; nothing it still delivers is filled.
+    stop = (name) => translations.abort(name),
     onConfirmed = (name, status, options) => pushes.afterSave(name, status, options),
 }) {
     let listening = false;
@@ -147,8 +150,51 @@ export function createSaveHooks({
     // Resolves at once: core finishes the publish, or leaves for the listing, only after these hooks, and a rejection
     // would leave its form saving.
     function published(resolve, reject, payload) {
+        try {
+            discardTranslation(payload);
+        } catch (error) {
+            console.error(error);
+        }
+
         afterPublish(payload).catch((error) => console.error(error));
         resolve();
+    }
+
+    // After these hooks core puts the published values into the form ("continue editing") but keeps its localized
+    // fields and meta. Its Publish dialog stays open while a translation that started before fills the form, so what
+    // was filled would be replaced while staying localized and delivered: the banner would offer Undo for text the form
+    // no longer shows, and the next save would store the stored text (an inherited field's is the origin's) as the
+    // localization's own and confirm it as translated. Not in `entry.publishing`: a publish that fails would stop the
+    // translation for nothing, and a fill being read back when its translation stops drops its record.
+    function discardTranslation(payload) {
+        const editor = store();
+        const container = editor.containers[BASE];
+
+        if (!container?.reference || savedReference(payload, container) !== container.reference) {
+            return;
+        }
+
+        const phase = container.phase;
+        const translating = BUSY.includes(phase) && Boolean(running(BASE));
+        const handles = Object.keys(container.delivered);
+        const ctx = registry.context(BASE);
+
+        stop(BASE);
+
+        if (ctx && handles.length) {
+            takeBack(ctx, container.snapshot, handles);
+        }
+
+        // The form holds the stored values again, and core's dirty tracking is off for a while, as after a save.
+        editor.saved(BASE, now());
+
+        if (handles.length || !['idle', 'offer'].includes(phase)) {
+            editor.clearResult(BASE);
+        }
+
+        if (handles.length || translating) {
+            Statamic.$toast.info(__('Publishing discarded the unsaved translation. Translate again to fill in the form.'));
+        }
     }
 
     async function afterPublish(payload) {
