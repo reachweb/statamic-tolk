@@ -359,13 +359,23 @@ final class EntryTarget implements Target
         }
 
         $moving = array_splice($branches, $at, 1);
-        $families = array_map(fn (string $entry) => $this->family($entry), self::entryIds($branches));
-        $position = function (array $siblings) use ($families): ?int {
-            foreach ($siblings as $sibling) {
-                $family = $this->family($sibling);
+        $positions = [];
 
-                if ($family !== null && ($found = array_search($family, $families, true)) !== false) {
-                    return $found;
+        foreach (self::entryIds($branches) as $i => $entry) {
+            $positions[$entry] ??= $i;
+        }
+
+        // Looks up only the siblings it passes, nearest first: an orderable collection holds every entry at one level.
+        $position = function (array $siblings) use ($positions): ?int {
+            if ($positions === []) {
+                return null;
+            }
+
+            foreach ($siblings as $sibling) {
+                $localization = $this->localizationOf($sibling);
+
+                if ($localization !== null && isset($positions[$localization])) {
+                    return $positions[$localization];
                 }
             }
 
@@ -379,12 +389,13 @@ final class EntryTarget implements Target
         return $branches;
     }
 
-    // The root of the entry's localization family, which every localization of a page shares.
-    private function family(string $id): ?string
+    // The id of the target site's page of the entry's localization family. Queried within the collection, because
+    // Entry::find() filters the id index of every collection.
+    private function localizationOf(string $id): ?string
     {
-        $root = Entry::find($id)?->root();
+        $localization = Entry::query()->where('collection', $this->container())->where('id', $id)->first()?->in($this->site);
 
-        return $root === null ? null : (string) $root->id();
+        return $localization === null ? null : (string) $localization->id();
     }
 
     /**

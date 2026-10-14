@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Ai\ModelCatalog;
@@ -405,6 +406,23 @@ describe('trees', function () {
         expect($this->treeOfSlugs('el'))->toBe(['about' => [], 'rooms' => [], 'dining' => []]);
     });
 
+    it('places a page translated from a localization among its siblings\' pages in the target site, whichever entry those were translated from', function () {
+        $pages = $this->makePages(['about', 'rooms', 'dining'], root: false);
+
+        foreach (['about', 'rooms', 'dining'] as $slug) {
+            translateInto($pages[$slug]->id());
+        }
+
+        $greek = fn (string $slug) => Entry::query()->where('collection', 'pages')->where('site', 'el')->where('origin', $pages[$slug]->id())->first()->id();
+        translateInto($pages['dining']->id(), 'de');
+        translateInto($greek('rooms'), 'de');
+        translateInto($greek('about'), 'de');
+
+        expect($this->treeOfSlugs('de'))->toBe(['about' => [], 'rooms' => [], 'dining' => []])
+            ->and(Entry::query()->where('collection', 'pages')->where('site', 'de')->get()->mapWithKeys(fn ($entry) => [$entry->slug() => $entry->origin()->locale()])->sortKeys()->all())
+            ->toBe(['about' => 'el', 'dining' => 'en', 'rooms' => 'el']);
+    });
+
     it('never places a page before the home page of the target tree', function () {
         $pages = $this->makePages(['home', 'about', 'rooms'], root: true);
         // Core's localize action made Rooms the Greek home page, as the first page saved into the empty tree.
@@ -430,6 +448,45 @@ describe('trees', function () {
 
         expect($order('el'))->toBe(['anna', 'bob', 'chris', 'dora'])
             ->and(array_map(fn (array $branch) => Entry::find($branch['entry'])->slug(), Collection::find('team')->structure()->in('el')->tree()))->toBe(['anna', 'bob', 'chris', 'dora']);
+    });
+
+    it('looks up a new page\'s nearest localized siblings to place it, not every page of its level', function () {
+        $queries = 0;
+        $counting = false;
+        Event::listen(QueryExecuted::class, function () use (&$queries, &$counting) {
+            $queries += $counting ? 1 : 0;
+        });
+        config(['statamic.system.fake_sql_queries' => true]);
+
+        // An orderable collection whose members are in Greek, in a stored tree, up to two before the middle one, which is then translated.
+        $place = function (string $handle, int $size) use (&$queries, &$counting): array {
+            $this->makeCollection($handle, ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]], structured: true)
+                ->structureContents(['root' => false, 'max_depth' => 1])
+                ->save();
+            $members = collect(range(1, $size))->map(fn (int $i) => $this->makeEntry($handle, 'en', ['title' => "Member {$i}"], "member-{$i}"));
+            Collection::find($handle)->structure()->in('en')->tree($members->map(fn ($entry) => ['entry' => $entry->id()])->all())->save();
+            $middle = intdiv($size, 2);
+            $members->take($middle - 2)->each(fn (EntryContract $member) => ContentWriter::write(fn () => $this->localize($member, 'el')));
+            $tree = Collection::find($handle)->structure()->in('el');
+            $tree->tree($tree->tree())->save();
+            $fields = applyAssembled($members[$middle]->id());
+
+            [$queries, $counting] = [0, true];
+            applyInWriter($members[$middle]->id(), $fields);
+            $counting = false;
+
+            return [
+                array_map(fn (array $branch) => Entry::find($branch['entry'])->slug(), Collection::find($handle)->structure()->in('el')->tree()),
+                $queries,
+            ];
+        };
+
+        [$few, $fewQueries] = $place('crew', 6);
+        [$many, $manyQueries] = $place('team', 40);
+
+        expect($few)->toBe(['member-1', 'member-4'])
+            ->and($many)->toBe([...array_map(fn (int $i) => "member-{$i}", range(1, 18)), 'member-21'])
+            ->and($manyQueries)->toBe($fewQueries);
     });
 });
 
