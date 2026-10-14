@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Console\Commands\TranslateCommand;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
@@ -28,8 +29,10 @@ use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\UsageLog;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CliRun;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
@@ -561,6 +564,24 @@ describe('navigation', function () {
 
         expect($exitCode)->toBe(0)
             ->and(Nav::findByHandle('footer')->in('el')->tree())->toBe([['id' => 'legal', 'title' => '[T] Impressum']]);
+    });
+
+    it('translates the rest of the run when the state file of a navigation does not parse, and fails that one naming the file', function () {
+        $this->fakeTranslations();
+        $ref = new TargetRef(ContentType::Nav, 'main', 'el');
+        Nav::findByHandle('main')->makeTree('el', [['id' => 'book', 'title' => 'Κλείστε', 'url' => 'https://booking.example']])->save();
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withSourceSite('en')->withField('book.title', StateFixtures::machine('Book your stay', 'Κλείστε')));
+        $path = StateFixtures::conflict($ref);
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--nav' => ['main'], '--site' => ['el', 'de']]);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain("Main → Greek: failed, The translation state file {$path} cannot be read")
+            ->and($output)->toContain('Hello → Greek: done, created')
+            ->and($output)->toContain('Main → German: done')
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello')
+            ->and($this->world->fresh()->in('de')->get('title'))->toBe('[T] World')
+            ->and(Nav::findByHandle('main')->in('el')->tree())->toBe([['id' => 'book', 'title' => 'Κλείστε', 'url' => 'https://booking.example']]);
     });
 
     it('reports the navigation of the --from site, which the other sites are translated from', function () {

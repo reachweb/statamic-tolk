@@ -2,10 +2,14 @@
 
 use Illuminate\Support\Facades\Artisan;
 use Reach\StatamicTolk\Content\Fingerprint;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\StatusScanner;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Statamic\Facades\Nav;
 
 const STATUS_HEADERS = ['Type', 'Handle', 'Site', 'Missing', 'Untranslated', 'Outdated', 'Needs attention', 'Current', 'Untracked fields'];
 
@@ -91,6 +95,28 @@ describe('table', function () {
             ->assertExitCode(0);
 
         expect(statusJson(['--site' => ['el'], '--collection' => ['articles']])[0]['unreadable'])->toBe(1);
+    });
+
+    it('counts a navigation whose state file does not parse apart, and shows everything else', function () {
+        $ref = new TargetRef(ContentType::Nav, 'main', 'el');
+        Nav::findByHandle('main')->makeTree('el', [['id' => 'book', 'title' => 'Κλείστε', 'url' => 'https://booking.example']])->save();
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withSourceSite('en')->withField('book.title', StateFixtures::machine('Book your stay', 'Κλείστε')));
+        StateFixtures::conflict($ref);
+
+        $rows = collect(statusJson())->map(fn (array $row) => [$row['container'], $row['site'], $row['unreadable']])->all();
+
+        expect($rows)->toBe([
+            ['articles', 'el', 0],
+            ['articles', 'de', 0],
+            ['topics', 'el', 0],
+            ['site_settings', 'el', 0],
+            ['main', 'el', 1],
+            ['main', 'de', 0],
+        ]);
+
+        $this->artisan('tolk:status')
+            ->expectsOutputToContain('The translation state of 1 item cannot be read, so its status is unknown. Run php please tolk:doctor to list the files that cannot be read.')
+            ->assertExitCode(0);
     });
 
     it('shows only the sites and containers named', function () {

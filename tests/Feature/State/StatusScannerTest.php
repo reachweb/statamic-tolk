@@ -2,15 +2,18 @@
 
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\ScanResult;
 use Reach\StatamicTolk\State\StatusScanner;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
@@ -205,6 +208,20 @@ describe('other content types', function () {
             ->and(scanAll(ContentType::Nav, 'main', 'en'))->toEqual(ScanResult::empty())
             ->and(statusScanner()->sites(ContentType::Nav, 'footer'))->toBe([])
             ->and(scanAll(ContentType::Nav, 'footer', 'de'))->toEqual(ScanResult::empty());
+    });
+
+    it('lists a navigation whose state file does not parse in its sites, counts that site unreadable and the others as before', function () {
+        $this->makeNav('main', [
+            'en' => [['id' => 'book', 'title' => 'Book your stay', 'url' => 'https://booking.example']],
+            'el' => [['id' => 'book', 'title' => 'Κλείστε τη διαμονή σας', 'url' => 'https://booking.example']],
+        ]);
+        $ref = new TargetRef(ContentType::Nav, 'main', 'el');
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withSourceSite('en')->withField('book.title', StateFixtures::machine('Book your stay', 'Κλείστε τη διαμονή σας')));
+        StateFixtures::conflict($ref);
+
+        expect(statusScanner()->sites(ContentType::Nav, 'main'))->toBe(['el', 'de'])
+            ->and(scanAll(ContentType::Nav, 'main', 'el')->toArray())->toBe(['counts' => itemCounts([]), 'untracked' => 0, 'unreadable' => 1, 'scanned' => 1, 'cursor' => null])
+            ->and(scanAll(ContentType::Nav, 'main', 'de')->counts)->toBe(itemCounts(['missing' => 1]));
     });
 
     it('scans a navigation translated from another site against the tree of the site its state records, the default site\'s once that site has none', function () {

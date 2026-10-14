@@ -9,11 +9,13 @@ use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Ai\Usage;
 use Reach\StatamicTolk\Ai\UsageMap;
 use Reach\StatamicTolk\Content\Fingerprint;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\OverviewScanner;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -219,6 +221,20 @@ describe('page', function () {
                     ['type' => 'globals', 'handle' => 'site_settings', 'title' => 'Site Settings', 'sites' => ['el']],
                     ['type' => 'nav', 'handle' => 'main', 'title' => 'Main', 'sites' => ['el', 'de']],
                 ]));
+    });
+
+    it('lists a navigation whose state file does not parse with its sites, and its scan counts that site unreadable', function () {
+        $this->signInAdmin();
+        $ref = new TargetRef(ContentType::Nav, 'main', 'el');
+        Nav::findByHandle('main')->makeTree('el', [['id' => 'book', 'title' => 'Κλείστε', 'url' => 'https://booking.example']])->save();
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withSourceSite('en')->withField('book.title', StateFixtures::machine('Book your stay', 'Κλείστε')));
+        StateFixtures::conflict($ref);
+
+        $this->get(cp_route('tolk.overview'))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('rows.3', ['type' => 'nav', 'handle' => 'main', 'title' => 'Main', 'sites' => ['el', 'de']]));
+
+        expect(scanCell('nav', 'main', 'el')[0]['unreadable'])->toBe(1);
     });
 
     it('tells the page when the site has one language or no provider has a key', function () {

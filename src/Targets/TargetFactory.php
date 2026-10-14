@@ -12,6 +12,7 @@ use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\LangFiles;
@@ -70,11 +71,17 @@ final class TargetFactory
 
     /**
      * The site whose tree the tree of $nav in $site is translated from when no run names one, as the status and a run
-     * without `--from` read it: its recordedSourceSite(), or the default site once that site has no tree of $nav.
+     * without `--from` read it: its recordedSourceSite(), or the default site once that site has no tree of $nav or
+     * the state of the tree in $site cannot be read. The target is then still listed, so the status counts it as
+     * unreadable and a run fails only its item, naming the file, as for an entry.
      */
     public function navSourceSite(NavContract $nav, string $site): string
     {
-        $recorded = $this->recordedSourceSite(new TargetRef(ContentType::Nav, $nav->handle(), $site));
+        try {
+            $recorded = $this->recordedSourceSite(new TargetRef(ContentType::Nav, $nav->handle(), $site));
+        } catch (UnreadableState) {
+            return Site::default()->handle();
+        }
 
         return $nav->existsIn($recorded) ? $recorded : Site::default()->handle();
     }

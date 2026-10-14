@@ -255,6 +255,22 @@ describe('tolk:baseline', function () {
             ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
     });
 
+    it('skips a navigation whose state file cannot be read with its message, records the others and exits 1', function () {
+        $book = fn (string $title) => [['id' => 'book', 'title' => $title, 'url' => 'https://booking.example']];
+        $this->makeNav('main', ['en' => $book('Book your stay'), 'el' => $book('Κλείστε τη διαμονή σας')]);
+        $ref = new TargetRef(ContentType::Nav, 'main', 'el');
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withSourceSite('en')->withField('book.title', StateFixtures::machine('Book your stay', 'Κλείστε')));
+        $path = StateFixtures::conflict($ref);
+        $this->localize($this->world, 'el', ['title' => 'Κόσμε']);
+
+        [$exitCode, $output] = maintenanceCommand('tolk:baseline');
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain("The translation state file {$path} cannot be read")
+            ->and($output)->toContain('Recorded the origin of 1 field.')
+            ->and(maintenanceStatus($this->world)->counts['untracked'])->toBe(0);
+    });
+
     it('refuses a site or container that does not exist', function (array $options, string $error) {
         [$exitCode, $output] = maintenanceCommand('tolk:baseline', $options);
 
