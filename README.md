@@ -81,6 +81,10 @@ Then give your roles Tolk's permissions under **Users › Permissions**: `transl
 - [Privacy and data](docs/privacy.md): what is sent to which provider
 - [Troubleshooting](docs/troubleshooting.md)
 
+## License
+
+Tolk is commercial software, not free software. You can try it in local development, where Statamic runs commercial addons in trial mode; a site in production needs its own license from the Statamic Marketplace. The terms are in [LICENSE.md](LICENSE.md).
+
 ## Support
 
 Email [info@reach.gr](mailto:info@reach.gr). Changes are listed in the [changelog](CHANGELOG.md).

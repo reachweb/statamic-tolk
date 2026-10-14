@@ -10,7 +10,7 @@
 - A cache store that supports locks: `file`, `redis`, `database`, `memcached` or `dynamodb`. A flat-file site on Statamic's defaults (the `file` cache and the `sync` queue, no database) needs nothing more.
 - Recommended for `tolk:translate`: PHP's pcntl and posix extensions on the command line, which Windows lacks and some Docker images leave out, with `pcntl_signal` not in php.ini's `disable_functions`. Without pcntl, Ctrl-C ends a run at once instead of cancelling it after the current requests; without posix, the workers of a command that was killed go on translating until the run is cancelled ([details](cli.md#how-the-command-runs)). `tolk:doctor` says whether PHP has them.
 
-Tolk is a commercial addon. A production site needs a license from the Statamic Marketplace; Tolk itself checks nothing.
+Tolk is a commercial addon. A production site needs a license from the Statamic Marketplace; Tolk itself checks nothing. The terms are in [LICENSE.md](../LICENSE.md).
 
 ## Install
 

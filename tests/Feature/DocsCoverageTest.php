@@ -380,3 +380,17 @@ it('includes a screenshot for each image the docs show', function () {
         expect(File::exists(DOCS_ROOT.'/docs/'.$image))->toBeTrue("docs/{$image} is missing.");
     }
 });
+
+it('ships the license that composer.json, the README and the installation guide point to', function () {
+    $composer = json_decode(File::get(DOCS_ROOT.'/composer.json'), true);
+    $license = DOCS_ROOT.'/LICENSE.md';
+    $readme = File::get(DOCS_ROOT.'/README.md');
+
+    expect($composer['license'])->toBe('proprietary')
+        ->and(File::exists($license))->toBeTrue('LICENSE.md is missing.')
+        ->and(File::get($license))->toContain('Copyright © '.$composer['authors'][0]['name'])
+        ->and($readme)->toContain("\n## License\n")
+        ->and(Str::before(Str::after($readme, "\n## License\n"), "\n## "))->toContain('](LICENSE.md)')
+        ->and(docsFile('installation.md'))->toContain('](../LICENSE.md)')
+        ->and(File::get(DOCS_ROOT.'/.gitattributes'))->not->toContain('LICENSE');
+});
