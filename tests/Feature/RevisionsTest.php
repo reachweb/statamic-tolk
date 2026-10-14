@@ -307,6 +307,70 @@ describe('a published localization', function () {
     });
 });
 
+describe('a published origin', function () {
+    it('is translated as published: the changes in its working copy are translated once they are published', function () {
+        $this->origin->fromWorkingCopy()->set('title', 'Hello there')->makeWorkingCopy()->save();
+
+        revisedTranslate($this->origin);
+
+        expect(greekOf($this->origin)->get('title'))->toBe('[T] Hello')
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+
+        Entry::find($this->origin->id())->publish();
+
+        expect(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Outdated, 'intro' => FieldStatus::Current]);
+    });
+
+    it('leaves a site translated from a published localization alone until that localization publishes its update', function () {
+        Queue::fake();
+        revisedTranslate($this->origin, new ApplyOptions(newStatus: 'mirror'));
+        $this->localize(greekOf($this->origin), 'de');
+        app(TargetTranslator::class)->translate(
+            app(TargetFactory::class)->forEntry($this->origin, 'de'),
+            PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['profile' => 'background']),
+            new ApplyOptions,
+        );
+        $this->origin->set('title', 'Hello there')->save();
+
+        $run = RunFixtures::started(['entryIds' => [$this->origin->id()], 'sites' => ['el', 'de'], 'options' => ['mode' => 'update']]);
+        RunFixtures::finish($run);
+        $items = collect(RunFixtures::items($run))->keyBy('targetSite');
+
+        expect($items['el']->status->value)->toBe('done')
+            ->and($items['de']->status->value)->toBe('skipped')
+            ->and($items['de']->reason)->toBe(TargetResult::NOTHING_TO_DO)
+            ->and(greekOf($this->origin)->get('title'))->toBe('[T] Hello')
+            ->and(greekOf($this->origin)->fromWorkingCopy()->get('title'))->toBe('[T] Hello there')
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
+            ->and(StateFixtures::statuses($this->origin, 'de'))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+
+        greekOf($this->origin)->publish();
+
+        expect(StateFixtures::statuses($this->origin, 'de'))->toBe(['title' => FieldStatus::Outdated, 'intro' => FieldStatus::Current]);
+    });
+
+    it('tells its banner that the translations are made from the published entry, and whether it has unpublished changes', function () {
+        $this->signInAdmin();
+        $status = fn (EntryContract $entry) => $this->getJson(cp_route('tolk.editor.status', ['reference' => $entry->reference()]))->assertOk();
+
+        $status($this->origin)->assertJsonPath('origin.translates_published', true)->assertJsonPath('origin.unpublished_changes', false);
+
+        $this->origin->fromWorkingCopy()->set('title', 'Hello there')->makeWorkingCopy()->save();
+
+        $status($this->origin)->assertJsonPath('origin.translates_published', true)->assertJsonPath('origin.unpublished_changes', true);
+
+        // A draft is saved directly, as an entry without revisions is.
+        $draft = $this->makeEntry('articles', 'en', ['title' => 'Draft'], 'draft');
+        $draft->published(false)->save();
+
+        $status($draft)->assertJsonPath('origin.translates_published', false)->assertJsonPath('origin.unpublished_changes', false);
+
+        Collection::find('articles')->revisionsEnabled(false)->save();
+
+        $status(Entry::find($this->origin->id()))->assertJsonPath('origin.translates_published', false)->assertJsonPath('origin.unpublished_changes', false);
+    });
+});
+
 it('saves an unpublished localization directly', function () {
     $this->localize($this->origin, 'el', ['title' => '[T] Hello'])->published(false)->save();
     $saves = recordSaves();

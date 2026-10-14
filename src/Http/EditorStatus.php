@@ -209,12 +209,24 @@ final readonly class EditorStatus
         }
 
         $autoUpdate = $this->autoUpdate($item, $user);
+        $published = $this->translatesPublished($item);
 
         return [
             'localizations' => $localizations,
             'auto_update' => $autoUpdate,
             'auto_update_sites' => $autoUpdate === null ? [] : $this->updater->sites($item, $user),
+            'translates_published' => $published,
+            'unpublished_changes' => $published && $item->hasWorkingCopy(),
         ];
+    }
+
+    /**
+     * True for a published entry with revisions: the CP saves it into its working copy, while its localizations are
+     * translated from the entry as published (D3, D26).
+     */
+    private function translatesPublished(EntryContract|TermContract $item): bool
+    {
+        return $item instanceof EntryContract && $item->revisionsEnabled() && $item->published();
     }
 
     /**

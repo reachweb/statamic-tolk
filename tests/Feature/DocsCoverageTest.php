@@ -384,6 +384,18 @@ it('quotes the setup notice and the error a translator whose provider has no key
         ->and($setup)->toContain('`tolk:doctor`');
 });
 
+// RevisionsTest holds the code to it: the published origin is translated, and a working copy's translation reads current.
+it('says that with revisions the published origin is translated and a translation waiting in a working copy reads up to date', function () {
+    $section = fn (string $file, string $heading) => Str::of(docsFile($file))->after("\n{$heading}\n")->before("\n#")->toString();
+    $note = 'Publish first: the translations are made from the published entry.';
+
+    expect(File::get(DOCS_ROOT.'/resources/js/editor/push.js'))->toContain("__('{$note}')")
+        ->and($section('editor.md', '## In the origin'))->toContain("\"{$note}\"")
+        ->and($section('editor.md', '## Collections with revisions'))->toContain('from the origin as it is published')->toContain('counts as up to date')
+        ->and($section('bulk-and-runs.md', '## Revisions'))->toContain('the origin **as it is published**')->toContain('counts as **up to date**')->toContain('`de_CH` reads up to date')
+        ->and($section('statuses.md', '### Collections with revisions'))->toContain('the origin **as it is published**')->toContain('reads **up to date**');
+});
+
 it('reads the per-field options of the configuration sample as documented', function () {
     $yaml = collect(docsCodeBlocks('configuration.md'))->first(fn (array $block) => $block['language'] === 'yaml')['code'];
     $blueprint = $this->makeBlueprint('collections.pages', 'page', YAML::parse($yaml));

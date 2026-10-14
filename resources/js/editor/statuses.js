@@ -199,6 +199,9 @@ function describeOrigin(block, setup) {
         upToDate: localizations.length > 0 && localizations.every((localization) => localization.status === 'current'),
         translateInto: !setup && localizations.some((localization) => localization.translate),
         update: !setup && localizations.some((localization) => localization.update),
+        // With revisions, Save goes to a published entry's working copy, and the translations are made from the published entry.
+        translatesPublished: block.translates_published === true,
+        unpublishedChanges: block.unpublished_changes === true,
         autoUpdate:
             {
                 save: __('Translations are updated automatically each time this entry is saved.'),

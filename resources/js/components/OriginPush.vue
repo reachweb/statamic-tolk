@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { Badge, Button, Checkbox, Description, Field, Icon, Modal, Radio, RadioGroup, Text } from '@statamic/cms/ui';
 import ProgressBar from './ProgressBar.vue';
 import { isTermReference } from '../editor/banner.js';
-import { describePush, PUSHING, pushChoices, pushes, updateSites } from '../editor/push.js';
+import { describePush, PUSHING, pushChoices, pushes, pushLead, saveFirstNote, updateSites } from '../editor/push.js';
 import { useEditorStore } from '../editor/store.js';
 import { createModal } from '../modal.js';
 
@@ -13,7 +13,7 @@ const props = defineProps({
     // `describe(status).origin`
     origin: { type: Object, required: true },
     status: { type: Object, default: null },
-    // The run translates the saved origin, not what is in the form.
+    // The run translates the saved origin (with revisions, the published one), not what is in the form.
     dirty: { type: Boolean, default: false },
 });
 
@@ -29,6 +29,8 @@ const newStatus = ref('draft');
 const review = ref(false);
 const creates = computed(() => choices.value.some((choice) => choice.missing && selected.value.includes(choice.site)));
 const term = computed(() => isTermReference(props.reference));
+const saveFirst = computed(() => saveFirstNote(props.origin, { dirty: props.dirty, term: term.value }));
+const lead = computed(() => pushLead(props.origin, { term: term.value }));
 
 function choose() {
     selected.value = choices.value.map((choice) => choice.site);
@@ -102,9 +104,7 @@ function reload() {
             <Button v-if="origin.update" size="sm" :disabled="dirty" data-tolk-action="update-translations" @click="update">
                 {{ __('Update translations') }}
             </Button>
-            <Description v-if="dirty" data-tolk-save-first>
-                {{ term ? __('Save first: the translations are made from the saved term.') : __('Save first: the translations are made from the saved entry.') }}
-            </Description>
+            <Description v-if="saveFirst" data-tolk-save-first>{{ saveFirst }}</Description>
         </div>
 
         <Text v-if="push?.phase === 'starting'" as="p" data-tolk-push-phase="starting">{{ __('Starting the translation…') }}</Text>
@@ -201,13 +201,7 @@ function reload() {
             @update:open="modal.closed($event)"
         >
             <div class="space-y-6">
-                <Text as="p">
-                    {{
-                        term
-                            ? __('The saved term is translated and saved in each language you choose. This form stays as it is.')
-                            : __('The saved entry is translated and saved in each language you choose. This form stays as it is.')
-                    }}
-                </Text>
+                <Text as="p">{{ lead }}</Text>
                 <div class="space-y-3">
                     <div v-for="choice in choices" :key="choice.site" :data-tolk-push-site="choice.site">
                         <Checkbox

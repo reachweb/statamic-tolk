@@ -34,6 +34,32 @@ export function updateSites(origin) {
     return (origin?.localizations ?? []).filter((localization) => localization.update).map((localization) => localization.site);
 }
 
+// Why Translate into… and Update translations wait while the form has unsaved text (`describe(status).origin`): they
+// translate the saved entry or term, not the form. With revisions, Save goes to a published entry's working copy and
+// they translate the published entry, so the note also shows while it has unpublished changes, which they do not wait for.
+export function saveFirstNote(origin, { dirty = false, term = false } = {}) {
+    if (origin?.translatesPublished && (dirty || origin.unpublishedChanges)) {
+        return __('Publish first: the translations are made from the published entry.');
+    }
+
+    if (!dirty) {
+        return null;
+    }
+
+    return term ? __('Save first: the translations are made from the saved term.') : __('Save first: the translations are made from the saved entry.');
+}
+
+// The first sentence of the Translate into… dialog: what is translated.
+export function pushLead(origin, { term = false } = {}) {
+    if (term) {
+        return __('The saved term is translated and saved in each language you choose. This form stays as it is.');
+    }
+
+    return origin?.translatesPublished
+        ? __('The published entry is translated and saved in each language you choose. This form stays as it is.')
+        : __('The saved entry is translated and saved in each language you choose. This form stays as it is.');
+}
+
 // The sites of the origin block that have no localization yet; after the run, those that exist were created by it.
 export function missingSites(status) {
     return (status?.origin?.localizations ?? []).filter((localization) => !localization.exists).map((localization) => localization.site);

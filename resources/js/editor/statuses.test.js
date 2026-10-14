@@ -300,6 +300,14 @@ describe('an origin', () => {
         expect(banner.origin).toMatchObject({ translateInto: true, update: true });
     });
 
+    // With revisions, Save goes to a published entry's working copy, and the translations are made from the published entry.
+    it('says when the translations are made from the published entry, and whether it has unpublished changes', () => {
+        const revised = (extra) => describeStatus(payload({ origin: { ...origin, ...extra } })).origin;
+
+        expect(revised({ translates_published: true, unpublished_changes: false })).toMatchObject({ translatesPublished: true, unpublishedChanges: false });
+        expect(revised({ translates_published: true, unpublished_changes: true })).toMatchObject({ translatesPublished: true, unpublishedChanges: true });
+    });
+
     it('offers no button for localizations that are up to date', () => {
         const banner = describeStatus(
             payload({
@@ -312,7 +320,7 @@ describe('an origin', () => {
             }),
         );
 
-        expect(banner.origin).toMatchObject({ upToDate: false, translateInto: false, update: false });
+        expect(banner.origin).toMatchObject({ upToDate: false, translateInto: false, update: false, translatesPublished: false, unpublishedChanges: false });
         // Every field up to date needs no line next to its badge.
         expect(banner.origin.localizations.map((l) => [l.label, l.color, l.summary])).toEqual([
             ['Up to date', 'green', null],

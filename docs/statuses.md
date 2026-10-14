@@ -63,6 +63,15 @@ A field that is meant to read the same in both languages (a product name) and wa
 
 The first time an editor saves origin content in the CP that was written another way (imported, seeded, saved by code), Statamic adds row ids and `enabled` flags to its Replicator, Grid and Bard values. That changes the origin's fingerprint, so its machine translations read **outdated once**, although no text changed. **Update** fixes it without calling a model: every paragraph is reused from the earlier translation, and only the new structure is written.
 
+### Collections with revisions
+
+On a collection with revisions, the changes to a published entry wait in its working copy until someone publishes them. Tolk compares:
+
+- the origin **as it is published**: changes waiting in its working copy do not make its translations outdated, and are not translated, until they are published;
+- the localization **as its working copy holds it**, as its form shows it: a translation that waits there to be published reads **up to date** in the banner, on the Overview and in `tolk:status`, and Update leaves it alone, although visitors see it only once it is published.
+
+So a site translated from a localization (`de_CH` from `de`) follows an update of `de` only once `de` is published. See [Bulk translations and runs](bulk-and-runs.md#revisions).
+
 ### Saving without changes
 
 Opening a localization and saving it without editing a text changes no status, as long as nothing saved the localization while its form was open. A form saves what it was opened with: when a run or an automatic update translated the localization in the meantime, the save puts the earlier text back. A field it inherited before then reads untranslated, and a field whose earlier translation came back reads outdated ([Forms opened before a run](editor.md#forms-opened-before-a-run)).

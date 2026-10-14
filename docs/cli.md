@@ -123,7 +123,7 @@ The run is listed on the CP's Runs page with its progress.
 
 ### Revisions
 
-On a collection with revisions, new localizations are drafts with a revision (published through a publish revision with `--publish` and a published origin), and translations of a published localization go to its working copy and stay unpublished. `--publish-changes` publishes them, but only when the localization had no unpublished changes before; otherwise the target gets a warning and the changes wait in the working copy. An unpublished localization is saved directly, unless it has unpublished changes, which then get the translations. The revision message is "Translated from {site} with Tolk". See [Bulk translations and runs](bulk-and-runs.md#revisions).
+On a collection with revisions, new localizations are drafts with a revision (published through a publish revision with `--publish` and a published origin), and translations of a published localization go to its working copy and stay unpublished. `--publish-changes` publishes them, but only when the localization had no unpublished changes before; otherwise the target gets a warning and the changes wait in the working copy. An unpublished localization is saved directly, unless it has unpublished changes, which then get the translations. The revision message is "Translated from {site} with Tolk". The command translates the origin as it is published, not its working copy, and a translation waiting in a working copy counts as current (in `tolk:status` too) although it is not published yet. See [Bulk translations and runs](bulk-and-runs.md#revisions).
 
 ## `tolk:site`
 

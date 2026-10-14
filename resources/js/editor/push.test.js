@@ -1,7 +1,7 @@
 import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api.js';
-import { awaitingSites, createPushes, describePush, EXPECT_DELAYS, missingSites, pushChoices, updateSites } from './push.js';
+import { awaitingSites, createPushes, describePush, EXPECT_DELAYS, missingSites, pushChoices, pushLead, saveFirstNote, updateSites } from './push.js';
 import { useEditorStore } from './store.js';
 
 function translate(key, replacements = {}) {
@@ -155,6 +155,32 @@ describe('choices', () => {
     it('lists the sites without a localization', () => {
         expect(missingSites(status())).toEqual(['el']);
         expect(missingSites(null)).toEqual([]);
+    });
+});
+
+describe('what the origin translates', () => {
+    const saved = { translatesPublished: false, unpublishedChanges: false };
+    const published = { translatesPublished: true, unpublishedChanges: false };
+    const changed = { translatesPublished: true, unpublishedChanges: true };
+
+    it('asks to save first while the form has unsaved text', () => {
+        expect(saveFirstNote(saved, { dirty: true })).toBe('Save first: the translations are made from the saved entry.');
+        expect(saveFirstNote(saved, { dirty: true, term: true })).toBe('Save first: the translations are made from the saved term.');
+        expect(saveFirstNote(saved, { dirty: false })).toBeNull();
+        expect(saveFirstNote(null, { dirty: true })).toBe('Save first: the translations are made from the saved entry.');
+    });
+
+    // With revisions, Save goes to a published entry's working copy, which the run does not read.
+    it('asks to publish first while a published entry with revisions has unsaved text or unpublished changes', () => {
+        expect(saveFirstNote(published, { dirty: true })).toBe('Publish first: the translations are made from the published entry.');
+        expect(saveFirstNote(changed, { dirty: false })).toBe('Publish first: the translations are made from the published entry.');
+        expect(saveFirstNote(published, { dirty: false })).toBeNull();
+    });
+
+    it('says in the dialog which version is translated', () => {
+        expect(pushLead(saved)).toBe('The saved entry is translated and saved in each language you choose. This form stays as it is.');
+        expect(pushLead(saved, { term: true })).toBe('The saved term is translated and saved in each language you choose. This form stays as it is.');
+        expect(pushLead(published)).toBe('The published entry is translated and saved in each language you choose. This form stays as it is.');
     });
 });
 

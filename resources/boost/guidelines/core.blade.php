@@ -122,3 +122,4 @@ Three events in `Reach\StatamicTolk\Events`, fired by server-side saves only (ru
 
 - Public and stable: `Reach\StatamicTolk\Tolk`, the `FieldHandler` contract, `Leaf`, `WalkContext`, `ContentWalker`, the `MakesLeaves` trait and the events. Everything else under the addon's `src/` is internal and may change in any release: do not call it from the application.
 - Tolk saves content through Statamic's own API: Statamic's `EntrySaved` and `TermSaved` fire, a published localization's translations go to its working copy on a collection with revisions, and the git integration commits as described above.
+- On a collection with revisions, Tolk translates from the origin as it is published, never from its working copy, and a translation waiting in a localization's working copy counts as up to date (in `tolk:status` and on the Overview) although visitors see it only once someone publishes it.

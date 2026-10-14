@@ -1,6 +1,6 @@
 # The editor
 
-Tolk works inside Statamic's entry and term forms. In a localization it fills translations into the open form, where you check them and save as usual: nothing is stored until you press Save. In the origin it translates the saved entry into other sites and saves those translations directly.
+Tolk works inside Statamic's entry and term forms. In a localization it fills translations into the open form, where you check them and save as usual: nothing is stored until you press Save. In the origin it translates the saved entry (with revisions, the published one) into other sites and saves those translations directly.
 
 ## The banner
 
@@ -106,6 +106,8 @@ On the origin entry, the banner lists each localization with its status, for the
 
 Unlike the rest of the editor, these save the translations directly, in each localization, as a run of this one entry. They translate the **saved** entry, so both buttons wait while the form has unsaved text ("Save first: the translations are made from the saved entry."). The open form is not changed, and neither is a localization's form that is open elsewhere: saved afterwards, it puts back what it was opened with ([Forms opened before a run](#forms-opened-before-a-run)).
 
+In a collection with revisions, Save puts the changes of a published entry in its working copy, and these buttons translate the **published** entry. The note then reads "Publish first: the translations are made from the published entry.", and it stays after you save, while the entry has unpublished changes. The buttons work again after the save, but they translate the entry as it was last published: publish first, then translate, or the paragraphs you changed are translated again (and paid for again) once you publish.
+
 While the run goes, the banner shows its progress and **Cancel**. When Tolk's runs are driven by the browser (a site without a queue worker, see [Bulk translations and runs](bulk-and-runs.md#drivers)), the open page does the work: keep it open until the translations are saved. If you leave, the run continues the next time you open the entry, unless a scheduled `tolk:prune` stopped it after five minutes without progress; then start it again. With a queue worker, the run continues on its own. When no queue worker has taken the run up after half a minute, or none has worked on it for five minutes, the banner says so and offers **Translate in this page instead**: the open page then drives the run, as without a queue worker.
 
 When it has finished, the banner shows a line per site with a link to the localization and its result. New localizations appear in Statamic's **Sites** panel after a reload, which **Reload** does.
@@ -130,5 +132,8 @@ How the run is driven, with and without a queue worker, is in [Bulk translations
 ## Collections with revisions
 
 In the editor, Tolk only fills the form, and Statamic saves it as it always does: on a collection with revisions, your Save goes to the working copy, and publishing stays a separate step. What happens when Tolk saves server-side (Translate into…, bulk runs, the command line) is in [Bulk translations and runs](bulk-and-runs.md#revisions).
+
+- Translations are made from the origin as it is published, in a localization's banner as in the origin's. Changes waiting in the origin's working copy are not translated, and its localizations do not read outdated, until someone publishes them.
+- A localization's banner reads the localization as its working copy holds it, as the form does: a translation you saved but did not publish counts as up to date. Visitors see it only once it is published.
 
 Save a translation before you publish it. Statamic offers **Publish** only while the form has no unsaved changes, but its dialog stays open while a translation that started before fills the form, and once it has published, Statamic puts the published values back into the form. **Publish** therefore stops a translation that still runs and takes back what it filled in, so that no field that inherited from the origin is left with the origin's text as its own for the next save, and says "Publishing discarded the unsaved translation. Translate again to fill in the form."
