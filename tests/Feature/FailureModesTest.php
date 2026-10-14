@@ -278,7 +278,7 @@ describe('a part the model keeps getting wrong', function () {
         // The answer and its two repairs all lose the bold text's placeholders.
         expect(array_count_values(failingSent($prompts))[FAILING_BOOK])->toBe(3)
             ->and($fields['body']['incomplete'])->toBeTrue()
-            ->and($fields['body']['warnings'])->toBe(['Body: "Book a room today." was left untranslated (invalid).'])
+            ->and($fields['body']['warnings'])->toBe(['Body: "Book a room today." was left untranslated (the model kept breaking its formatting).'])
             ->and($fields['body']['value'][0])->toBe($origin->get('body')[0])
             ->and(failingTexts($fields['body']['value']))->toBe(['Book a room today.', '[T] Breakfast is served until ten.', '[T] The pool opens at eight.'])
             ->and($fields['title']['incomplete'])->toBeFalse();

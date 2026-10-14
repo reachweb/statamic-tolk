@@ -33,7 +33,6 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Reach\StatamicTolk\Translation\Unit;
-use Reach\StatamicTolk\Translation\UnitOutcome;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 
 const REVIEWING_TRANSLATOR = 'anthropic:claude-sonnet-5-5';
@@ -367,13 +366,13 @@ describe('when the review cannot be made', function () {
 
         expect($outcome->model)->toBeNull()
             ->and($outcome->corrections)->toBe([])
-            ->and($outcome->warnings)->toBe(['s1' => ['Title: review skipped (unavailable).'], 's2' => ['Introduction: review skipped (unavailable).']])
+            ->and($outcome->warnings)->toBe(['s1' => ['Title: review skipped (the provider was unavailable).'], 's2' => ['Introduction: review skipped (the provider was unavailable).']])
             ->and(array_map(fn (EngineCall $call) => $call->attempt, $engine->reviews))->toBe([1, 2, 3])
             ->and(array_map(fn (EngineCall $call) => (string) $call->model, $engine->reviews))->toBe(array_fill(0, 3, REVIEWING_REVIEWER))
             ->and(reviewingPipeline()->isFinished($plan))->toBeTrue()
             ->and($title->value)->toBe('[T] Hello')
             ->and($title->incomplete)->toBeFalse()
-            ->and($title->warnings)->toBe(['Title: review skipped (unavailable).'])
+            ->and($title->warnings)->toBe(['Title: review skipped (the provider was unavailable).'])
             ->and($title->reviewer)->toBeNull();
     });
 
@@ -388,7 +387,7 @@ describe('when the review cannot be made', function () {
 
         expect($result->status)->toBe(TargetResultStatus::Done)
             ->and($result->appliedFields())->toBe(['title'])
-            ->and($result->warnings)->toBe(['Title: review skipped (unavailable).'])
+            ->and($result->warnings)->toBe(['Title: review skipped (the provider was unavailable).'])
             ->and($this->origin->fresh()->in('el')->get('title'))->toBe('[T] Hello')
             ->and(StateFixtures::stored($this->origin->fresh()->in('el'))->fields['title']->reviewer)->toBeNull();
     });
@@ -406,10 +405,10 @@ describe('when the review cannot be made', function () {
             ->and(reviewingPipeline()->translation($plan, 's1'))->toBe('[T] Hello')
             ->and(reviewingPipeline()->failure($plan, 's1'))->toBeNull();
     })->with([
-        'length' => [fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Length), UnitOutcome::TOO_LONG, true],
-        'empty' => [fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Empty), UnitOutcome::TOO_LONG, true],
-        'refused' => [fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Refused), UnitOutcome::REFUSED, true],
-        'rejected request' => [fn (EngineCall $call) => throw RequestRejected::from('openai', new ProviderError(ProviderErrorKind::RequestRejected, 'Bad request.', 400, 'invalid_request')), UnitOutcome::REQUEST_REJECTED, false],
+        'length' => [fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Length), "the model's answer was cut off", true],
+        'empty' => [fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Empty), "the model's answer was cut off", true],
+        'refused' => [fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Refused), 'the model refused it', true],
+        'rejected request' => [fn (EngineCall $call) => throw RequestRejected::from('openai', new ProviderError(ProviderErrorKind::RequestRejected, 'Bad request.', 400, 'invalid_request')), 'the provider rejected the request', false],
     ]);
 
     it('lets ProviderRejected from the reviewer propagate and stores nothing', function () {

@@ -462,7 +462,7 @@ describe('reviewing and saving', function () {
 
         expect($result->status)->toBe(TargetResultStatus::Skipped)
             ->and($result->reason)->toBe(TargetResult::NO_CORRECTIONS)
-            ->and($result->warnings)->toBe(['Title: review skipped (unavailable).'])
+            ->and($result->warnings)->toBe(['Title: review skipped (the provider was unavailable).'])
             ->and(reviewExistingLocalization($this->origin)->get('title'))->toBe('[T] Hello');
     });
 

@@ -253,7 +253,7 @@ describe('review of the open form', function () {
             ->and($run['responses'][0]['unchanged'])->toBe(['title'])
             ->and($run['responses'][0]['review_skipped'])->toBeTrue()
             ->and($run['responses'][0]['reviewed'])->toBeFalse()
-            ->and($run['responses'][0]['warnings'])->toBe(['Title: review skipped (refused).']);
+            ->and($run['responses'][0]['warnings'])->toBe(['Title: review skipped (the model refused it).']);
     });
 
     it('reports no skipped review for a translation unit that was split without a model', function () {

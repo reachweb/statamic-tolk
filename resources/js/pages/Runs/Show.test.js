@@ -124,6 +124,36 @@ describe('the items of a review run', () => {
     });
 });
 
+describe('the items of a run with strict fields', () => {
+    it('list a field that could not be translated apart from those left as they were, with why in words', async () => {
+        const item = {
+            index: 0,
+            title: 'Our rooms',
+            target_site: 'el',
+            status: 'done',
+            fields: { title: 'applied', intro: 'manual', body: 'invalid', teaser: 'refused' },
+            corrections: [],
+            warnings: [],
+            error: null,
+        };
+        const html = await render('data-tolk-items', {
+            items: [describeItem(item)],
+            filter: 'all',
+            filters: [],
+            pagination: { page: 1, last_page: 1 },
+            changes: { open: false },
+            shown: [],
+            filterBy: () => {},
+            showPage: () => {},
+            viewChanges: () => {},
+        });
+
+        expect(lines(html)).toContain('Could not be translated: body (the model kept breaking its formatting), teaser (the model refused it)');
+        expect(lines(html)).toContain('Not changed: intro (edited by hand, kept)');
+        expect(html).toContain('data-tolk-item-failed');
+    });
+});
+
 describe('the usage of a run', () => {
     const usage = (calls) => ({
         usage: { input: 1200, output: 300, calls, cost: 0.01 },

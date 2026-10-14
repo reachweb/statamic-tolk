@@ -417,7 +417,7 @@ describe('failures', function () {
         expect($result->status)->toBe(TargetResultStatus::Done)
             ->and($result->fields)->toBe(['title' => 'applied', 'intro' => 'incomplete', 'body' => 'applied'])
             ->and($result->warnings)->toHaveCount(1)
-            ->and($result->warnings[0])->toContain('was left untranslated (refused)')
+            ->and($result->warnings[0])->toContain('was left untranslated (the model refused it)')
             ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('A short intro.');
     });
 
@@ -432,7 +432,7 @@ describe('failures', function () {
 
         expect($result->status)->toBe(TargetResultStatus::Done)
             ->and($result->fields)->toBe(['title' => 'applied', 'intro' => 'refused', 'body' => 'applied'])
-            ->and($result->warnings)->toBe(['The field [intro] could not be translated completely: s2 (refused).'])
+            ->and($result->warnings)->toBe(['The field [intro] could not be translated completely: s2 (the model refused it).'])
             ->and($localization->data()->all())->toBe(['title' => '[T] Hello', 'body' => '[T] The body.'])
             ->and($localization->published())->toBeFalse();
         Event::assertDispatched(TargetTranslated::class, fn (TargetTranslated $event) => $event->handles === ['title', 'body']);

@@ -329,7 +329,7 @@ describe('missing and invalid translations', function () {
             ->and($faq->identical)->toBeFalse()
             ->and($faq->segments)->toBe([Fingerprint::ofText('What is it?'), null])
             ->and($faq->targetHash)->toBe(Fingerprint::ofLeaves(['[T] What is it?', 'Call <x1/> today.']))
-            ->and($faq->warnings)->toBe(['FAQ › Answer: "Call today." was left untranslated (invalid).']);
+            ->and($faq->warnings)->toBe(['FAQ › Answer: "Call today." was left untranslated (the model kept breaking its formatting).']);
     });
 
     it('throws FieldFailed for that field when the plan is strict', function () {
@@ -484,7 +484,7 @@ describe('finish reasons and request failures', function () {
             ->and($intro->incomplete)->toBeTrue()
             ->and($intro->identical)->toBeTrue()
             ->and($intro->translator)->toBeNull()
-            ->and($intro->warnings)->toBe(['Introduction: "A short intro." was left untranslated (refused).']);
+            ->and($intro->warnings)->toBe(['Introduction: "A short intro." was left untranslated (the model refused it).']);
     });
 
     it('splits a unit with several segments after a timeout without counting a failure', function () {

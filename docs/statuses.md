@@ -105,7 +105,7 @@ When one part of a field cannot be translated (the model refuses it, or still re
 - the editor's banner names it ("Intro is partly untranslated. Update translates the rest after you save."), runs list it as left incomplete, and the command line prints the part;
 - a new localization with such a field stays a draft even with **Same as origin**.
 
-With the **Strict fields** setting on, such a field is not delivered at all and keeps its previous value.
+With the **Strict fields** setting on, such a field is not delivered at all and keeps its previous value. A run lists it as "Could not be translated" with the reason, such as "the model refused it".
 
 ## When the origin is emptied
 

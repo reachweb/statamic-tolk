@@ -340,6 +340,16 @@ const FIELD_REASONS = {
     no_corrections: () => __('reviewed, nothing to correct'),
 };
 
+// Why a part of a field could not be translated: with `strict_fields`, such a field is not saved and holds the first
+// part's reason. The words are those of `UnitOutcome::reasonLabel()`, so one translation covers the warnings too.
+const FAILED_REASONS = {
+    invalid: () => __('the model kept breaking its formatting'),
+    missing: () => __('the model left it out'),
+    too_long: () => __("the model's answer was cut off"),
+    refused: () => __('the model refused it'),
+    request_rejected: () => __('the provider rejected the request'),
+};
+
 const ITEM_REASONS = {
     nothing_to_do: () => __('Nothing to do.'),
     dependency_failed: () => __('An item it depends on failed.'),
@@ -354,8 +364,10 @@ export function describeItem(item, siteName = (handle) => handle) {
     const fields = Object.entries(asMap(item?.fields));
     const handles = (result) => fields.filter(([, value]) => value === result).map(([handle]) => handle);
     const applied = fields.filter(([, value]) => value === 'applied' || value === 'incomplete').length;
+    const failedField = ([, value]) => Object.hasOwn(FAILED_REASONS, value);
+    const failed = fields.filter(failedField).map(([handle, value]) => ({ handle, reason: FAILED_REASONS[value]() }));
     const kept = fields
-        .filter(([, value]) => !['applied', 'incomplete'].includes(value))
+        .filter((field) => !['applied', 'incomplete'].includes(field[1]) && !failedField(field))
         .map(([handle, value]) => ({ handle, reason: FIELD_REASONS[value]?.() ?? String(value).replaceAll('_', ' ') }));
     const reason = item?.reason ? (ITEM_REASONS[item.reason]?.() ?? null) : null;
     // The reviewer's corrections, labelled by their field's handle: the run page has no blueprints.
@@ -373,6 +385,7 @@ export function describeItem(item, siteName = (handle) => handle) {
         editUrl: item?.edit_url ?? null,
         applied: applied > 0 ? __n(':count field saved|:count fields saved', applied) : null,
         incomplete: handles('incomplete'),
+        failed,
         kept,
         reason,
         error: item?.error ?? null,

@@ -25,6 +25,23 @@ final readonly class UnitOutcome
     public const string UNAVAILABLE = 'unavailable';
 
     /**
+     * Why a segment failed or a review was skipped, in the words of the warnings. The run page names a field that failed
+     * in strict mode with the same words (`resources/js/runs/describe.js`), so one translation covers both.
+     */
+    public static function reasonLabel(string $reason): string
+    {
+        return match ($reason) {
+            self::INVALID => __('the model kept breaking its formatting'),
+            self::MISSING => __('the model left it out'),
+            self::TOO_LONG => __("the model's answer was cut off"),
+            self::REFUSED => __('the model refused it'),
+            self::REQUEST_REJECTED => __('the provider rejected the request'),
+            self::UNAVAILABLE => __('the provider was unavailable'),
+            default => str_replace('_', ' ', $reason),
+        };
+    }
+
+    /**
      * @param  string  $unit  the unit's id
      * @param  ?string  $model  the model that was called; null when the unit was split after a timeout, and when a review
      *                          was skipped

@@ -27,6 +27,7 @@ use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Exceptions\WriterBusy;
 use Reach\StatamicTolk\Support\Audit;
 use Reach\StatamicTolk\Tests\Support\TemplateStrings;
+use Reach\StatamicTolk\Translation\UnitOutcome;
 use Symfony\Component\Finder\SplFileInfo;
 
 /**
@@ -190,4 +191,15 @@ describe('PHP', function () {
 
         expect($messages->reject(fn (string $message) => str_starts_with($message, '«'))->values()->all())->toBe([]);
     });
+
+    it('words why a part of a field failed, rather than naming its code', function (string $reason) {
+        expect(FieldFailed::for('body', ['s1' => $reason])->getMessage())->toMatch('/: s1 \(«[^»]+»\)\.»$/')
+            ->and(UnitOutcome::reasonLabel($reason))->toStartWith('«');
+    })->with([UnitOutcome::INVALID, UnitOutcome::MISSING, UnitOutcome::TOO_LONG, UnitOutcome::REFUSED, UnitOutcome::REQUEST_REJECTED, UnitOutcome::UNAVAILABLE]);
 });
+
+it('gives the run page the words PHP gives each reason a field failed for', function (string $reason) {
+    $label = preg_quote(UnitOutcome::reasonLabel($reason), '/');
+
+    expect(file_get_contents(dirname(__DIR__, 2).'/resources/js/runs/describe.js'))->toMatch("/\\b{$reason}: \\(\\) => __\\((['\"]){$label}\\1\\)/");
+})->with([UnitOutcome::INVALID, UnitOutcome::MISSING, UnitOutcome::TOO_LONG, UnitOutcome::REFUSED, UnitOutcome::REQUEST_REJECTED]);

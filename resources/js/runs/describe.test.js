@@ -307,6 +307,7 @@ describe('describeItem', () => {
             editUrl: 'https://cp.test/cp/collections/articles/entries/abc',
             applied: '2 fields saved',
             incomplete: ['content'],
+            failed: [],
             kept: [
                 { handle: 'intro', reason: 'edited by hand, kept' },
                 { handle: 'seo', reason: 'up to date' },
@@ -319,6 +320,38 @@ describe('describeItem', () => {
             corrected: null,
             corrections: [],
         });
+    });
+
+    it('lists the fields strict mode left unsaved apart, each with why a part of it could not be translated', () => {
+        const item = {
+            status: 'failed',
+            reason: 'fields_failed',
+            error: 'No field could be translated completely.',
+            fields: { title: 'missing', intro: 'manual', body: 'invalid', teaser: 'too_long', seo: 'refused', summary: 'request_rejected' },
+        };
+
+        expect(describeItem(item)).toMatchObject({
+            applied: null,
+            failed: [
+                { handle: 'title', reason: 'the model left it out' },
+                { handle: 'body', reason: 'the model kept breaking its formatting' },
+                { handle: 'teaser', reason: "the model's answer was cut off" },
+                { handle: 'seo', reason: 'the model refused it' },
+                { handle: 'summary', reason: 'the provider rejected the request' },
+            ],
+            kept: [{ handle: 'intro', reason: 'edited by hand, kept' }],
+            reason: null,
+            error: 'No field could be translated completely.',
+        });
+
+        vi.stubGlobal('__', (key, replacements) => `«${translate(key, replacements)}»`);
+        expect(describeItem(item).failed.map((field) => field.reason)).toEqual([
+            '«the model left it out»',
+            '«the model kept breaking its formatting»',
+            "«the model's answer was cut off»",
+            '«the model refused it»',
+            '«the provider rejected the request»',
+        ]);
     });
 
     it('lists the reviewer\'s corrections with their field, for the changes modal', () => {

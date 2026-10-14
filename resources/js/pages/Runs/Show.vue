@@ -398,6 +398,9 @@ function filterBy(value) {
                                     />
                                 </div>
                                 <Description v-if="item.incomplete.length">{{ __('Left incomplete: :fields', { fields: item.incomplete.join(', ') }) }}</Description>
+                                <Description v-if="item.failed.length" data-tolk-item-failed>
+                                    {{ __('Could not be translated: :fields', { fields: item.failed.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
+                                </Description>
                                 <Description v-if="item.kept.length">
                                     {{ __('Not changed: :fields', { fields: item.kept.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
                                 </Description>

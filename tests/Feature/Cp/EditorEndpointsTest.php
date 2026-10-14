@@ -350,7 +350,7 @@ describe('unit', function () {
             ->and($first->json('spawned'))->toBe([['id' => 'b1?', 'fields' => ['intro', 'subtitle'], 'chars' => 26]])
             ->and($retry->json('fields'))->toBe(['subtitle' => ['value' => '[T] All about it', 'meta' => null, 'incomplete' => false, 'warnings' => [], 'corrections' => [], 'reviewer' => null]])
             ->and($retry->json('failed'))->toBe(['intro' => 'missing'])
-            ->and($retry->json('warnings'))->toBe(['The field [intro] could not be translated completely: s2 (missing).'])
+            ->and($retry->json('warnings'))->toBe(['The field [intro] could not be translated completely: s2 (the model left it out).'])
             ->and(greekState('intro')->pending)->toBe([])
             ->and(greekState('subtitle')->pending)->toHaveCount(1);
     });

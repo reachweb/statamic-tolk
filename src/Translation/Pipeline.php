@@ -190,7 +190,7 @@ final readonly class Pipeline
                 $failed[$id] = $reason = $resolved['failed'][$id] ?? UnitOutcome::MISSING;
                 $texts[] = $segment['text'];
                 $hashes[] = null;
-                $warnings[] = __(':label: ":text" was left untranslated (:reason).', ['label' => $segment['label'], 'text' => $this->excerpt($segment), 'reason' => $reason]);
+                $warnings[] = __(':label: ":text" was left untranslated (:reason).', ['label' => $segment['label'], 'text' => $this->excerpt($segment), 'reason' => UnitOutcome::reasonLabel($reason)]);
 
                 continue;
             }
@@ -430,7 +430,7 @@ final readonly class Pipeline
         $warnings = [];
 
         foreach ($unit->segmentIds as $id) {
-            $warnings[$id] = ["{$plan->segments[$id]['label']}: review skipped ({$reason})."];
+            $warnings[$id] = [__(':label: review skipped (:reason).', ['label' => $plan->segments[$id]['label'], 'reason' => UnitOutcome::reasonLabel($reason)])];
         }
 
         return new UnitOutcome(unit: $unit->id, warnings: $warnings, usage: $usage);

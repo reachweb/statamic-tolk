@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Exceptions;
 
+use Reach\StatamicTolk\Translation\UnitOutcome;
 use RuntimeException;
 
 /**
@@ -22,7 +23,7 @@ final class FieldFailed extends RuntimeException
      */
     public static function for(string $handle, array $reasons): self
     {
-        $parts = implode(', ', array_map(fn (string $id, string $reason) => "{$id} ({$reason})", array_keys($reasons), $reasons));
+        $parts = implode(', ', array_map(fn (string $id, string $reason) => $id.' ('.UnitOutcome::reasonLabel($reason).')', array_keys($reasons), $reasons));
 
         return new self(__('The field [:handle] could not be translated completely: :parts.', ['handle' => $handle, 'parts' => $parts]), $handle, $reasons);
     }
