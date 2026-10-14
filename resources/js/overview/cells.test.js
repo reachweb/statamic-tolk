@@ -112,6 +112,38 @@ describe('the cell loader', () => {
         expect(scan.calls.map((call) => call.key)).toEqual(['entry|pages|el', 'entry|pages|de', 'entry|pages|el']);
     });
 
+    it('retries a cell as fresh as the load that queued it', async () => {
+        const scan = controlledScan();
+        const { instance, states } = loader(scan, 1);
+
+        instance.load(CELLS.slice(0, 1));
+        await scan.answer(0);
+
+        // Count again fails midway; Try again counts again too, rather than taking the counts it was to replace.
+        instance.load(CELLS.slice(0, 1), { fresh: true });
+        await scan.answer(0, '2');
+        await scan.fail(0, 'The server could not be reached.');
+        instance.retry(CELLS[0]);
+        await scan.answer(0);
+
+        // After a load that took cached cells, the retry takes them too.
+        instance.load(CELLS.slice(1, 2));
+        await scan.fail(0, 'The server could not be reached.');
+        instance.retry(CELLS[1]);
+        await scan.answer(0);
+
+        expect(scan.calls.map((call) => [call.key, call.cursor, call.fresh])).toEqual([
+            ['entry|pages|el', null, false],
+            ['entry|pages|el', null, true],
+            ['entry|pages|el', '2', true],
+            ['entry|pages|el', null, true],
+            ['entry|pages|de', null, false],
+            ['entry|pages|de', null, false],
+        ]);
+        expect(states['entry|pages|el'].status).toBe('done');
+        expect(states['entry|pages|de'].status).toBe('done');
+    });
+
     it('starts over fresh when loaded again, without reporting what the earlier load still had on its way', async () => {
         const scan = controlledScan();
         const { instance, states } = loader(scan, 2);

@@ -8,6 +8,7 @@ export function createCellLoader({ scan, onChange = () => {}, concurrency = CONC
     let queue = [];
     let active = 0;
     let generation = 0;
+    let fresh = false;
 
     function current(job) {
         return job.generation === generation;
@@ -63,14 +64,15 @@ export function createCellLoader({ scan, onChange = () => {}, concurrency = CONC
 
     return {
         // `cells`: `{ key, type, container, site }` each. `fresh` counts again instead of taking cached cells.
-        load(cells, { fresh = false } = {}) {
+        load(cells, options = {}) {
             stop();
+            fresh = options.fresh ?? false;
             enqueue(cells, fresh);
         },
 
-        // Queues one cell again, after its request failed.
+        // Queues one cell again, after its request failed, as fresh as the load that queued it.
         retry(cell) {
-            enqueue([cell], false);
+            enqueue([cell], fresh);
         },
 
         stop,

@@ -27,13 +27,20 @@ final readonly class OverviewScanner
 
     /**
      * The cell's totals after one more slice: from $cursor on when the totals before it are still cached under the
-     * current versions, else from the start. The result's cursor is null once the cell is finished.
+     * current versions, else from the start. The result's cursor is null once the cell is finished. A scan without a
+     * cursor forgets the finished cell first, so the counts that a fresh count (Count again) replaces are not answered
+     * while it runs, nor after it stopped midway.
      *
      * @throws InvalidArgumentException|UnknownSite
      */
     public function scan(ContentType $type, string $container, string $site, ?string $cursor = null): ScanResult
     {
         $slot = $this->cache->slot($type, $container, $site);
+
+        if ($cursor === null) {
+            $this->cache->forget($slot);
+        }
+
         $before = $cursor === null ? null : $this->cache->partial($slot, $cursor);
         $totals = ($before ?? ScanResult::empty())->add($this->scanner->scan($type, $container, $site, $before?->cursor, $this->budgetMs));
 

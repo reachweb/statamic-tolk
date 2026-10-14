@@ -60,6 +60,14 @@ final readonly class OverviewCache
     }
 
     /**
+     * Drops a finished cell, so it is not answered while its count starts over.
+     */
+    public function forget(string $slot): void
+    {
+        $this->store()->forget($slot);
+    }
+
+    /**
      * Content or state of the container changed, so its cells are counted again.
      */
     public function bump(ContentType $type, string $container): void

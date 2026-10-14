@@ -286,6 +286,27 @@ describe('scan', function () {
         expect(cellCached('entry', 'articles', 'el'))->toBeFalse();
     });
 
+    it('no longer answers the counts a fresh count replaces once it started, also when it stops midway', function () {
+        $this->app->when(OverviewScanner::class)->needs('$budgetMs')->give(0);
+        $this->signInAdmin();
+        $cell = ['type' => 'entry', 'container' => 'articles', 'site' => 'el'];
+
+        [$before] = scanCell(...array_values($cell));
+
+        // Without events, as content changed outside Statamic would.
+        $this->missing->makeLocalization('el')->saveQuietly();
+
+        // Count again: its first slice is answered, its next request never arrives.
+        $slice = overviewScan([...$cell, 'fresh' => true])->assertOk()->json();
+        [$after] = scanCell(...array_values($cell));
+
+        expect($before['counts']['missing'])->toBe(1)
+            ->and($slice['cursor'])->not->toBeNull()
+            ->and($after['cached'])->toBeFalse()
+            ->and($after['counts'])->toBe(['missing' => 0, 'untranslated' => 2, 'outdated' => 1, 'attention' => 1, 'current' => 1])
+            ->and(cellCached(...array_values($cell)))->toBeTrue();
+    });
+
     it('counts a collection and every navigation again after an entry is saved or deleted', function () {
         $this->signInAdmin();
         cacheGreekCells();
