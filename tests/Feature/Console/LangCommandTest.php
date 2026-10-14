@@ -491,7 +491,7 @@ it('leaves a plural form in the source language when its translation keeps holdi
         ->and(readLang('de/shop.php'))->toBe(['apples' => 'One apple|[T] Many apples', 'pears' => '[T] One pear|[T] Many pears'])
         ->and(langTranslator('de')->choice('shop.apples', 5))->toBe('[T] Many apples')
         ->and(langTranslator('de')->choice('shop.pears', 5))->toBe('[T] Many pears')
-        ->and($output)->toContain('"One apple" was left untranslated (invalid)')
+        ->and($output)->toContain('"One apple" was left untranslated (the model kept breaking its formatting)')
         ->and($output)->toContain('the reviewer\'s correction of "Many pears" was not valid and was discarded');
 });
 
