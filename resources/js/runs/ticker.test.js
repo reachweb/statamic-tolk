@@ -429,6 +429,81 @@ describe('startLanes', () => {
         expect(events.map((event) => event.ended ?? event.state.report.remains)).toEqual([true, false, 'finished']);
         expect(events.every((event) => event.lane === 1)).toBe(true);
     });
+
+    // The server gives a worker its own item back with a new claim, so the saves of a request still working on it would
+    // fail: its waits, attempts and usage would be lost, and a provider that keeps failing would never fail the item.
+    it('never has two ticks of one worker id in flight, whichever lanes of the page send them', async () => {
+        const server = fakeApi();
+        const other = Object.fromEntries(Object.entries(urls).map(([action, url]) => [action, url.replace('01RUN', '01OTHER')]));
+        const sent = () => server.pending.map(({ data }) => `${data.lane}`);
+        const pushed = vi.fn();
+        const onState = vi.fn();
+
+        // The editor's push and the run page of the same run in one page load.
+        const push = startLanes({ api: server.api, urls, lanes: 2, nonce: 'abc12345', onState: pushed, sleep: immediately() });
+        const page = startLanes({ api: server.api, urls, lanes: 2, nonce: 'abc12345', onState, sleep: immediately() });
+        // Another run is not held back.
+        const elsewhere = startLanes({ api: server.api, urls: other, nonce: 'abc12345', sleep: immediately() });
+        await flush();
+
+        expect(sent()).toEqual(['1', '2', '1']);
+        expect(server.pending.map(({ data }) => data.nonce)).toEqual(['abc12345', 'abc12345', 'abc12345']);
+
+        await server.answer('tick', ticked(false));
+
+        expect(pushed).toHaveBeenCalledOnce();
+        expect(sent()).toEqual(['2', '1', '1']);
+
+        while (server.pending.length) {
+            await server.answer('tick', ticked(false));
+        }
+
+        await Promise.all([push.idle(), page.idle(), elsewhere.idle()]);
+
+        expect(server.sent('tick')).toHaveLength(5);
+        expect(onState).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends the tick of a restarted lane once the stopped loop has the answer to its own', async () => {
+        const server = fakeApi();
+        const stopped = new AbortController();
+        const onState = vi.fn();
+
+        startLanes({ api: server.api, urls, signal: stopped.signal, onState });
+        stopped.abort();
+
+        const lanes = startLanes({ api: server.api, urls, onState, sleep: immediately() });
+        await flush();
+
+        expect(server.sent('tick')).toHaveLength(1);
+
+        await server.answer('tick', ticked(true));
+
+        expect(onState).not.toHaveBeenCalled();
+        expect(server.sent('tick')).toHaveLength(2);
+
+        await server.answer('tick', ticked(false));
+        await lanes.idle();
+
+        expect(onState).toHaveBeenCalledOnce();
+    });
+
+    it('sends nothing for a lane stopped while it waited for the tick before', async () => {
+        const server = fakeApi();
+        const controller = new AbortController();
+        const first = startLanes({ api: server.api, urls, sleep: immediately() });
+        const waiting = startLanes({ api: server.api, urls, signal: controller.signal, sleep: immediately() });
+
+        await flush();
+        controller.abort();
+        await server.answer('tick', ticked(false));
+
+        expect(server.sent('tick')).toHaveLength(1);
+
+        await Promise.all([first.idle(), waiting.idle()]);
+
+        expect(waiting.failed).toEqual([]);
+    });
 });
 
 describe('startApplyLoop', () => {

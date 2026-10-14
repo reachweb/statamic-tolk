@@ -21,6 +21,7 @@ import {
 import { localizableUrl } from '../../audit/checks.js';
 import ChangesModal from '../../components/ChangesModal.vue';
 import ProgressBar from '../../components/ProgressBar.vue';
+import { pushes } from '../../editor/push.js';
 import { createFocusKeeper } from '../../focus.js';
 import { createModal } from '../../modal.js';
 import {
@@ -83,13 +84,18 @@ function warn(event) {
     }
 }
 
+// A push from the entry editor that follows this run in the same page load stops while the page drives it.
+let giveBack = () => {};
+
 onMounted(() => {
+    giveBack = pushes.lend(props.state.run?.id);
     follower.follow(props.state);
     window.addEventListener('beforeunload', warn);
 });
 
 onBeforeUnmount(() => {
     follower.stop();
+    giveBack(current.value);
     window.removeEventListener('beforeunload', warn);
 });
 

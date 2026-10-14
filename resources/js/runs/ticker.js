@@ -28,6 +28,25 @@ export function nonce() {
     return pageNonce;
 }
 
+// The last tick of each worker id of the page, by run, for each api (the CP has one). A lane sends its tick only once
+// the one before of its worker id has its answer, whichever loop sent that one: a loop that follow() replaced, or the
+// editor's push of the run when the run page took it over. The server gives a worker its own item back with a new
+// claim, so the saves of a request still working on the item would fail, and its waits, attempts and usage be lost.
+const ticks = new WeakMap();
+
+function oneAtATime(api, key, request) {
+    const last = ticks.get(api) ?? new Map();
+    const before = last.get(key);
+    const sent = before ? before.then(request) : new Promise((resolve) => resolve(request()));
+    const answered = sent.then(() => {}, () => {});
+
+    ticks.set(api, last);
+    last.set(key, answered);
+    answered.then(() => last.get(key) === answered && last.delete(key));
+
+    return sent;
+}
+
 export function isFinal(state) {
     return FINAL_STATUSES.includes(state?.run?.status);
 }
@@ -137,7 +156,9 @@ export function startLanes({
         return 'failed';
     }
 
-    const tick = (lane) => api.post(urls.tick, { ...query(), nonce: laneNonce, lane });
+    // A lane stopped while it waited for the tick before sends nothing.
+    const tick = (lane) =>
+        oneAtATime(api, `${urls.tick} ${laneNonce} ${lane}`, () => (aborted() ? null : api.post(urls.tick, { ...query(), nonce: laneNonce, lane })));
 
     async function run(lane) {
         while (!aborted()) {

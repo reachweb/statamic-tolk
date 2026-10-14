@@ -79,6 +79,7 @@ function fakeFollowers() {
         const follower = {
             options,
             follow: vi.fn(),
+            stop: vi.fn(),
             cancel: vi.fn(async () => {
                 const answer = runState({ status: 'cancelled', counts: { done: 1, pending: 1 } });
                 await flush();
@@ -495,6 +496,58 @@ describe('adopt', () => {
 
         expect(followers.create).not.toHaveBeenCalled();
         expect(describePush(store.container('base').push, status()).failure).toBe('Down');
+    });
+});
+
+// The run page of a run drives it itself: the push's lanes would have the same worker ids, as the page load is the same.
+describe('the run page', () => {
+    const active = { run: '01RUN', driver: 'browser', lanes: 2, urls: runUrls() };
+
+    it('takes the run from the push while it shows it, and gives it back from its last state', async () => {
+        const { followers, pushes } = setup();
+        await pushes.start('base', { reference: REFERENCE, sites: ['el', 'de'], mode: 'missing' });
+        const follower = followers.made[0];
+
+        const giveBack = pushes.lend('01RUN');
+
+        expect(follower.stop).toHaveBeenCalledOnce();
+        expect(follower.follow).toHaveBeenCalledOnce();
+
+        const later = runState({ counts: { done: 1, pending: 1 } });
+        giveBack(later);
+
+        expect(follower.follow).toHaveBeenCalledTimes(2);
+        expect(follower.follow).toHaveBeenLastCalledWith(later);
+    });
+
+    it('does not drive a run the page shows when a status names it meanwhile, until the page gives it back', async () => {
+        const { followers, pushes } = setup({ api: fakeApi({ get: runState() }) });
+
+        const giveBack = pushes.lend('01RUN');
+        await pushes.adopt('base', status(undefined, { active_run: active }));
+
+        expect(followers.create).toHaveBeenCalledOnce();
+        expect(followers.made[0].follow).not.toHaveBeenCalled();
+        expect(store.container('base').push).toMatchObject({ phase: 'running', run: '01RUN' });
+
+        giveBack(runState({ counts: { done: 1, pending: 1 } }));
+
+        expect(followers.made[0].follow).toHaveBeenCalledWith(runState({ counts: { done: 1, pending: 1 } }));
+
+        store.switched('base', 'entry::hello-el');
+        store.switched('base', REFERENCE);
+        await pushes.adopt('base', status(undefined, { active_run: active }));
+
+        expect(followers.made[0].follow).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives nothing back for a run no push follows', () => {
+        const { followers, pushes } = setup();
+
+        pushes.lend('01OTHER')(runState({ id: '01OTHER' }));
+
+        expect(followers.create).not.toHaveBeenCalled();
+        expect(pushes.following('01OTHER')).toBe(false);
     });
 });
 

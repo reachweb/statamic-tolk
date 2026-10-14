@@ -100,6 +100,8 @@ export function createPushes({
 } = {}) {
     // Run id → follower.
     const followers = new Map();
+    // The runs a run page drives meanwhile (lend()).
+    const lent = new Set();
     // Counts the saves whose automatic update the banner waits for, so a look ends once the banner shows something else.
     let expectations = 0;
 
@@ -161,7 +163,7 @@ export function createPushes({
     }
 
     // Follows the run from `state`. A follower already driving it starts its loops again from there, which also
-    // restarts lanes that gave up.
+    // restarts lanes that gave up. A run page that drives the run starts it when it gives the run back.
     function follow(run, state) {
         let follower = followers.get(run.run);
 
@@ -175,7 +177,22 @@ export function createPushes({
             followers.set(run.run, follower);
         }
 
-        follower.follow(state);
+        if (!lent.has(run.run)) {
+            follower.follow(state);
+        }
+    }
+
+    // The run page drives the run it shows with a follower of its own, whose lanes have the same worker ids as the
+    // push's, from the same page load: one driver per run, so the push's follower stops until the page gives the run
+    // back with the function this returns, and goes on from the page's last state.
+    function lend(runId) {
+        lent.add(runId);
+        followers.get(runId)?.stop();
+
+        return (state) => {
+            lent.delete(runId);
+            followers.get(runId)?.follow(state);
+        };
     }
 
     async function start(name, { reference, sites, mode, overwriteManual = false, review = null, newStatus = null }) {
@@ -385,6 +402,7 @@ export function createPushes({
         resume,
         cancel,
         dismiss,
+        lend,
         following: (runId) => followers.has(runId),
     };
 }
