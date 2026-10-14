@@ -24,6 +24,7 @@ use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Events\RunStarted;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
+use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\UsageLog;
@@ -34,6 +35,7 @@ use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Tests\Support\TerminalTranslate;
+use Reach\StatamicTolk\Translation\TargetResult;
 use Statamic\Facades\Blink;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
@@ -706,6 +708,31 @@ describe('review', function () {
             ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.1-sol')
             ->and($state->field('title')->reviewer)->toBeNull()
             ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+    });
+
+    it('fails the targets in mode review whose review could not be made, and exits 1, so a short outage does not read as reviewed', function () {
+        $this->fakeTranslations();
+        translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+        Sleep::fake(syncWithCarbon: true);
+        $engine = ScriptedEngine::bind(
+            fn (EngineCall $call) => ScriptedEngine::translated($call),
+            fn (EngineCall $call) => throw ProviderUnavailable::connection('openai', 3),
+        );
+        $commits = RunFixtures::commits();
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el'], '--mode' => 'review']);
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($exitCode)->toBe(1)
+            ->and($engine->reviews)->toHaveCount(6)
+            ->and($run->status)->toBe(RunStatus::CompletedWithErrors)
+            ->and(array_column(RunFixtures::items($run), 'reason'))->toBe([TargetResult::REVIEW_SKIPPED, TargetResult::REVIEW_SKIPPED])
+            ->and($output)->toContain('Hello → Greek: failed, Part of the text could not be reviewed and was kept as it was.; not reviewed: title, intro')
+            ->and($output)->toContain('Title: review skipped (unavailable).')
+            ->and($output)->not->toContain('nothing to correct')
+            ->and($output)->toMatch('/\| 0 +\| 0 +\| 2 +\| 0 +\| 0 +\|/')
+            ->and($this->hello->fresh()->in('el')->data()->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.'])
+            ->and($commits->getArrayCopy())->toBe([]);
     });
 
     it('reviews manual fields in mode review only with --force, and they stay manual', function () {

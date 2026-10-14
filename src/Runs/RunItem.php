@@ -31,8 +31,8 @@ final class RunItem
      * @param  list<int>  $dependsOn  indexes of the items that must be done or skipped first
      * @param  ?string  $reason  why the item was skipped or failed, such as `dependency_failed`; on a pending item
      *                           `source_changed` when its origin changed before it was applied
-     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`, or why it was
-     *                                         skipped or failed, as TargetResult::$fields
+     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`,
+     *                                         `review_skipped`, or why it was skipped or failed, as TargetResult::$fields
      * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
      * @param  bool  $created  whether applying the item created the localization
      * @param  ?array{title: string, edit_url: string}  $rootPage  for `root_missing`: the root page to translate first

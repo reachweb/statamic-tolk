@@ -382,8 +382,9 @@ final readonly class Pipeline
 
     /**
      * The reviewer's one call over translations accepted at translation time (D8). A review never fails a segment: when
-     * it cannot be made, the translations stand and their fields get the warning "review skipped". Only ProviderRejected
-     * propagates, because then the reviewer's key or model is wrong.
+     * it cannot be made, the translations stand and their fields get the warning "review skipped" (a review plan's target
+     * then fails unless a correction was saved, PlanApplier). Only ProviderRejected propagates, because then the
+     * reviewer's key or model is wrong.
      */
     private function review(Plan $plan, Unit $unit, int $timeout, ?Closure $recordUsage): UnitOutcome
     {
@@ -665,6 +666,8 @@ final readonly class Pipeline
             baseline: $manual,
             unchanged: $corrections === [],
             fromTarget: true,
+            // A segment without a reviewer was in a review unit that stored a skip.
+            reviewSkipped: array_diff_key($segments, $resolved['reviewers']) !== [],
         );
     }
 

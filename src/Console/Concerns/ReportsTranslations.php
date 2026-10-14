@@ -283,6 +283,7 @@ trait ReportsTranslations
 
         $details = array_filter([
             'left incomplete' => $this->fieldsWith($result, TargetResult::INCOMPLETE),
+            'not reviewed' => $this->fieldsWith($result, TargetResult::REVIEW_SKIPPED),
             'manual edits kept' => $this->fieldsWith($result, FieldStatus::Manual->value),
             'edited meanwhile, kept' => $this->fieldsWith($result, TargetResult::TARGET_CHANGED),
         ]);

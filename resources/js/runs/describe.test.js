@@ -402,4 +402,20 @@ describe('describeItem', () => {
         expect(describeItem({ ...rootMissing, root_page: { title: 'Home', edit_url: null } }).rootPage).toBeNull();
         expect(describeItem({ status: 'failed', reason: 'dependency_failed' })).toMatchObject({ statusColor: 'red', reason: 'An item it depends on failed.' });
     });
+
+    it('names the fields a review could not be made for, and leaves the reason of such a failure to its error', () => {
+        const message = 'Part of the text could not be reviewed and was kept as it was.';
+
+        expect(
+            describeItem({ status: 'failed', reason: 'review_skipped', error: message, fields: { title: 'review_skipped', intro: 'no_corrections' } }),
+        ).toMatchObject({
+            statusColor: 'red',
+            kept: [
+                { handle: 'title', reason: 'could not be reviewed' },
+                { handle: 'intro', reason: 'reviewed, nothing to correct' },
+            ],
+            reason: null,
+            error: message,
+        });
+    });
 });

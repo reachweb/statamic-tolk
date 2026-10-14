@@ -338,6 +338,7 @@ const FIELD_REASONS = {
     origin_untranslated: () => __('not translated in its source yet'),
     structure_differs: () => __('its structure differs from the source'),
     no_corrections: () => __('reviewed, nothing to correct'),
+    review_skipped: () => __('could not be reviewed'),
 };
 
 // Why a part of a field could not be translated: with `strict_fields`, such a field is not saved and holds the first

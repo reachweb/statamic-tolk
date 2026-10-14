@@ -9,6 +9,7 @@ use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\State\StatusResolver;
@@ -538,6 +539,21 @@ it('reviews existing translations in mode review', function () {
     expect($exitCode)->toBe(0)
         ->and($output)->toContain('lang/de.json: done, 1 field, 1 correction')
         ->and(readLang('de.json')['Contact us'])->toBe('Kontakt');
+});
+
+it('fails a file in mode review whose review could not be made, and exits 1', function () {
+    $this->fakeTranslations();
+    langCommand(['sites' => ['de'], '--group' => ['_json']]);
+    $before = readLang('de.json');
+    ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call), fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Refused));
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['_json'], '--mode' => 'review']);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain('lang/de.json: failed, Part of the text could not be reviewed and was kept as it was.; not reviewed: ')
+        ->and($output)->toContain('review skipped (refused).')
+        ->and($output)->not->toContain('nothing to correct')
+        ->and(readLang('de.json'))->toBe($before);
 });
 
 it('exits 1 for invalid input and sends nothing', function (array $arguments, string $message) {

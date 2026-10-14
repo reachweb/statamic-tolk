@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Enums\UnitKind;
@@ -477,20 +478,57 @@ describe('reviewing and saving', function () {
             ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Current);
     });
 
-    it('saves nothing and reports the warning when the reviewer stays unavailable', function () {
+    it('fails the target, saving nothing, when the reviewer stays unavailable, so it does not read as reviewed', function () {
         Sleep::fake();
         reviewExistingTranslate($this->origin, options: ['fields' => ['title']]);
-        ScriptedEngine::bind(
+        $state = StateFixtures::stored(reviewExistingLocalization($this->origin))->toArray();
+        $engine = ScriptedEngine::bind(
             fn (EngineCall $call) => ScriptedEngine::translated($call),
             fn (EngineCall $call) => throw ProviderUnavailable::connection('openai', 3),
         );
+        Event::fake([EntrySaved::class, TargetTranslated::class]);
 
         $result = reviewExistingReview($this->origin);
 
-        expect($result->status)->toBe(TargetResultStatus::Skipped)
-            ->and($result->reason)->toBe(TargetResult::NO_CORRECTIONS)
+        expect($result->status)->toBe(TargetResultStatus::Failed)
+            ->and($result->reason)->toBe(TargetResult::REVIEW_SKIPPED)
+            ->and($result->error)->toBe('Part of the text could not be reviewed and was kept as it was.')
+            ->and($result->fields)->toBe(['title' => TargetResult::REVIEW_SKIPPED, 'intro' => 'untranslated', 'body' => 'untranslated'])
             ->and($result->warnings)->toBe(['Title: review skipped (the provider was unavailable).'])
-            ->and(reviewExistingLocalization($this->origin)->get('title'))->toBe('[T] Hello');
+            ->and($engine->reviews)->toHaveCount(3)
+            ->and(reviewExistingLocalization($this->origin)->get('title'))->toBe('[T] Hello')
+            ->and(StateFixtures::stored(reviewExistingLocalization($this->origin))->toArray())->toBe($state);
+        Event::assertNotDispatched(EntrySaved::class);
+        Event::assertNotDispatched(TargetTranslated::class);
+    });
+
+    it('names the fields it could not review: the target fails when nothing was corrected, and is done when a correction was saved', function () {
+        reviewExistingTranslate($this->origin);
+        config(['tolk.batch.max_segments' => 1]);
+        $refuse = fn (EngineCall $call, array $corrections) => in_array('[T] Hello', array_column($call->segments, 'translation'), true)
+            ? ScriptedEngine::result($call, Finish::Refused)
+            : ScriptedEngine::result($call, Finish::Stop, array_intersect_key($corrections, array_flip(array_column($call->segments, 'id'))));
+        ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call), fn (EngineCall $call) => $refuse($call, []));
+
+        $failed = reviewExistingReview($this->origin);
+
+        expect($failed->status)->toBe(TargetResultStatus::Failed)
+            ->and($failed->reason)->toBe(TargetResult::REVIEW_SKIPPED)
+            ->and($failed->fields)->toBe(['title' => TargetResult::REVIEW_SKIPPED, 'intro' => TargetResult::NO_CORRECTIONS, 'body' => TargetResult::NO_CORRECTIONS])
+            ->and($failed->warnings)->toBe(['Title: review skipped (the model refused it).']);
+
+        ScriptedEngine::bind(
+            fn (EngineCall $call) => ScriptedEngine::translated($call),
+            fn (EngineCall $call) => $refuse($call, ['s4' => ['text' => 'Το πρωινό σερβίρεται έως τις δέκα.', 'reason' => 'Left in English.']]),
+        );
+
+        $done = reviewExistingReview($this->origin);
+
+        expect($done->status)->toBe(TargetResultStatus::Done)
+            ->and($done->reason)->toBeNull()
+            ->and($done->fields)->toBe(['title' => TargetResult::REVIEW_SKIPPED, 'intro' => TargetResult::NO_CORRECTIONS, 'body' => TargetResult::APPLIED])
+            ->and($done->warnings)->toBe(['Title: review skipped (the model refused it).'])
+            ->and(reviewExistingLocalization($this->origin)->get('body')[1])->toBe(reviewExistingParagraph('Το πρωινό σερβίρεται έως τις δέκα.'));
     });
 
     it('refuses to assemble a reviewed field whose source changed meanwhile, or whose walk no longer gives the planned leaves', function () {

@@ -119,7 +119,7 @@ The run is listed on the CP's Runs page with its progress.
 
 ### Exit codes
 
-`0` when everything was translated or had nothing to do, or the question was declined. `1` for invalid input, a provider without a key, a target that failed, a run that was aborted or cancelled, or Ctrl-C. A page skipped because its root page is missing is not a failure. When Ctrl-C ends the command at once, without pcntl, the shell reports the interrupt instead (130 in Bash and Zsh).
+`0` when everything was translated or had nothing to do, or the question was declined. `1` for invalid input, a provider without a key, a target that failed (with `--mode=review`, also a target whose review could not be made and that got no correction), a run that was aborted or cancelled, or Ctrl-C. A page skipped because its root page is missing is not a failure. When Ctrl-C ends the command at once, without pcntl, the shell reports the interrupt instead (130 in Bash and Zsh).
 
 ### Revisions
 
@@ -318,7 +318,7 @@ php please tolk:lang --dry-run
 - **The state** lives under `content/tolk/lang/`, like the content's, so a second run sends nothing, an edited source string is translated again with `--mode=update`, and a string edited by hand is kept.
 - **Git.** With Statamic's git integration on, the command makes one commit ("Content translated") of the paths in `statamic.git.paths`, whose defaults hold the state but not `lang/`. While `lang/` is not tracked, the command warns after it writes: add `lang_path()` to `statamic.git.paths`, or commit `lang/` yourself, or a deploy that replaces the site's files loses the translations ([Where Tolk keeps things](installation.md#where-tolk-keeps-things)).
 
-`--dry-run` lists per file the strings by status and what would be sent, with an estimate. Exit code 1 for invalid input, a file that cannot be read (nothing is sent then), a file that could not be written or a provider that rejects the key.
+`--dry-run` lists per file the strings by status and what would be sent, with an estimate. Exit code 1 for invalid input, a file that cannot be read (nothing is sent then), a file that could not be written, a file whose review could not be made with `--mode=review` (unless a correction was saved), or a provider that rejects the key.
 
 ## `tolk:forms`
 

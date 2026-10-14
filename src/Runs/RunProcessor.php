@@ -690,7 +690,8 @@ final readonly class RunProcessor
 
     /**
      * Records the applied target on the item: `done` when translations were saved or the reviewer accepted every field,
-     * `skipped` when every field was edited by someone meanwhile, `failed` when no field could be translated completely.
+     * `skipped` when every field was edited by someone meanwhile, `failed` when no field could be translated completely,
+     * or when a review saved nothing and a part of it could not be reviewed (`review_skipped`).
      */
     private function applied(Run $run, RunItem $item, TargetResult $result, Target $target): void
     {

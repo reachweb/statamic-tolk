@@ -17,6 +17,8 @@ final readonly class PlanApplier
 {
     public const string FIELDS_FAILED_MESSAGE = 'No field could be translated completely.';
 
+    public const string REVIEW_SKIPPED_MESSAGE = 'Part of the text could not be reviewed and was kept as it was.';
+
     public function __construct(private Pipeline $pipeline) {}
 
     /**
@@ -26,7 +28,8 @@ final readonly class PlanApplier
      * source that another process saved, which this process may still hold as it was (Target::fresh()), raises it under
      * the lock. Only a save takes the lock: a review without corrections and a strict plan whose every field failed
      * return without it. A review saves only the fields it corrected; a field that failed in strict mode is listed as
-     * failed and the others are still saved.
+     * failed and the others are still saved. A reviewed field with a part the reviewer could not review is listed as
+     * `review_skipped`, and when nothing was corrected the target fails with that reason, so it does not read as reviewed.
      *
      * @throws SourceChanged
      * @throws WriterBusy when there is something to save and the write lock was not free in time
@@ -47,7 +50,7 @@ final readonly class PlanApplier
 
         foreach ($assembled as $handle => $field) {
             if ($field->unchanged) {
-                $unchanged[$handle] = TargetResult::NO_CORRECTIONS;
+                $unchanged[$handle] = $field->reviewSkipped ? TargetResult::REVIEW_SKIPPED : TargetResult::NO_CORRECTIONS;
                 array_push($warnings, ...$field->warnings);
             }
         }
@@ -55,12 +58,15 @@ final readonly class PlanApplier
         $assembled = array_diff_key($assembled, $unchanged);
 
         if ($assembled === [] && $unchanged !== []) {
+            $skipped = in_array(TargetResult::REVIEW_SKIPPED, $unchanged, true);
+
             return new TargetResult(
-                status: TargetResultStatus::Skipped,
+                status: $skipped ? TargetResultStatus::Failed : TargetResultStatus::Skipped,
                 ref: $target->ref(),
                 fields: $this->ordered($target, $plan->skipped + $unchanged),
                 warnings: $warnings,
-                reason: TargetResult::NO_CORRECTIONS,
+                reason: $skipped ? TargetResult::REVIEW_SKIPPED : TargetResult::NO_CORRECTIONS,
+                error: $skipped ? __(self::REVIEW_SKIPPED_MESSAGE) : null,
             );
         }
 

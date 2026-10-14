@@ -22,6 +22,12 @@ final readonly class TargetResult
      */
     public const string NO_CORRECTIONS = 'no_corrections';
 
+    /**
+     * A reviewed field with a part the reviewer could not review, and a review that failed because nothing was corrected
+     * while such a field was left.
+     */
+    public const string REVIEW_SKIPPED = 'review_skipped';
+
     public const string TARGET_CHANGED = 'target_changed';
 
     public const string ROOT_MISSING = 'root_missing';
@@ -42,8 +48,8 @@ final readonly class TargetResult
 
     /**
      * @param  ?TargetRef  $ref  null while the target does not exist
-     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`, or why it was
-     *                                         skipped or failed
+     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`,
+     *                                         `review_skipped`, or why it was skipped or failed
      * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
      * @param  list<string>  $warnings
      * @param  ?string  $reason  why the target was skipped or failed
