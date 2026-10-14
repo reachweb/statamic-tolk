@@ -285,7 +285,7 @@ it('maps provider failures as a translation does', function (string $provider, C
         ->and(app(Throttle::class)->pausedFor($provider))->toBe(0);
 })->with([
     'a timeout' => ['anthropic', fn (string $provider) => Http::fake([ProviderFixtures::HOSTS[$provider] => Http::failedConnection('cURL error 28: Operation timed out')]), ProviderTimeout::class],
-    'an invalid key' => ['gemini', fn (string $provider) => ProviderFixtures::fake($provider, ProviderFixtures::error($provider, 401, 'UNAUTHENTICATED', 'No.'), 401), ProviderRejected::class],
+    'an invalid key' => ['gemini', fn (string $provider) => ProviderFixtures::fake($provider, ProviderFixtures::geminiInvalidKey(), 400), ProviderRejected::class],
     'a spend cap' => ['openai', fn (string $provider) => ProviderFixtures::fake($provider, ProviderFixtures::error($provider, 429, 'insufficient_quota', 'Quota.'), 429), ProviderRejected::class],
 ]);
 

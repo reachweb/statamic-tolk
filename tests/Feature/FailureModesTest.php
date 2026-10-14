@@ -381,6 +381,40 @@ describe('an unavailable provider', function () {
     });
 });
 
+describe('a wrong or revoked key', function () {
+    beforeEach(function () {
+        $this->origin = failingArticle('hello', [failingParagraph('Breakfast is served until ten.')]);
+        $greek = $this->localize($this->origin, 'el', ['title' => '[el] Hello']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', '[el] Hello')]);
+        // Google answers a wrong or revoked key with a 400, not a 401.
+        ProviderFixtures::fake('gemini', ProviderFixtures::geminiInvalidKey(), 400);
+        $this->signInAdmin();
+    });
+
+    it('aborts a run whose translator or reviewer has a key Google refuses, saving nothing', function (array $options, bool $translates) {
+        if ($translates) {
+            failingModel();
+        }
+
+        $commits = RunFixtures::commits();
+        $run = failingRun(['entry_ids' => [$this->origin->id()], 'options' => ['mode' => 'all', ...$options]]);
+
+        failingDrive($run);
+        $stored = RunFixtures::stored($run);
+
+        expect($stored->status)->toBe(RunStatus::Aborted)
+            ->and($stored->error)->toBe('The AI provider [gemini] rejected the request (HTTP 400, invalid_key): API key not valid. Please pass a valid API key.')
+            ->and($stored->saves)->toBe(0)
+            ->and(Http::recorded())->toHaveCount(1)
+            ->and(failingGreek($this->origin)->get('title'))->toBe('[el] Hello')
+            ->and(failingGreek($this->origin)->get('body'))->toBeNull()
+            ->and($commits)->toHaveCount(0);
+    })->with([
+        'translator' => [['translator' => 'gemini:gemini-3.8-flash'], false],
+        'reviewer' => [['review' => true, 'reviewer' => 'gemini:gemini-3.8-flash'], true],
+    ]);
+});
+
 describe('a lost plan', function () {
     beforeEach(function () {
         $this->signInAdmin();

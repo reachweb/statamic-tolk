@@ -42,6 +42,18 @@ class ErrorClassifier
         'gemini' => [self::GEMINI_QUOTA_CODE],
     ];
 
+    /**
+     * Google refuses a wrong, revoked, expired or blocked key with an ErrorInfo reason of this prefix, and a wrong or
+     * revoked one with HTTP 400 (API_KEY_INVALID), not 401 or 403.
+     */
+    public const string GEMINI_KEY_REASON_PREFIX = 'API_KEY_';
+
+    /**
+     * The status of a Gemini 400 that refuses the project, not the request: billing, or a region the free tier does not
+     * serve.
+     */
+    public const string GEMINI_PRECONDITION = 'FAILED_PRECONDITION';
+
     private const array CODE_PATHS = ['error.code', 'error.type', 'error.status', 'error.details.error_code', 'error.details.*.reason'];
 
     private const int CURL_TIMEOUT = 28;
@@ -57,7 +69,7 @@ class ErrorClassifier
         if ($exception instanceof InsufficientCreditsException) {
             return new ProviderError(
                 ProviderErrorKind::Rejected,
-                $this->message($exception, $response),
+                $this->message($exception, $response ? $this->body($response) : []),
                 $response?->status(),
                 ProviderError::INSUFFICIENT_CREDITS,
             );
@@ -66,7 +78,7 @@ class ErrorClassifier
         if ($exception instanceof ProviderConnectionException) {
             $kind = $this->timedOut($exception->getPrevious()) ? ProviderErrorKind::Timeout : ProviderErrorKind::Unavailable;
 
-            return new ProviderError($kind, $this->message($exception, null));
+            return new ProviderError($kind, $this->message($exception));
         }
 
         if ($response) {
@@ -74,7 +86,7 @@ class ErrorClassifier
         }
 
         if ($exception instanceof AiException) {
-            return new ProviderError(ProviderErrorKind::Paused, $this->message($exception, null));
+            return new ProviderError(ProviderErrorKind::Paused, $this->message($exception));
         }
 
         return null;
@@ -83,9 +95,10 @@ class ErrorClassifier
     private function fromResponse(Throwable $exception, Response $response, string $provider): ProviderError
     {
         $status = $response->status();
-        $message = $this->message($exception, $response);
+        $body = $this->body($response);
+        $message = $this->message($exception, $body);
 
-        if ($status === 429 && ($code = $this->rejectedCode($response, $provider))) {
+        if ($code = $this->rejectedCode($body, $status, $provider)) {
             return new ProviderError(ProviderErrorKind::Rejected, $message, $status, $code);
         }
 
@@ -110,19 +123,52 @@ class ErrorClassifier
         return $request instanceof RequestException ? $request->response : null;
     }
 
-    private function rejectedCode(Response $response, string $provider): ?string
+    /**
+     * The decoded error body. Gemini's Interactions endpoint sends it wrapped in a JSON list: [{"error": {…}}].
+     */
+    private function body(Response $response): array
     {
-        $codes = self::REJECTED_429_CODES[$provider] ?? [];
+        $body = $response->json();
 
-        foreach (self::CODE_PATHS as $path) {
-            foreach ((array) data_get($response->json() ?? [], $path) as $value) {
-                if (is_string($value) && in_array($value, $codes, true)) {
-                    return $value;
+        if (is_array($body) && array_is_list($body) && is_array($body[0] ?? null)) {
+            $body = $body[0];
+        }
+
+        return is_array($body) ? $body : [];
+    }
+
+    /**
+     * The code of a client error that refuses the account rather than the request: a spend-cap, quota or billing code
+     * on a 429, and for Gemini a key Google refuses or a failed precondition, whatever their status.
+     */
+    private function rejectedCode(array $body, int $status, string $provider): ?string
+    {
+        if ($status === 429) {
+            $codes = self::REJECTED_429_CODES[$provider] ?? [];
+
+            foreach (self::CODE_PATHS as $path) {
+                foreach ((array) data_get($body, $path) as $value) {
+                    if (is_string($value) && in_array($value, $codes, true)) {
+                        return $value;
+                    }
                 }
+            }
+
+            return null;
+        }
+
+        return $provider === 'gemini' && $status >= 400 && $status < 500 ? $this->geminiRejectedCode($body) : null;
+    }
+
+    private function geminiRejectedCode(array $body): ?string
+    {
+        foreach ((array) data_get($body, 'error.details.*.reason') as $reason) {
+            if (is_string($reason) && str_starts_with($reason, self::GEMINI_KEY_REASON_PREFIX)) {
+                return ProviderError::INVALID_KEY;
             }
         }
 
-        return null;
+        return data_get($body, 'error.status') === self::GEMINI_PRECONDITION ? self::GEMINI_PRECONDITION : null;
     }
 
     private function retryAfter(Response $response): ?int
@@ -157,9 +203,9 @@ class ErrorClassifier
         return str_starts_with($previous->getMessage(), 'cURL error '.self::CURL_TIMEOUT.':');
     }
 
-    private function message(Throwable $exception, ?Response $response): string
+    private function message(Throwable $exception, array $body = []): string
     {
-        $message = $response?->json('error.message');
+        $message = data_get($body, 'error.message');
 
         if (! is_string($message) || trim($message) === '') {
             $message = $exception->getMessage();

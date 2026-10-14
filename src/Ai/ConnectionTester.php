@@ -110,7 +110,7 @@ final readonly class ConnectionTester
         return match (true) {
             $error->kind === ProviderErrorKind::Timeout => __(':provider did not answer within :seconds seconds.', $replace),
             $error->kind === ProviderErrorKind::Unavailable => __(':provider could not be reached: :message', $replace),
-            in_array($error->status, [401, 403], true) => __(':provider refused the API key (:status): :message', $replace),
+            in_array($error->status, [401, 403], true), $error->code === ProviderError::INVALID_KEY => __(':provider refused the API key (:status): :message', $replace),
             $error->status === 404 => __(':provider does not offer the model :model (:status): :message', $replace),
             $error->kind === ProviderErrorKind::Rejected => __(':provider refused the account (:status): :message', $replace),
             $error->status === 429 => __(':provider is limiting requests (:status): :message', $replace),

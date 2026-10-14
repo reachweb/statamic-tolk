@@ -110,6 +110,35 @@ final class ProviderFixtures
         };
     }
 
+    /**
+     * A Gemini error as Google sends it: a status, an ErrorInfo reason in `details`, and the whole body in a JSON list,
+     * which is what the Interactions endpoint answered a made-up key with (HTTP 400, INVALID_ARGUMENT, API_KEY_INVALID).
+     */
+    public static function geminiError(int $status, string $type, string $message, ?string $reason = null): array
+    {
+        $details = $reason === null ? [] : [[
+            '@type' => 'type.googleapis.com/google.rpc.ErrorInfo',
+            'reason' => $reason,
+            'domain' => 'googleapis.com',
+            'metadata' => ['service' => 'generativelanguage.googleapis.com'],
+        ]];
+
+        return [['error' => [
+            'code' => $status,
+            'message' => $message,
+            'status' => $type,
+            'details' => [...$details, ['@type' => 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale' => 'en-US', 'message' => $message]],
+        ]]];
+    }
+
+    /**
+     * Google's answer to a wrong or revoked key.
+     */
+    public static function geminiInvalidKey(string $message = 'API key not valid. Please pass a valid API key.', string $reason = 'API_KEY_INVALID'): array
+    {
+        return self::geminiError(400, 'INVALID_ARGUMENT', $message, $reason);
+    }
+
     public static function fake(string $provider, array $body, int $status = 200, array $headers = []): void
     {
         Http::fake([self::HOSTS[$provider] => Http::response($body, $status, $headers)]);

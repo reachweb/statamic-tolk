@@ -88,6 +88,17 @@ it('throws a plain RequestException on other error statuses', function (string $
         ->and($exception->response->json('error.message'))->toBe('Something about the request.');
 })->with(ProviderFixtures::PROVIDERS)->with([400, 401, 403, 404, 408, 413, 500]);
 
+it('throws a plain RequestException on Gemini\'s 400 for an invalid key, its list-shaped body left as sent', function () {
+    ProviderFixtures::fake('gemini', ProviderFixtures::geminiInvalidKey(), 400);
+
+    $exception = ProviderFixtures::thrown('gemini');
+
+    expect($exception)->toBeInstanceOf(RequestException::class)
+        ->and($exception)->not->toBeInstanceOf(FailoverableException::class)
+        ->and($exception->response->json('error.message'))->toBeNull()
+        ->and($exception->response->json('0.error.details.0.reason'))->toBe('API_KEY_INVALID');
+});
+
 it('throws InsufficientCreditsException on 402', function (string $provider) {
     $exception = ProviderFixtures::failure($provider, 402, 'payment_required', 'Payment required.');
 

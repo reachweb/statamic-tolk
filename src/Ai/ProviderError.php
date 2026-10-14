@@ -13,6 +13,8 @@ final readonly class ProviderError
 
     public const string INSUFFICIENT_CREDITS = 'insufficient_credits';
 
+    public const string INVALID_KEY = 'invalid_key';
+
     public function __construct(
         public ProviderErrorKind $kind,
         public string $message,

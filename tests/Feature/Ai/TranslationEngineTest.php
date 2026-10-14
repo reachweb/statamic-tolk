@@ -357,6 +357,23 @@ it('throws ProviderRejected on an invalid key, missing permission, missing credi
     'gemini 404' => ['gemini', 404, 'The AI provider [gemini] does not offer the model [gemini-3.8-flash] (HTTP 404): The provider says no.'],
 ]);
 
+it('throws ProviderRejected when Google refuses the Gemini key or project with a 400, without logging the request', function (array $body, string $message) {
+    Log::spy();
+    ProviderFixtures::fake('gemini', $body, 400);
+
+    $exception = engineFailure('gemini');
+
+    expect($exception)->toBeInstanceOf(ProviderRejected::class)
+        ->and($exception->status)->toBe(400)
+        ->and($exception->getMessage())->toBe($message)
+        ->and(app(Throttle::class)->pausedFor('gemini'))->toBe(0);
+    Log::shouldNotHaveReceived('warning');
+})->with([
+    'invalid key' => [ProviderFixtures::geminiInvalidKey(), 'The AI provider [gemini] rejected the request (HTTP 400, invalid_key): API key not valid. Please pass a valid API key.'],
+    'expired key' => [ProviderFixtures::geminiInvalidKey('API key expired. Please renew the API key.', 'API_KEY_EXPIRED'), 'The AI provider [gemini] rejected the request (HTTP 400, invalid_key): API key expired. Please renew the API key.'],
+    'billing' => [ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', 'Please enable billing on your project.'), 'The AI provider [gemini] rejected the request (HTTP 400, FAILED_PRECONDITION): Please enable billing on your project.'],
+]);
+
 it('throws ProviderRejected for an anthropic credit message on a 400', function () {
     ProviderFixtures::fake('anthropic', ProviderFixtures::error('anthropic', 400, 'invalid_request_error', 'Your credit balance is too low to access the Anthropic API.'), 400);
 
@@ -407,7 +424,9 @@ it('throws RequestRejected that is too large on a 413', function () {
 
 it('sanitises a provider message that contains the configured key', function (string $provider, string $key) {
     config(["tolk.providers.{$provider}.key" => $key]);
-    ProviderFixtures::fake($provider, ProviderFixtures::error($provider, 401, 'authentication_error', "Incorrect API key provided: {$key}."), 401);
+    $provider === 'gemini'
+        ? ProviderFixtures::fake($provider, ProviderFixtures::geminiInvalidKey("Incorrect API key provided: {$key}."), 400)
+        : ProviderFixtures::fake($provider, ProviderFixtures::error($provider, 401, 'authentication_error', "Incorrect API key provided: {$key}."), 401);
 
     $message = engineFailure($provider)->getMessage();
 

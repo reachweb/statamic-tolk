@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Ai\ErrorClassifier;
 use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
+use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 
 function failedRequest(int $status, array $body = ['error' => ['message' => 'Provider message.']], array $headers = []): RequestException
 {
@@ -117,6 +118,52 @@ it('rejects 401, 403 and 404 without a retry-after', function (int $status) {
         ->and($error->code)->toBeNull()
         ->and($error->retryAfter)->toBeNull();
 })->with([401, 403, 404]);
+
+it('rejects a Gemini key that Google refuses with a 400, also in a list-shaped body', function (array $body) {
+    $error = classifyError(failedRequest(400, $body), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Rejected)
+        ->and($error->code)->toBe(ProviderError::INVALID_KEY)
+        ->and($error->status)->toBe(400)
+        ->and($error->retryAfter)->toBeNull()
+        ->and($error->message)->toBe('API key not valid. Please pass a valid API key.')
+        ->and($error->describe())->toBe('HTTP 400, invalid_key');
+})->with([
+    'list, as the Interactions endpoint sends it' => [ProviderFixtures::geminiInvalidKey()],
+    'object' => [ProviderFixtures::geminiInvalidKey()[0]],
+    'expired' => [ProviderFixtures::geminiInvalidKey(reason: 'API_KEY_EXPIRED')],
+]);
+
+it('rejects a Gemini key that Google blocks for the service, as the key it is', function () {
+    $error = classifyError(failedRequest(403, ProviderFixtures::geminiError(403, 'PERMISSION_DENIED', 'Requests to this API are blocked.', 'API_KEY_SERVICE_BLOCKED')), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Rejected)
+        ->and($error->code)->toBe(ProviderError::INVALID_KEY)
+        ->and($error->message)->toBe('Requests to this API are blocked.');
+});
+
+it('rejects a Gemini project that Google refuses for its billing or region', function () {
+    $message = 'Gemini API free tier is not available in your country. Please enable billing on your project in Google AI Studio.';
+    $error = classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', $message)), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Rejected)
+        ->and($error->code)->toBe('FAILED_PRECONDITION')
+        ->and($error->message)->toBe($message)
+        ->and($error->describe())->toBe('HTTP 400, FAILED_PRECONDITION');
+});
+
+it('rejects only the request on a Gemini 400 about the request, and reads its list-shaped message', function () {
+    $error = classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'INVALID_ARGUMENT', 'Invalid JSON payload received.', 'BAD_REQUEST')), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::RequestRejected)
+        ->and($error->code)->toBeNull()
+        ->and($error->message)->toBe('Invalid JSON payload received.');
+});
+
+it('reads a key reason or a precondition only for Gemini', function (string $provider) {
+    expect(classifyError(failedRequest(400, ProviderFixtures::geminiInvalidKey()), $provider)->kind)->toBe(ProviderErrorKind::RequestRejected)
+        ->and(classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', 'No.')), $provider)->kind)->toBe(ProviderErrorKind::RequestRejected);
+})->with(['anthropic', 'openai']);
 
 it('rejects the request on other client errors', function (int $status) {
     $error = classifyError(failedRequest($status));
