@@ -38,6 +38,7 @@ import {
     formatNumber,
     ITEM_STATUSES,
     itemStatusLabel,
+    itemsPage,
     notLocalizableHint,
     runActions,
     runStatusColor,
@@ -68,6 +69,7 @@ const follower = createFollower({
     onState: (state) => {
         current.value = state;
         estimate.value = state.run?.estimate ?? estimate.value;
+        page.value = itemsPage(page.value, state.pagination);
     },
     onEstimate: (value) => (estimate.value = value),
     onFailures: (list) => (failures.value = list),

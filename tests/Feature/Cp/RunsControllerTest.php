@@ -319,6 +319,28 @@ describe('a browser run', function () {
             ->and($done['pagination'])->toMatchArray(['total' => 3, 'last_page' => 3]);
     });
 
+    it('answers a page past the last with the last page, so a filtered list that shrank below it still shows its items', function () {
+        $this->signInAdmin();
+        $run = createdRun();
+        runAction($run, 'start');
+        $before = runState($run, ['status' => 'pending', 'page' => 3, 'per_page' => 1])->json();
+
+        failItem($run, 0);
+        failItem($run, 1);
+        $waiting = runState($run, ['status' => 'pending', 'page' => 3, 'per_page' => 1])->json();
+        $all = runState($run, ['page' => 9, 'per_page' => 2])->json();
+        $none = runState($run, ['status' => 'done', 'page' => 4])->json();
+
+        expect(array_column($before['items'], 'index'))->toBe([2])
+            ->and($before['pagination'])->toBe(['page' => 3, 'per_page' => 1, 'total' => 3, 'last_page' => 3])
+            ->and(array_column($waiting['items'], 'index'))->toBe([2])
+            ->and($waiting['pagination'])->toBe(['page' => 1, 'per_page' => 1, 'total' => 1, 'last_page' => 1])
+            ->and(array_column($all['items'], 'index'))->toBe([2])
+            ->and($all['pagination'])->toBe(['page' => 2, 'per_page' => 2, 'total' => 3, 'last_page' => 2])
+            ->and($none['items'])->toBe([])
+            ->and($none['pagination'])->toBe(['page' => 1, 'per_page' => 50, 'total' => 0, 'last_page' => 1]);
+    });
+
     it('builds the worker id from the user, the nonce and the lane', function () {
         // One batch per field, and the deadline passes during the first unit, so the item stays claimed.
         config(['tolk.batch.max_chars.web' => 10]);

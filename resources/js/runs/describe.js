@@ -383,3 +383,12 @@ export function describeItem(item, siteName = (handle) => handle) {
         corrections,
     };
 }
+
+// The page of items to ask for next. The server answers a page past the last with the last, so once a filtered list
+// shrank below `requested`, the page follows it there. An answer to a request made before the page changed shows
+// another page that is not the last, or a later one, and leaves `requested` as it is.
+export function itemsPage(requested, pagination) {
+    const page = pagination?.page;
+
+    return Number.isInteger(page) && page < requested && page === pagination.last_page ? page : requested;
+}

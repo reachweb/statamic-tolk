@@ -11,6 +11,7 @@ import {
     describeUsage,
     formatCost,
     formatNumber,
+    itemsPage,
     notLocalizableHint,
     runActions,
     runStatusColor,
@@ -263,6 +264,23 @@ describe('numbers', () => {
         expect(formatCost(1.5, 'en-US')).toBe('$1.50');
         expect(formatCost(0.004321, 'en-US')).toBe('$0.0043');
         expect(formatCost(0, 'en-US')).toBe('$0.00');
+    });
+});
+
+describe('the page of items', () => {
+    it('keeps the page asked for while the answer shows it', () => {
+        expect(itemsPage(3, { page: 3, last_page: 5 })).toBe(3);
+        expect(itemsPage(2, undefined)).toBe(2);
+    });
+
+    it('moves to the last page once the list shrank below the page asked for, so it stays there as the list grows', () => {
+        expect(itemsPage(3, { page: 1, last_page: 1 })).toBe(1);
+        expect(itemsPage(4, { page: 2, last_page: 2 })).toBe(2);
+    });
+
+    it('keeps the page asked for over an answer to an earlier request for another page', () => {
+        expect(itemsPage(2, { page: 1, last_page: 3 })).toBe(2);
+        expect(itemsPage(1, { page: 3, last_page: 3 })).toBe(1);
     });
 });
 

@@ -34,13 +34,16 @@ final readonly class RunState
     ) {}
 
     /**
-     * `run.estimate` is null until the run was estimated, and its `next` is null once the estimate is finished.
+     * `run.estimate` is null until the run was estimated, and its `next` is null once the estimate is finished. A page
+     * past the last is answered with the last, as a filtered list shrinks below the page the run page shows.
      */
     public function for(Run $run, int $page = 1, int $perPage = self::PER_PAGE, ?RunItemStatus $status = null): array
     {
         $breakdown = $this->runs->breakdown($run);
         $counts = self::totals($breakdown);
         $total = $status === null ? array_sum($counts) : $counts[$status->value];
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $page), $lastPage);
 
         return [
             'run' => $this->run($run),
@@ -51,7 +54,7 @@ final readonly class RunState
                 'page' => $page,
                 'per_page' => $perPage,
                 'total' => $total,
-                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'last_page' => $lastPage,
             ],
             'stalled' => $this->stalled($run),
         ];
