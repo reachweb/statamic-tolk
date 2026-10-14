@@ -84,7 +84,7 @@ class ProfileCommand extends Command
     {
         $current = $settings->siteProfile();
 
-        if ($current === $profile) {
+        if ($current === Settings::prose($profile)) {
             $this->components->info('The settings already hold this site profile.');
 
             return;
@@ -104,7 +104,7 @@ class ProfileCommand extends Command
             return;
         }
 
-        $settings->save(['site_profile' => $profile]);
+        $settings->save(['site_profile' => Settings::literal($profile)]);
 
         $this->components->info('Saved the site profile. Every translation prompt now includes it.');
     }

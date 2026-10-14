@@ -327,4 +327,21 @@ class Settings
     {
         return trim(preg_replace(self::NOPARSE_TAG, '', self::text($value)));
     }
+
+    /**
+     * The text to store for one that no one checked as Antlers, such as a model's, so that core neither fails on its
+     * `{{` nor runs it as a template, and prose() returns it as written: between noparse tags when it holds `{{`,
+     * without noparse tags of its own, which would end them early, and with a space after a final `@`, which would
+     * escape the closing tag.
+     */
+    public static function literal(mixed $value): string
+    {
+        $text = self::prose($value);
+
+        if (! str_contains($text, '{{')) {
+            return $text;
+        }
+
+        return '{{ noparse }}'.$text.(str_ends_with($text, '@') ? ' ' : '').'{{ /noparse }}';
+    }
 }

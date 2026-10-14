@@ -4,6 +4,7 @@ use Reach\StatamicTolk\Ai\Agents\SiteProfileAgent;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
+use Statamic\Facades\Addon;
 
 const PROFILE_TEXT = 'Acme Tours runs guided walking tours on Crete for curious travellers. The tone is warm and practical.';
 
@@ -25,6 +26,18 @@ beforeEach(function () {
 function siteProfile(): string
 {
     return app(Settings::class)->fresh()->siteProfile();
+}
+
+/**
+ * The site profile as it is stored, and as core reads it: core parses every addon setting as Antlers.
+ *
+ * @return array{raw: ?string, parsed: ?string}
+ */
+function storedProfile(): array
+{
+    $settings = Addon::get(Settings::PACKAGE)->settings();
+
+    return ['raw' => $settings->raw()['site_profile'] ?? null, 'parsed' => $settings->get('site_profile')];
 }
 
 it('prints the profile and the suggested terms without saving them', function () {
@@ -53,8 +66,44 @@ it('saves the profile with --save after confirmation', function () {
         ->assertExitCode(0);
 
     expect(siteProfile())->toBe(PROFILE_TEXT)
+        ->and(storedProfile())->toBe(['raw' => PROFILE_TEXT, 'parsed' => PROFILE_TEXT])
         ->and(app(Settings::class)->glossary('el'))->toHaveCount(1);
 });
+
+// Core parses every addon setting as Antlers, so such a profile used to stop the command with core's syntax error after
+// the provider call, or to be run as a template on every read of the settings.
+it('saves a profile with braces between noparse tags, so core keeps it as written', function (string $profile, string $saved, string $stored) {
+    SiteProfileAgent::fake(fn () => ['profile' => $profile, 'terms' => []]);
+
+    $this->artisan('tolk:profile', ['--save' => true])
+        ->expectsConfirmation('Save this profile as the site profile?', 'yes')
+        ->expectsOutputToContain('Saved the site profile.')
+        ->assertExitCode(0);
+
+    expect(siteProfile())->toBe($saved)
+        ->and(storedProfile())->toBe(['raw' => '{{ noparse }}'.$stored.'{{ /noparse }}', 'parsed' => $stored]);
+
+    $this->artisan('tolk:profile', ['--save' => true])
+        ->expectsOutputToContain('The settings already hold this site profile.')
+        ->assertExitCode(0);
+})->with([
+    'braces Statamic cannot read' => [
+        'We teach Antlers: tags such as {{ and }} wrap variables.',
+        'We teach Antlers: tags such as {{ and }} wrap variables.',
+        'We teach Antlers: tags such as {{ and }} wrap variables.',
+    ],
+    'an Antlers tag' => [
+        'Our templates print {{ site:name }} in the footer.',
+        'Our templates print {{ site:name }} in the footer.',
+        'Our templates print {{ site:name }} in the footer.',
+    ],
+    'noparse tags of its own' => [
+        'Write {{ /noparse }}{{ title }} and{{ noparse }} as they are.',
+        'Write {{ title }} and as they are.',
+        'Write {{ title }} and as they are.',
+    ],
+    'an @ at the end, which would escape the closing tag' => ['Find us on {{ social }} as @', 'Find us on {{ social }} as @', 'Find us on {{ social }} as @ '],
+]);
 
 it('saves nothing when the question is declined', function () {
     $this->artisan('tolk:profile', ['--save' => true])
