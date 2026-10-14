@@ -23,6 +23,7 @@ use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
+use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\ContentWriter;
@@ -902,6 +903,7 @@ describe('in a queue worker of the site', function () {
         expect(autoRuns())->toHaveCount(1)
             ->and($run->status)->toBe(RunStatus::Completed)
             ->and($run->driver)->toBe(RunDriver::Cli)
+            ->and(app(RunPlanner::class)->planOptions($run)->profile)->toBe('background')
             ->and($run->createdBy)->toBeNull()
             ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
             ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[U] A longer intro.')

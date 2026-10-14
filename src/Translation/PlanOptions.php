@@ -15,7 +15,8 @@ final readonly class PlanOptions
     /**
      * @param  ?list<string>  $fields  the handles to plan; null for every in-scope field
      * @param  array<string, string>  $skip  handles the caller rules out, with the reason the plan records for each
-     * @param  string  $profile  `web` for the editor and for runs in the browser or on a queue, `background` for the CLI;
+     * @param  string  $profile  `web` for the editor and for runs in the browser or Tolk's queue lanes, `background` for runs
+     *                           with the CLI driver (the commands, and automatic updates that no queue lane drives);
      *                           it sizes the batches, and a run calls with the profile of its driver at the time
      * @param  bool  $parallel  whether the caller runs the plan's units in parallel, as the editor does: the `web` profile
      *                          then splits a small target over `concurrency.editor` batches (T6.11)

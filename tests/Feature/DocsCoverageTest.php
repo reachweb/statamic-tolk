@@ -393,6 +393,26 @@ it('quotes the warning that runs and the command line give a field whose request
         ->and(docsText())->not->toContain('(request_rejected)');
 });
 
+// AutoUpdateTest holds an update saved inside a queue job to the CLI driver, and so to the `background` profile.
+it('says that an automatic update a job of the site drives makes the requests of the command line', function () {
+    $rows = collect(explode("\n", docsFile('configuration.md')))
+        ->mapWithKeys(fn (string $line) => preg_match('/^\| `((?:http\.timeout|batch\.max_chars)\.(?:web|background))` /', $line, $match) === 1 ? [$match[1] => $line] : []);
+    $comment = preg_replace('/\s*\n\s*\|\s*/', ' ', Str::of(File::get(DOCS_ROOT.'/config/tolk.php'))->after('| Requests and batches')->before('*/')->toString());
+
+    expect($rows->keys()->sort()->values()->all())->toBe(['batch.max_chars.background', 'batch.max_chars.web', 'http.timeout.background', 'http.timeout.web']);
+
+    foreach (['http.timeout.background', 'batch.max_chars.background'] as $key) {
+        expect($rows[$key])->toContain('a save inside a queue job');
+    }
+
+    foreach (['http.timeout.web', 'batch.max_chars.web'] as $key) {
+        expect($rows[$key])->toContain("Tolk's queue lanes")->not->toContain('or a queue')->not->toContain('or queue runs');
+    }
+
+    expect($comment)->toContain("Tolk's queue lanes")->toContain('a save inside a queue job')
+        ->and(File::get(DOCS_ROOT.'/docs/bulk-and-runs.md'))->toContain("drives the run as the saving process above would, with the command line's timeout and size (`http.timeout.background`, `batch.max_chars.background`)");
+});
+
 // RevisionsTest holds the code to it: the published origin is translated, and a working copy's translation reads current.
 it('says that with revisions the published origin is translated and a translation waiting in a working copy reads up to date', function () {
     $section = fn (string $file, string $heading) => Str::of(docsFile($file))->after("\n{$heading}\n")->before("\n#")->toString();
