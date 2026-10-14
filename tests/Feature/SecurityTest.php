@@ -654,6 +654,32 @@ describe('model output', function () {
         ],
     ]);
 
+    // A backslash or a backtick that broke a code span, or a link destination moved out of its link, restored the code
+    // span's or the destination's text as text, where its markup is raw HTML; a dropped backslash made a tag or an
+    // attribute list of escaped text. Each validated, and a run saved it.
+    it('saves the source of a Markdown block whose translation would turn its code, a link destination or escaped text into markup', function (string $body, Closure $model) {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'code');
+        $this->fakeTranslations($model);
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->get('body'))->toBe($body)
+            ->and((string) $german->augmentedValue('body'))->not->toContain('<script>')->not->toContain(' x-init=')->not->toContain('href="javascript');
+    })->with([
+        'a backslash before a code span' => ['Use `<script>alert(1)</script>` to test.', fn (string $text) => str_replace('<x1/>', '\\<x1/>', '[T] '.$text)],
+        'a backtick before a code span' => ['Use `<script>alert(1)</script>` to test.', fn (string $text) => str_replace('<x1/>', '`<x1/>', '[T] '.$text)],
+        'a backtick earlier in the text' => ['Use `<script>alert(1)</script>` to test.', fn (string $text) => '[T] `'.$text],
+        'a link destination moved out of its link' => ['Read [the story](x<script>alert(1)</script>) today.', fn (string $text) => str_replace('](<x1/>', '] <x1/>', '[T] '.$text)],
+        'a dropped backslash before a tag' => ['Type \\<script>alert(1)\\</script> to test.', fn (string $text) => str_replace('\\<', '<', '[T] '.$text)],
+        'a dropped backslash before a link' => ['Type \\[click\\](javascript:alert(1)) to test.', fn (string $text) => str_replace('\\', '', '[T] '.$text)],
+        'a dropped backslash before an attribute list' => ['Read *this*\\{x-init="go()"} today.', fn (string $text) => str_replace('\\', '', '[T] '.$text)],
+    ]);
+
     it('rejects a translation that rewrites, moves or drops the escaped markup of plain and inline segments, which are unescaped after', function (SegmentKind $kind, string $source, string $translation) {
         expect(app(SegmentValidator::class)->validate(['text' => $source, 'kind' => $kind->value], $translation))
             ->toMatch('/ is (missing|not in the source)\b/');

@@ -1,6 +1,7 @@
 <?php
 
 use Reach\StatamicTolk\Content\Markup\Placeholders;
+use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Enums\SegmentKind;
 
 it('describes the placeholders of a text', function () {
@@ -87,6 +88,48 @@ it('rejects an invalid translation', function (string $source, string $translate
     'rule 8: empty' => ['Home', '', SegmentKind::Plain, 'The translation is empty.'],
     'rule 8: whitespace only' => ['<1>Home</1>', "  \n", SegmentKind::Inline, 'The translation is empty.'],
     'rule 9: over the length limit' => ['Hi', str_repeat('a', 209), SegmentKind::Plain, 'It is too long.'],
+]);
+
+// The restored block, read back as Markdown, must give each placeholder back as what it stood for, and nothing in the
+// text may turn into markup the source does not hold: a broken code span or a moved link destination restores its text
+// as raw HTML, and a dropped backslash makes a tag, a link or an attribute list of escaped text (§A3 rule 7).
+it('rejects a Markdown translation that changes what a placeholder stands for or makes markup of text once restored', function (string $source, string $translated, string $problem) {
+    $tokenized = Tokenizer::markdown($source);
+
+    expect(Placeholders::validate($tokenized->text, $translated, SegmentKind::Markdown, $tokenized->references + $tokenized->map))->toBe($problem);
+})->with([
+    'a backslash before a code span' => ['Use `<script>alert(1)</script>` to test.', 'Χρησιμοποιήστε \\<x1/> για δοκιμή.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).'],
+    'a backtick before a code span' => ['Use `<script>alert(1)</script>` to test.', 'Χρησιμοποιήστε `<x1/> για δοκιμή.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).'],
+    'a backtick after a code span' => ['Use `<script>alert(1)</script>` to test.', 'Χρησιμοποιήστε <x1/>` για δοκιμή.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).'],
+    'a backtick earlier in the text' => ['Use `<script>alert(1)</script>` to test.', 'Χρη`σιμοποιήστε <x1/> για δοκιμή.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).'],
+    'backticks of the source moved before a code span' => ['Use ``<script>alert(1)</script>`` to test ``.', 'Χρησιμοποιήστε `` <x1/> για δοκιμή.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).'],
+    'a link destination moved out of its link' => ['Read [the story](x<script>alert(1)</script>) today.', 'Διαβάστε [την ιστορία] <x1/>) σήμερα.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).'],
+    'a backslash before an attribute list' => ['Read *this*{title="<script>alert(1)</script>"} today.', 'Διαβάστε *αυτό*\\<x1/> σήμερα.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for.'],
+    'a backslash dropped before an attribute list' => ['Read *this*\\{x-init="go()"} today.', 'Διαβάστε *αυτό*<x1/> σήμερα.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for.'],
+    'a backslash dropped before a tag' => ['Type \\<script>alert(1)\\</script> to test.', 'Πληκτρολογήστε <script>alert(1)</script> για δοκιμή.', 'It turns text into markup (<script>alert(1)</script>).'],
+    'a backslash dropped before an autolink' => ['Type \\<javascript:alert(1)> to test.', 'Πληκτρολογήστε <javascript:alert(1)> για δοκιμή.', 'It turns text into markup (<javascript:alert(1)>).'],
+    'backslashes dropped before a link' => ['Type \\[click\\](javascript:alert(1)) to test.', 'Πληκτρολογήστε [click](javascript:alert(1)) για δοκιμή.', 'It turns text into markup (javascript:alert(1)).'],
+    'a backslash before a raw tag' => ['Read <b>this</b> today.', 'Διαβάστε \\<1>αυτό</1> σήμερα.', 'A backslash, backtick or bracket in the text changes what <1> stands for.'],
+    'a reference label moved away from its text' => ['Read [the menu][menu] today.', 'Διαβάστε [το μενού] <x1/> σήμερα.', 'A backslash, backtick or bracket in the text changes what <x1/> stands for.'],
+]);
+
+it('accepts a Markdown translation that keeps what each placeholder stands for', function (string $source, string $translated) {
+    $tokenized = Tokenizer::markdown($source);
+
+    expect(Placeholders::validate($tokenized->text, $translated, SegmentKind::Markdown, $tokenized->references + $tokenized->map))->toBeNull();
+})->with([
+    'a code span moved' => ['Run `npm install` first.', 'Πρώτα τρέξτε <x1/>.'],
+    'code spans of different lengths, reordered' => ['Use ``a`b`` or `c`.', 'Χρησιμοποιήστε <x2/> ή <x1/>.'],
+    'a code span the translation adds' => ['Run `npm install` from the command line.', 'Τρέξτε <x1/> από τη `CLI`.'],
+    'a hard break after a space' => ["One line  \nAnother", "Μία γραμμή <x1/>\nΆλλη"],
+    'an escaped tag kept escaped' => ['Type \\<b> for bold', 'Γράψτε \\<b> για έντονα'],
+    'an escaped backslash before a code span' => ['A \\\\`code` here', 'Ένα \\\\<x1/> εδώ'],
+    'text shaped like a placeholder behind a backslash' => ['Type \\<x1/> next to `code`', 'Γράψτε \\<x1/> δίπλα στο <x2/>'],
+    'a reference with its label' => ['Read [the menu][menu] today.', 'Διαβάστε σήμερα [το μενού]<x1/>.'],
+    'a link and an image, reordered' => ['See [our rooms](/rooms "Rooms") and ![a view](/view.jpg).', 'Δείτε ![θέα](<x2/>) και [τα δωμάτιά μας](<x1/> "Δωμάτια").'],
+    'raw HTML and an attribute list' => ['Our <b>spa</b> is *open*{.wide} daily.', 'Το <1>σπα</1> μας είναι *ανοιχτό*<x1/> καθημερινά.'],
+    'an Antlers tag' => ['Hi {{ name }}, welcome.', 'Γεια <x1/>, καλώς ήρθατε.'],
+    'an autolink' => ['Write to <mailto:info@kyma.test> today.', 'Γράψτε σήμερα στο <x1/>.'],
 ]);
 
 it('lists every problem it finds', function () {

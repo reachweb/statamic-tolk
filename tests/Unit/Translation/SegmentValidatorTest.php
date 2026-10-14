@@ -20,6 +20,15 @@ it('names a placeholder problem', function () {
         ->and($validator->length($segment, 'Rufen Sie heute an.'))->toBeNull();
 });
 
+it('reads a Markdown translation back with what its placeholders stand for', function () {
+    $validator = new SegmentValidator;
+    $segment = [...validatorSegment('Use <x1/> to test.', kind: 'markdown'), 'originals' => ['x1' => '`<script>alert(1)</script>`']];
+
+    expect($validator->validate($segment, 'Χρησιμοποιήστε <x1/> για δοκιμή.'))->toBeNull()
+        ->and($validator->placeholders($segment, 'Χρησιμοποιήστε \\<x1/> για δοκιμή.'))
+        ->toBe('A backslash, backtick or bracket in the text changes what <x1/> stands for; it turns text into markup (<script>alert(1)</script>).');
+});
+
 it('names a translation over its max_length', function () {
     $validator = new SegmentValidator;
 

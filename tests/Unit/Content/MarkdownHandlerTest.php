@@ -179,6 +179,17 @@ it('keeps references pointing at a definition whose destination is an Antlers ta
         ->toBe("Δείτε [την ιστορία μας][our story].\n\n[our story]: {{ link to=\"about\" }} \"About us\"");
 });
 
+it('gives each leaf what its placeholders stand for in a translation, so the validator can read it back as Markdown', function () {
+    $value = "Run `npm install` and read [our story] <b>first</b>.\n\n[our story]: /about";
+    $leaf = app(ContentWalker::class)->leaves(markdownField(), $value)[0];
+
+    expect($leaf->text)->toBe('Run <x1/> and read [our story]<x2/> <1>first</1>.')
+        ->and($leaf->originals)->toBe(['x1' => '`npm install`', 'x2' => '[our story]', 1 => '<b>', '/1' => '</b>'])
+        ->and(Placeholders::validate($leaf->text, 'Διαβάστε [την ιστορία μας]<x2/> <1>πρώτα</1> και τρέξτε <x1/>.', SegmentKind::Markdown, $leaf->originals))->toBeNull()
+        ->and(Placeholders::validate($leaf->text, 'Διαβάστε [την ιστορία μας]<x2/> <1>πρώτα</1> και τρέξτε \\<x1/>.', SegmentKind::Markdown, $leaf->originals))
+        ->toBe('A backslash, backtick or bracket in the text changes what <x1/> stands for.');
+});
+
 it('passes the translation hint and no character limit', function () {
     $leaf = app(ContentWalker::class)->leaves(markdownField(['tolk_hint' => '  Keep it short ', 'character_limit' => 50]), 'Rooms by the sea')[0];
 

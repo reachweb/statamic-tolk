@@ -193,7 +193,7 @@ final class Tokenizer
     public static function restore(string $text, Tokenized $source): string
     {
         // Once the text is translated, a Markdown reference's atom writes its label instead (Tokenized::$references).
-        $originals = $text !== $source->text ? $source->references + $source->map : $source->map;
+        $originals = $text !== $source->text ? $source->originals() : $source->map;
         $restored = '';
 
         foreach (preg_split(self::PLACEHOLDERS, $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $index => $part) {

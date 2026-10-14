@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Content\Markup;
 
 use Reach\StatamicTolk\Enums\SegmentKind;
+use RuntimeException;
 
 final class Placeholders
 {
@@ -29,6 +30,16 @@ final class Placeholders
 
     // A web or email address in the text, which a Markdown field with `automatic_links` turns into a link (T12.3).
     private const string BARE_ADDRESS = '/(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
+
+    // A placeholder of a Markdown segment and the backslashes before it.
+    private const string ESCAPED_PLACEHOLDER = '/(\\\\*+)('.self::PAIR.'|'.self::ATOM.')/';
+
+    // A Markdown hard break (two spaces or a backslash before a line break), which holds nothing to break.
+    private const string HARD_BREAK = '/\A(?: {2,}+|\\\\)\z/';
+
+    // A Markdown construct that a translation may make of its text, since it holds no markup and no link target of its
+    // own: a code span (or a fence of backticks), a hard break, or a footnote reference or the label of a reference.
+    private const string INERT = '/\A(?:`| {2,}+\z|\\\\\z|\[(?:[^\[\]\\\\]++|\\\\.)*+\]\z)/s';
 
     /**
      * @return array{pairs: list<string>, atoms: list<string>, breaks: int}
@@ -75,7 +86,11 @@ final class Placeholders
         return self::visible(str_replace('<br/>', ' ', $text), $kind);
     }
 
-    public static function validate(string $source, string $translated, SegmentKind $kind): ?string
+    /**
+     * @param  array<string, string>|null  $originals  of a markdown segment: placeholder id → what it stands for in a
+     *                                                 translation (Tokenized::originals()), for rule 7's round trip
+     */
+    public static function validate(string $source, string $translated, SegmentKind $kind, ?array $originals = null): ?string
     {
         if (self::blank($translated) && ! self::blank($source)) {
             return 'The translation is empty.';
@@ -153,6 +168,10 @@ final class Placeholders
 
         if ($kind === SegmentKind::Markdown && self::addsAttributes($source, $translated)) {
             $problems[] = 'it adds an attribute list or a curly brace ({…})';
+        }
+
+        if ($kind === SegmentKind::Markdown && $problems === [] && $translated !== $source) {
+            array_push($problems, ...self::changedMarkdown($source, $translated, $originals));
         }
 
         if (mb_strlen($translated) > 4 * mb_strlen($source) + 200) {
@@ -268,9 +287,80 @@ final class Placeholders
      */
     private static function escapedTag(string $tag): string
     {
-        $escaped = preg_replace('/\x01(x\d+)\x02/', '<$1/>', Tokenizer::escape($tag)) ?? $tag;
+        return self::excerpt(preg_replace('/\x01(x\d+)\x02/', '<$1/>', Tokenizer::escape($tag)) ?? $tag);
+    }
 
-        return mb_strlen($escaped) > 80 ? mb_substr($escaped, 0, 79).'…' : $escaped;
+    private static function excerpt(string $text): string
+    {
+        return mb_strlen($text) > 80 ? mb_substr($text, 0, 79).'…' : $text;
+    }
+
+    /**
+     * Rule 7's round trip. Each placeholder keeps the backslashes before it: CommonMark reads `\{.class}` as text and
+     * `{.class}` as an attribute list, which the tokenizer reads as the same atom. Given what the placeholders stand for,
+     * the restored translation, tokenized again, must also give back each placeholder as the construct it stood for, and
+     * hold no raw HTML, link or attribute list that they do not account for: a backslash before a code span, a backtick
+     * next to or before one, or a link destination moved out of its link would restore that construct's text as text,
+     * where its markup is raw HTML, and a dropped backslash would make a tag, a link or an attribute list of escaped text.
+     *
+     * @param  array<string, string>|null  $originals
+     * @return list<string>
+     */
+    private static function changedMarkdown(string $source, string $translated, ?array $originals): array
+    {
+        $expected = self::escapedPlaceholders($source);
+        $changed = array_keys(array_diff_assoc(array_intersect_key(self::escapedPlaceholders($translated), $expected), $expected));
+        $problems = [];
+
+        if ($originals !== null) {
+            try {
+                $restored = Tokenizer::restore($translated, new Tokenized($source, SegmentKind::Markdown, $originals));
+                $left = array_count_values(Tokenizer::markdown($restored, [])->map);
+            } catch (RuntimeException) {
+                return ['it cannot be read back as Markdown'];
+            }
+
+            foreach (array_keys($expected) as $placeholder) {
+                $original = (string) ($originals[rtrim(substr($placeholder, 1, -1), '/')] ?? '');
+
+                if ($original === '' || preg_match(self::HARD_BREAK, $original) === 1) {
+                    continue;
+                }
+
+                if (($left[$original] ?? 0) > 0) {
+                    $left[$original]--;
+                } else {
+                    $changed[] = $placeholder;
+                }
+            }
+
+            foreach ($left as $markup => $count) {
+                if ($count > 0 && preg_match(self::INERT, (string) $markup) !== 1) {
+                    $problems[] = 'it turns text into markup ('.self::excerpt((string) $markup).')';
+                }
+            }
+        }
+
+        return [
+            ...array_map(fn (string $placeholder) => "a backslash, backtick or bracket in the text changes what {$placeholder} stands for", array_values(array_unique($changed))),
+            ...$problems,
+        ];
+    }
+
+    /**
+     * @return array<string, bool> each placeholder as written → whether an odd run of backslashes stands before it
+     */
+    private static function escapedPlaceholders(string $text): array
+    {
+        preg_match_all(self::ESCAPED_PLACEHOLDER, $text, $matches, PREG_SET_ORDER);
+
+        $escaped = [];
+
+        foreach ($matches as [, $backslashes, $placeholder]) {
+            $escaped[$placeholder] = strlen($backslashes) % 2 === 1;
+        }
+
+        return $escaped;
     }
 
     /**

@@ -11,7 +11,7 @@ use Reach\StatamicTolk\Enums\SegmentKind;
 final class SegmentValidator
 {
     /**
-     * @param  array{text: string, kind: string, max_length?: ?int, plural_form?: bool}  $segment
+     * @param  array{text: string, kind: string, max_length?: ?int, plural_form?: bool, originals?: array<string, string>}  $segment
      */
     public function validate(array $segment, string $translation): ?string
     {
@@ -28,11 +28,11 @@ final class SegmentValidator
     }
 
     /**
-     * The rules of §A3.
+     * The rules of §A3. A markdown segment's `originals` let rule 7 read the translation back as Markdown.
      */
     public function placeholders(array $segment, string $translation): ?string
     {
-        return Placeholders::validate((string) $segment['text'], $translation, SegmentKind::from($segment['kind']));
+        return Placeholders::validate((string) $segment['text'], $translation, SegmentKind::from($segment['kind']), $segment['originals'] ?? null);
     }
 
     public function pluralForm(array $segment, string $translation): ?string

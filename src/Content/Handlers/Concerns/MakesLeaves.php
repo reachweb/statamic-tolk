@@ -51,12 +51,13 @@ trait MakesLeaves
             return null;
         }
 
-        $translated = $translate($this->leaf($tokenized->text, $tokenized->kind, $tokenized->placeholders, $hint, $context, $pluralForm));
+        $originals = $tokenized->kind === SegmentKind::Markdown ? $tokenized->originals() : [];
+        $translated = $translate($this->leaf($tokenized->text, $tokenized->kind, $tokenized->placeholders, $hint, $context, $pluralForm, $originals));
 
         return $translated === $tokenized->text ? null : Tokenizer::restore($translated, $tokenized);
     }
 
-    private function leaf(string $text, SegmentKind $kind, array $placeholders, ?string $hint, WalkContext $context, bool $pluralForm = false): Leaf
+    private function leaf(string $text, SegmentKind $kind, array $placeholders, ?string $hint, WalkContext $context, bool $pluralForm = false, array $originals = []): Leaf
     {
         return new Leaf(
             text: $text,
@@ -66,6 +67,7 @@ trait MakesLeaves
             hint: $hint,
             placeholders: $placeholders,
             pluralForm: $pluralForm,
+            originals: $originals,
         );
     }
 

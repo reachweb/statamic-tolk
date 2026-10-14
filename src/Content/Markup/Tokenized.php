@@ -18,4 +18,14 @@ final readonly class Tokenized
         public array $placeholders = [],
         public array $references = [],
     ) {}
+
+    /**
+     * What restore() writes for each placeholder into a translated text: a reference's label, otherwise the original.
+     *
+     * @return array<string, string>
+     */
+    public function originals(): array
+    {
+        return array_replace($this->map, $this->references);
+    }
 }

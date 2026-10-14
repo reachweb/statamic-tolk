@@ -353,6 +353,7 @@ final readonly class Planner
             'before' => null,
             'after' => null,
             'translation' => $translation,
+            ...($leaf->kind === SegmentKind::Markdown ? ['originals' => $leaf->originals] : []),
         ];
     }
 

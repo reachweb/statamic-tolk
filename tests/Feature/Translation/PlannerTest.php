@@ -236,6 +236,19 @@ describe('fields and segments', function () {
         ]]);
     });
 
+    it('gives a markdown segment what its placeholders stand for, which the validator reads the translation back with', function () {
+        $this->makeCollection('pages', ['en', 'el'], [
+            'body' => ['type' => 'markdown', 'localizable' => true],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['body' => 'Run `npm install` first.'], 'start');
+
+        expect(planTarget($origin)->segments['s1'])->toMatchArray([
+            'kind' => 'markdown',
+            'text' => 'Run <x1/> first.',
+            'originals' => ['x1' => '`npm install`'],
+        ])->and(planTarget($this->origin, ['fields' => ['seo_title']])->segments['s1'])->not->toHaveKey('originals');
+    });
+
     it('records the source fingerprint and the target text fingerprint of each field', function () {
         localizationOfEveryStatus($this->origin);
 
