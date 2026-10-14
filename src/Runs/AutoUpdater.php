@@ -72,6 +72,21 @@ final readonly class AutoUpdater
     }
 
     /**
+     * Whether saving the entry now, as $user, updates its translations once core has created its localizations: core
+     * fires EntrySaved for a new root of a collection that propagates before it creates them, so sites() is still empty.
+     * The job runs after they exist and checks applies() again.
+     */
+    public function appliesOncePropagated(EntryContract $entry, ?User $user = null): bool
+    {
+        return $entry->collection()->propagate()
+            && $entry->isRoot()
+            && $entry->directDescendants()->isEmpty()
+            && $this->covers($entry)
+            && $entry->published()
+            && $this->accessible($this->families->originSites($entry), $user) !== [];
+    }
+
+    /**
      * Whether the settings update the entries of the entry's collection automatically.
      */
     public function covers(EntryContract $entry): bool
@@ -94,9 +109,7 @@ final readonly class AutoUpdater
      */
     public function sites(EntryContract $entry, ?User $user = null): array
     {
-        $sites = $this->families->originSites($entry, $this->settings->autoUpdateCreate());
-
-        return $user === null ? $sites : array_values(array_filter($sites, fn (string $site) => $user->can('view', Site::get($site))));
+        return $this->accessible($this->families->originSites($entry, $this->settings->autoUpdateCreate()), $user);
     }
 
     /**
@@ -210,5 +223,14 @@ final readonly class AutoUpdater
         }
 
         return null;
+    }
+
+    /**
+     * @param  list<string>  $sites
+     * @return list<string> those $user may access, or all of them without a user
+     */
+    private function accessible(array $sites, ?User $user): array
+    {
+        return $user === null ? $sites : array_values(array_filter($sites, fn (string $site) => $user->can('view', Site::get($site))));
     }
 }

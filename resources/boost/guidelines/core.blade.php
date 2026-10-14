@@ -64,7 +64,7 @@ Every command works with `php please` and `php artisan`. They run without a CP u
 
 A command that translates calls a paid provider and saves content. Prefer `--dry-run` while exploring, and do not run `tolk:translate` or `tolk:site` unless asked to.
 
-With the `auto_update` setting on (**Update translations automatically**, off by default), every save of a published entry in its origin, from code, an import or a seeder too, starts a run that updates its localizations, and with `auto_update_create` creates the missing ones, calling a paid provider. Check `resources/addons/statamic-tolk.yaml` before saving entries in bulk from code, and ask before an import that would trigger it.
+With the `auto_update` setting on (**Update translations automatically**, off by default), every save of a published entry in its origin, from code, an import or a seeder too, starts a run that updates its localizations (for a new entry of a collection with `propagate: true`, the ones core creates for it), and with `auto_update_create` creates the missing ones, calling a paid provider. Check `resources/addons/statamic-tolk.yaml` before saving entries in bulk from code, and ask before an import that would trigger it.
 
 ### Translating another fieldtype
 

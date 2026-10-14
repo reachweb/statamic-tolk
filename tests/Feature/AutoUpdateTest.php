@@ -28,6 +28,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 
 beforeEach(function () {
@@ -155,6 +156,38 @@ describe('the setting', function () {
         Bus::assertDispatchedAfterResponse(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $page->id());
     });
 
+    it('dispatches an update for a new published entry of a collection that propagates, whose localizations core creates after EntrySaved', function () {
+        Bus::fake([UpdateTranslations::class]);
+        $admin = $this->signInAdmin();
+        Collection::find('articles')->propagate(true)->save();
+        autoOn();
+
+        $fresh = $this->makeEntry('articles', 'en', ['title' => 'Fresh', 'intro' => 'Just written.'], 'fresh');
+
+        Bus::assertDispatchedAfterResponseTimes(UpdateTranslations::class, 1);
+        Bus::assertDispatchedAfterResponse(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $fresh->id() && $job->userId === (string) $admin->id());
+        expect(app(AutoUpdater::class)->sites($fresh))->toBe(['el', 'de']);
+    });
+
+    it('updates nothing for a new entry of a collection that propagates when it is a draft, outside the list, or in no site the user may access', function () {
+        Bus::fake([UpdateTranslations::class]);
+        Collection::find('articles')->propagate(true)->save();
+        $this->signInAdmin();
+        autoOn();
+
+        Entry::make()->collection('articles')->locale('en')->slug('draft')->published(false)->data(['title' => 'Draft'])->save();
+
+        autoOn(['auto_update_collections' => ['pages']]);
+        $this->makeEntry('articles', 'en', ['title' => 'Elsewhere'], 'elsewhere');
+
+        autoOn(['auto_update_collections' => []]);
+        $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'create articles entries', 'edit articles entries']);
+        $this->makeEntry('articles', 'en', ['title' => 'English only'], 'english-only');
+
+        Bus::assertNotDispatchedAfterResponse(UpdateTranslations::class);
+        expect(Entry::query()->where('collection', 'articles')->where('site', 'el')->count())->toBe(3);
+    });
+
     it('lets an entry without localizations create them only when the settings say so', function () {
         Bus::fake([UpdateTranslations::class]);
         autoOn(['auto_update_create' => true]);
@@ -230,6 +263,28 @@ describe('without a queue worker', function () {
             ->and($german->published())->toBeFalse()
             ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.')
             ->and(autoRuns()[0]->scope['sites'])->toBe(['el', 'de']);
+    });
+
+    it('translates the localizations a collection that propagates creates for a new published entry', function () {
+        $this->signInAdmin();
+        Collection::find('articles')->propagate(true)->save();
+        autoOn();
+        $this->fakeTranslations();
+
+        $fresh = $this->makeEntry('articles', 'en', ['title' => 'Fresh', 'intro' => 'Just written.'], 'fresh');
+
+        expect(autoEntry($fresh, 'el')->get('intro'))->toBeNull();
+
+        afterResponse();
+        $run = autoRuns()[0] ?? null;
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and($run->scope['sites'])->toBe(['el', 'de'])
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and(autoEntry($fresh, 'el')->get('title'))->toBe('[T] Fresh')
+            ->and(autoEntry($fresh, 'el')->get('intro'))->toBe('[T] Just written.')
+            ->and(autoEntry($fresh, 'de')->get('intro'))->toBe('[T] Just written.')
+            ->and(autoEntry($fresh, 'de')->published())->toBeTrue();
     });
 
     it('translates into the sites the user who saved may edit', function () {

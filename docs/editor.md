@@ -124,6 +124,7 @@ With **Update translations automatically** on in the settings (the Automation ta
 - A localization's form that is open while the update saves into it does not show the update, and saving that form puts back what it was opened with ([Forms opened before a run](#forms-opened-before-a-run)).
 - The run translates as you: the sites you may not access or edit are left out, also further along a chain of localizations translated from one another. It is listed on the Runs page as an automatic update, and its cost counts under **Automatic updates** on the Overview.
 - The localization's banner says when an automatic update last saved it, "Updated automatically from English on 9 Oct 2026, 10:42.", with "not published yet" while the update waits in the working copy of a published localization in a collection with revisions (unless **Publish updates** is on).
+- A new published entry of a collection with **Propagate** on, whose localizations Statamic creates as it saves the entry, is translated into them, also without **Create missing localizations**.
 - Saves from code (an import, a form handler) count too, when the entry is published.
 - Entries only: terms, global sets and the navigation are updated with **Update translations**, bulk runs or the command line.
 
