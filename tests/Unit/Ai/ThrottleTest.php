@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Support\Facades\Cache;
 use Reach\StatamicTolk\Ai\Throttle;
 
@@ -52,4 +53,27 @@ it('uses the configured cache store', function () {
 
     expect(Cache::store('tolk-throttle')->has('tolk:throttle:openai'))->toBeTrue()
         ->and(Cache::has('tolk:throttle:openai'))->toBeFalse();
+});
+
+it('reads a pause back that the cache store returns as a numeric string, as the Redis store does', function () {
+    Cache::extend('numeric-strings', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function get($key)
+        {
+            $value = parent::get($key);
+
+            return is_int($value) ? (string) $value : $value;
+        }
+    }));
+    config(['cache.stores.tolk-redis' => ['driver' => 'numeric-strings'], 'tolk.cache_store' => 'tolk-redis']);
+
+    $throttle = app(Throttle::class);
+    $throttle->pause('anthropic', 30);
+    $throttle->pause('anthropic', 5);
+
+    expect(Cache::store('tolk-redis')->get('tolk:throttle:anthropic'))->toBeString()
+        ->and($throttle->pausedFor('anthropic'))->toBe(30);
+
+    $this->travel(12)->seconds();
+    expect($throttle->pausedFor('anthropic'))->toBe(18);
 });

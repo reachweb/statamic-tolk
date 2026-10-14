@@ -31,7 +31,7 @@ class Throttle
     {
         $until = $this->cache()->get($this->key($provider));
 
-        return is_int($until) ? $until : 0;
+        return is_numeric($until) ? (int) $until : 0;
     }
 
     private function key(string $provider): string
