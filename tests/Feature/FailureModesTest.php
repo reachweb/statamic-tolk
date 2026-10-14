@@ -469,7 +469,7 @@ describe('an answer the content filter stops', function () {
 
         $result = failingTranslate($origin, ['translator' => 'openai:gpt-6.1-sol']);
 
-        expect($result->warnings)->toBe(['Title: "Hello" was left untranslated (refused).'])
+        expect($result->warnings)->toBe(['Title: "Hello" was left untranslated (the model refused it).'])
             ->and(Http::recorded())->toHaveCount(1);
     });
 });
