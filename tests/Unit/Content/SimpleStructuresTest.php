@@ -76,6 +76,23 @@ it('translates only the cells that are leaves, and keeps the table shape', funct
     ]);
 });
 
+it('offers a cell, an item or a value with HTML tags as an html leaf, as a text field does', function () {
+    $table = [['cells' => ['Served <b>daily</b>', 'Kids < 12 & <a href="/spa">spa</a>']]];
+    $tableField = ContentFixtures::field('table');
+
+    expect(simpleLeaves($tableField, $table))->toBe([
+        ['html', 'Served <1>daily</1>', 'Prices', ['table', 0, 'cells', 0]],
+        ['html', 'Kids < 12 & <1>spa</1>', 'Prices', ['table', 0, 'cells', 1]],
+    ])->and(simpleTranslate($tableField, $table))->toBe([['cells' => ['[el] Served <b>daily</b>', '[el] Kids < 12 & <a href="/spa">spa</a>']]])
+        ->and(simpleLeaves(ContentFixtures::field('list'), ['<a href="/spa">Spa</a> access', 'Kids < 12']))->toBe([
+            ['html', '<1>Spa</1> access', 'Features', ['list', 0]],
+            ['plain', 'Kids &lt; 12', 'Features', ['list', 1]],
+        ])
+        ->and(simpleLeaves(ContentFixtures::field('array-dynamic'), ['when' => 'Open <i>daily</i> from {{ hours }}']))->toBe([
+            ['html', 'Open <1>daily</1> from <x1/>', 'Facts › when', ['array_dynamic', 'when']],
+        ]);
+});
+
 it('offers each string item of a list, and leaves numbers and identifiers untouched', function () {
     $field = ContentFixtures::field('list');
     $value = ContentFixtures::value('list');

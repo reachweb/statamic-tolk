@@ -73,7 +73,7 @@ final class SeoMetaHandler implements FieldHandler
 
 What it uses:
 
-- `MakesLeaves` is the trait Tolk's own handlers use. `plain()` offers one string as a leaf and returns its translation, or the string itself when it is not text (empty, a URL, a class name, see [Content types](content-types.md#what-counts-as-text)) or kept its text. It escapes `<`, `>` and `&` for the model and carries Antlers tags through as placeholders. `hint()` reads the field's **Translation hint** option.
+- `MakesLeaves` is the trait Tolk's own handlers use. `plain()` offers one string as a leaf and returns its translation, or the string itself when it is not text (empty, a URL, a class name, see [Content types](content-types.md#what-counts-as-text)) or kept its text. A string with HTML tags reaches the model with its tags as placeholders, as in a text field; in any other, `<`, `>` and `&` are escaped. Antlers tags are carried through as placeholders. `hint()` reads the field's **Translation hint** option.
 - `$context->with($key, $label)` extends the leaf's path (`seo.title`) and its label. The model sees the label path ("SEO › Meta title"), which tells it what the text is for; so does the hint.
 - A value of an unexpected shape is returned untouched. When that is worth telling the user, `$context->warn('…')` records a note that is shown with the field's result, on the run page and in the editor; Tolk's own Bard handler does this for data in the format of Statamic 2, which it leaves as it is.
 

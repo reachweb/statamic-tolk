@@ -13,10 +13,10 @@ use Statamic\Fields\Field;
 /**
  * One string of a Laravel translation file, the value of a synthetic field of LangTarget or FormsTarget (§A16). Laravel's
  * parameters (`:name`, `:Name`, `:NAME`) are atoms. A string is cut at each `|`, as Laravel's MessageSelector cuts a
- * pluralised one, because nothing tells whether `trans_choice()` reads it: each variant is a `plain` leaf under
- * {…path, index}, marked as a plural form, and its `{n}` or `[a,b]` prefix and the whitespace around its text stay
- * outside the leaf. A field whose config sets PLURAL to false is never cut, as for a form text, which Statamic looks up
- * with `trans()`.
+ * pluralised one, because nothing tells whether `trans_choice()` reads it: each variant is a leaf under {…path, index},
+ * marked as a plural form, and its `{n}` or `[a,b]` prefix and the whitespace around its text stay outside the leaf. A
+ * field whose config sets PLURAL to false is never cut, as for a form text, which Statamic looks up with `trans()`. A
+ * text with HTML tags is an `html` leaf, as in a text field, and any other a `plain` one.
  */
 final class LangStringHandler implements FieldHandler
 {
@@ -72,6 +72,8 @@ final class LangStringHandler implements FieldHandler
 
     private static function tokenize(string $text): Tokenized
     {
-        return Tokenizer::plainWithAtoms($text, self::PARAMETER);
+        return Tokenizer::containsHtml($text)
+            ? Tokenizer::htmlWithAtoms($text, self::PARAMETER)
+            : Tokenizer::plainWithAtoms($text, self::PARAMETER);
     }
 }

@@ -316,6 +316,29 @@ final class Tokenizer
         return self::plain($text, $atoms);
     }
 
+    /**
+     * An `html` text in which, besides tags and Antlers tags, each match of the pattern $atoms in the text between tags is
+     * an atom, such as Laravel's `:parameters` (LangStringHandler). One inside a tag is part of that tag's placeholder.
+     */
+    public static function htmlWithAtoms(string $text, string $atoms): Tokenized
+    {
+        $tokens = [];
+
+        foreach (self::lex($text, self::HTML_TOKENS) as $token) {
+            if ($token['type'] !== 'text') {
+                $tokens[] = $token;
+
+                continue;
+            }
+
+            foreach (preg_split($atoms, $token['text'], -1, PREG_SPLIT_DELIM_CAPTURE) as $position => $piece) {
+                $tokens[] = $position % 2 === 1 ? ['type' => 'atom', 'text' => $piece, 'name' => null] : ['type' => 'text', 'text' => $piece];
+            }
+        }
+
+        return self::build($tokens, SegmentKind::Html);
+    }
+
     private static function plain(string $text, ?string $atoms = null): Tokenized
     {
         $tokenized = '';

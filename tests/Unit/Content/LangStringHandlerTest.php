@@ -114,3 +114,14 @@ it('escapes markup in the text and carries Antlers tags as atoms', function () {
         ->and(app(ContentWalker::class)->inject(langStringField(), 'Kids < 12 & {{ site:name }} for :name', ['Kinder &lt; 12 &amp; <x1/> für <x2/>']))
         ->toBe('Kinder < 12 & {{ site:name }} für :name');
 });
+
+it('offers a string with HTML tags as an html leaf, with its parameters outside the tags as atoms', function () {
+    $value = 'Read our <a href=":url">terms</a>, :name, and {{ site:name }}|Read <b>:count</b> terms';
+    $leaves = langStringLeaves($value);
+
+    expect(array_map(fn (Leaf $leaf) => [$leaf->kind, $leaf->text, $leaf->placeholders], $leaves))->toBe([
+        [SegmentKind::Html, 'Read our <1>terms</1>, <x1/>, and <x2/>', [1 => '<a href=":url">', 'x1' => ':name', 'x2' => '{{ site:name }}']],
+        [SegmentKind::Html, 'Read <1><x1/></1> terms', [1 => '<b>', 'x1' => ':count']],
+    ])->and(app(ContentWalker::class)->inject(langStringField(), $value, ['Lesen Sie <x2/>, <x1/>, unsere <1>AGB</1>', '<1><x1/></1> AGB lesen']))
+        ->toBe('Lesen Sie {{ site:name }}, :name, unsere <a href=":url">AGB</a>|<b>:count</b> AGB lesen');
+});

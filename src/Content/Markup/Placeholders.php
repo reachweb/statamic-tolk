@@ -22,6 +22,11 @@ final class Placeholders
     // The "{" of a CommonMark attribute list, which Statamic's Markdown parser renders with every attribute but on*.
     private const string ATTRIBUTE_LIST = '/\{(?='.Tokenizer::ATTRIBUTES_START.')/i';
 
+    // What a browser starts to read as a tag in the unescaped text of a `plain` or `inline` segment, up to its ">" or to the
+    // next "<": a "<" before a letter, "/", "!", "?" or an atom (marked \x01x1\x02), which may stand for a letter once the
+    // page is rendered. Bytewise, so text that is not valid UTF-8 cannot make the scan fail.
+    private const string UNESCAPED_TAG = '/<[a-zA-Z\/!?\x01][^<>]*+>?/';
+
     // A web or email address in the text, which a Markdown field with `automatic_links` turns into a link (T12.3).
     private const string BARE_ADDRESS = '/(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
 
@@ -129,6 +134,10 @@ final class Placeholders
             $problems[] = 'it adds an escaped < or > (&lt; or &gt;)';
         }
 
+        if ($kind->escapes()) {
+            array_push($problems, ...self::changedTags($source, $translated));
+        }
+
         if ($kind === SegmentKind::Markdown && preg_match_all(self::RAW_DESTINATION, $translated) > preg_match_all(self::RAW_DESTINATION, $source)) {
             $problems[] = 'a link destination is not a placeholder';
         }
@@ -205,6 +214,58 @@ final class Placeholders
     {
         return substr_count($translated, '&lt;') > substr_count($source, '&lt;')
             || substr_count($translated, '&gt;') > substr_count($source, '&gt;');
+    }
+
+    /**
+     * The escaped tags of the source that the translation drops, then those it holds and the source does not. Once the
+     * text is unescaped, each is a tag, so a translation that turns `&lt;b&gt;` into `&lt;script&gt;`, changes an
+     * attribute, drops a closing tag or puts a letter after an escaped "<" would write markup. Paired tags and breaks
+     * hold no text and are left out; an atom keeps its place, so an attribute after it still counts.
+     *
+     * @return list<string>
+     */
+    private static function changedTags(string $source, string $translated): array
+    {
+        $expected = self::unescapedTags($source);
+        $actual = self::unescapedTags($translated);
+        $problems = [];
+
+        foreach ($expected as $tag => $count) {
+            if (($actual[$tag] ?? 0) < $count) {
+                $problems[] = self::escapedTag($tag).' is missing';
+            }
+        }
+
+        foreach ($actual as $tag => $count) {
+            if ($count > ($expected[$tag] ?? 0)) {
+                $problems[] = self::escapedTag($tag).' is not in the source';
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function unescapedTags(string $text): array
+    {
+        // A raw tag that is no placeholder is rule 5's; left in, it would be reported again here.
+        $text = preg_replace_callback(self::TOKENS, fn (array $match) => ($match[3] ?? '') !== '' ? "\x01{$match[3]}\x02" : '', $text) ?? $text;
+
+        preg_match_all(self::UNESCAPED_TAG, Tokenizer::unescape($text), $matches);
+
+        return array_count_values($matches[0]);
+    }
+
+    /**
+     * A tag as the model wrote it, escaped and with its atoms, cut short when it runs on unclosed.
+     */
+    private static function escapedTag(string $tag): string
+    {
+        $escaped = preg_replace('/\x01(x\d+)\x02/', '<$1/>', Tokenizer::escape($tag)) ?? $tag;
+
+        return mb_strlen($escaped) > 80 ? mb_substr($escaped, 0, 79).'…' : $escaped;
     }
 
     /**

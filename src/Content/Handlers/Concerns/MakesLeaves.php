@@ -17,12 +17,15 @@ trait MakesLeaves
     private const string WHITESPACE = " \t\r\n";
 
     /**
-     * Offers one string as a `plain` leaf and returns its translation, or the string itself when it is no leaf or its
-     * leaf kept its text.
+     * Offers one string as a leaf and returns its translation, or the string itself when it is no leaf or its leaf kept
+     * its text. A string with HTML tags is an `html` leaf, as in a text field, so its tags are placeholders the model
+     * must return; any other is a `plain` one.
      */
     private function plain(string $text, ?string $hint, Closure $translate, WalkContext $context): string
     {
-        return $this->offer(Tokenizer::tokenize($text, SegmentKind::Plain), $hint, $translate, $context) ?? $text;
+        $kind = Tokenizer::containsHtml($text) ? SegmentKind::Html : SegmentKind::Plain;
+
+        return $this->offer(Tokenizer::tokenize($text, $kind), $hint, $translate, $context) ?? $text;
     }
 
     /**

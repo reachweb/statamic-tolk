@@ -24,6 +24,7 @@ use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Support\Language;
 use Reach\StatamicTolk\Support\Sanitizer;
+use Reach\StatamicTolk\Tests\Support\FormFixtures;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
@@ -250,6 +251,24 @@ function securityPrompt(Request $request): array
 function securityAnswer(array $translations): PromiseInterface
 {
     return Http::response(ProviderFixtures::withText('anthropic', json_encode(['translations' => $translations], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+}
+
+/**
+ * A model that turns the markup of each segment into script: it rewrites escaped tags and attributes, makes a tag of an
+ * escaped "<", and adds a raw tag where it finds nothing to rewrite. $kinds collects the kind of every segment it sees.
+ */
+function securityMarkupAttack(array &$kinds = []): Closure
+{
+    return function (string $text, array $segment) use (&$kinds) {
+        $kinds[] = $segment['kind'];
+        $attacked = str_replace(
+            ['href="<x1/>"', 'href="/privacy"', '&lt;b&gt;', '&lt;/b&gt;', '&lt;/a&gt;', '&lt; '],
+            ['href="javascript:alert(1)" title="<x1/>"', 'href="/privacy" onmouseover="alert(1)"', '&lt;script&gt;', '&lt;/script&gt;', '', '&lt;img src=x onerror=alert(1) '],
+            $text,
+        );
+
+        return $attacked === $text ? $text.' <img src=x onerror=alert(1)>' : $attacked;
+    };
 }
 
 /**
@@ -524,7 +543,7 @@ describe('model output', function () {
 
     it('rejects an escaped tag the source did not have in plain and inline segments, which are unescaped after', function (SegmentKind $kind, string $source) {
         expect(app(SegmentValidator::class)->validate(['text' => $source, 'kind' => $kind->value], $source.' &lt;script&gt;alert(1)&lt;/script&gt;'))
-            ->toBe('It adds an escaped < or > (&lt; or &gt;).');
+            ->toBe('It adds an escaped < or > (&lt; or &gt;); &lt;script&gt; is not in the source; &lt;/script&gt; is not in the source.');
     })->with([
         'plain' => [SegmentKind::Plain, 'A short intro.'],
         'inline' => [SegmentKind::Inline, 'Book <1>a room</1> today.'],
@@ -575,6 +594,69 @@ describe('model output', function () {
         'made of the source\'s own braces' => ['Pick a number from {1, 2} today.', 'Διαλέξτε {x-init=go()} έναν αριθμό από 1, 2 σήμερα.'],
         'closed by a placeholder' => ['Pick {1, 2} or *this*<x1/>.', 'Διαλέξτε {x-init=go();//<x1/> 1, 2 ή *αυτό*.'],
     ]);
+
+    it('rejects a translation that rewrites, moves or drops the escaped markup of plain and inline segments, which are unescaped after', function (SegmentKind $kind, string $source, string $translation) {
+        expect(app(SegmentValidator::class)->validate(['text' => $source, 'kind' => $kind->value], $translation))
+            ->toMatch('/ is (missing|not in the source)\b/');
+    })->with([
+        'a link target in a translation string' => [SegmentKind::Plain, 'Read our &lt;a href="<x1/>"&gt;terms&lt;/a&gt;.', 'Lesen Sie unsere &lt;a href="javascript:alert(1)" title="<x1/>"&gt;AGB&lt;/a&gt;.'],
+        'an event handler on a form text\'s link' => [SegmentKind::Plain, 'Read our &lt;a href="/privacy"&gt;privacy policy&lt;/a&gt;.', 'Lesen Sie unsere &lt;a href="/privacy" onmouseover="alert(1)"&gt;Datenschutzerklärung&lt;/a&gt;.'],
+        'a script in a table cell' => [SegmentKind::Plain, 'Served &lt;b&gt;daily&lt;/b&gt;', '&lt;script&gt;alert(1)&lt;/script&gt;'],
+        'a dropped closing tag in a list item' => [SegmentKind::Plain, '&lt;a href="/spa"&gt;Spa&lt;/a&gt; access', 'Πρόσβαση στο &lt;a href="/spa"&gt;σπα'],
+        'a tag moved into an array value\'s atom' => [SegmentKind::Plain, 'Open &lt;i&gt;daily&lt;/i&gt; from <x1/>', 'Täglich &lt;i&gt;geöffnet ab &lt;<x1/>'],
+        'a single < in a text' => [SegmentKind::Plain, 'Kids &lt; 12 eat free', 'Kinder &lt;img src=x onerror=alert(1) essen gratis'],
+        'a Bard paragraph, which bard_text prints as it is' => [SegmentKind::Inline, 'Type &lt;b&gt;<1>bold</1>&lt;/b&gt; here', 'Γράψτε &lt;script&gt;<1>alert(1)</1>&lt;/script&gt; εδώ'],
+    ]);
+
+    it('saves the source text of table cells, list items, array values and a text with a single < instead of a translation that turns their markup into script', function () {
+        $this->makeCollection('menus', ['en', 'el', 'de'], [
+            'title' => ['type' => 'text', 'localizable' => true, 'display' => 'Title'],
+            'prices' => ['type' => 'table', 'localizable' => true, 'display' => 'Prices'],
+            'features' => ['type' => 'list', 'localizable' => true, 'display' => 'Features'],
+            'facts' => ['type' => 'array', 'localizable' => true, 'display' => 'Facts'],
+        ]);
+        $data = [
+            'title' => 'Kids < 12 eat free',
+            'prices' => [['cells' => ['Breakfast', 'Served <b>daily</b>']]],
+            'features' => ['<a href="/spa">Spa</a> access'],
+            'facts' => ['when' => 'Open <b>daily</b>'],
+        ];
+        $origin = $this->makeEntry('menus', 'en', $data, 'menu');
+        $kinds = [];
+        $this->fakeTranslations(securityMarkupAttack($kinds));
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->data()->only(array_keys($data))->all())->toBe($data)
+            ->and(json_encode($german->data()->all()))->not->toContain('script')->not->toContain('onerror')
+            ->and($kinds)->toContain('plain')->toContain('html');
+    });
+
+    it('writes the source text of translation strings and form texts instead of a translation that turns their markup into script', function () {
+        $this->app->useLangPath($this->temporaryPath('lang'));
+        File::ensureDirectoryExists(lang_path('en'));
+        File::put(lang_path('en.json'), json_encode(['Read our terms' => 'Read our <a href=":url">terms</a>.'], JSON_THROW_ON_ERROR));
+        File::put(lang_path('en/booking.php'), "<?php\n\nreturn ['note' => 'Kids < 12 eat free', 'served' => 'Served <b>daily</b>, :count times'];\n");
+        FormFixtures::make('privacy', 'Privacy', [
+            'consent' => ['type' => 'toggle', 'display' => 'Consent', 'instructions' => 'Read our <a href="/privacy">privacy policy</a>.'],
+        ]);
+        $kinds = [];
+        $this->fakeTranslations(securityMarkupAttack($kinds));
+
+        expect(Artisan::call('tolk:lang', ['sites' => ['de']]))->toBe(0)
+            ->and(Artisan::call('tolk:forms', ['sites' => ['de']]))->toBe(0);
+
+        $json = json_decode(File::get(lang_path('de.json')), true, flags: JSON_THROW_ON_ERROR);
+        $booking = (static fn (string $file) => include $file)(lang_path('de/booking.php'));
+
+        expect($json['Read our terms'])->toBe('Read our <a href=":url">terms</a>.')
+            ->and($json['Read our <a href="/privacy">privacy policy</a>.'])->toBe('Read our <a href="/privacy">privacy policy</a>.')
+            ->and($booking)->toBe(['note' => 'Kids < 12 eat free', 'served' => 'Served <b>daily</b>, :count times'])
+            ->and(File::get(lang_path('de.json')).File::get(lang_path('de/booking.php')))->not->toContain('javascript')->not->toContain('onmouseover')->not->toContain('onerror')->not->toContain('script')
+            ->and($kinds)->toContain('plain')->toContain('html');
+    });
 
     it('delivers and saves the source text instead of a translation that keeps adding markup', function (string $markdown) {
         $this->fakeTranslations(fn (string $text, array $segment) => $segment['kind'] === 'markdown'
