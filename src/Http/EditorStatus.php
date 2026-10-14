@@ -172,11 +172,11 @@ final readonly class EditorStatus
             return null;
         }
 
-        $at = $this->updater->lastUpdate($source, $item->locale());
+        $update = $this->updater->lastUpdate($source, $item->locale());
 
-        return $at === null ? null : [
-            'at' => $at->toIso8601ZuluString(),
-            'unpublished' => $item->revisionsEnabled() && $item->published() && $item->hasWorkingCopy(),
+        return $update === null ? null : [
+            'at' => ($update->finishedAt ?? $update->progressedAt ?? $update->createdAt)->toIso8601ZuluString(),
+            'unpublished' => $this->updater->unpublished($item, $update),
         ];
     }
 

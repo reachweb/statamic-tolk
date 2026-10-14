@@ -935,4 +935,56 @@ describe('the banner', function () {
         autoOn(['auto_update' => false]);
         $status()->assertJsonPath('localization.auto_updated', null);
     });
+
+    describe('with revisions', function () {
+        beforeEach(function () {
+            $this->admin = $this->signInAdmin();
+            autoTranslated($this->hello, ['el']);
+            config(['statamic.revisions.enabled' => true]);
+            Collection::find('articles')->revisionsEnabled(true)->save();
+            autoEntry($this->hello, 'el')->publish(['user' => $this->admin]);
+            $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+            $this->travel(5)->minutes();
+
+            $this->unpublished = fn () => $this->getJson(cp_route('tolk.editor.status', ['reference' => autoEntry($this->hello, 'el')->reference()]))
+                ->assertOk()
+                ->json('localization.auto_updated.unpublished');
+            // An editor's change saved from the CP: it goes into the working copy of the published localization.
+            $this->editWorkingCopy = function (string $title) {
+                $this->travel(1)->minutes();
+                autoEntry($this->hello, 'el')->fromWorkingCopy()->set('title', $title)->makeWorkingCopy()->user($this->admin)->save();
+            };
+        });
+
+        it('says the update waits in the working copy until somebody publishes the localization', function () {
+            autoOn();
+            app()->call([new UpdateTranslations($this->hello->id(), (string) $this->admin->id()), 'handle']);
+
+            expect(autoEntry($this->hello, 'el')->fromWorkingCopy()->get('intro'))->toBe('[T] A longer intro.')
+                ->and(($this->unpublished)())->toBeTrue();
+
+            ($this->editWorkingCopy)('Γεια');
+            expect(($this->unpublished)())->toBeTrue();
+
+            $this->travel(1)->minutes();
+            autoEntry($this->hello, 'el')->publish(['user' => $this->admin]);
+            expect(($this->unpublished)())->toBeFalse();
+
+            ($this->editWorkingCopy)('Γεια σου');
+            expect(autoEntry($this->hello, 'el')->hasWorkingCopy())->toBeTrue()
+                ->and(($this->unpublished)())->toBeFalse();
+        });
+
+        it('does not say an update it published is not published when a later change waits in the working copy', function () {
+            autoOn(['auto_update_publish' => true]);
+            app()->call([new UpdateTranslations($this->hello->id(), (string) $this->admin->id()), 'handle']);
+
+            expect(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.')
+                ->and(($this->unpublished)())->toBeFalse();
+
+            ($this->editWorkingCopy)('Γεια');
+            expect(autoEntry($this->hello, 'el')->hasWorkingCopy())->toBeTrue()
+                ->and(($this->unpublished)())->toBeFalse();
+        });
+    });
 });

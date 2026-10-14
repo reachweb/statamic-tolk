@@ -234,10 +234,10 @@ final readonly class AutoUpdater
     }
 
     /**
-     * When an automatic update last saved the localization in $site of the entry: the latest automatic run from the
+     * The automatic update that last saved the localization in $site of the entry: the latest automatic run from the
      * entry, among the recent ones, whose item for the site is done.
      */
-    public function lastUpdate(EntryContract $origin, string $site): ?CarbonImmutable
+    public function lastUpdate(EntryContract $origin, string $site): ?Run
     {
         $reference = $origin->reference();
 
@@ -248,12 +248,29 @@ final readonly class AutoUpdater
 
             foreach ($this->runs->items($run, RunItemStatus::Done, 1, count($run->sites())) as $item) {
                 if ($item->targetSite === $site) {
-                    return $run->finishedAt ?? $run->progressedAt ?? $run->createdAt;
+                    return $run;
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * Whether the changes the update saved into the localization still wait in its working copy: it is published with
+     * revisions and has a working copy, and nobody published it since the update started. Core deletes the working copy
+     * as it publishes, so a working copy after a publish, the update's own included, holds a later change.
+     */
+    public function unpublished(EntryContract $localization, Run $update): bool
+    {
+        if (! $localization->revisionsEnabled() || ! $localization->published() || ! $localization->hasWorkingCopy()) {
+            return false;
+        }
+
+        // Revision dates are whole seconds.
+        $since = ($update->startedAt ?? $update->createdAt)->getTimestamp();
+
+        return $localization->revisions()->doesntContain(fn ($revision) => $revision->action() === 'publish' && $revision->date()->getTimestamp() >= $since);
     }
 
     /**
