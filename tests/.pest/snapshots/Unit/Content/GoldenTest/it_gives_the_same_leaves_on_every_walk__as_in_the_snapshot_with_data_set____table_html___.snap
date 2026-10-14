@@ -1,0 +1,91 @@
+[
+    {
+        "path": [
+            "table_html",
+            0,
+            "cells",
+            0
+        ],
+        "label": "Dining",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Meal",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table_html",
+            0,
+            "cells",
+            1
+        ],
+        "label": "Dining",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Where",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table_html",
+            1,
+            "cells",
+            0
+        ],
+        "label": "Dining",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Breakfast",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table_html",
+            1,
+            "cells",
+            1
+        ],
+        "label": "Dining",
+        "kind": "html",
+        "hint": null,
+        "max_length": null,
+        "text": "On the <1>terrace</1>",
+        "placeholders": {
+            "1": "<em>"
+        }
+    },
+    {
+        "path": [
+            "table_html",
+            2,
+            "cells",
+            0
+        ],
+        "label": "Dining",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Dinner",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "table_html",
+            2,
+            "cells",
+            1
+        ],
+        "label": "Dining",
+        "kind": "html",
+        "hint": null,
+        "max_length": null,
+        "text": "Kids <1>eat</1> free<x1/>until 20:00",
+        "placeholders": {
+            "1": "<strong>",
+            "x1": "<br>"
+        }
+    }
+]

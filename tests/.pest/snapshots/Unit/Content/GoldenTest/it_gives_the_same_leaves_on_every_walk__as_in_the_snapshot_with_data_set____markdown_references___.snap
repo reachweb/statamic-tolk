@@ -1,0 +1,72 @@
+[
+    {
+        "path": [
+            "markdown_references"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "Write to [the front desk](<x1/>), read [our story]<x2/> or meet [the team]<x3/>.",
+        "placeholders": {
+            "x1": "{{ link to=\"contact\" }}",
+            "x2": "[our story]",
+            "x3": "[team]"
+        }
+    },
+    {
+        "path": [
+            "markdown_references"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "![The pool](<x1/> \"The pool\")",
+        "placeholders": {
+            "x1": "{{ glide:image width=\"800\" }}"
+        }
+    },
+    {
+        "path": [
+            "markdown_references"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "> Our hours are on [the hours page]<x1/>.\n>\n> <x2/>",
+        "placeholders": {
+            "x1": "[hours]",
+            "x2": "[hours]: {{ link to=\"hours\" }} \"Opening hours\""
+        }
+    },
+    {
+        "path": [
+            "markdown_references"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "- See [the menu]<x1/>.\n- <x2/>",
+        "placeholders": {
+            "x1": "[menu]",
+            "x2": "[menu]: /menu"
+        }
+    },
+    {
+        "path": [
+            "markdown_references"
+        ],
+        "label": "Body",
+        "kind": "markdown",
+        "hint": null,
+        "max_length": null,
+        "text": "Open *the menu*<x1/> or *the map*<x2/> now.",
+        "placeholders": {
+            "x1": "{x-on:click=\"open = true\"}",
+            "x2": "{: .wide}"
+        }
+    }
+]

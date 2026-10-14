@@ -50,7 +50,8 @@ function undescribedKeys(Fields $fields, array $values, string $path): array
 it('has every golden fixture and tokenizer sample', function () {
     expect(ContentFixtures::names())->toBe([
         'array-dynamic', 'array-expanded', 'array-keyed', 'bard-html-string', 'bard-inline', 'bard-rich', 'grid',
-        'list', 'markdown-long', 'replicator-nested', 'table', 'text-antlers', 'textarea-html',
+        'list-html', 'list', 'markdown-long', 'markdown-references', 'replicator-nested', 'table-html', 'table', 'text-antlers',
+        'textarea-html',
     ])->and(array_keys(ContentFixtures::markup()))->toBe([
         'antlers.html', 'antlers.txt', 'br.html', 'code-fences.md', 'comment.html', 'images.html', 'images.md',
         'links-with-titles.html', 'links-with-titles.md', 'nested-inline.html', 'reference-definition.md', 'script.html',

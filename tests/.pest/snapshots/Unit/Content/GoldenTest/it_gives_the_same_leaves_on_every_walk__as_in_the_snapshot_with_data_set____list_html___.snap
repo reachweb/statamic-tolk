@@ -1,0 +1,54 @@
+[
+    {
+        "path": [
+            "list_html",
+            0
+        ],
+        "label": "Highlights",
+        "kind": "html",
+        "hint": null,
+        "max_length": null,
+        "text": "Breakfast served <1>daily</1>",
+        "placeholders": {
+            "1": "<b>"
+        }
+    },
+    {
+        "path": [
+            "list_html",
+            1
+        ],
+        "label": "Highlights",
+        "kind": "html",
+        "hint": null,
+        "max_length": null,
+        "text": "<1>Spa</1> access",
+        "placeholders": {
+            "1": "<a href=\"/spa\" title=\"Spa\">"
+        }
+    },
+    {
+        "path": [
+            "list_html",
+            2
+        ],
+        "label": "Highlights",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Kids &lt; 12 eat free",
+        "placeholders": []
+    },
+    {
+        "path": [
+            "list_html",
+            3
+        ],
+        "label": "Highlights",
+        "kind": "plain",
+        "hint": null,
+        "max_length": null,
+        "text": "Late check-out on request",
+        "placeholders": []
+    }
+]
