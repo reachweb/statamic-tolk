@@ -514,6 +514,23 @@ describe('entry.published', () => {
         expect(toasts).toEqual([]);
     });
 
+    // On a published entry, Save puts the changes in the working copy, and the status read after it says "Publish first"
+    // (`unpublished_changes`). Publish posts no form values and runs no save hook, so only this read drops the note.
+    it('replaces the status read after the save, so the origin no longer reads as having unpublished changes', async () => {
+        mount('entry::en');
+        const unpublished = { translatable: true, origin: { translates_published: true, unpublished_changes: true, localizations: [] } };
+        const published = { translatable: true, origin: { translates_published: true, unpublished_changes: false, localizations: [] } };
+        store.container('base').status = unpublished;
+        const api = statusApi(async () => published);
+        const onConfirmed = vi.fn();
+
+        await run(hooks({ api, onConfirmed }).published, publishedPayload());
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(store.container('base').status).toEqual(published);
+        expect(onConfirmed).toHaveBeenCalledExactlyOnceWith('base', published, { published: true });
+    });
+
     it('resolves at once, so core finishes the publish, or leaves for the listing, without waiting for the status', async () => {
         mount('entry::en');
         const api = statusApi(() => new Promise(() => {}));

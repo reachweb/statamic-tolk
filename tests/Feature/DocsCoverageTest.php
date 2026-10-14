@@ -390,7 +390,8 @@ it('says that with revisions the published origin is translated and a translatio
     $note = 'Publish first: the translations are made from the published entry.';
 
     expect(File::get(DOCS_ROOT.'/resources/js/editor/push.js'))->toContain("__('{$note}')")
-        ->and($section('editor.md', '## In the origin'))->toContain("\"{$note}\"")
+        ->and(File::get(DOCS_ROOT.'/resources/js/editor/saveHooks.js'))->toContain("hooks.on('entry.published'")
+        ->and($section('editor.md', '## In the origin'))->toContain("\"{$note}\"")->toContain('When you publish, the banner reads the statuses again')
         ->and($section('editor.md', '## Collections with revisions'))->toContain('from the origin as it is published')->toContain('counts as up to date')
         ->and($section('bulk-and-runs.md', '## Revisions'))->toContain('the origin **as it is published**')->toContain('counts as **up to date**')->toContain('`de_CH` reads up to date')
         ->and($section('statuses.md', '### Collections with revisions'))->toContain('the origin **as it is published**')->toContain('reads **up to date**');
