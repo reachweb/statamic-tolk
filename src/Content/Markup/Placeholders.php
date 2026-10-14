@@ -40,6 +40,11 @@ final class Placeholders
     // occurrence counts, without a word boundary: the autolink extension also links one after "_" (`_https://…_`).
     private const string BARE_ADDRESS = '/(?:(?:https?|ftp):\/\/|www\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
 
+    // A line that opens or closes a code fence, behind blockquote and list markers: three or more backticks without a
+    // backtick after them on the line, or three or more tildes. A source's fence is mostly a block of its own and an
+    // atom, and a block is checked on its own, so a fence a translation adds would be closed by the next source block's.
+    private const string FENCE_LINE = '/^[ \t]*+(?:(?:>|[-+*]|\d{1,9}[.)])[ \t]*+)*+(?:`{3,}+(?=[^`\n]*+$)|~{3,}+)/m';
+
     // A placeholder of a Markdown segment and the backslashes before it.
     private const string ESCAPED_PLACEHOLDER = '/(\\\\*+)('.self::PAIR.'|'.self::ATOM.')/';
 
@@ -47,7 +52,8 @@ final class Placeholders
     private const string HARD_BREAK = '/\A(?: {2,}+|\\\\)\z/';
 
     // A Markdown construct that a translation may make of its text, since it holds no markup and no link target of its
-    // own: a code span (or a fence of backticks), a hard break, or a footnote reference or the label of a reference.
+    // own: a code span, a hard break, or a footnote reference or the label of a reference. A fence it adds is rejected
+    // before, by FENCE_LINE.
     private const string INERT = '/\A(?:`| {2,}+\z|\\\\\z|\[(?:[^\[\]\\\\]++|\\\\.)*+\]\z)/s';
 
     /**
@@ -177,6 +183,10 @@ final class Placeholders
 
         if ($kind === SegmentKind::Markdown && self::addsAddresses($source, $translated)) {
             $problems[] = 'it adds or changes a web or email address';
+        }
+
+        if ($kind === SegmentKind::Markdown && preg_match_all(self::FENCE_LINE, $translated) > preg_match_all(self::FENCE_LINE, $source)) {
+            $problems[] = 'it adds a code fence (``` or ~~~)';
         }
 
         if ($kind === SegmentKind::Markdown && self::addsAttributes($source, $translated)) {

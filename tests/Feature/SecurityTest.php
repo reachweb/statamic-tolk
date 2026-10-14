@@ -730,6 +730,28 @@ describe('model output', function () {
         'a dropped backslash before an attribute list' => ['Read *this*\\{x-init="go()"} today.', fn (string $text) => str_replace('\\', '', '[T] '.$text)],
     ]);
 
+    // Each block is checked on its own, and a fence the translation of one block left open was closed by the fence that
+    // opens the next source block: a code sample without an info string then rendered its HTML raw.
+    it('saves the source of a Markdown block whose translation adds a code fence, which would turn the next code sample into HTML', function (string $fence) {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['body' => "Example:\n\n```\n<script>alert(1)</script>\n```\n\nMore text."], 'fence');
+        $this->fakeTranslations(fn (string $text) => $text === 'Example:' ? $fence : '[T] '.$text);
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->get('body'))->toBe("Example:\n\n```\n<script>alert(1)</script>\n```\n\n[T] More text.")
+            ->and((string) $german->augmentedValue('body'))->toContain('<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;')->not->toContain('<script>');
+    })->with([
+        'after the text' => "Beispiel:\n```",
+        'before the text' => "```\nBeispiel:",
+        'of four backticks' => "Beispiel:\n````",
+        'with an info string' => "Beispiel:\n```text",
+    ]);
+
     // CommonMark reads a reference definition in a blockquote or a list item, and one whose label spans lines, as it reads
     // one at the start of a line: a translation that added one gave a reference to its label any destination.
     it('saves the source of a Markdown block whose translation adds a reference definition in a container or over two lines, or swaps one of the source\'s', function (string $body, Closure $model) {
