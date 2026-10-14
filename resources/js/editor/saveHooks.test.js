@@ -231,9 +231,9 @@ describe('entry.saving', () => {
         store.container('base').delivered = { intro: filled() };
         hide(ctx, 'intro');
         store.setPhase('base', 'working');
+        const translation = {};
 
-        await run(hooks().saving, {});
-
+        expect((await run(hooks({ running: () => translation }).saving, {})).resolved).toBe(false);
         expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
     });
 });
