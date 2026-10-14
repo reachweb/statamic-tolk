@@ -4,17 +4,21 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia;
+use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Events\RunFinished;
+use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
+use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
+use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
@@ -486,6 +490,43 @@ describe('a browser run', function () {
 
         expect(runAction($run, 'resume')->assertOk()->json('run'))->toMatchArray(['status' => 'running', 'error' => null]);
     });
+
+    it('goes on with a command-line run\'s plans in the timeout and batch size of the browser, one call per tick', function (Closure $restart) {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
+            ? throw ProviderUnavailable::connection('anthropic', 3)
+            : ScriptedEngine::translated($call));
+        $this->signInAdmin();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'driver' => RunDriver::Cli]);
+        RunFixtures::translate($run);
+        $plan = app(PlanStore::class)->get(RunFixtures::items($run)[0]->planId);
+
+        $restart($run);
+        $this->travel(4)->seconds();
+        $ticks = [tick($run)->assertOk()->json('report'), tick($run)->assertOk()->json('report')];
+        $applied = runAction($run, 'apply')->assertOk();
+
+        expect(RunFixtures::stored($run)->driver)->toBe(RunDriver::Browser)
+            ->and($plan->options->profile)->toBe('background')
+            ->and($engine->segmentIds())->toBe([['s1', 's2'], ['s1'], ['s2']])
+            ->and(array_column($engine->calls, 'timeout'))->toBe([180, 45, 45])
+            ->and(array_column($ticks, 'units'))->toBe([1, 1])
+            ->and($applied->json('run.status'))->toBe('completed')
+            ->and($this->hello->fresh()->in('el')->get('intro'))->toBe('[T] A short intro.');
+    })->with([
+        'resumed after a cancel' => function (Run $run) {
+            app(RunProcessor::class)->cancel(RunFixtures::stored($run));
+            runAction($run, 'resume')->assertOk();
+        },
+        'retried after the item failed' => function (Run $run) {
+            $item = app(RunRepository::class)->item($run, 0);
+            $item->status = RunItemStatus::Failed;
+            $item->error = 'The AI provider [anthropic] was still unavailable after 10 waits.';
+            app(RunRepository::class)->saveItem($run, $item);
+            app(RunProcessor::class)->finalize(RunFixtures::stored($run));
+            expect(runAction($run, 'retry')->assertOk()->json('retried'))->toBe(1);
+        },
+    ]);
 
     it('leaves a finished run as it is when it is cancelled', function () {
         $this->fakeTranslations();

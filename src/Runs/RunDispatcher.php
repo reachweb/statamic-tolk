@@ -79,7 +79,8 @@ final readonly class RunDispatcher
     /**
      * Sets the run running (RunProcessor::start()). A queue run gets a new generation and its lane jobs; the browser
      * drives its runs itself. `tolk:translate` starts its own runs with RunProcessor::start(), so a CLI run started
-     * here, from the CP, has no command driving it any more: it moves to the driver resolveDriver() gives.
+     * here, from the CP, has no command driving it any more: it moves to the driver resolveDriver() gives, whose profile
+     * its units are called with from then on (RunProcessor::translate()).
      */
     public function start(Run $run): void
     {

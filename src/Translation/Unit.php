@@ -16,10 +16,11 @@ final readonly class Unit
 
     /**
      * @param  list<string>  $segmentIds
-     * @param  int  $depth  how many times the segments were split in halves
+     * @param  int  $depth  how many times a call split the segments in halves; a split to fit a smaller batch size does not count
      * @param  int  $repair  how many repairs of its one segment came before this one
      * @param  array<string, string>  $notes  segment id → the problem of an earlier translation, sent with a repair
-     * @param  bool  $useFallback  the unit it came from was answered by the fallback model
+     * @param  bool  $useFallback  the unit it came from was answered by the fallback model, or was split for its size when
+     *                             it would have gone to the fallback
      * @param  bool  $missingRetry  it asks again for ids an earlier answer left out, so ids missing again fail
      */
     public function __construct(
@@ -48,16 +49,18 @@ final readonly class Unit
     }
 
     /**
+     * @param  bool  $deeper  false for a split that only fits the unit to a smaller batch size (Pipeline::fits()), which
+     *                        leaves the halves the splits a timeout or an answer may still need
      * @return list<self> `{id}.a` and `{id}.b`
      */
-    public function halves(bool $useFallback): array
+    public function halves(bool $useFallback, bool $deeper = true): array
     {
         $size = (int) ceil(count($this->segmentIds) / 2);
-        $deeper = ['depth' => $this->depth + 1];
+        $depth = ['depth' => $this->depth + (int) $deeper];
 
         return [
-            $this->derive('.a', array_slice($this->segmentIds, 0, $size), $useFallback, $deeper),
-            $this->derive('.b', array_slice($this->segmentIds, $size), $useFallback, $deeper),
+            $this->derive('.a', array_slice($this->segmentIds, 0, $size), $useFallback, $depth),
+            $this->derive('.b', array_slice($this->segmentIds, $size), $useFallback, $depth),
         ];
     }
 

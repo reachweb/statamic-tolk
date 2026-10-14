@@ -35,6 +35,12 @@ it('splits into halves one level deeper, the first half taking the odd segment',
         ->and([$first->useFallback, $first->missingRetry])->toBe([true, true]);
 });
 
+it('splits into halves at its own depth when only a smaller batch size asks for it', function () {
+    $unit = new Unit('b1.a', UnitKind::Translate, ['s1', 's2', 's3'], depth: 1);
+
+    expect(array_map(fn (Unit $half) => [$half->id, $half->depth], $unit->halves(false, deeper: false)))->toBe([['b1.a.a', 1], ['b1.a.b', 1]]);
+});
+
 it('stops splitting at depth three and never splits one segment', function () {
     expect((new Unit('b1.a.b', UnitKind::Translate, ['s1', 's2'], depth: 2))->canSplit())->toBeTrue()
         ->and((new Unit('b1.a.b.a', UnitKind::Translate, ['s1', 's2'], depth: 3))->canSplit())->toBeFalse()

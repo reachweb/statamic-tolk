@@ -78,36 +78,63 @@ final readonly class Pipeline
     }
 
     /**
-     * Returns the stored outcome when there is one; otherwise makes the unit's one call and stores what it led to.
+     * Returns the stored outcome when there is one; otherwise makes the unit's one call and stores what it led to. The
+     * call and the unit's lock last as long as `http.timeout` of $profile, the caller's: a plan keeps the profile it was
+     * planned with, while a command-line run resumed in the browser or on a queue goes on with `web`. A unit that does not
+     * fit the profile's batch size is split in halves instead, without a call (§A10).
      *
      * @param  ?Closure(ModelRef, Usage): void  $recordUsage  receives the usage of the call
+     * @param  ?string  $profile  `web` or `background`; null for the plan's
      *
      * @throws UnitBusy while another request runs the same unit
      * @throws TransientProviderFailure when the call can be made again after its `seconds`
      */
-    public function runUnit(Plan $plan, string $unitId, ?Closure $recordUsage = null): UnitOutcome
+    public function runUnit(Plan $plan, string $unitId, ?Closure $recordUsage = null, ?string $profile = null): UnitOutcome
     {
         if ($outcome = $this->store->outcome($plan->id, $unitId)) {
             return $outcome;
         }
 
         $unit = $this->units($plan)[$unitId] ?? throw UnknownUnit::in($plan->id, $unitId);
-        $timeout = (int) config("tolk.http.timeout.{$plan->options->profile}", 45);
+        $profile ??= $plan->options->profile;
 
-        $outcome = $this->store->lock($plan->id, $unitId, $timeout + 10)->get(function () use ($plan, $unit, $timeout, $recordUsage) {
+        if (! in_array($profile, PlanOptions::PROFILES, true)) {
+            throw new InvalidArgumentException("Invalid plan profile [{$profile}]. Use web or background.");
+        }
+
+        $timeout = (int) config("tolk.http.timeout.{$profile}", 45);
+
+        $outcome = $this->store->lock($plan->id, $unitId, $timeout + 10)->get(function () use ($plan, $unit, $profile, $timeout, $recordUsage) {
             if ($outcome = $this->store->outcome($plan->id, $unit->id)) {
                 return $outcome;
             }
 
-            $outcome = $unit->kind === UnitKind::Review
-                ? $this->review($plan, $unit, $timeout, $recordUsage)
-                : $this->call($plan, $unit, $timeout, $recordUsage);
+            $outcome = match (true) {
+                ! $this->fits($plan, $unit, $profile) => $this->splitToFit($plan, $unit),
+                $unit->kind === UnitKind::Review => $this->review($plan, $unit, $timeout, $recordUsage),
+                default => $this->call($plan, $unit, $timeout, $recordUsage),
+            };
             $this->store->putOutcome($plan->id, $outcome);
 
             return $outcome;
         });
 
         return $outcome ?: throw UnitBusy::for($plan->id, $unitId);
+    }
+
+    /**
+     * Whether the unit is sent as it is with $profile: its source text is within the profile's `batch.max_chars`, or it
+     * holds one segment. Every unit fits the profile its plan was made with, unless `batch.max_chars` changed since.
+     */
+    public function fits(Plan $plan, Unit $unit, string $profile): bool
+    {
+        if (count($unit->segmentIds) < 2) {
+            return true;
+        }
+
+        $chars = array_sum(array_map(fn (string $id) => mb_strlen($plan->segments[$id]['text']), $unit->segmentIds));
+
+        return $chars <= max(1, (int) config("tolk.batch.max_chars.{$profile}"));
     }
 
     /**
@@ -258,6 +285,17 @@ final readonly class Pipeline
                 : $this->splitOrFail($unit, $model, $fallback, UnitOutcome::TOO_LONG, $usage),
             Finish::Refused => $this->splitOrFail($unit, $model, $fallback, UnitOutcome::REFUSED, $usage),
         };
+    }
+
+    /**
+     * The halves of a unit larger than the caller's batch size, without a call. They go to the fallback when the unit
+     * would have, and keep its depth, so a timeout or an answer may still split them as often as units planned that small.
+     */
+    private function splitToFit(Plan $plan, Unit $unit): UnitOutcome
+    {
+        $fallback = $this->usesFallback($plan, $unit, $this->store->failures($plan->id, $unit->id));
+
+        return new UnitOutcome(unit: $unit->id, spawned: $unit->halves($fallback, deeper: false));
     }
 
     private function splitOrFail(Unit $unit, ModelRef $model, bool $fallback, string $reason, UsageMap $usage = new UsageMap): UnitOutcome

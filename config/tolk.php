@@ -64,9 +64,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | `web` applies to the editor's requests and to runs driven by the browser
-    | or a queue, `background` to the CLI. Timeouts are seconds per provider
-    | call. Batches are measured in source characters; `min_chars` is the
-    | floor when the editor splits a small entry into parallel batches.
+    | or a queue, `background` to the CLI and to automatic updates run by the
+    | process that saved the entry. A CLI run resumed in the CP goes on with
+    | `web` and splits its larger planned batches first, without a call.
+    | Timeouts are seconds per provider call. Batches are measured in source
+    | characters; `min_chars` is the floor when the editor splits a small
+    | entry into parallel batches.
     |
     */
 

@@ -223,6 +223,74 @@ describe('running units', function () {
         expect(fn () => tolkPipeline()->runUnit($plan, 'b9'))->toThrow(UnknownUnit::class);
     });
 
+    it('calls with the timeout of the profile it is given, the plan\'s by default, and holds the unit as long', function (?string $profile, int $timeout) {
+        $this->freezeSecond();
+        $plan = pipelinePlan($this->origin, ['fields' => ['title'], 'profile' => 'background']);
+        $held = [];
+        $engine = ScriptedEngine::bind(function (EngineCall $call) use ($plan, $timeout, &$held) {
+            $this->travel($timeout + 9)->seconds();
+            $held[] = ! app(PlanStore::class)->lock($plan->id, 'b1', 1)->get();
+            $this->travel(2)->seconds();
+            $held[] = ! app(PlanStore::class)->lock($plan->id, 'b1', 1)->get();
+
+            return ScriptedEngine::translated($call);
+        });
+
+        tolkPipeline()->runUnit($plan, 'b1', profile: $profile);
+
+        expect($engine->calls[0]->timeout)->toBe($timeout)
+            ->and($held)->toBe([true, false]);
+    })->with([
+        'the plan\'s' => [null, 180],
+        'web' => ['web', 45],
+        'background' => ['background', 180],
+    ]);
+
+    it('splits a unit larger than the batch size of the profile it is given into halves without a call, at its depth', function () {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
+        $plan = pipelinePlan($this->origin, ['fields' => ['title', 'intro'], 'profile' => 'background']);
+        $unit = tolkPipeline()->units($plan)['b1'];
+
+        expect($plan->batches)->toHaveCount(1)
+            ->and(tolkPipeline()->fits($plan, $unit, 'background'))->toBeTrue()
+            ->and(tolkPipeline()->fits($plan, $unit, 'web'))->toBeFalse();
+
+        $outcome = tolkPipeline()->runUnit($plan, 'b1', profile: 'web');
+
+        expect($outcome->spawned)->toEqual([new Unit('b1.a', $plan->kind, ['s1']), new Unit('b1.b', $plan->kind, ['s2'])])
+            ->and($outcome->model)->toBeNull()
+            ->and($outcome->usage->isEmpty())->toBeTrue()
+            ->and($engine->calls)->toBe([])
+            // One segment over the size is sent as it is.
+            ->and(tolkPipeline()->fits($plan, tolkPipeline()->units($plan)['b1.b'], 'web'))->toBeTrue();
+
+        foreach (array_keys(tolkPipeline()->runnable($plan)) as $id) {
+            tolkPipeline()->runUnit($plan, $id, profile: 'web');
+        }
+
+        expect($engine->segmentIds())->toBe([['s1'], ['s2']])
+            ->and(array_column($engine->calls, 'timeout'))->toBe([45, 45])
+            ->and(tolkPipeline()->isFinished($plan))->toBeTrue()
+            ->and(tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro')->value)->toBe('[T] A short intro.');
+    });
+
+    it('sends the halves of a unit split for its size to the fallback when the unit would have gone there', function () {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
+        $plan = pipelinePlan($this->origin, ['fields' => ['title', 'intro'], 'profile' => 'background', 'fallback' => 'openai:gpt-6-luna']);
+
+        foreach (range(1, (int) config('tolk.retry.max_attempts')) as $failure) {
+            app(PlanStore::class)->countFailure($plan->id, 'b1');
+        }
+
+        $outcome = tolkPipeline()->runUnit($plan, 'b1', profile: 'web');
+        pipelineRun($plan);
+
+        expect(array_map(fn (Unit $unit) => $unit->useFallback, $outcome->spawned))->toBe([true, true])
+            ->and(array_map(fn (EngineCall $call) => (string) $call->model, $engine->calls))->toBe(['openai:gpt-6-luna', 'openai:gpt-6-luna']);
+    });
+
     it('gives a second caller of a running unit UnitBusy and makes one model call', function () {
         $plan = null;
         $busy = null;

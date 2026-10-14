@@ -533,10 +533,19 @@ final readonly class RunProcessor
                 return 0;
             }
 
-            $this->pipeline->runUnit($plan, array_key_first($runnable), $record);
+            // The units are run in the profile of the run's driver now, not the plan's: a command-line run resumed in the
+            // browser or on a queue splits a unit planned larger than this driver's batches first, and that makes no call.
+            $unitId = array_key_first($runnable);
+            $fits = $this->pipeline->fits($plan, $runnable[$unitId], $options->profile);
+            $this->pipeline->runUnit($plan, $unitId, $record, $options->profile);
+            $runnable = $this->pipeline->runnable($plan);
+
+            if (! $fits) {
+                continue;
+            }
+
             $units++;
             $item->waits = 0;
-            $runnable = $this->pipeline->runnable($plan);
 
             // Stores the item's usage, and its waits, which a unit that succeeded resets; after the last unit, the
             // status is saved with them.

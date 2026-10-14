@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Exceptions\ProviderPaused;
+use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunDispatcher;
@@ -250,6 +251,29 @@ describe('WorkRun', function () {
         },
         'deleted' => fn (Run $run, RunRepository $runs) => $runs->delete($run),
     ]);
+
+    it('goes on with a command-line run\'s plans in the timeout and batch size of the queue, inside the job\'s timeout', function () {
+        Queue::fake();
+        config(['queue.default' => 'database', 'tolk.concurrency.queue' => 1, 'tolk.batch.max_chars.web' => 10]);
+        $engine = ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
+            ? throw ProviderUnavailable::connection('anthropic', 3)
+            : ScriptedEngine::translated($call));
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'driver' => RunDriver::Cli]);
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->cancel(RunFixtures::stored($run));
+        app(RunProcessor::class)->resume($run);
+        $this->dispatcher->start($run);
+        $this->travel(4)->seconds();
+
+        workLane(pushedLanes()[0]);
+
+        expect(RunFixtures::stored($run)->driver)->toBe(RunDriver::Queue)
+            ->and($engine->segmentIds())->toBe([['s1', 's2'], ['s1'], ['s2']])
+            ->and(array_column($engine->calls, 'timeout'))->toBe([180, 45, 45])
+            ->and(max(array_column(array_slice($engine->calls, 1), 'timeout')))->toBeLessThan(pushedLanes()[0]->timeout)
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Completed)
+            ->and($this->hello->fresh()->in('el')->get('intro'))->toBe('[T] A short intro.');
+    });
 
     it('ends quietly when the run is deleted while it works', function () {
         Queue::fake();

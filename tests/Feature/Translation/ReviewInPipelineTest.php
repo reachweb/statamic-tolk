@@ -150,6 +150,33 @@ describe('the review unit', function () {
             ->and($this->modelCalls())->toBe(2);
     });
 
+    it('splits a review larger than the batch size of the profile it is given without a call, and reviews each half', function () {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $this->fakeTranslations();
+        $reviewed = [];
+        $this->fakeReview(function (string $source, string $translation, array $segment) use (&$reviewed) {
+            $reviewed[] = $segment['id'];
+
+            return null;
+        });
+        $plan = reviewingPlan($this->origin, ['fields' => ['title', 'intro'], 'profile' => 'background']);
+        reviewingPipeline()->runUnit($plan, 'b1');
+
+        $outcome = reviewingPipeline()->runUnit($plan, 'b1.v', profile: 'web');
+
+        expect($outcome->spawned)->toEqual([new Unit('b1.v.a', UnitKind::Review, ['s1']), new Unit('b1.v.b', UnitKind::Review, ['s2'])])
+            ->and($this->modelCalls())->toBe(1);
+
+        foreach (array_keys(reviewingPipeline()->runnable($plan)) as $id) {
+            reviewingPipeline()->runUnit($plan, $id, profile: 'web');
+        }
+
+        expect($reviewed)->toBe(['s1', 's2'])
+            ->and($this->modelCalls())->toBe(3)
+            ->and(reviewingPipeline()->isFinished($plan))->toBeTrue()
+            ->and(reviewingPipeline()->assemble($plan, reviewingTarget($this->origin), 'intro')->reviewer)->toBe(REVIEWING_REVIEWER);
+    });
+
     it('reviews the translations of a repair in a review of their own', function () {
         $this->fakeTranslations(fn (string $text, array $segment) => $text === '<1>Book</1> a room.' && ! isset($segment['note'])
             ? '[T] Book a room.'

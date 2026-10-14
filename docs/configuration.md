@@ -194,10 +194,10 @@ A model may also be used without a catalog entry, typed as `provider:model` in t
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `http.timeout.web` | `45` | Seconds a provider call may take for the editor and for runs driven by the browser or a queue. Keep it below your web server's and proxy's timeouts (often 60 seconds). |
-| `http.timeout.background` | `180` | Seconds a provider call may take for the command line. |
-| `batch.max_chars.web` | `4000` | Source characters per request for the editor and browser or queue runs. |
-| `batch.max_chars.background` | `10000` | Source characters per request for the command line. |
+| `http.timeout.web` | `45` | Seconds a provider call may take for the editor and for runs driven by the browser or a queue, including a command-line run resumed or retried on its run page. Keep it below your web server's and proxy's timeouts (often 60 seconds). |
+| `http.timeout.background` | `180` | Seconds a provider call may take for the command line, and for an automatic update that the process saving the entry runs itself (without a queue worker). |
+| `batch.max_chars.web` | `4000` | Source characters per request for the editor and browser or queue runs. A command-line run resumed or retried on its run page first splits the larger requests the command planned, without a call. |
+| `batch.max_chars.background` | `10000` | Source characters per request for the command line, and for an automatic update without a queue worker. |
 | `batch.min_chars` | `1200` | The editor splits an entry into parallel requests of at least this many characters, so a short entry is one request and a long one fills in faster. |
 | `batch.max_segments` | `80` | Pieces of text per request. |
 
