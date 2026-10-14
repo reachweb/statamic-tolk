@@ -20,7 +20,7 @@ const PARTS = {
     },
     attention: {
         text: (count) => __n(':count needs attention|:count need attention', count),
-        description: () => __('Edited by hand, and the source changed since. Check them against the source.'),
+        description: () => __('Edited by hand, and the source changed since or they hold its text again. Check them against the source.'),
     },
     untracked: {
         text: (count) => __n(':count untracked|:count untracked', count),
@@ -100,6 +100,8 @@ function describeLocalization(block, setup) {
     const parts = countParts(counts);
     const fields = Object.entries(block.fields ?? {});
     const incomplete = fields.filter(([, field]) => field.incomplete).map(([handle, field]) => ({ handle, label: field.label }));
+    // Fields Tolk translated that hold the origin's text again, such as from a form saved after a run translated them.
+    const copies = fields.filter(([, field]) => field.same_as_origin).map(([handle, field]) => ({ handle, label: field.label }));
     const notLocalizable = (block.out_of_scope ?? [])
         .filter((field) => field.reason === 'not_localizable')
         .map(({ handle, label }) => ({ handle, label }));
@@ -115,6 +117,10 @@ function describeLocalization(block, setup) {
         lead: parts.length > 0 ? __('From :source:', { source: block.source?.name ?? '' }) : summary,
         incomplete,
         incompleteNote: incomplete.length ? incompleteNote(incomplete) : null,
+        copies,
+        copiesNote: copies.length ? copiesNote(copies) : null,
+        translateCopies: !setup && copies.length > 0,
+        translateCopiesLabel: __n('Translate it|Translate them', copies.length),
         notLocalizable,
         hint: notLocalizable.length ? notLocalizableText(labels(notLocalizable), notLocalizable.length) : null,
         translate: !setup && (counts.untranslated ?? 0) > 0,
@@ -155,6 +161,15 @@ function localizationSummary(block, parts) {
 function incompleteNote(fields) {
     return __n(
         ':fields is partly untranslated. Update translates the rest.|:fields are partly untranslated. Update translates the rest.',
+        fields.length,
+        { fields: labels(fields) },
+    );
+}
+
+// Text put back on purpose reads the same, so the fields stay edited by hand (D5) until translated or marked as up to date.
+function copiesNote(fields) {
+    return __n(
+        ':fields holds the text of the origin again. Translate it, or mark it as up to date to keep it.|:fields hold the text of the origin again. Translate them, or mark them as up to date to keep them.',
         fields.length,
         { fields: labels(fields) },
     );

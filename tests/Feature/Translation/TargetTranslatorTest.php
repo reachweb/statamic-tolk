@@ -247,7 +247,7 @@ describe('translating a target', function () {
             ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Manual);
     });
 
-    it('leaves a copy of the origin\'s text saved over a translation alone as edited by hand (D5), until overwriteManual', function () {
+    it('leaves a copy of the origin\'s text saved over a translation alone as edited by hand (D5) and flags it as needing attention, until overwriteManual', function () {
         $this->fakeTranslations();
         translateTarget($this->origin);
         // A form opened before the translation, still holding the origin's text, saved over it.
@@ -264,7 +264,8 @@ describe('translating a target', function () {
 
         expect($status->fields['intro']->status)->toBe(FieldStatus::Manual)
             ->and($status->fields['intro']->sourceChanged)->toBeFalse()
-            ->and($status->itemStatus)->toBe(ItemStatus::Current)
+            ->and($status->fields['intro']->sameAsOrigin)->toBeTrue()
+            ->and($status->itemStatus)->toBe(ItemStatus::Attention)
             ->and($update->fields)->toBe(['title' => 'current', 'intro' => 'manual', 'body' => 'current'])
             ->and($kept)->toBe('A short intro.')
             ->and($forced->fields['intro'])->toBe('applied')

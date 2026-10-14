@@ -19,6 +19,7 @@ async function render(action, data) {
     const app = createSSRApp({ template: parentOf(action), data: () => ({ translations: null, name: 'base', undo: () => {}, ...data }) });
     app.config.globalProperties.__ = translate;
     app.component('Button', { template: '<button><slot /></button>' });
+    app.component('Description', { template: '<p><slot /></p>' });
 
     return renderToString(app);
 }
@@ -42,5 +43,25 @@ describe('the buttons under the result', () => {
         expect(text(await result({ canUndo: true }))).toBe('Undo');
         expect(text(await result())).toBe('');
         expect(text(await result({ phase: 'working', canUndo: true }))).toBe('');
+    });
+});
+
+describe('the note about fields that hold the origin\'s text again', () => {
+    const note = (extra = {}) =>
+        render('translate-copies', {
+            phase: 'idle',
+            actions: true,
+            translateCopies: () => {},
+            banner: { localization: { copiesNote: 'Title holds the text of the origin again.', translateCopies: true, translateCopiesLabel: 'Translate it' } },
+            ...extra,
+        });
+
+    it('offers to translate them while the banner is idle', async () => {
+        expect(text(await note())).toBe('Title holds the text of the origin again. Translate it');
+    });
+
+    it('keeps the note without the button while a translation runs, or without a model', async () => {
+        expect(text(await note({ phase: 'working' }))).toBe('Title holds the text of the origin again.');
+        expect(text(await note({ actions: false }))).toBe('Title holds the text of the origin again.');
     });
 });

@@ -7,6 +7,7 @@ use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ItemStatus;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\State\TargetStatus;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -203,6 +204,35 @@ describe('field status', function () {
             ->and($status->fields['title']->sourceChanged)->toBeFalse()
             ->and($status->fields['body']->status)->toBe(FieldStatus::Manual)
             ->and($status->fields['body']->isUntracked())->toBeTrue();
+    });
+
+    // A form that still held the origin's text, saved after a run translated the field, or a Bard field set back to inherit
+    // that rewrites itself: manual, since Tolk cannot tell it from text put back on purpose (D5), but not up to date.
+    it('reads a copy of the origin\'s text saved over a translation as manual and needing attention, until it is marked as up to date', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Hello', 'intro' => 'Μια εισαγωγή.']);
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια'),
+            'intro' => StateFixtures::machine('A short intro.', 'Μια σύντομη εισαγωγή.'),
+        ]);
+
+        $status = statusOf($this->origin);
+
+        expect($status->fields['title']->status)->toBe(FieldStatus::Manual)
+            ->and($status->fields['title']->sourceChanged)->toBeFalse()
+            ->and($status->fields['title']->sameAsOrigin)->toBeTrue()
+            ->and($status->fields['title']->needsAttention())->toBeTrue()
+            ->and($status->fields['intro']->status)->toBe(FieldStatus::Manual)
+            ->and($status->fields['intro']->sameAsOrigin)->toBeFalse()
+            ->and($status->fields['intro']->needsAttention())->toBeFalse()
+            ->and($status->itemStatus)->toBe(ItemStatus::Attention)
+            ->and($status->counts)->toBe(['untranslated' => 0, 'current' => 0, 'outdated' => 0, 'manual' => 2, 'attention' => 1, 'untracked' => 0]);
+
+        app(StateWriter::class)->baseline(app(TargetFactory::class)->forEntry($this->origin, 'el'), ['title']);
+        $marked = statusOf($this->origin);
+
+        expect($marked->fields['title']->status)->toBe(FieldStatus::Manual)
+            ->and($marked->fields['title']->sameAsOrigin)->toBeFalse()
+            ->and($marked->itemStatus)->toBe(ItemStatus::Current);
     });
 
     it('reads a baseline as manual with an unchanged source, then as changed after an origin edit', function () {

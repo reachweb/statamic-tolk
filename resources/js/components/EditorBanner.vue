@@ -109,6 +109,11 @@ function translate(mode) {
     translations.translate(name, { mode });
 }
 
+// The fields that hold the origin's text again read edited by hand (D5), so only this request translates over them.
+function translateCopies() {
+    translations.translate(name, { mode: 'all', fields: banner.value.localization.copies.map((field) => field.handle), overwriteManual: true });
+}
+
 // Undo removes its own button without changing the phase.
 async function undo() {
     const held = focus.holds();
@@ -169,6 +174,17 @@ async function undo() {
                 </div>
                 <Description v-if="banner.localization.autoUpdated" data-tolk-auto-updated>{{ banner.localization.autoUpdated }}</Description>
                 <Description v-if="banner.localization.incompleteNote">{{ banner.localization.incompleteNote }}</Description>
+                <div v-if="banner.localization.copiesNote" class="flex flex-wrap items-center gap-2" data-tolk-copies>
+                    <Description>{{ banner.localization.copiesNote }}</Description>
+                    <Button
+                        v-if="actions && phase === 'idle' && banner.localization.translateCopies"
+                        size="sm"
+                        data-tolk-action="translate-copies"
+                        @click="translateCopies"
+                    >
+                        {{ banner.localization.translateCopiesLabel }}
+                    </Button>
+                </div>
                 <Description v-if="banner.localization.hint" data-tolk-not-localizable>
                     {{ banner.localization.hint }}
                     <a v-if="auditLink" :href="auditLink" data-tolk-audit-link>{{ __('Open the setup audit') }}</a>

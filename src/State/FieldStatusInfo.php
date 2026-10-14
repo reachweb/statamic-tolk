@@ -16,6 +16,10 @@ final readonly class FieldStatusInfo
      * @param  ?string  $targetHash  the target's current text fingerprint; null when the target has no override
      * @param  ?string  $sourceTextHash  the source's text fingerprint walked as a target (§A3), which a copy of the source
      *                                   has; computed only when it can decide the status or a reconcile, else null
+     * @param  bool  $sameAsOrigin  whether a manual field that Tolk translated before holds the source's text again: a
+     *                              form that still held it, saved after the translation, or a Bard field set back to
+     *                              inherit that rewrote itself. It needs attention until it is translated or marked as
+     *                              up to date (a baseline, which is no machine record)
      */
     public function __construct(
         public FieldStatus $status,
@@ -29,11 +33,12 @@ final readonly class FieldStatusInfo
         public string $sourceHash,
         public ?string $targetHash,
         public ?string $sourceTextHash,
+        public bool $sameAsOrigin = false,
     ) {}
 
     public function needsAttention(): bool
     {
-        return $this->status === FieldStatus::Manual && $this->sourceChanged === true;
+        return $this->status === FieldStatus::Manual && ($this->sourceChanged === true || $this->sameAsOrigin);
     }
 
     public function isUntracked(): bool

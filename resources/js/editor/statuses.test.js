@@ -76,6 +76,9 @@ describe('a localization', () => {
             lead: 'From English:',
             incomplete: [],
             incompleteNote: null,
+            copies: [],
+            copiesNote: null,
+            translateCopies: false,
             notLocalizable: [],
             hint: null,
             translate: false,
@@ -184,6 +187,51 @@ describe('a localization', () => {
         );
 
         expect(two.localization.incompleteNote).toBe('Intro, Body are partly untranslated. Update translates the rest.');
+    });
+
+    it('names the fields that hold the origin\'s text again after a translation, and offers to translate them', () => {
+        const banner = describeStatus(
+            payload({
+                localization: localization(
+                    {
+                        title: field('Title', 'manual', { source_changed: false, same_as_origin: true }),
+                        intro: field('Intro', 'manual', { source_changed: false }),
+                    },
+                    { manual: 2, attention: 1 },
+                    { status: 'attention' },
+                ),
+            }),
+        );
+
+        expect(banner.localization).toMatchObject({
+            label: 'Needs attention',
+            copies: [{ handle: 'title', label: 'Title' }],
+            copiesNote: 'Title holds the text of the origin again. Translate it, or mark it as up to date to keep it.',
+            translateCopies: true,
+            translateCopiesLabel: 'Translate it',
+            translate: false,
+            update: false,
+        });
+
+        const two = describeStatus(
+            payload({
+                localization: localization(
+                    {
+                        title: field('Title', 'manual', { source_changed: false, same_as_origin: true }),
+                        intro: field('Intro', 'manual', { source_changed: true, same_as_origin: true }),
+                    },
+                    { manual: 2, attention: 2 },
+                    { status: 'attention' },
+                ),
+            }),
+        );
+
+        expect(two.localization).toMatchObject({
+            copiesNote: 'Title, Intro hold the text of the origin again. Translate them, or mark them as up to date to keep them.',
+            translateCopiesLabel: 'Translate them',
+        });
+        expect(describeStatus(payload({ localization: localization({ title: field('Title', 'manual', { same_as_origin: true }) }, { manual: 1, attention: 1 }) }, { translator: null })).localization)
+            .toMatchObject({ copiesNote: 'Title holds the text of the origin again. Translate it, or mark it as up to date to keep it.', translateCopies: false });
     });
 
     it('counts fields edited by hand before they were tracked', () => {

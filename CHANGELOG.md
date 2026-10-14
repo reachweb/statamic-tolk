@@ -24,6 +24,7 @@ All notable changes to Tolk are documented in this file.
 - The origin's banner is hidden while every localization is up to date.
 - A field none of whose parts could be translated is no longer saved in the origin's language. It keeps the value it had, so an earlier translation stays on the page, and the next Update tries it again; runs list it as "Could not be translated" with the reason, the command line names it, and the editor does not fill it. Before, a request the provider rejected, or a single text the model refused, saved the origin's text over the translation and the run said it was done.
 - A run stops when the provider rejects three requests of the translator, or three of the reviewer, in a row, with the provider's message, instead of going through every item with requests that will all be rejected, such as for a model option the provider does not accept.
+- A field Tolk translated that holds the origin's text again, such as from a form saved after a run translated it, makes its item need attention instead of reading up to date. The banner names such fields with **Translate it**, which translates only them; **Mark manual fields as up to date** keeps the text and clears the flag. Update still leaves them alone, since the text may have been put back on purpose.
 - A page skipped because its collection's home page is not translated into the site yet says why (the first page saved into the site's empty tree would become its home page) and links to the home page, in the push results and on the run's page.
 
 ### Fixed

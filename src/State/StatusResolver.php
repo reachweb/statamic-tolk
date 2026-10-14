@@ -80,6 +80,11 @@ final readonly class StatusResolver
             default => FieldStatus::Manual,
         };
 
+        // A copy of the source's text over a field Tolk translated stays manual (D5), and is flagged instead.
+        if ($status === FieldStatus::Manual && $state->isMachine()) {
+            $sourceTextHash ??= $this->targetHash($field, $sourceValue);
+        }
+
         return new FieldStatusInfo(
             status: $status,
             sourceChanged: $state->sourceHash === null ? null : $state->sourceHash !== $sourceHash,
@@ -92,6 +97,7 @@ final readonly class StatusResolver
             sourceHash: $sourceHash,
             targetHash: $targetHash,
             sourceTextHash: $sourceTextHash,
+            sameAsOrigin: $status === FieldStatus::Manual && $state->isMachine() && $this->holdsSourceText($targetHash, $sourceTextHash),
         );
     }
 
@@ -101,6 +107,11 @@ final readonly class StatusResolver
      */
     private function isCopy(FieldState $state, string $targetHash, ?string $sourceTextHash): bool
     {
-        return $state->sourceHash === null && $targetHash === $sourceTextHash && $targetHash !== Fingerprint::ofLeaves([]);
+        return $state->sourceHash === null && $this->holdsSourceText($targetHash, $sourceTextHash);
+    }
+
+    private function holdsSourceText(?string $targetHash, ?string $sourceTextHash): bool
+    {
+        return $targetHash !== null && $targetHash === $sourceTextHash && $targetHash !== Fingerprint::ofLeaves([]);
     }
 }

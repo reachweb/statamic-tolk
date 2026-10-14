@@ -151,6 +151,7 @@ final readonly class EditorStatus
                 'label' => $field->label,
                 'source_changed' => $field->sourceChanged,
                 'incomplete' => $field->incomplete,
+                'same_as_origin' => $field->sameAsOrigin,
             ], $status->fields),
             'counts' => $status->counts,
             'out_of_scope' => $this->outOfScope($target),

@@ -624,7 +624,7 @@ describe('confirm', function () {
 
         $response = $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])->assertOk();
 
-        expect($response->json('localization.fields.intro'))->toBe(['status' => 'manual', 'label' => 'Introduction', 'source_changed' => false, 'incomplete' => false])
+        expect($response->json('localization.fields.intro'))->toBe(['status' => 'manual', 'label' => 'Introduction', 'source_changed' => false, 'incomplete' => false, 'same_as_origin' => false])
             ->and(greekState('intro')->isBaseline())->toBeTrue()
             ->and(greekState('intro')->sourceHash)->toBe(Fingerprint::of('A short intro.'))
             ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Current);

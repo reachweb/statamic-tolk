@@ -14,7 +14,7 @@ Tolk tracks every translated field: whether its origin changed since it was tran
 
 Two kinds of fields edited by hand are counted on their own:
 
-- **Needs attention**: edited by hand, and the origin changed since. Check the text against the origin, edit it if needed, then mark it as up to date: editing alone does not clear the flag.
+- **Needs attention**: edited by hand, and the origin changed since, or a field Tolk translated holds the origin's text again ([below](#a-copy-saved-over-a-translation)). Check the text against the origin, edit it if needed, then mark it as up to date: editing alone does not clear the flag.
 - **Untracked**: edited by hand before Tolk knew which origin text it belongs to (a site translated by hand before Tolk was installed). A change to the origin cannot be noticed until it is recorded ([baselines](#baselines)).
 
 **Retranslate everything** (mode `all`) also translates up-to-date fields again, and **Overwrite manual edits** (`--force`) also replaces fields edited by hand. The field action **Translate from origin** does both for one field.
@@ -26,7 +26,7 @@ An entry, a term, a global set or a navigation in one site counts once, by the w
 1. **Missing**: the localization does not exist yet.
 2. **Untranslated**: at least one field is untranslated.
 3. **Outdated**: at least one field is outdated.
-4. **Needs attention**: at least one field edited by hand has a changed origin.
+4. **Needs attention**: at least one field edited by hand has a changed origin, or holds the origin's text again after Tolk translated it.
 5. **Up to date** (*Current* on the Overview and in `tolk:status`): everything else.
 
 The Overview and `tolk:status` count items this way, and also report the untracked fields. An item whose state file cannot be read, such as after a git merge conflict, has no status until the file is fixed ([Troubleshooting](troubleshooting.md#a-state-file-cannot-be-read)).
@@ -66,7 +66,7 @@ Once Tolk has translated a field, a copy of the origin's text saved over that tr
 - a form that still held a copy of the origin's text is saved after Tolk translated the field in the meantime (a run, or an automatic update);
 - a Bard field set back to inherit the origin can rewrite itself while the form loads ([above](#a-copy-of-the-origin-is-untranslated)), and the next Save stores the origin's text again.
 
-The field then stays in the origin's language: it does not make its item untranslated or outdated, so the item can read up to date, and Translate and Update leave it alone. Once its origin changes, it needs attention. Translate it with the field action **Translate from origin** ([The editor](editor.md#translating-one-field)) and save, or with **Overwrite manual edits** (`--force`), which also replaces every other field edited by hand in what it translates.
+Translate and Update leave the field alone, but it **needs attention**, so its item does not read up to date while the field is in the origin's language: the Overview and `tolk:status` count it, and the editor's banner names it ("Title holds the text of the origin again") with **Translate it**, which translates only those fields into the form; save to keep the translation, or **Undo**. If the text is meant to stay as it is, **Mark manual fields as up to date** keeps it and clears the flag. **Translate from origin** ([The editor](editor.md#translating-one-field)) and **Overwrite manual edits** (`--force`, which also replaces every other field edited by hand in what it translates) translate it too.
 
 ### Empty fields
 

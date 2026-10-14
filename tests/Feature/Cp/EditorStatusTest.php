@@ -66,8 +66,8 @@ describe('a localization', function () {
                 'target' => ['site' => 'el', 'name' => 'Greek'],
                 'status' => 'untranslated',
                 'fields' => [
-                    'title' => ['status' => 'manual', 'label' => 'Title', 'source_changed' => null, 'incomplete' => false],
-                    'intro' => ['status' => 'untranslated', 'label' => 'Introduction', 'source_changed' => null, 'incomplete' => false],
+                    'title' => ['status' => 'manual', 'label' => 'Title', 'source_changed' => null, 'incomplete' => false, 'same_as_origin' => false],
+                    'intro' => ['status' => 'untranslated', 'label' => 'Introduction', 'source_changed' => null, 'incomplete' => false, 'same_as_origin' => false],
                 ],
                 'counts' => statusCounts(['untranslated' => 1, 'manual' => 1, 'untracked' => 1]),
                 'out_of_scope' => [
@@ -90,6 +90,19 @@ describe('a localization', function () {
         editorStatus($greek)
             ->assertJsonPath('localization.translate_slug', true)
             ->assertJsonPath('localization.origin_slug', 'hello');
+    });
+
+    it('flags a field that holds the origin\'s text again after Tolk translated it, and reads the localization as needing attention', function () {
+        $this->signInAdmin();
+        translateForStatus($this->origin, 'el');
+        $greek = $this->origin->in('el');
+        $greek->set('title', 'Hello')->save();
+
+        editorStatus($greek)
+            ->assertJsonPath('localization.status', 'attention')
+            ->assertJsonPath('localization.fields.title', ['status' => 'manual', 'label' => 'Title', 'source_changed' => false, 'incomplete' => false, 'same_as_origin' => true])
+            ->assertJsonPath('localization.fields.intro.same_as_origin', false)
+            ->assertJsonPath('localization.counts', statusCounts(['current' => 1, 'manual' => 1, 'attention' => 1]));
     });
 
     it('reads machine output as current and an origin edit as outdated', function () {
