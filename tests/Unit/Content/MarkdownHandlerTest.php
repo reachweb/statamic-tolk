@@ -170,6 +170,15 @@ it('takes the definitions of the whole document, wherever they are', function ()
     expect(markdownLeafTexts($value))->toBe(['See [sea]<x1/> and [sky]<x2/>.']);
 });
 
+it('keeps references pointing at a definition whose destination is an Antlers tag', function () {
+    $field = markdownField(['antlers' => true]);
+    $value = "See [our story].\n\n[our story]: {{ link to=\"about\" }} \"About us\"";
+
+    expect(markdownLeafTexts($value, $field))->toBe(['See [our story]<x1/>.'])
+        ->and(app(ContentWalker::class)->inject($field, $value, ['Δείτε [την ιστορία μας]<x1/>.']))
+        ->toBe("Δείτε [την ιστορία μας][our story].\n\n[our story]: {{ link to=\"about\" }} \"About us\"");
+});
+
 it('passes the translation hint and no character limit', function () {
     $leaf = app(ContentWalker::class)->leaves(markdownField(['tolk_hint' => '  Keep it short ', 'character_limit' => 50]), 'Rooms by the sea')[0];
 

@@ -44,7 +44,7 @@ Inside those fields, a string is not sent to the model, and stays as it is, when
 
 Formatting, links, set types, ids and every value that is not text are kept exactly as in the origin; only the text changes. Where the origin's Replicator or Grid rows or Bard sets have no ids (content imported or saved by code), each keeps the id the localization's row or set at the same place already has, so translating a field again does not rewrite its ids. Inside the text:
 
-- **Antlers tags** (`{{ site:name }}`, `{{ partial:cta }}`) are kept unchanged, and a translation may not add one.
+- **Antlers tags** (`{{ site:name }}`, `{{ partial:cta }}`) are kept unchanged, their parameters included, and a translation may not add one or drop the `}}` that ends one.
 - **HTML tags** in text fields, table cells, list items, array values and navigation titles, and in translation strings and form texts, are kept: the model sees placeholders in their place and must return each one. The `alt` and `title` attributes inside HTML tags are not translated; Bard's own link titles and image alt texts are.
 - **Laravel parameters** (`:name`) are kept in translation files.
 - A translation may not introduce markup the source did not have: a `<script>` or any other new tag, an escaped tag, or new placeholders. Text that reaches the model with its `<` and `>` escaped (a `<b>` typed as text in Bard, `Kids <b` in a text field) must keep every part a browser would read as a tag exactly as it is, and may not put a letter after a `<`: once unescaped, a changed, added or dropped part would be markup. Tolk asks the model again, and keeps the source text if it does not comply.
@@ -53,7 +53,7 @@ Formatting, links, set types, ids and every value that is not text are kept exac
 
 A Markdown field is translated block by block (blank lines separate blocks), so a long article goes out in parts and an update sends only the changed blocks.
 
-- Code (fenced, indented and inline), link and image targets, reference definitions (their titles too), footnote references, autolinks, attribute lists and raw HTML tags stay as they are. Link texts and titles are translated.
+- Code (fenced, indented and inline), link and image targets, reference definitions (their titles too), footnote references, autolinks, attribute lists and raw HTML tags stay as they are, also when a target is an Antlers tag (`[us]({{ link to="contact" }})`, `[about]: {{ link to="about" }}`). Link texts and titles are translated.
 - A collapsed or shortcut reference (`[price list][]`, `[our story]`) becomes a full one once translated (`[τιμοκατάλογος][price list]`), so it still points to its definition.
 - An indented block counts as code, unless it continues a list item.
 - A translation may not add or change a link, an image or a web or email address (`https://…`, `www.…`, `name@example.com`): a Markdown field with automatic links would turn such text into a link. The source's own addresses are kept.

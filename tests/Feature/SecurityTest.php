@@ -559,6 +559,38 @@ describe('model output', function () {
         'html' => [SegmentKind::Html, '<1>Read</1> our story.'],
     ]);
 
+    it('rejects a translation that drops the end of an Antlers tag in every kind of segment', function (SegmentKind $kind, string $source) {
+        expect(app(SegmentValidator::class)->validate(['text' => $source.' }}', 'kind' => $kind->value], $source))
+            ->toBe('It drops the end of an Antlers tag (}}).');
+    })->with([
+        'plain' => [SegmentKind::Plain, 'A short intro <x1/>'],
+        'inline' => [SegmentKind::Inline, 'Book <1>a room</1> <x1/>'],
+        'markdown' => [SegmentKind::Markdown, 'Read [our story](<x1/>).'],
+        'html' => [SegmentKind::Html, '<1>Read</1> our story <x1/>'],
+    ]);
+
+    it('keeps the Antlers tags of Markdown link targets and reference definitions whole, so a translation cannot turn one into another tag', function () {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body', 'antlers' => true],
+        ]);
+        $body = "Write to [the front desk]({{ link to=\"contact\" }}) or see ![the pool]({{ glide:image width=\"800\" }} \"The pool\").\n\nRead [our story] first.\n\n[our story]: {{ link to=\"about\" }} \"About us\"";
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'welcome');
+        $sent = [];
+        $this->fakeTranslations(function (string $text) use (&$sent) {
+            $sent[] = $text;
+
+            return str_replace(['link to="contact"', 'glide:image', 'link to="about"', '[our story]'], ['config:app.key', 'config:app.key', 'config:app.key', '[unsere Geschichte]'], '[T] '.$text);
+        });
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+
+        expect(implode("\n", $sent))->not->toContain('link to=')->not->toContain('glide:image')->not->toContain('}}')
+            ->and(Entry::find($origin->id())->in('de')->get('body'))->toBe(
+                "[T] Write to [the front desk]({{ link to=\"contact\" }}) or see ![the pool]({{ glide:image width=\"800\" }} \"The pool\").\n\n[T] Read [unsere Geschichte][our story] first.\n\n[our story]: {{ link to=\"about\" }} \"About us\"",
+            );
+    });
+
     it('rejects a Markdown translation that adds or changes a link destination', function (string $translation) {
         expect(app(SegmentValidator::class)->validate(['text' => 'Read [our story](<x1/>) at www.kyma.test.', 'kind' => 'markdown'], $translation))
             ->not->toBeNull();

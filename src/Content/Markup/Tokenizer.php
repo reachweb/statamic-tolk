@@ -45,14 +45,21 @@ final class Tokenizer
     private const string FENCE_CLOSE = '[ \t]*(?:>[ \t]*)*\k<fence>\k<tick>*[ \t\r]*(?=\n|\z)';
 
     // A whole reference definition, its title included, also when the title is on the next line. `[^…]` is a footnote.
-    private const string DEFINITION = '(?m:^)[ ]{0,3}\[(?!\^)(?<label>'.self::LABEL.')\]:[ \t]*(?:\r?\n[ \t]*)?(?:<[^<>\n]*+>|(?!<)\S++)'
+    private const string DEFINITION = '(?m:^)[ ]{0,3}\[(?!\^)(?<label>'.self::LABEL.')\]:[ \t]*(?:\r?\n[ \t]*)?(?:'.self::ANGLE_DESTINATION.'|(?!<)(?:'.self::ANTLERS_TAG.'|\{\{\S*+|[^\s{]++|\{)++)'
         .'(?:(?:[ \t]+|[ \t]*\r?\n[ \t]*)(?:"(?:[^"\\\\]++|\\\\.)*+"|\'(?:[^\'\\\\]++|\\\\.)*+\'|\((?:[^()\\\\]++|\\\\.)*+\)))?[ \t\r]*(?=\n|\z)';
 
     // A link label: no unescaped brackets, on one line.
     private const string LABEL = '(?:[^\[\]\\\\\n]++|\\\\.)++';
 
     // An inline link or image destination, right after "](" (\K leaves those two outside the match). Its title is text.
-    private const string DESTINATION = '\]\([ \t]*(?:\r?\n[ \t]*)?\K(?:<[^<>\n]*+>|(?!<)(?:[^\s()\\\\]++|\\\\.|\((?:[^\s()\\\\]++|\\\\.)*+\))++)';
+    private const string DESTINATION = '\]\([ \t]*(?:\r?\n[ \t]*)?\K(?:'.self::ANGLE_DESTINATION.'|(?!<)(?:'.self::DESTINATION_TEXT.'|\((?:'.self::DESTINATION_TEXT.')*+\))++)';
+
+    // Destinations take Antlers tags whole, spaces and parameters included: a Markdown field that parses Antlers before
+    // Markdown (`antlers` with `smartypants`) gives CommonMark the tag's output, and a tag's parameters are never text. A
+    // "{{" that no "}}" closes takes the rest of the destination in one chunk, since no later "{{" can close either.
+    private const string ANGLE_DESTINATION = '<(?:'.self::ANTLERS_TAG.'|\{\{[^<>\n]*+|[^<>\n{]++|\{)*+>';
+
+    private const string DESTINATION_TEXT = self::ANTLERS_TAG.'|\{\{[^\s()\\\\]*+|[^\s()\\\\{]++|\{|\\\\.';
 
     private const string AUTOLINK = '<[a-zA-Z][a-zA-Z\d+.-]{1,31}:[^\s<>]*>'
         .'|<[\w.!#$%&\'*+\/=?^`{|}~-]+@[a-zA-Z\d](?:[a-zA-Z\d-]{0,61}[a-zA-Z\d])?(?:\.[a-zA-Z\d](?:[a-zA-Z\d-]{0,61}[a-zA-Z\d])?)*>';

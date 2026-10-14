@@ -130,6 +130,11 @@ final class Placeholders
             $problems[] = 'it adds an Antlers tag ({{ … }})';
         }
 
+        // A "}}" in the text closes an Antlers tag that starts in an atom; without it, the tag runs on or never closes.
+        if (substr_count($translated, '}}') < substr_count($source, '}}')) {
+            $problems[] = 'it drops the end of an Antlers tag (}})';
+        }
+
         if ($kind->escapes() && self::addsEscapes($source, $translated)) {
             $problems[] = 'it adds an escaped < or > (&lt; or &gt;)';
         }

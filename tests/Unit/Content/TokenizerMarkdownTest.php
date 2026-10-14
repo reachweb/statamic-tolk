@@ -99,6 +99,39 @@ it('gives an image inside a link two destination atoms', function () {
         ->and(array_values($tokenized->placeholders))->toBe(['statamic://asset::assets::pool-terrace.jpg', '/img/sign.png', '/img/logo.svg', '/']);
 });
 
+// A Markdown field with `antlers: true` and `smartypants: true` parses its Antlers before its Markdown, so CommonMark
+// reads the tag's output as the destination; whatever the order, the tag's parameters are never text.
+it('makes a link or image destination holding an Antlers tag one atom, the tag\'s parameters included', function (string $text, string $tokenized, string $destination) {
+    $result = tokenizeMarkdown($text);
+
+    expect($result->text)->toBe($tokenized)
+        ->and($result->map)->toBe(['x1' => $destination])
+        ->and(Tokenizer::restore($result->text, $result))->toBe($text);
+})->with([
+    'a tag with a parameter' => ['Write to [the front desk]({{ link to="contact" }}).', 'Write to [the front desk](<x1/>).', '{{ link to="contact" }}'],
+    'an image tag before a title' => ['![The pool]({{ glide:image width="800" }} "The pool")', '![The pool](<x1/> "The pool")', '{{ glide:image width="800" }}'],
+    'a tag inside a path' => ['See [the suite](/rooms/{{ slug }}/book) now', 'See [the suite](<x1/>) now', '/rooms/{{ slug }}/book'],
+    'a tag inside parentheses' => ['See [the suite](/rooms_({{ slug }})) now', 'See [the suite](<x1/>) now', '/rooms_({{ slug }})'],
+    'a tag holding parentheses' => ['See [the suite]({{ link to="rooms" | replace("(", "") }}) now', 'See [the suite](<x1/>) now', '{{ link to="rooms" | replace("(", "") }}'],
+    'a tag holding ">" in angle brackets' => ['See [the suite](<{{ count > 1 ? "/rooms" : "/room" }}>) now', 'See [the suite](<x1/>) now', '<{{ count > 1 ? "/rooms" : "/room" }}>'],
+    'a tag across lines' => ["Write to [the front desk]({{ link\n  to=\"contact\" }}).", 'Write to [the front desk](<x1/>).', "{{ link\n  to=\"contact\" }}"],
+]);
+
+it('makes a reference definition whose destination holds an Antlers tag an atom, and reads its label', function () {
+    $text = "Read [our story], [the menu][menu] or [the suite][].\n\n[our story]: {{ link to=\"about\" }}\n[menu]: {{ link to=\"menu\" }} \"Dinner menu\"\n[the suite]: /rooms/{{ slug }}/book";
+    $tokenized = tokenizeMarkdown($text);
+
+    expect(Tokenizer::referenceLabels($text))->toBe(['our story', 'menu', 'the suite'])
+        ->and($tokenized->text)->toBe("Read [our story]<x1/>, [the menu]<x2/> or [the suite]<x3/>.\n\n<x4/>\n<x5/>\n<x6/>")
+        ->and(array_slice($tokenized->map, 3))->toBe([
+            'x4' => '[our story]: {{ link to="about" }}',
+            'x5' => '[menu]: {{ link to="menu" }} "Dinner menu"',
+            'x6' => '[the suite]: /rooms/{{ slug }}/book',
+        ])
+        ->and(Tokenizer::restore("Διαβάστε [την ιστορία μας]<x1/>, [το μενού]<x2/> ή [τη σουίτα]<x3/>.\n\n<x4/>\n<x5/>\n<x6/>", $tokenized))
+        ->toStartWith('Διαβάστε [την ιστορία μας][our story], [το μενού][menu] ή [τη σουίτα][the suite].');
+});
+
 it('never lets a statamic:// destination reach the translatable text', function (string $text) {
     expect(tokenizeMarkdown($text)->text)->not->toContain('statamic://');
 })->with(fn () => markdownSamples());
@@ -264,12 +297,28 @@ it('takes a construct that never closes in one pass, within PHP\'s default PCRE 
     'an Antlers tag' => ['{{ ', SegmentKind::Markdown],
     'an attribute list' => ['{x-data="', SegmentKind::Markdown],
     'a definition title' => ['[a]: /url "', SegmentKind::Markdown],
+    'an Antlers tag in a link destination' => ['[a]({{ ', SegmentKind::Markdown],
+    'an Antlers tag in a definition' => ['[a]: {{ ', SegmentKind::Markdown],
     'a code span' => ['`` ', SegmentKind::Markdown],
     'a comment in HTML' => ["<!--\n", SegmentKind::Html],
     'a pre element in HTML' => ["<pre>\n", SegmentKind::Html],
     'an Antlers tag in HTML' => ['{{ ', SegmentKind::Html],
     'an Antlers comment in plain text' => ['{{# ', SegmentKind::Plain],
 ]);
+
+it('takes a link destination of Antlers openings that never close in one pass, within PHP\'s default PCRE limits', function () {
+    $text = 'See [a]('.str_repeat('{', 200_000).' here';
+    $limit = ini_set('pcre.backtrack_limit', '1000000');
+
+    try {
+        $tokenized = tokenizeMarkdown($text);
+    } finally {
+        ini_set('pcre.backtrack_limit', (string) $limit);
+    }
+
+    expect($tokenized->text)->toBe('See [a](<x1/> here')
+        ->and(strlen($tokenized->map['x1']))->toBe(200_000);
+});
 
 describe('splitting into blocks', function () {
     it('gives the input back when the pieces are joined', function (string $text) {
