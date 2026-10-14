@@ -205,3 +205,54 @@ it('refuses settings that would not mean what they say', function (array $values
         '"Kyma Bay" is already in the glossary for every language.',
     ],
 ]);
+
+// Core parses every addon setting as Antlers when it saves them, so such text used to fail the save with a 500.
+it('refuses text that Statamic cannot read as Antlers, and says how to keep it', function (array $values, string $key) {
+    $this->signInWithPermissions(['access cp', 'edit reachweb/statamic-tolk settings']);
+
+    $this->patchJson(cp_route('addons.settings.update', 'statamic-tolk'), tolkSettingsForm($values))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([$key => 'put the whole text between {{ noparse }} and {{ /noparse }}']);
+
+    expect(tolkSettingsFile())->toBeNull();
+})->with([
+    'the site profile' => [['site_profile' => 'Our templates print {{ title'], 'site_profile'],
+    'the instructions' => [['instructions' => 'Keep {{ and }} unchanged.'], 'instructions'],
+    'a language instruction' => [
+        ['language_instructions' => [tolkLanguageRow(['site' => ['el'], 'instructions' => 'Keep {{ if }} as it is.'])]],
+        'language_instructions.0.instructions',
+    ],
+    'a glossary term' => [['glossary' => [tolkGlossaryRow(['term' => 'Kyma {{ Bay', 'do_not_translate' => true])]], 'glossary.0.term'],
+    'a glossary translation' => [['glossary' => [tolkGlossaryRow(['term' => 'Agora', 'translation' => 'Αγορά {{'])]], 'glossary.0.translation'],
+    'a glossary note' => [
+        ['glossary' => [tolkGlossaryRow(['term' => 'Agora', 'translation' => 'Αγορά', 'note' => 'Not {{ x + }}'])]],
+        'glossary.0.note',
+    ],
+    'an excluded field' => [['excluded_fields' => ['internal_note', 'note {{']], 'excluded_fields'],
+    'a model typed by hand' => [['translator_model' => 'anthropic:{{model'], 'translator_model'],
+]);
+
+it('saves text between noparse tags, and Settings leaves the tags out', function () {
+    $this->signInWithPermissions(['access cp', 'edit reachweb/statamic-tolk settings']);
+
+    $this->patchJson(cp_route('addons.settings.update', 'statamic-tolk'), tolkSettingsForm([
+        'site_profile' => 'Our templates print {{ site:name }} in the footer.',
+        'instructions' => '{{ noparse }}Keep {{ and }} unchanged.{{ /noparse }}',
+        'language_instructions' => [tolkLanguageRow(['site' => ['el'], 'instructions' => 'Write {{noparse}}{{{{/noparse}} as it is.'])],
+        'glossary' => [tolkGlossaryRow([
+            'term' => '{{ noparse }}Kyma {{ Bay{{ /noparse }}',
+            'translation' => '{{ noparse }}Κύμα {{ Bay{{ /noparse }}',
+            'note' => '{{ noparse }}Not {{ x + }}{{ /noparse }}',
+        ])],
+    ]))->assertOk()->assertJson(['saved' => true]);
+
+    $settings = app(Settings::class)->fresh();
+
+    expect(tolkSettingsFile()['instructions'])->toBe('{{ noparse }}Keep {{ and }} unchanged.{{ /noparse }}')
+        ->and($settings->siteProfile())->toBe('Our templates print {{ site:name }} in the footer.')
+        ->and($settings->instructions())->toBe('Keep {{ and }} unchanged.')
+        ->and($settings->languageInstructions('el')['instructions'])->toBe('Write {{ as it is.')
+        ->and($settings->glossary('el'))->toBe([
+            ['term' => 'Kyma {{ Bay', 'site' => null, 'translation' => 'Κύμα {{ Bay', 'do_not_translate' => false, 'note' => 'Not {{ x + }}'],
+        ]);
+});

@@ -81,6 +81,10 @@ Content is saved by one process at a time, under a lock ([Why one writer](bulk-a
 - **Translations a run saved read untranslated or outdated again.** A form of the localization that was open before the run was saved afterwards, and put back the text it was opened with. **Update** translates them again; reload a localization a run may have saved before you edit it ([Forms opened before a run](editor.md#forms-opened-before-a-run)).
 - **After a deploy, every translation reads "edited by hand" and Update sends nothing.** The state files are gone: with content in a database, a deploy that replaces the site's folder takes `content/tolk/` with it. Restore the folder from a backup and set `state.path` to a folder every deploy keeps ([Configuration](configuration.md#translation-state)). Without a backup, run `tolk:baseline`, which keeps the current translations as edited by hand but notices origin changes again, or translate them again with **Overwrite manual edits** (`--force`).
 
+## "The Tolk settings in resources/addons/statamic-tolk.yaml could not be read"
+
+Everything that reads the Tolk settings (the banner, the Overview, runs, the commands) fails with this error, which the commands print and the CP writes to the log, when Statamic cannot read the settings file: after it was edited by hand or by a merge. The rest of the message says why: YAML that does not parse, or a text with `{{` that Statamic cannot read as Antlers, because it reads every addon setting as Antlers. Fix the file: put such a text between `{{ noparse }}` and `{{ /noparse }}` ([What the settings page refuses](configuration.md#what-the-settings-page-refuses)). The settings page cannot open the file either until it is fixed.
+
 ## The interface is in English
 
 The CP texts are translatable: add them to `lang/{locale}.json` ([Installation](installation.md#the-interface-language)). Command output stays in English.

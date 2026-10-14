@@ -73,6 +73,8 @@ tabs:
               display: 'Site profile'
               instructions: 'A short description of the organisation, what it offers, its audience and its tone of voice, sent with every translation. Generate writes one from your content with the translator model, and you can edit it as you like.'
               default: ''
+              validate:
+                - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
           -
             handle: instructions
             field:
@@ -80,6 +82,8 @@ tabs:
               display: Instructions
               instructions: 'Instructions for every translation, for example on tone, spelling or units. You can write them in any language.'
               default: ''
+              validate:
+                - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
           -
             handle: language_instructions
             field:
@@ -119,6 +123,8 @@ tabs:
                     type: textarea
                     display: Instructions
                     instructions: 'Extra instructions for this language only.'
+                    validate:
+                      - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
   glossary:
     display: Glossary
     sections:
@@ -142,6 +148,7 @@ tabs:
                     validate:
                       - required
                       - 'new Reach\StatamicTolk\Http\Rules\UniqueGlossaryTerm'
+                      - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
                 -
                   handle: site
                   field:
@@ -157,6 +164,7 @@ tabs:
                     display: Translation
                     validate:
                       - 'new Reach\StatamicTolk\Http\Rules\GlossaryTranslation'
+                      - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
                 -
                   handle: do_not_translate
                   field:
@@ -167,6 +175,8 @@ tabs:
                   field:
                     type: text
                     display: Note
+                    validate:
+                      - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
   content:
     display: Content
     sections:
@@ -195,6 +205,8 @@ tabs:
               display: 'Excluded fields'
               instructions: 'Top-level fields that are never translated, in every blueprint. Enter each field by its handle, for example `internal_note`. For a field inside a Replicator, Grid or Bard set, switch off its "Translate automatically" option instead.'
               default: []
+              validate:
+                - 'new Reach\StatamicTolk\Http\Rules\AntlersText'
           -
             handle: translated_slugs
             field:

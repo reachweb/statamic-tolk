@@ -8,6 +8,7 @@ use Reach\StatamicTolk\Enums\Tier;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
+use Reach\StatamicTolk\Exceptions\InvalidSettings;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
@@ -28,6 +29,7 @@ use Reach\StatamicTolk\Exceptions\WriterBusy;
 use Reach\StatamicTolk\Support\Audit;
 use Reach\StatamicTolk\Tests\Support\TemplateStrings;
 use Reach\StatamicTolk\Translation\UnitOutcome;
+use Statamic\View\Antlers\Language\Exceptions\SyntaxErrorException;
 use Symfony\Component\Finder\SplFileInfo;
 
 /**
@@ -159,6 +161,8 @@ describe('PHP', function () {
             ApplyFailed::invalidTree('nav::main::el', new Exception('Root page cannot have children')),
             FieldFailed::for('body', ['s1' => 'invalid']),
             InvalidModelRef::for('gpt'),
+            InvalidSettings::unreadable('resources/addons/statamic-tolk.yaml', new SyntaxErrorException('Unexpected operator while parsing input text.')),
+            InvalidSettings::unreadable(null, new RuntimeException('Connection refused.')),
             InvalidTarget::sameSite('1', 'el'),
             InvalidTarget::siteNotInCollection('pages', 'el'),
             InvalidTarget::defaultSite('topics::news', 'en'),

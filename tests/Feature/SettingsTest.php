@@ -1,8 +1,12 @@
 <?php
 
+use Illuminate\Support\Facades\File;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Enums\Formality;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
+use Reach\StatamicTolk\Exceptions\InvalidSettings;
+use Reach\StatamicTolk\Fieldtypes\ModelSelect;
+use Reach\StatamicTolk\Http\Rules\AntlersText;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\CP\PublishForm;
 use Statamic\Facades\Addon;
@@ -284,6 +288,48 @@ it('falls back to the defaults for empty and unknown values', function () {
         ->and($settings->glossary('el'))->toBe([])
         ->and($settings->excludedCollections())->toBe([])
         ->and($settings->excludedFields())->toBe(['internal_note']);
+});
+
+// Core parses every setting as Antlers when it reads them, so a text written into the file by hand that is not
+// Antlers broke every page that reads the settings, with an error that named neither the file nor the setting.
+it('names the settings file when Statamic cannot read it', function (string $contents, bool $antlers) {
+    File::ensureDirectoryExists(resource_path('addons'));
+    File::put(resource_path('addons/statamic-tolk.yaml'), $contents);
+
+    foreach ([fn () => app(Settings::class)->fresh()->instructions(), fn () => app(Settings::class)->save(['strict_fields' => true])] as $read) {
+        try {
+            $read();
+            $this->fail('The settings were read.');
+        } catch (InvalidSettings $exception) {
+            expect($exception->getMessage())->toStartWith('The Tolk settings in resources/addons/statamic-tolk.yaml could not be read: ')
+                ->and(str_contains($exception->getMessage(), 'between {{ noparse }} and {{ /noparse }}'))->toBe($antlers)
+                ->and($exception->getPrevious())->not->toBeNull();
+        }
+    }
+
+    expect(File::get(resource_path('addons/statamic-tolk.yaml')))->toBe($contents);
+})->with([
+    'text that is not Antlers' => ["instructions: 'Keep {{ and }} unchanged.'\n", true],
+    'YAML that does not parse' => ["instructions: [unclosed\n", false],
+]);
+
+it('checks every text the settings page saves as Antlers, inside the grids too', function () {
+    $texts = collect(tolkSettingsBlueprintFields())
+        ->flatMap(fn (array $field, string $handle) => $field['type'] === 'grid'
+            ? collect($field['fields'])->mapWithKeys(fn (array $row) => ["{$handle}.{$row['handle']}" => $row['field']])->all()
+            : [$handle => $field])
+        ->filter(fn (array $field) => in_array($field['type'], ['text', 'textarea', 'list', 'tolk_site_profile'], true));
+
+    expect($texts->keys()->all())->toBe([
+        'site_profile', 'instructions', 'language_instructions.instructions',
+        'glossary.term', 'glossary.translation', 'glossary.note', 'excluded_fields',
+    ]);
+
+    foreach ($texts as $handle => $field) {
+        expect(in_array('new '.AntlersText::class, $field['validate'] ?? [], true))->toBeTrue("[{$handle}] is not checked as Antlers.");
+    }
+
+    expect(collect((new ModelSelect)->rules())->map(fn (object $rule) => $rule::class)->all())->toContain(AntlersText::class);
 });
 
 it('throws on a model reference that does not parse', function () {

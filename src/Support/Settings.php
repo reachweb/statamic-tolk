@@ -8,7 +8,12 @@ use Illuminate\Support\Str;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Formality;
+use Reach\StatamicTolk\Exceptions\InvalidSettings;
+use Statamic\Addons\FileSettingsRepository;
+use Statamic\Contracts\Addons\Settings as AddonSettings;
+use Statamic\Contracts\Addons\SettingsRepository;
 use Statamic\Facades\Addon;
+use Throwable;
 
 class Settings
 {
@@ -38,6 +43,11 @@ class Settings
         'auto_update_publish' => false,
     ];
 
+    /**
+     * The tags that let a setting hold `{{` and `}}` that are not Antlers: core parses every setting as Antlers.
+     */
+    private const string NOPARSE_TAG = '/\{\{\s*\/?\s*noparse\s*\}\}/';
+
     private ?array $values = null;
 
     public function fresh(): static
@@ -52,7 +62,7 @@ class Settings
      */
     public function save(array $values): void
     {
-        $settings = Addon::get(self::PACKAGE)->settings();
+        $settings = $this->stored();
 
         foreach ($values as $key => $value) {
             $settings->set($key, $value);
@@ -103,12 +113,12 @@ class Settings
 
     public function siteProfile(): string
     {
-        return $this->string('site_profile');
+        return self::prose($this->values()['site_profile']);
     }
 
     public function instructions(): string
     {
-        return $this->string('instructions');
+        return self::prose($this->values()['instructions']);
     }
 
     /**
@@ -120,7 +130,7 @@ class Settings
 
         return [
             'formality' => Formality::tryFrom(self::text($row['formality'] ?? null)) ?? Formality::Default,
-            'instructions' => self::text($row['instructions'] ?? null),
+            'instructions' => self::prose($row['instructions'] ?? null),
         ];
     }
 
@@ -131,11 +141,11 @@ class Settings
     {
         return collect($this->rows('glossary'))
             ->map(fn (array $row) => [
-                'term' => self::text($row['term'] ?? null),
+                'term' => self::prose($row['term'] ?? null),
                 'site' => self::siteOf($row),
-                'translation' => self::text($row['translation'] ?? null),
+                'translation' => self::prose($row['translation'] ?? null),
                 'do_not_translate' => filter_var($row['do_not_translate'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                'note' => self::text($row['note'] ?? null),
+                'note' => self::prose($row['note'] ?? null),
             ])
             ->filter(fn (array $row) => $row['term'] !== ''
                 && ($row['translation'] !== '' || $row['do_not_translate'])
@@ -230,10 +240,26 @@ class Settings
 
     private function values(): array
     {
-        return $this->values ??= array_merge(
-            self::DEFAULTS,
-            Arr::whereNotNull(Addon::get(self::PACKAGE)?->settings()->raw() ?? []),
-        );
+        return $this->values ??= array_merge(self::DEFAULTS, Arr::whereNotNull($this->stored()?->raw() ?? []));
+    }
+
+    /**
+     * The addon's settings as core reads them. Core parses every value as Antlers on the way, so a text written into
+     * the file by hand that is not Antlers fails the read: the exception names the file.
+     */
+    private function stored(): ?AddonSettings
+    {
+        $addon = Addon::get(self::PACKAGE);
+
+        try {
+            return $addon?->settings();
+        } catch (Throwable $exception) {
+            $file = app(SettingsRepository::class) instanceof FileSettingsRepository
+                ? Str::after(resource_path("addons/{$addon->slug()}.yaml"), base_path().DIRECTORY_SEPARATOR)
+                : null;
+
+            throw InvalidSettings::unreadable($file, $exception);
+        }
     }
 
     private function model(string $key): ?ModelRef
@@ -292,5 +318,13 @@ class Settings
     public static function text(mixed $value): string
     {
         return is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    /**
+     * A text someone wrote for the model, without the `{{ noparse }}` tags that let it hold `{{` and `}}`.
+     */
+    private static function prose(mixed $value): string
+    {
+        return trim(preg_replace(self::NOPARSE_TAG, '', self::text($value)));
     }
 }

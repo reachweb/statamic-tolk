@@ -7,6 +7,7 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Http\Rules\AntlersText;
 use Reach\StatamicTolk\Http\Rules\ModelReference;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Fields\Fieldtype;
@@ -63,7 +64,7 @@ class ModelSelect extends Fieldtype
 
     public function rules(): array
     {
-        return [new ModelReference];
+        return [new ModelReference, new AntlersText];
     }
 
     private function automaticLabel(): string
