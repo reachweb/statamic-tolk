@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use LogicException;
 use RuntimeException;
@@ -184,6 +185,19 @@ trait CreatesContent
     protected function deleteTermElsewhere(string $id): void
     {
         $this->elsewhere('delete-term', ['id' => $id]);
+    }
+
+    /**
+     * A worker that dies inside its step on an item of the run, in another PHP process, as saveEntryElsewhere() saves:
+     * RunProcessor::translate() as $worker (claims of 300 s) during its first provider call, or applyReady() as it
+     * saves the item's localization. The item's lock and, for `apply`, the global write lock stay taken until they
+     * expire on this test's clock. Fails unless the process died there.
+     *
+     * @param  'translate'|'apply'  $step
+     */
+    protected function dieWorkingElsewhere(string $runId, string $worker, string $step = 'translate'): void
+    {
+        $this->elsewhere('die-working', ['run' => $runId, 'worker' => $worker, 'step' => $step, 'now' => CarbonImmutable::now()->toIso8601ZuluString('microsecond')]);
     }
 
     /**

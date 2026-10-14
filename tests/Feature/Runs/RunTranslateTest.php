@@ -589,6 +589,57 @@ describe('failures', function () {
         Exceptions::assertReported(fn (RuntimeException $exception) => str_starts_with($exception->getMessage(), 'Something broke'));
     });
 
+    it('counts an attempt each time a worker died on an item, also when the same worker takes it back, and fails it at the third', function () {
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+
+        foreach ([0, 1, 2] as $attempts) {
+            $this->dieWorkingElsewhere($run->id, 'lane-1');
+
+            expect(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Translating, 'attempts' => $attempts])
+                ->and(RunFixtures::items($run)[0]->claim->by)->toBe('lane-1');
+
+            // Past the item lock the process left.
+            $this->travel(301)->seconds();
+        }
+
+        $this->fakeTranslations();
+        $report = RunFixtures::translate($run);
+
+        expect($report->toArray())->toBe(['units' => 0, 'items' => 1, 'remains' => false, 'wait' => null])
+            ->and(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Failed, 'attempts' => 3, 'reason' => null, 'claim' => null, 'error' => 'No worker finished this item in 3 attempts.'])
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+        $this->assertNoModelCalls();
+    });
+
+    it('counts a death once when another worker takes the item over after its claim expired', function () {
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        $this->dieWorkingElsewhere($run->id, 'lane-1');
+        $this->travel(301)->seconds();
+        $this->fakeTranslations();
+
+        expect(RunFixtures::translate($run, 'lane-2')->items)->toBe(1)
+            ->and(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Translated, 'attempts' => 1]);
+    });
+
+    it('counts no death left from before a retry of the item', function () {
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+
+        foreach (['gone-1', 'gone-2', 'gone-3'] as $worker) {
+            $this->dieWorkingElsewhere($run->id, $worker);
+            $this->travel(301)->seconds();
+        }
+
+        $this->fakeTranslations();
+        RunFixtures::translate($run);
+
+        expect(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Failed, 'attempts' => 3]);
+
+        app(RunProcessor::class)->retry($run);
+
+        expect(RunFixtures::translate($run)->items)->toBe(1)
+            ->and(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Translated, 'attempts' => 0]);
+    });
+
     it('skips an item whose lock another request holds, keeping the claim it got', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);

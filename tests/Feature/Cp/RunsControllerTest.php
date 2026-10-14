@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Statamic\Contracts\Auth\User as UserContract;
+use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 
 const RUN_NONCE = 'pageNonce123';
@@ -404,6 +405,31 @@ describe('a browser run', function () {
             ->and($items[0]->claim->token)->toBe($held->claim->token)
             ->and([$items[1]->status, $items[2]->status])->toBe([RunItemStatus::Translated, RunItemStatus::Translated])
             ->and($this->modelCalls())->toBe(2);
+    });
+
+    it('fails an item whose apply killed the request three times, although the user\'s apply loop takes it back each time', function () {
+        $this->fakeTranslations();
+        $admin = $this->signInAdmin();
+        $run = createdRun();
+        runAction($run, 'start');
+        tick($run);
+        tick($run);
+        tick($run);
+
+        foreach ([0, 1, 2] as $attempts) {
+            $this->dieWorkingElsewhere($run->id, 'browser-'.$admin->id().'-apply', 'apply');
+
+            expect($this->runs->item($run, 0))->toMatchObject(['status' => RunItemStatus::Applying, 'attempts' => $attempts]);
+
+            $this->travel(config('tolk.write.lock_seconds') + 1)->seconds();
+        }
+
+        $applied = runAction($run, 'apply')->assertOk();
+
+        expect($applied->json('run.status'))->toBe('completed_with_errors')
+            ->and(RunFixtures::statuses($run))->toBe(['failed', 'done', 'done'])
+            ->and($this->runs->item($run, 0)->error)->toBe('No worker finished this item in 3 attempts.')
+            ->and(Entry::query()->where('site', 'el')->count())->toBe(2);
     });
 
     it('cancels: no more claims, and the content saved so far is committed', function () {

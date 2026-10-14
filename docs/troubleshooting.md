@@ -65,7 +65,7 @@ Automatic updates need **Update translations automatically** on (the settings' A
 
 ### Items fail with "No worker finished this item in 3 attempts."
 
-The process translating the item died three times (a PHP time or memory limit, a killed worker). Check the PHP error log, raise `memory_limit` or `max_execution_time` for the queue worker, or lower the batch sizes; then **Retry failed**.
+The process translating or saving the item died three times (a PHP time or memory limit, a killed worker), also when the same queue lane or run page took the item back each time. Check the PHP error log, raise `memory_limit` or `max_execution_time` for the queue worker or the web server, or lower the batch sizes; then **Retry failed**.
 
 ### "Another process is saving content"
 

@@ -683,6 +683,28 @@ describe('applyReady', function () {
             ->and($greek->slug())->toBe('my-own-slug');
     });
 
+    it('counts an attempt each time an apply died on an item, also when the same worker takes it back, and fails it at the third', function () {
+        $this->fakeTranslations();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        RunFixtures::translate($run);
+
+        foreach ([0, 1, 2] as $attempts) {
+            $this->dieWorkingElsewhere($run->id, 'apply-1', 'apply');
+
+            expect(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Applying, 'attempts' => $attempts]);
+
+            // Past the write lock and the item lock the process left.
+            $this->travel(config('tolk.write.lock_seconds') + 1)->seconds();
+        }
+
+        $report = applyRun($run);
+
+        expect($report->toArray())->toBe(['items' => 1, 'returned' => 0, 'remains' => false, 'wait' => null])
+            ->and(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Failed, 'attempts' => 3, 'planId' => null, 'error' => 'No worker finished this item in 3 attempts.'])
+            ->and(Entry::query()->where('site', 'el')->count())->toBe(0)
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+    });
+
     it('applies the item of a worker that holds it again, and leaves an item another request works on', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);

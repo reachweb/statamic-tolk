@@ -70,7 +70,7 @@ final readonly class RunProcessor
     public const int MAX_UNAVAILABLE_ITEMS = 3;
 
     /**
-     * Attempts at an item that throws before it fails.
+     * Attempts at an item that throws, or whose process dies, before it fails.
      */
     public const int MAX_ATTEMPTS = RunItem::MAX_ATTEMPTS;
 
@@ -404,13 +404,62 @@ final readonly class RunProcessor
         }
 
         try {
-            return $this->attempt($run, $item, $options, $mayStartUnit, $units, $items);
+            return $this->begin($run, $item, $lock)
+                ? $this->attempt($run, $item, $options, $mayStartUnit, $units, $items)
+                : $this->fail($run, $item, self::abandoned(), null, $items);
         } catch (ClaimLost|UnitBusy|RunNotFound) {
             // Another worker has the item now, or the run was deleted.
             return self::BUSY_SECONDS;
         } finally {
+            $this->end($run, $item, $lock);
             $lock->release();
         }
+    }
+
+    /**
+     * Marks a step on the item until end(). A mark that is still there was left by a process that died in a step on the
+     * item (memory_limit, max_execution_time, a killed queue job), which counts an attempt, unless the hand-out of its
+     * expired claim counted it already (the item has more attempts than the mark) or Retry reset them (fewer): a queue
+     * lane or a browser loop takes its own item back after such a death, which the repository does not count.
+     *
+     * @return bool false at the MAX_ATTEMPTS-th attempt, when the caller fails the item instead
+     */
+    private function begin(Run $run, RunItem $item, Lock $lock): bool
+    {
+        $key = $this->stepKey($run, $item);
+        $left = $this->cache()->get($key);
+        $died = is_array($left) && ($left['attempts'] ?? null) === $item->attempts;
+
+        if ($died && ++$item->attempts < self::MAX_ATTEMPTS) {
+            $this->runs->saveItem($run, $item);
+        }
+
+        // Kept long after the item's lock expired: the next step on the item may come only when the run is resumed.
+        $this->cache()->put($key, ['attempts' => $item->attempts, 'owner' => $lock->owner()], max(1, (int) config('tolk.runs.retention_days')) * 86400);
+
+        return ! $died || $item->attempts < self::MAX_ATTEMPTS;
+    }
+
+    /**
+     * Removes the step's mark, unless a later step on the item replaced it after this one outlived its lock.
+     */
+    private function end(Run $run, RunItem $item, Lock $lock): void
+    {
+        $key = $this->stepKey($run, $item);
+
+        if (($this->cache()->get($key)['owner'] ?? null) === $lock->owner()) {
+            $this->cache()->forget($key);
+        }
+    }
+
+    private function stepKey(Run $run, RunItem $item): string
+    {
+        return "tolk:item-step:{$run->id}:{$item->index}";
+    }
+
+    private static function abandoned(): string
+    {
+        return __('No worker finished this item in :attempts attempts.', ['attempts' => self::MAX_ATTEMPTS]);
     }
 
     /**
@@ -522,10 +571,19 @@ final readonly class RunProcessor
         }
 
         try {
+            if (! $this->begin($run, $item, $lock)) {
+                $plan = $item->planId === null ? null : $this->store->get($item->planId);
+                $this->failItem($run, $item, self::abandoned(), null);
+                $this->forget($plan);
+
+                return ['item' => $item, 'result' => null];
+            }
+
             return ['item' => $item, 'result' => $this->applyItem($run, $item)];
         } catch (ClaimLost|RunNotFound) {
             return ['item' => null, 'result' => null];
         } finally {
+            $this->end($run, $item, $lock);
             $lock->release();
         }
     }

@@ -2,10 +2,15 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Event;
+use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Tests\TestCase;
 use RuntimeException;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Events\EntrySaving;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
 use Statamic\Facades\Term;
@@ -45,6 +50,7 @@ final class OtherProcess extends TestCase
             'detach-localizations' => $process->detachLocalizations(...$job['arguments']),
             'localize-entry' => $process->localizeEntry(...$job['arguments']),
             'delete-term' => $process->deleteTerm(...$job['arguments']),
+            'die-working' => $process->dieWorking(...$job['arguments']),
         };
 
         return ['done' => $job['job']];
@@ -123,6 +129,38 @@ final class OtherProcess extends TestCase
         $term = Term::find($id) ?? throw new RuntimeException("The term [{$id}] does not exist.");
 
         $term->delete() ?: throw new RuntimeException("A listener stopped the deletion of the term [{$id}].");
+    }
+
+    /**
+     * A step of RunProcessor on the run as $worker that kills the process, as memory_limit or a queue job's timeout
+     * does: `translate` during its first provider call, `apply` as it saves the item's localization. exit() runs no
+     * finally block, so the item's lock and whatever else the step held stay taken. The clock is the test's, so they
+     * expire when the test travels past them.
+     *
+     * @param  'translate'|'apply'  $step
+     */
+    private function dieWorking(string $run, string $worker, string $step, string $now): never
+    {
+        $this->travelTo(CarbonImmutable::parse($now));
+        $stored = app(RunRepository::class)->find($run) ?? throw new RuntimeException("The run [{$run}] does not exist.");
+        $die = function (): never {
+            echo json_encode(['done' => self::$job['job']], JSON_THROW_ON_ERROR);
+
+            exit(0);
+        };
+
+        match ($step) {
+            'translate' => ScriptedEngine::bind(fn () => $die()),
+            'apply' => Event::listen(EntrySaving::class, $die),
+        };
+
+        $deadline = CarbonImmutable::now()->addSeconds(30);
+
+        $step === 'translate'
+            ? app(RunProcessor::class)->translate($stored, $worker, $deadline, 300)
+            : app(RunProcessor::class)->applyReady($stored, $worker, $deadline);
+
+        throw new RuntimeException("The worker [{$worker}] ended its {$step} step on the run [{$run}] alive.");
     }
 
     private function entry(string $id): EntryContract

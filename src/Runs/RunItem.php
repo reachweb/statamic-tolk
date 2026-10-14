@@ -22,7 +22,8 @@ final class RunItem
     public const string UNAUTHORIZED = 'unauthorized';
 
     /**
-     * Attempts at an item before it fails: a takeover after its claim expired, or a retry after its work threw.
+     * Attempts at an item before it fails: a takeover after its claim expired, a retry after its work threw, or a step
+     * after one whose process died.
      */
     public const int MAX_ATTEMPTS = 3;
 
