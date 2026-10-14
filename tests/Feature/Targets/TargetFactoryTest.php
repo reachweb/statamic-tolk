@@ -1,11 +1,15 @@
 <?php
 
+use Illuminate\Filesystem\Filesystem;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\NotALocalization;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\NavTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -73,6 +77,40 @@ describe('fromReference', function () {
             ->and((string) $target->ref())->toBe('nav::main::el')
             ->and($target->sourceSite())->toBe('en');
     });
+
+    it('translates a navigation tree, a translation file and form texts from the site their state records, also into the default site', function () {
+        $this->app->useLangPath($this->temporaryPath('lang'));
+        (new Filesystem)->ensureDirectoryExists(lang_path('de'));
+        file_put_contents(lang_path('de/messages.php'), "<?php return ['book' => 'Jetzt buchen'];");
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book']], 'el' => [['id' => 'book', 'title' => 'Κράτηση']], 'de' => []]);
+        $recorded = ['nav::main::en' => 'el', 'nav::main::de' => 'el', 'lang::messages::en' => 'de', 'lang::messages::el' => 'de', 'forms::en' => 'de'];
+
+        foreach ($recorded as $reference => $sourceSite) {
+            app(StateRepository::class)->update(TargetRef::parse($reference), fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: 'a1b2c3d4e5f60718'))->withSourceSite($sourceSite));
+        }
+
+        expect(array_map(fn (string $reference) => targets()->fromReference($reference)->describe(), array_keys($recorded)))->toBe([
+            ['type' => 'nav', 'source_id' => 'main::el', 'site' => 'en'],
+            ['type' => 'nav', 'source_id' => 'main::el', 'site' => 'de'],
+            ['type' => 'lang', 'source_id' => 'messages::de', 'site' => 'en'],
+            ['type' => 'lang', 'source_id' => 'messages::de', 'site' => 'el'],
+            ['type' => 'forms', 'source_id' => 'de', 'site' => 'en'],
+        ]);
+    });
+
+    it('rejects a reference into the source site its state records, and one whose recorded source site is left out now', function (string $reference, string $sourceSite, string $exception) {
+        $this->app->useLangPath($this->temporaryPath('lang'));
+        $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book']], 'el' => []]);
+        app(StateRepository::class)->update(TargetRef::parse($reference), fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: 'a1b2c3d4e5f60718'))->withSourceSite($sourceSite));
+
+        expect(fn () => targets()->fromReference($reference))->toThrow($exception);
+    })->with([
+        'nav into its source' => ['nav::main::el', 'el', NotALocalization::class],
+        'forms into their source' => ['forms::de', 'de', NotALocalization::class],
+        'nav from a site left out' => ['nav::main::el', 'fr', UnknownSite::class],
+        'lang from a site left out' => ['lang::_json::de', 'fr', UnknownSite::class],
+        'forms from a site left out' => ['forms::de', 'fr', UnknownSite::class],
+    ]);
 });
 
 describe('forEntry', function () {

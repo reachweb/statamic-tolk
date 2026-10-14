@@ -5,6 +5,7 @@ namespace Reach\StatamicTolk\Targets;
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\SourceSummary;
 use Reach\StatamicTolk\Content\TranslatableFields;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTarget;
@@ -35,12 +36,14 @@ final class TargetFactory
         private readonly StatusResolver $resolver,
         private readonly StateWriter $stateWriter,
         private readonly LangFiles $langFiles,
+        private readonly StateRepository $state,
     ) {}
 
     /**
-     * The reference of an existing target; an entry, term or globals reference must name a localization, a nav
-     * reference a site other than the default site, whose tree is the source, and a lang or forms reference a language
-     * other than the default site's, whose file or form texts are the source.
+     * The reference of an existing target; an entry, term or globals reference must name a localization. A nav, lang or
+     * forms reference does not name its source, so it is translated from its recordedSourceSite(): a nav reference must
+     * name a site with a tree other than that site, whose tree is the source, and a lang or forms reference a language
+     * other than that site's, whose file or form texts are the source.
      */
     public function fromReference(string|TargetRef $reference): Target
     {
@@ -54,6 +57,15 @@ final class TargetFactory
             ContentType::Lang => $this->langFromReference($ref),
             ContentType::Forms => $this->formsFromReference($ref),
         };
+    }
+
+    /**
+     * The site that the state of $ref records as the source of its translations (ItemState::$sourceSite), such as the
+     * `--from` site of `tolk:lang` or of a navigation's run; the default site when the state records none.
+     */
+    public function recordedSourceSite(TargetRef $ref): string
+    {
+        return $this->state->get($ref)->sourceSite ?? Site::default()->handle();
     }
 
     /**
@@ -272,7 +284,8 @@ final class TargetFactory
         return $this->forGlobalSet($set, $ref->site);
     }
 
-    // A nav reference names a site with a tree, translated from the default site's tree.
+    // A nav reference names a site with a tree, translated from the tree of its recorded source site; forNav() throws
+    // UnknownSite when that site is left out now.
     private function navFromReference(TargetRef $ref): NavTarget
     {
         $nav = Nav::findByHandle($ref->id) ?? throw TargetNotFound::nav($ref->id);
@@ -281,11 +294,13 @@ final class TargetFactory
             throw TargetNotFound::nav($ref->id, $ref->site);
         }
 
-        if ($ref->site === Site::default()->handle()) {
+        $sourceSite = $this->recordedSourceSite($ref);
+
+        if ($ref->site === $sourceSite) {
             throw NotALocalization::for((string) $ref);
         }
 
-        return $this->forNav($nav, $ref->site);
+        return $this->forNav($nav, $ref->site, $sourceSite);
     }
 
     // A nav's source id is `{handle}::{source site}` (NavTarget::describe()); a handle alone names the default site's tree.
@@ -296,7 +311,7 @@ final class TargetFactory
         return $this->forNav($handle, $site, $sourceSite);
     }
 
-    // A lang reference names the target language; the source is the default site's language.
+    // A lang reference names the target language; the source is the language of its recorded source site.
     private function langFromReference(TargetRef $ref): LangTarget
     {
         return $this->forLang($ref->id, $ref->site, $this->referenceSourceLang($ref, $ref->site));
@@ -310,20 +325,23 @@ final class TargetFactory
         return $this->forLang($group, $lang, $sourceLang);
     }
 
-    // A forms reference names the target language; the source is the default site's language.
+    // A forms reference names the target language; the source is the language of its recorded source site.
     private function formsFromReference(TargetRef $ref): FormsTarget
     {
         return $this->forForms($ref->id, $this->referenceSourceLang($ref, $ref->id));
     }
 
     /**
-     * The source language of a lang or forms reference: the default site's, which the reference's language must not be.
+     * The source language of a lang or forms reference: the language of its recorded source site, which the reference's
+     * language must not be.
      *
      * @throws NotALocalization
+     * @throws UnknownSite when the recorded source site is left out now
      */
     private function referenceSourceLang(TargetRef $ref, string $lang): string
     {
-        $sourceLang = (string) Site::default()->lang();
+        $sourceSite = $this->recordedSourceSite($ref);
+        $sourceLang = (string) (Site::get($sourceSite) ?? throw UnknownSite::for($sourceSite))->lang();
 
         return $lang === $sourceLang ? throw NotALocalization::for((string) $ref) : $sourceLang;
     }

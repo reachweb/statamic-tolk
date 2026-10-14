@@ -30,9 +30,13 @@ beforeEach(function () {
     $this->hello = $this->makeEntry('articles', 'en', ['title' => 'Hello'], 'hello');
 });
 
-function prunerState(TargetRef $ref): void
+function prunerState(TargetRef $ref, ?string $sourceSite = null): void
 {
-    app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: 'a1b2c3d4e5f60718')));
+    app(StateRepository::class)->update($ref, function (ItemState $state) use ($sourceSite) {
+        $state = $state->withField('title', new FieldState(sourceHash: 'a1b2c3d4e5f60718'));
+
+        return $sourceSite === null ? $state : $state->withSourceSite($sourceSite);
+    });
 }
 
 function pruned(bool $dryRun = false): PruneReport
@@ -120,6 +124,36 @@ it('keeps the state of the form texts of another language, and deletes that of t
     expect($report->orphaned(PruneReport::NOT_A_LOCALIZATION))->toBe(['forms::en'])
         ->and($report->orphaned(PruneReport::DELETED))->toBe([])
         ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['forms::de', 'forms::fr']);
+});
+
+it('keeps the state of a navigation, translation files and form texts translated from another site than the default, and of one whose source site is left out now', function () {
+    $this->app->useLangPath($this->temporaryPath('lang'));
+    (new Filesystem)->ensureDirectoryExists(lang_path('de'));
+    file_put_contents(lang_path('de.json'), '{"Jetzt buchen": "Jetzt buchen"}');
+    file_put_contents(lang_path('en.json'), '{"Jetzt buchen": "Book now"}');
+    file_put_contents(lang_path('de/messages.php'), "<?php return ['book' => 'Jetzt buchen'];");
+    $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book now']], 'el' => [['id' => 'book', 'title' => 'Κράτηση']]]);
+    $references = [
+        // Into the default site's language or tree: `tolk:lang en --from=de`, `tolk:forms en --from=de`, `--nav=main --site=en --from=el`.
+        'lang::_json::en' => 'de',
+        'forms::en' => 'de',
+        'nav::main::en' => 'el',
+        // A group the default site's language lacks: `tolk:lang el --from=de`.
+        'lang::messages::el' => 'de',
+        // A source site taken out of the configuration.
+        'lang::_json::el' => 'fr',
+        'forms::el' => 'fr',
+        'nav::main::el' => 'fr',
+    ];
+
+    foreach ($references as $reference => $sourceSite) {
+        prunerState(TargetRef::parse($reference), $sourceSite);
+    }
+
+    $report = pruned();
+
+    expect($report->orphans)->toBe([])
+        ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(array_keys($references));
 });
 
 it('stops a stalled run that is older than the retention instead of deleting it, and counts it once with a dry run', function () {

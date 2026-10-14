@@ -248,7 +248,8 @@ php please tolk:prune
 It:
 
 - deletes the translation state of content that was deleted, and of entries that are no longer localizations;
-- keeps the state of content in a site the configuration leaves out, in case the site comes back;
+- checks a navigation, a translation file and the form texts against the site they were translated from, which need not be the default site, so their state is kept also when they were translated from another site into the default site's language or tree;
+- keeps the state of content in a site the configuration leaves out, and of translations made from such a site, in case the site comes back;
 - resolves translations delivered to the editor that were saved, and drops those never saved after 30 days;
 - stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes by default): it commits what they saved and marks them aborted, so their page offers **Resume**;
 - deletes runs without activity for `runs.retention_days` days (30 by default).

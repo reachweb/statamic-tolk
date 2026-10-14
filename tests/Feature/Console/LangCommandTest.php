@@ -329,6 +329,27 @@ it('translates from the language of the --from site', function () {
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, '_json', 'el'))->sourceSite)->toBe('de');
 });
 
+it('keeps through tolk:prune the state of files translated with --from, into the default site\'s language and from a file it lacks, so update refreshes them', function () {
+    writeLang('de.json', json_encode(['Book now' => 'Jetzt buchen']));
+    writeLang('en.json', '{}');
+    writeLang('de/greetings.php', "<?php return ['hello' => 'Hallo'];");
+    $this->fakeTranslations();
+    langCommand(['sites' => ['en', 'el'], '--from' => 'de', '--group' => ['_json', 'greetings']]);
+
+    $this->artisan('tolk:prune')->expectsOutputToContain('Nothing to clean up.')->assertExitCode(0);
+
+    writeLang('de.json', json_encode(['Book now' => 'Jetzt sofort buchen']));
+    writeLang('de/greetings.php', "<?php return ['hello' => 'Hallo zusammen'];");
+    [$exitCode, $output] = langCommand(['sites' => ['en', 'el'], '--from' => 'de', '--group' => ['_json', 'greetings'], '--mode' => 'update']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->not->toContain('manual edits kept')
+        ->and(readLang('en.json')['Book now'])->toBe('[T] Jetzt sofort buchen')
+        ->and(readLang('el.json')['Book now'])->toBe('[T] Jetzt sofort buchen')
+        ->and(readLang('en/greetings.php'))->toBe(['hello' => '[T] Hallo zusammen'])
+        ->and(readLang('el/greetings.php'))->toBe(['hello' => '[T] Hallo zusammen']);
+});
+
 it('limits the files to --group', function () {
     $this->fakeTranslations();
 
