@@ -108,8 +108,8 @@ export function describeProgress(state) {
     return { counts, total, finished: total - unfinished, unfinished };
 }
 
-// What the user can do with the run now. The Start, Resume, Retry and take-over routes need `run bulk translations`,
-// which the run page requires anyway.
+// What the user can do with the run now. The Start, Resume and Retry routes need `run bulk translations`, which the run
+// page requires anyway; the take-over also lets the run's creator through, for the editor's push (§A14).
 export function runActions(state) {
     const run = state?.run ?? {};
     const { counts, unfinished } = describeProgress(state);

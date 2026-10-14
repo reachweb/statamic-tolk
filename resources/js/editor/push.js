@@ -39,8 +39,10 @@ export function missingSites(status) {
     return (status?.origin?.localizations ?? []).filter((localization) => !localization.exists).map((localization) => localization.site);
 }
 
-// What the banner shows of a push: the sites it translates into, its progress, and once it is final, the result with
-// a line per site and whether a reload would show new localizations in the Sites panel.
+// What the banner shows of a push: the sites it translates into, its progress, what to do when it has stopped moving
+// (`stalled`) and whether it may move to this page (`takeOver`), and once it is final, the result with a line per site
+// and whether a reload would show new localizations in the Sites panel. The driver is the run's, which changes when the
+// run is taken over.
 export function describePush(push, status) {
     if (!push) {
         return null;
@@ -54,12 +56,17 @@ export function describePush(push, status) {
     const final = state ? isFinal(state) : false;
     const result = final ? describeResult(state) : null;
     const created = final ? (push.missing ?? []).filter((site) => localizations.get(site)?.exists) : [];
+    const driver = state?.run?.driver ?? push.driver;
+    const stalled = push.phase === 'running' && state?.run?.status === 'running' && Boolean(state.stalled);
+    const takeOver = stalled && driver === 'queue';
 
     return {
         sites: sites.join(', '),
         automatic: Boolean(push.automatic),
         progress,
-        keepOpen: push.phase === 'running' && push.driver === 'browser',
+        keepOpen: push.phase === 'running' && driver === 'browser',
+        stalled: stalled ? stalledText(takeOver) : null,
+        takeOver,
         failure: push.failures?.length ? push.failures.at(-1).error?.message ?? null : null,
         error: push.phase === 'error' ? push.error?.message ?? null : null,
         result: result && {
@@ -73,6 +80,13 @@ export function describePush(push, status) {
         },
         reload: created.length > 0,
     };
+}
+
+// A queue run that no worker takes up can move to the page; a process that went away (an automatic update's) cannot.
+function stalledText(takeOver) {
+    return takeOver
+        ? __('No queue worker has worked on these translations for a while. Start a queue worker, or translate them in this page instead.')
+        : __('The process that updates these translations has not worked on them for a while and may have stopped. Cancel it, then start the translations again.');
 }
 
 function pushResultText(status, counts) {
@@ -151,7 +165,7 @@ export function createPushes({
 
     // The store's `push` of a container (`initialState()` in store.js).
     function pushState(phase, { run = null, driver = null, automatic = false, sites = null, missing = [] }) {
-        return { phase, run, driver, automatic, sites, state: null, failures: [], missing, cancelling: false, error: null };
+        return { phase, run, driver, automatic, sites, state: null, failures: [], missing, cancelling: false, takingOver: false, error: null };
     }
 
     function show(name, run, missing, sites = null) {
@@ -386,6 +400,28 @@ export function createPushes({
         }
     }
 
+    // Moves a queue run that no worker takes up to this page, which drives it from the answer on, as without a queue
+    // worker. The run's creator may do it without `run bulk translations` (§A14).
+    async function takeOver(name) {
+        const container = store().containers[name];
+        const follower = followerOf(container);
+        const push = container?.push;
+
+        if (!follower || push.takingOver) {
+            return;
+        }
+
+        push.takingOver = true;
+
+        try {
+            await follower.takeOver();
+        } catch (error) {
+            Statamic.$toast.error(error.message);
+        } finally {
+            push.takingOver = false;
+        }
+    }
+
     // Closes the result or the error.
     function dismiss(name) {
         const container = store().containers[name];
@@ -401,6 +437,7 @@ export function createPushes({
         afterSave,
         resume,
         cancel,
+        takeOver,
         dismiss,
         lend,
         following: (runId) => followers.has(runId),

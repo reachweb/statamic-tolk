@@ -39,17 +39,18 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
             Route::post('{run}/start', [RunsController::class, 'start'])->name('start');
             Route::post('{run}/resume', [RunsController::class, 'resume'])->name('resume');
             Route::post('{run}/retry', [RunsController::class, 'retry'])->name('retry');
-            Route::post('{run}/take-over', [RunsController::class, 'takeOver'])->name('take-over');
         });
 
         // The addon's settings ability (`editSettings`, §A14); RunResetRequest checks.
         Route::post('reset', [RunsController::class, 'reset'])->name('reset');
 
-        // The run's creator may follow and drive it without `run bulk translations` (§A14); RunFollowRequest checks.
+        // The run's creator may follow and drive it, and move it from the queue to their page, without `run bulk
+        // translations` (§A14); RunFollowRequest checks.
         Route::get('{run}/state', [RunsController::class, 'state'])->name('state');
         Route::post('{run}/tick', [RunsController::class, 'tick'])->name('tick');
         Route::post('{run}/apply', [RunsController::class, 'apply'])->name('apply');
         Route::post('{run}/cancel', [RunsController::class, 'cancel'])->name('cancel');
+        Route::post('{run}/take-over', [RunsController::class, 'takeOver'])->name('take-over');
     });
 
     Route::get('models', [ModelsController::class, 'index'])->name('models.index');

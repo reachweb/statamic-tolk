@@ -670,9 +670,11 @@ describe('authorization', function () {
         runState($run)->assertOk();
         tick($run)->assertOk();
         runAction($run, 'apply')->assertOk()->assertJsonPath('counts.done', 1);
+        runAction($run, 'take-over')->assertOk()->assertJsonPath('run.driver', 'browser');
         runAction($run, 'cancel')->assertOk()->assertJsonPath('run.status', 'cancelled');
 
         runAction($run, 'start')->assertForbidden();
+        runAction($run, 'resume')->assertForbidden();
         runAction($run, 'retry')->assertForbidden();
         runAction($run, 'estimate', ['from' => 0])->assertForbidden();
         $this->getJson(cp_route('tolk.runs.index'))->assertForbidden();
@@ -691,6 +693,7 @@ describe('authorization', function () {
         runState($run)->assertForbidden();
         runAction($run, 'apply')->assertForbidden();
         runAction($run, 'cancel')->assertForbidden();
+        runAction($run, 'take-over')->assertForbidden();
         expect(RunFixtures::statuses($run))->toBe(['pending', 'pending', 'pending']);
         $this->assertNoModelCalls();
     });

@@ -23,7 +23,7 @@ export function initialState() {
         slugKept: false,
         // A run pushed from the origin into its localizations (T8.13): `phase` (`starting`, `running`, `finished`,
         // `error`), `run`, `driver`, `sites`, `state`, `failures`, `missing` (sites without a localization before it),
-        // `cancelling`, `error`.
+        // `cancelling`, `takingOver` (moving a queue run to this page), `error`.
         push: null,
     };
 }

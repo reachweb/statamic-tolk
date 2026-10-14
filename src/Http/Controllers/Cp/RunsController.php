@@ -219,9 +219,10 @@ class RunsController extends Controller
     }
 
     /**
-     * Moves a queue run to this browser, for a site whose queue has no worker; the page then starts its lanes.
+     * Moves a queue run to this browser, for a site whose queue has no worker; the page then starts its lanes. The
+     * creator of a push may do it from the editor's banner (§A14).
      */
-    public function takeOver(RunStateRequest $request, RunDispatcher $dispatcher): JsonResponse
+    public function takeOver(RunFollowRequest $request, RunDispatcher $dispatcher): JsonResponse
     {
         $stored = $this->found($request);
         $dispatcher->takeOver($stored);

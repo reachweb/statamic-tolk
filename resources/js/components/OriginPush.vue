@@ -75,7 +75,11 @@ const announcement = computed(() => {
         case 'updated':
             return updated.value;
         case 'running':
-            return shown.value.failure ? __('The translations stopped: :message', { message: shown.value.failure }) : working.value;
+            if (shown.value.failure) {
+                return __('The translations stopped: :message', { message: shown.value.failure });
+            }
+
+            return shown.value.stalled ?? working.value;
         case 'error':
             return shown.value?.error ?? '';
         default:
@@ -131,6 +135,20 @@ function reload() {
                         : __('Keep this page open until the translations are saved. If you leave, they continue when you open this entry again.')
                 }}
             </Description>
+            <div v-if="shown.stalled" class="flex flex-wrap items-center gap-2" data-tolk-push-stalled>
+                <Icon name="warning-diamond" class="size-4 shrink-0 text-amber-600" aria-hidden="true" />
+                <Text>{{ shown.stalled }}</Text>
+                <Button
+                    v-if="shown.takeOver"
+                    size="sm"
+                    :disabled="push.takingOver || push.cancelling"
+                    :loading="push.takingOver"
+                    data-tolk-action="push-take-over"
+                    @click="pushes.takeOver(containerName)"
+                >
+                    {{ __('Translate in this page instead') }}
+                </Button>
+            </div>
             <div v-if="shown.failure" class="flex flex-wrap items-center gap-2" data-tolk-push-failure>
                 <Icon name="warning-diamond" class="size-4 shrink-0 text-red-600" aria-hidden="true" />
                 <Text variant="danger">{{ __('The translations stopped: :message', { message: shown.failure }) }}</Text>

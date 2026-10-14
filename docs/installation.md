@@ -69,7 +69,7 @@ Statamic's own permissions still apply on top of them:
 
 Who sees a run: users with `run bulk translations` who may access every site of the run (the sites it translates into and the site it translates from) see it, follow it and drive it. The runs list and the Overview's latest runs leave out the others, and creating a run, a push or an Overview count for a site the user may not access is refused. A run's items are saved with the rights of the user who created it, whoever drives it.
 
-A user with `translate content` but without `run bulk translations` can still follow and cancel the run they start from an entry's Translate into… or Update translations; they do not see the runs pages.
+A user with `translate content` but without `run bulk translations` can still follow and cancel the run they start from an entry's Translate into… or Update translations, and move it to their page when no queue worker takes it up; they do not see the runs pages.
 
 ## Where Tolk keeps things
 

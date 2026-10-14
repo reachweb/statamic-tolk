@@ -88,6 +88,13 @@ function fakeFollowers() {
                 return answer;
             }),
             refresh: vi.fn(async () => runState()),
+            takeOver: vi.fn(async () => {
+                const answer = runState({ driver: 'browser' });
+                await flush();
+                options.onState(answer);
+
+                return answer;
+            }),
         };
 
         made.push(follower);
@@ -165,6 +172,32 @@ describe('describePush', () => {
         expect(shown).toMatchObject({ sites: 'Greek, German', keepOpen: true, failure: null, result: null, reload: false });
         expect(shown.progress).toMatchObject({ total: 2, finished: 1 });
         expect(describePush({ phase: 'running', driver: 'queue', sites: ['el'], state: null }, status()).keepOpen).toBe(false);
+    });
+
+    it('says when no worker has worked on a running push for a while, and offers a queue run to the page', () => {
+        const push = (driver, state = { ...runState({ driver }), stalled: true }) => ({ phase: 'running', driver, sites: ['el'], state, failures: [] });
+
+        expect(describePush(push('queue'), status())).toMatchObject({
+            stalled: 'No queue worker has worked on these translations for a while. Start a queue worker, or translate them in this page instead.',
+            takeOver: true,
+            keepOpen: false,
+        });
+        expect(describePush(push('cli'), status())).toMatchObject({
+            stalled: 'The process that updates these translations has not worked on them for a while and may have stopped. Cancel it, then start the translations again.',
+            takeOver: false,
+        });
+        expect(describePush(push('queue', runState({ driver: 'queue' })), status())).toMatchObject({ stalled: null, takeOver: false });
+        expect(describePush(push('queue', null), status())).toMatchObject({ stalled: null, takeOver: false });
+        expect(describePush({ ...push('queue', { ...runState({ driver: 'queue', status: 'cancelled' }), stalled: true }), phase: 'finished' }, status())).toMatchObject({
+            stalled: null,
+            takeOver: false,
+        });
+    });
+
+    it('asks to keep the page open once the run it shows moved to the browser', () => {
+        const taken = { phase: 'running', driver: 'queue', sites: ['el'], state: runState({ driver: 'browser' }), failures: [] };
+
+        expect(describePush(taken, status())).toMatchObject({ keepOpen: true, stalled: null, takeOver: false });
     });
 
     it('takes the sites from the run before it knows them, and reports the last failure', () => {
@@ -430,6 +463,34 @@ describe('following', () => {
 
         expect(toasts).toEqual(['Nope']);
         expect(store.container('base').push).toMatchObject({ phase: 'running', cancelling: false });
+    });
+
+    it('moves a stalled queue run to the page through the follower, once at a time', async () => {
+        const { followers, pushes } = setup({ api: fakeApi({ post: pushAnswer({ driver: 'queue', state: { ...runState({ driver: 'queue' }), stalled: true } }) }) });
+        await pushes.start('base', { reference: REFERENCE, sites: ['el', 'de'], mode: 'missing' });
+        const follower = followers.made[0];
+
+        const taking = pushes.takeOver('base');
+
+        expect(store.container('base').push.takingOver).toBe(true);
+        await pushes.takeOver('base');
+        await taking;
+        await pushes.takeOver('stack');
+
+        expect(follower.takeOver).toHaveBeenCalledOnce();
+        expect(store.container('base').push).toMatchObject({ phase: 'running', takingOver: false });
+        expect(describePush(store.container('base').push, status())).toMatchObject({ keepOpen: true, stalled: null, takeOver: false });
+    });
+
+    it('reports a take-over that failed', async () => {
+        const { followers, pushes } = setup({ api: fakeApi({ post: pushAnswer({ driver: 'queue' }) }) });
+        await pushes.start('base', { reference: REFERENCE, sites: ['el'], mode: 'missing' });
+        followers.made[0].takeOver.mockRejectedValueOnce(new ApiError({ status: 403, message: 'Nope' }));
+
+        await pushes.takeOver('base');
+
+        expect(toasts).toEqual(['Nope']);
+        expect(store.container('base').push).toMatchObject({ phase: 'running', driver: 'queue', takingOver: false });
     });
 
     it('keeps a running push open', async () => {

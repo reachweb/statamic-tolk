@@ -54,9 +54,9 @@ To force one way, set `runs.execution` to `queue` or `browser`. `tolk:doctor` re
 
 ### "This run is not moving"
 
-- **A queue run**: no worker has worked on it for a while. Start one (`php artisan queue:work`, or check your process manager), then press **Resume**; or press **Run in this browser instead** to let the page drive it.
+- **A queue run**: no worker has worked on it for a while. Start one (`php artisan queue:work`, or check your process manager), then press **Resume**; or press **Run in this browser instead** to let the page drive it. A run started from an entry's banner, or by saving it, says so in the banner too, with **Translate in this page instead**, which does the same for the user who started it.
 - **A command-line run**: the command that ran it stopped (closed terminal, Ctrl-C, a crash). Press **Resume** on its run page to continue it in the CP (on the queue when it has a worker, otherwise driven by the page), or start the command again.
-- **An automatic update**: the PHP process that saved the entry stopped before the run ended, usually because the web server stops requests after a fixed time. Press **Resume** on its run page, or save the entry again. A queue worker avoids it ([Automatic updates](bulk-and-runs.md#automatic-updates)).
+- **An automatic update**: the PHP process that saved the entry stopped before the run ended, usually because the web server stops requests after a fixed time. Press **Resume** on its run page, or save the entry again. The entry's banner tells the user who saved that the run may have stopped: **Cancel** it there, then update the translations again. A queue worker avoids it ([Automatic updates](bulk-and-runs.md#automatic-updates)).
 - `tolk:prune` stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes): it marks them aborted and commits what they saved, so **Resume** continues them. Schedule it daily ([`tolk:prune`](cli.md#tolkprune)).
 
 ### Saving an entry does not update its translations

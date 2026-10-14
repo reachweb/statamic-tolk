@@ -8,6 +8,7 @@ use Reach\StatamicTolk\Enums\Finish;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
+use Reach\StatamicTolk\Http\RunState;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunProcessor;
@@ -107,6 +108,7 @@ describe('push', function () {
                     'tick' => cp_route('tolk.runs.tick', $run->id),
                     'apply' => cp_route('tolk.runs.apply', $run->id),
                     'cancel' => cp_route('tolk.runs.cancel', $run->id),
+                    'take_over' => cp_route('tolk.runs.take-over', $run->id),
                 ],
             ])
             ->and($response->json('state.run.status'))->toBe('running')
@@ -285,6 +287,29 @@ describe('the creator', function () {
         $this->getJson(cp_route('tolk.runs.index'))->assertForbidden();
         $this->getJson(cp_route('tolk.runs.show', $run->id))->assertForbidden();
         $this->postJson(cp_route('tolk.runs.retry', $run->id))->assertForbidden();
+        $this->postJson(cp_route('tolk.runs.resume', $run->id))->assertForbidden();
+    });
+
+    it('lets the creator move a queue push that no worker took up to their page, and drive it there', function () {
+        Queue::fake();
+        config(['tolk.runs.execution' => 'queue']);
+        $this->fakeTranslations();
+        editorTranslator();
+
+        $response = pushEntry($this->hello)->assertCreated();
+        $run = pushedRun($response);
+        $this->travel(RunState::FIRST_CLAIM_SECONDS + 1)->seconds();
+        $stalled = $this->getJson($response->json('urls.state'))->assertOk()->json('stalled');
+
+        $taken = $this->postJson(cp_route('tolk.runs.take-over', $run->id))->assertOk();
+        $done = drivePush($response->json('urls'));
+
+        expect($stalled)->toBeTrue()
+            ->and($response->json('urls.take_over'))->toBe(cp_route('tolk.runs.take-over', $run->id))
+            ->and($taken->json('run.driver'))->toBe('browser')
+            ->and($taken->json('stalled'))->toBeFalse()
+            ->and($done['run']['status'])->toBe('completed')
+            ->and($done['counts']['done'])->toBe(2);
         $this->postJson(cp_route('tolk.runs.resume', $run->id))->assertForbidden();
     });
 

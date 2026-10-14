@@ -23,9 +23,10 @@ final readonly class EditorPush
     public const int RECENT = 50;
 
     /**
-     * The routes the creator of a run may call without `run bulk translations`.
+     * The routes the creator of a run may call without `run bulk translations`: `take_over` moves a queue run that no
+     * worker takes up to the banner's page.
      */
-    public const array URLS = ['state', 'tick', 'apply', 'cancel'];
+    public const array URLS = ['state', 'tick', 'apply', 'cancel', 'take_over'];
 
     public function __construct(
         private RunRepository $runs,

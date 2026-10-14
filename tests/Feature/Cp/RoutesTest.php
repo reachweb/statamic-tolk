@@ -57,8 +57,8 @@ function tolkCpRouteGroups(): array
             'allowed' => [['translate content']],
             'denied' => [[], ['run bulk translations']],
         ],
-        // `state`, `tick`, `apply` and `cancel` also let the run's creator through with `translate content`
-        // (RunsControllerTest); these routes name a run nobody created.
+        // `state`, `tick`, `apply`, `cancel` and `take-over` also let the run's creator through with `translate
+        // content` (RunsControllerTest); these routes name a run nobody created.
         'runs' => [
             'allowed' => [['run bulk translations']],
             'denied' => [[], ['translate content']],

@@ -98,11 +98,11 @@ On the origin entry, the banner lists each localization with its status, for the
 
 Unlike the rest of the editor, these save the translations directly, in each localization, as a run of this one entry. They translate the **saved** entry, so both buttons wait while the form has unsaved text ("Save first: the translations are made from the saved entry."). The open form is not changed.
 
-While the run goes, the banner shows its progress and **Cancel**. When Tolk's runs are driven by the browser (a site without a queue worker, see [Bulk translations and runs](bulk-and-runs.md#drivers)), the open page does the work: keep it open until the translations are saved. If you leave, the run continues the next time you open the entry, unless a scheduled `tolk:prune` stopped it after five minutes without progress; then start it again. With a queue worker, the run continues on its own.
+While the run goes, the banner shows its progress and **Cancel**. When Tolk's runs are driven by the browser (a site without a queue worker, see [Bulk translations and runs](bulk-and-runs.md#drivers)), the open page does the work: keep it open until the translations are saved. If you leave, the run continues the next time you open the entry, unless a scheduled `tolk:prune` stopped it after five minutes without progress; then start it again. With a queue worker, the run continues on its own. When no queue worker has taken the run up after half a minute, or none has worked on it for five minutes, the banner says so and offers **Translate in this page instead**: the open page then drives the run, as without a queue worker.
 
 When it has finished, the banner shows a line per site with a link to the localization and its result. New localizations appear in Statamic's **Sites** panel after a reload, which **Reload** does.
 
-You need only `translate content` for this: you follow and cancel the run you started from the entry, and it continues when you open the entry again, without seeing the Runs pages. A cancelled or aborted run is resumed on the Runs pages, which need `run bulk translations`; otherwise start the translation again from the entry.
+You need only `translate content` for this: you follow and cancel the run you started from the entry, move it to the page when no queue worker takes it up, and it continues when you open the entry again, without seeing the Runs pages. A cancelled or aborted run is resumed on the Runs pages, which need `run bulk translations`; otherwise start the translation again from the entry.
 
 ### Automatic updates
 
