@@ -341,6 +341,47 @@ describe('without a queue worker', function () {
             ->and($this->modelCalls())->toBe($calls);
     });
 
+    it('rebuilds a translated field whose origin changed without text, with no model call, and keeps no run for a field it does not translate', function () {
+        $this->makeCollection('stories', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'note' => ['type' => 'text'],
+            'blocks' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => [
+                'text' => ['display' => 'Text', 'fields' => [
+                    ['handle' => 'heading', 'field' => ['type' => 'text']],
+                    ['handle' => 'highlight', 'field' => ['type' => 'toggle']],
+                ]],
+            ]]]],
+        ]);
+        $story = $this->makeEntry('stories', 'en', ['title' => 'Hello', 'blocks' => [
+            ['id' => 'r1', 'type' => 'text', 'enabled' => true, 'heading' => 'Rooms', 'highlight' => false],
+            ['id' => 'r2', 'type' => 'text', 'enabled' => true, 'heading' => 'Dining', 'highlight' => false],
+        ]], 'story');
+        $this->signInAdmin();
+        autoTranslated($story, ['el']);
+        // A change without text made only in Greek leaves the field machine-translated (D27).
+        $greek = autoEntry($story, 'el');
+        $greek->set('blocks', [$greek->get('blocks')[0], [...$greek->get('blocks')[1], 'highlight' => true]])->save();
+        autoOn();
+        $calls = $this->modelCalls();
+
+        $story->set('note', 'Shared by every site.')->save();
+        afterResponse();
+
+        expect($this->runs->recent(10))->toBe([])
+            ->and(autoEntry($story, 'el')->get('blocks')[1]['highlight'])->toBeTrue()
+            ->and(StateFixtures::statuses($story))->toBe(['title' => FieldStatus::Current, 'blocks' => FieldStatus::Current]);
+
+        $story->set('blocks', [[...$story->get('blocks')[0], 'highlight' => true], $story->get('blocks')[1]])->save();
+        afterResponse();
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and(autoRuns()[0]->status)->toBe(RunStatus::Completed)
+            ->and(RunFixtures::statuses(autoRuns()[0]))->toBe(['done'])
+            ->and($this->modelCalls())->toBe($calls)
+            ->and(array_map(fn (array $row) => [$row['heading'], $row['highlight']], autoEntry($story, 'el')->get('blocks')))->toBe([['[T] Rooms', true], ['[T] Dining', false]])
+            ->and(StateFixtures::statuses($story))->toBe(['title' => FieldStatus::Current, 'blocks' => FieldStatus::Current]);
+    });
+
     it('leaves the localizations outdated when the provider stays down, and the save succeeds', function () {
         Sleep::fake(syncWithCarbon: true);
         $this->signInAdmin();
