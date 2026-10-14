@@ -194,9 +194,12 @@ return [
     |
     | Plans, locks, throttles and scan results live in this cache store
     | (null = the default store). It must support locks. `plan_ttl` is how
-    | many seconds a plan and its results are kept. Clearing this store
-    | during a run (a deploy's `cache:clear` clears the default store) makes
-    | the run pay again for the items it had translated but not saved yet.
+    | many seconds a plan and its results are kept when the translation is
+    | not saved first, which deletes them. A file or database store keeps an
+    | expired plan's text until the cache is cleared (docs/privacy.md).
+    | Clearing this store during a run (a deploy's `cache:clear` clears the
+    | default store) makes the run pay again for the items it had translated
+    | but not saved yet.
     |
     */
 

@@ -54,10 +54,14 @@ As the providers documented it on 2026-10-01. Their terms change: check the link
 | What | Where | Contains |
 | --- | --- | --- |
 | Translation state | `content/tolk/` | Per field: fingerprints of the source and of the translation, the model names and the time. No text. |
-| Plans | the cache, for `plan_ttl` seconds (2 hours) | The text of a translation in progress and the model's answers, until the translation is saved. |
+| Plans | the cache (`cache_store`), until the translation is saved, else for `plan_ttl` seconds (2 hours); a `file` or `database` cache keeps them longer, see below | The text being translated and the model's answers. |
 | Runs | `storage/statamic/tolk/runs/`, until `tolk:prune` deletes them (30 days) | The name (or email address) of the user who created it; items' titles, statuses, the fields saved, warnings (which can quote a few words of text) and errors; with review on, each correction with the text before and after it. |
 | Usage | `storage/statamic/tolk/usage/` | Tokens, calls and cost per model and month. No text. |
 | Logs | the app's log | Requests a provider rejected as malformed are logged by their shape, without content. Provider error messages are cleaned of API keys before they are stored or shown. |
+
+Tolk deletes a plan once its translation is saved: a run or a command when it saves the item, the editor when you save the form with the translation. Any other plan is kept until `plan_ttl` runs out, such as a translation the editor cancelled or never saved, or a run's item that failed while it was translated or was translated but not saved (a cancelled or aborted run keeps those for **Resume**).
+
+An expired plan is not always gone. A `file` or `database` cache store deletes an expired entry only when something reads it again, which never happens to a finished plan, so its text stays in the cache's files (`storage/framework/cache/data`) or table until the cache is cleared. Redis and Memcached drop expired entries on their own. To remove that text, for example after a request to erase someone's personal data, run `php artisan cache:clear` while no translation is running. With `cache_store` set to a store of its own, `php artisan cache:clear <store>` clears only Tolk's entries.
 
 ## Content as input
 

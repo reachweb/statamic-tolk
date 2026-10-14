@@ -328,7 +328,7 @@ final readonly class StateWriter
      */
     private function reconciled(ItemState $state, array $statuses, CarbonImmutable $now): array
     {
-        $promoted = $baselined = $unresolved = $expired = [];
+        $promoted = $baselined = $unresolved = $expired = $plans = [];
 
         foreach ($statuses as $handle => $status) {
             $field = $state->field($handle);
@@ -342,8 +342,10 @@ final readonly class StateWriter
 
             if ($field->savedPending($status->targetHash) !== null) {
                 $promoted[] = $handle;
+                array_push($plans, ...array_map(fn (PendingState $pending) => $pending->plan, $field->pending));
             } elseif ($field->editedPending($status->targetHash, $status->sourceTextHash) !== null && $reconciled->toArray() !== $field->toArray()) {
                 $baselined[] = $handle;
+                array_push($plans, ...array_map(fn (PendingState $pending) => $pending->plan, $field->pending));
             } else {
                 if (count($reconciled->pending) < count($field->pending)) {
                     $expired[] = $handle;
@@ -355,7 +357,7 @@ final readonly class StateWriter
             }
         }
 
-        return [$state, new ConfirmReport($promoted, $baselined, $unresolved, $expired)];
+        return [$state, new ConfirmReport($promoted, $baselined, $unresolved, $expired, array_values(array_unique($plans)))];
     }
 
     /**

@@ -711,6 +711,82 @@ describe('confirm', function () {
             ->and(Entry::find($this->greek->id())->get('subtitle'))->toBeNull();
     });
 
+    it('forgets the plan and the model\'s answers once the form was saved with its translation', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek);
+        $plan = greekState('intro')->pending[0]->plan;
+        Entry::find($this->greek->id())->merge([...array_map(fn (array $field) => $field['value'], $fields), 'title' => 'Γεια'])->save();
+
+        expect(app(PlanStore::class)->get($plan))->not->toBeNull();
+
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])->assertOk();
+
+        expect(app(PlanStore::class)->get($plan))->toBeNull()
+            ->and(app(PlanStore::class)->outcome($plan, 'b1'))->toBeNull()
+            ->and(editorUnit($plan, 'b1')->assertStatus(410)->json('code'))->toBe('plan_expired');
+    });
+
+    it('forgets the plan once every field it delivered was saved edited', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek, ['fields' => ['intro']]);
+        $plan = greekState('intro')->pending[0]->plan;
+        Entry::find($this->greek->id())->set('intro', 'Μια σύντομη εισαγωγή.')->save();
+
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])
+            ->assertOk()
+            ->assertJsonPath('localization.fields.intro.status', 'manual');
+
+        expect(app(PlanStore::class)->get($plan))->toBeNull();
+    });
+
+    it('keeps a plan with units still to run until they ran and the form was saved again', function () {
+        $this->makeCollection('guides', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'faq' => ['type' => 'grid', 'localizable' => true, 'fields' => [
+                ['handle' => 'question', 'field' => ['type' => 'text']],
+            ]],
+        ]);
+        $origin = $this->makeEntry('guides', 'en', ['title' => 'Guide', 'faq' => [['question' => 'What is it?'], ['question' => 'Who is it for?']]]);
+        $greek = $this->localize($origin, 'el');
+        config(['tolk.batch.max_chars.web' => 16]);
+        $this->fakeTranslations();
+        $this->signInAdmin();
+        $plan = editorPlan($greek)->assertOk()->json('plan');
+
+        $title = editorUnit($plan, 'b1')->assertOk()->json('fields.title.value');
+        Entry::find($greek->id())->set('title', $title)->save();
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $greek->reference(), 'delivered' => ['title']])
+            ->assertOk()
+            ->assertJsonPath('localization.fields.title.status', 'current');
+
+        expect(app(PlanStore::class)->get($plan))->not->toBeNull();
+
+        $faq = editorUnit($plan, 'b2')->assertOk()->json('fields.faq.value');
+        Entry::find($greek->id())->set('faq', $faq)->save();
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $greek->reference(), 'delivered' => ['faq']])
+            ->assertOk()
+            ->assertJsonPath('localization.fields.faq.status', 'current');
+
+        expect(app(PlanStore::class)->get($plan))->toBeNull();
+    });
+
+    it('keeps the plan of another user who translated the fields that were saved', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek);
+        $plan = greekState('intro')->pending[0]->plan;
+        Entry::find($this->greek->id())->merge(array_map(fn (array $field) => $field['value'], $fields))->save();
+        $this->signInAdmin();
+
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => []])
+            ->assertOk()
+            ->assertJsonPath('localization.fields.intro.status', 'current');
+
+        expect(app(PlanStore::class)->get($plan))->not->toBeNull();
+    });
+
     it('commits the state it wrote, and only then', function () {
         $this->fakeTranslations();
         greekEditor();

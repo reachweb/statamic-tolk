@@ -116,7 +116,7 @@ describe('confirm', function () {
         $report = writer()->confirm(writerTarget($this->origin));
         $field = storedState($localization)->field('title');
 
-        expect($report)->toEqual(new ConfirmReport(promoted: ['title']))
+        expect($report)->toEqual(new ConfirmReport(promoted: ['title'], plans: [$pending->plan]))
             ->and($field->targetHash)->toBe($pending->targetHash)
             ->and($field->sourceHash)->toBe($pending->sourceHash)
             ->and($field->translatedAt)->toEqual($pending->createdAt)
@@ -135,7 +135,7 @@ describe('confirm', function () {
         $field = storedState($localization)->field('title');
         $status = writerStatus($this->origin)->fields['title'];
 
-        expect($report)->toEqual(new ConfirmReport(baselined: ['title']))
+        expect($report)->toEqual(new ConfirmReport(baselined: ['title'], plans: [$pending->plan]))
             ->and($field->isBaseline())->toBeTrue()
             ->and($field->sourceHash)->toBe(Fingerprint::of('Hello'))
             ->and($field->translator)->toBe('openai:gpt-6.1-sol')
@@ -152,7 +152,7 @@ describe('confirm', function () {
         $localization->set('title', 'Γεια')->save();
         $report = writer()->confirm(writerTarget($this->origin));
 
-        expect($report)->toEqual(new ConfirmReport(promoted: ['title']))
+        expect($report)->toEqual(new ConfirmReport(promoted: ['title'], plans: [StateFixtures::pending('Hello', 'Γεια')->plan]))
             ->and(storedState($localization)->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['Γεια']))
             ->and(writerStatus($this->origin)->fields['title']->status)->toBe(FieldStatus::Current);
     });
@@ -200,7 +200,12 @@ describe('confirm', function () {
         $unchanged = storedState($saved)->toArray();
         $report = writer()->confirm(writerTarget($this->origin));
 
-        expect($dryRun)->toEqual(new ConfirmReport(promoted: ['title'], baselined: ['body'], expired: ['intro']))
+        expect($dryRun)->toEqual(new ConfirmReport(
+            promoted: ['title'],
+            baselined: ['body'],
+            expired: ['intro'],
+            plans: [$stored['title']->pending[0]->plan, $stored['body']->pending[0]->plan],
+        ))
             ->and($unchanged)->toBe($before)
             ->and($report)->toEqual($dryRun)
             ->and(storedState($saved)->toArray())->not->toBe($before);
@@ -271,6 +276,7 @@ describe('confirm', function () {
         $field = storedState($localization)->field('title');
 
         expect($report->promoted)->toBe(['title'])
+            ->and($report->plans)->toBe([$newer->plan, $older->plan])
             ->and($field->targetHash)->toBe($older->targetHash)
             ->and($field->translator)->toBe('openai:gpt-6.1-sol')
             ->and($field->translatedAt)->toEqual($older->createdAt)

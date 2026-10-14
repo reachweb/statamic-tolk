@@ -137,6 +137,25 @@ final readonly class EditorTranslation
     }
 
     /**
+     * Forgets the user's plans whose output a save stored (ConfirmReport::$plans) once none of their units can run, so
+     * the text and the model's answers they hold do not wait in the cache for `plan_ttl`: the browser needs a plan only
+     * to run its units, and a save is refused while a translation fills the form. A plan with units left may still be
+     * running in another tab, and another user's plan in that user's form.
+     *
+     * @param  list<string>  $planIds
+     */
+    public function forgetSaved(array $planIds, string $userId): void
+    {
+        foreach ($planIds as $id) {
+            $plan = $this->store->get($id);
+
+            if ($plan !== null && $plan->options->userId === $userId && $this->pipeline->isFinished($plan)) {
+                $this->store->forget($plan);
+            }
+        }
+    }
+
+    /**
      * The plan's target as stored now. Another request may have saved or deleted it or its source while the model
      * worked, and this process may still hold them as they were: a localization's origin and an entry's localizations
      * in Blink, a localization detached elsewhere in the memoized `origin` index (07-spike-findings.md "Stache and

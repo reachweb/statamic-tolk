@@ -127,7 +127,7 @@ class EditorController extends Controller
         }
     }
 
-    public function confirm(EditorConfirmRequest $request, StateWriter $stateWriter, EditorStatus $status): JsonResponse
+    public function confirm(EditorConfirmRequest $request, StateWriter $stateWriter, EditorStatus $status, EditorTranslation $translation): JsonResponse
     {
         $user = User::current();
         $reference = $request->validated('reference');
@@ -135,6 +135,7 @@ class EditorController extends Controller
 
         if ($target = $this->localizationOrNull($reference)) {
             $report = $stateWriter->confirm($this->authorized($target, $user), commit: true);
+            $translation->forgetSaved($report->plans, (string) $user->id());
 
             // Core posts a field that a condition hid without its value, and with its handle in `_localized` while it is
             // localized, which stores an empty override. The editor's save hook takes a field it filled out of
