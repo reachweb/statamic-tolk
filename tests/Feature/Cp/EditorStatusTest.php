@@ -9,6 +9,9 @@ use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
+use Statamic\Facades\Stache;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -224,6 +227,23 @@ it('is not translatable for an unknown reference', function (string $reference) 
     'no reference format' => 'hello',
     'an unsupported type' => 'term::tags::hello::el',
 ]);
+
+it('is not translatable for a localization in a site its collection no longer lists, before and once the Stache is rebuilt', function () {
+    $this->signInAdmin();
+    $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+    $this->localize($this->origin, 'de', ['title' => 'Hallo']);
+
+    Collection::find('articles')->sites(['en', 'de'])->save();
+
+    // Core opens the form of the entry it still finds until the Stache is rebuilt.
+    expect(Entry::find($greek->id()))->not->toBeNull();
+    editorStatus($greek)->assertOk()->assertJsonPath('translatable', false)->assertJsonPath('reason', EditorStatus::UNKNOWN_REFERENCE);
+    editorStatus($this->origin)->assertOk()->assertJsonPath('origin.localizations.*.site', ['de']);
+
+    Stache::clear();
+
+    editorStatus($greek)->assertOk()->assertJsonPath('reason', EditorStatus::UNKNOWN_REFERENCE);
+});
 
 describe('access', function () {
     it('forbids a user who cannot edit the entry', function () {

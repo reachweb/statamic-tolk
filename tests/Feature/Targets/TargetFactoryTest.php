@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\NavTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 
 function targets(): TargetFactory
@@ -63,6 +64,18 @@ describe('fromReference', function () {
     it('rejects an unknown entry', function () {
         targets()->fromReference('entry::does-not-exist');
     })->throws(TargetNotFound::class);
+
+    it('finds no localization in a site its collection no longer lists, as once the Stache is rebuilt, while core still finds it', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        $ref = TargetRef::parse('entry::'.$localization->id());
+
+        Collection::find('articles')->sites(['en', 'de'])->save();
+
+        expect(Entry::find($localization->id()))->not->toBeNull()
+            ->and(targets()->findEntry($ref))->toBeNull()
+            ->and(targets()->findEntry(TargetRef::parse('entry::'.$this->origin->id()))?->id())->toBe($this->origin->id())
+            ->and(fn () => targets()->fromReference($ref))->toThrow(TargetNotFound::class, 'Entry ['.$localization->id().'] not found.');
+    });
 
     it('rejects an invalid reference', function () {
         targets()->fromReference('page::1');

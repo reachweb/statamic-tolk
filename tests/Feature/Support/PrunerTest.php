@@ -88,6 +88,20 @@ it('keeps the state of content in a site its collection or taxonomy no longer ha
     expect(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current]);
 });
 
+it('keeps the state of an entry in a site its collection no longer has while core still finds it, also one that records no collection', function () {
+    $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
+    // As a state written before entries' states recorded their collection and site.
+    StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+    $stored = StateFixtures::stored($localization)->toArray();
+
+    Collection::find('articles')->sites(['en', 'de'])->save();
+
+    expect(Entry::find($localization->id()))->not->toBeNull()
+        ->and($stored)->not->toHaveKey('collection')
+        ->and(pruned()->isEmpty())->toBeTrue()
+        ->and(StateFixtures::stored($localization)->toArray())->toBe($stored);
+});
+
 it('deletes the state of an entry deleted from a site its collection has, and of one whose collection is gone', function () {
     $this->fakeTranslations();
     $deleted = prunerTranslate($this->hello, 'el');

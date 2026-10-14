@@ -23,7 +23,6 @@ use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Contracts\Auth\User;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Taxonomies\Term as TermContract;
-use Statamic\Facades\Entry;
 use Statamic\Facades\Site;
 
 /**
@@ -99,7 +98,8 @@ final readonly class EditorStatus
     }
 
     /**
-     * The entry, or the term in the site the reference names; null for any other reference.
+     * The entry, or the term in the site the reference names; null for any other reference, and for one in a site its
+     * collection or taxonomy no longer has.
      */
     public function item(string $reference): EntryContract|TermContract|null
     {
@@ -110,7 +110,7 @@ final readonly class EditorStatus
         }
 
         return match ($ref->type) {
-            ContentType::Entry => Entry::find($ref->id),
+            ContentType::Entry => $this->targets->findEntry($ref),
             ContentType::Term => $this->targets->findTerm($ref),
             default => null,
         };

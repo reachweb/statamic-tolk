@@ -19,6 +19,7 @@ use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
 use Statamic\Facades\Term;
 
 /**
@@ -106,14 +107,15 @@ final readonly class Pruner
 
     /**
      * A term whose taxonomy no longer has the site keeps its data there, and so does an entry in a site its collection no
-     * longer has, so neither is gone. Core indexes no such entry once the Stache is rebuilt, so the collection and site
-     * its state records tell (§A5); a state that records none is deleted.
+     * longer has, so neither is gone, though TargetFactory finds neither: core still finds the term, and the entry until
+     * the Stache is rebuilt. Core indexes no such entry after that, so then the collection and site its state records
+     * tell (§A5); a state that records none is deleted.
      */
     private function inSiteLeftOut(TargetRef $ref): bool
     {
         return match ($ref->type) {
             ContentType::Term => Term::find($ref->id) !== null,
-            ContentType::Entry => $this->entryInSiteLeftOut($this->state->get($ref)),
+            ContentType::Entry => Entry::find($ref->id) !== null || $this->entryInSiteLeftOut($this->state->get($ref)),
             default => false,
         };
     }

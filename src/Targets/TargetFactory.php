@@ -197,6 +197,17 @@ final class TargetFactory
     }
 
     /**
+     * The entry of an entry reference; null when there is no such entry or its collection lacks the entry's site. Core
+     * still finds such an entry until the Stache is rebuilt, and indexes none after.
+     */
+    public function findEntry(TargetRef $ref): ?EntryContract
+    {
+        $entry = Entry::find($ref->id);
+
+        return $entry !== null && $entry->collection()->sites()->contains($entry->locale()) ? $entry : null;
+    }
+
+    /**
      * The term of a term reference in the site it names; null when there is no such term or its taxonomy lacks the site.
      */
     public function findTerm(TargetRef $ref): ?TermContract
@@ -261,7 +272,7 @@ final class TargetFactory
 
     private function entryFromReference(TargetRef $ref): EntryTarget
     {
-        $localization = Entry::find($ref->id) ?? throw TargetNotFound::entry($ref->id);
+        $localization = $this->findEntry($ref) ?? throw TargetNotFound::entry($ref->id);
         $origin = $localization->origin() ?? throw NotALocalization::for((string) $ref);
 
         return $this->forEntry($origin, $localization->locale());

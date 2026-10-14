@@ -22,6 +22,7 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Blink;
+use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Git\CommitJob;
 
@@ -791,4 +792,28 @@ describe('baseline', function () {
         $this->postJson(cp_route('tolk.editor.baseline'), ['reference' => $this->greek->reference()])->assertForbidden();
         expect(greekState('title')->isEmpty())->toBeTrue();
     });
+});
+
+it('answers for a localization in a site its collection no longer lists as for an unknown entry, as once the Stache is rebuilt, and writes no state', function () {
+    $this->fakeTranslations();
+    $this->signInAdmin();
+    $plan = editorPlan($this->greek)->assertOk()->json();
+    StateFixtures::store($this->greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+    $stored = StateFixtures::stored($this->greek)->toArray();
+    $reference = $this->greek->reference();
+
+    Collection::find('articles')->sites(['en', 'de'])->save();
+
+    // Core still finds the entry, and opens its form, until the Stache is rebuilt.
+    expect(Entry::find($this->greek->id()))->not->toBeNull();
+    $this->getJson(cp_route('tolk.editor.status', ['reference' => $reference]))->assertOk()->assertJsonPath('reason', 'unknown_reference');
+    editorPlan($this->greek)->assertNotFound()->assertJsonPath('code', 'unknown_reference')->assertJsonPath('message', 'The entry to translate was not found.');
+    $this->postJson(cp_route('tolk.editor.review'), ['reference' => $reference, 'values' => []])->assertNotFound()->assertJsonPath('code', 'unknown_reference');
+    editorUnit($plan['plan'], $plan['units'][0]['id'])->assertStatus(410)->assertJsonPath('code', 'target_missing');
+    $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $reference, 'delivered' => ['title']])->assertOk()->assertJsonPath('reason', 'unknown_reference')->assertJsonPath('not_saved', []);
+    $this->postJson(cp_route('tolk.editor.baseline'), ['reference' => $reference])->assertOk()->assertJsonPath('reason', 'unknown_reference')->assertJsonPath('baselined', 0);
+    $this->postJson(cp_route('tolk.editor.push'), ['reference' => $reference, 'sites' => ['de'], 'mode' => 'missing'])->assertNotFound()->assertJsonPath('code', 'unknown_reference');
+
+    expect(StateFixtures::stored($this->greek)->toArray())->toBe($stored);
+    $this->assertNoModelCalls();
 });

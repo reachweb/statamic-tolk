@@ -6,7 +6,7 @@ Tolk works inside Statamic's entry and term forms. In a localization it fills tr
 
 The banner sits above the form's tabs. It appears when:
 
-- the collection (or taxonomy) has more than one site and Statamic's multi-site is on;
+- the collection (or taxonomy) has more than one site, the entry's (or term's) among them, and Statamic's multi-site is on;
 - the collection (or taxonomy) is not excluded in the settings ([Configuration](configuration.md#content));
 - you have the `translate content` permission and may edit the entry;
 - the form is not read-only.
