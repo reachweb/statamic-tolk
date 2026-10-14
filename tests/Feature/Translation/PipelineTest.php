@@ -416,6 +416,34 @@ describe('missing and invalid translations', function () {
         }
     });
 
+    it('leaves a Markdown block in the source language when its translation would turn the code after it into markup, and fails the field when the plan is strict', function () {
+        $this->makeCollection('notes', ['en', 'el'], ['body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body']]);
+        $origin = $this->makeEntry('notes', 'en', ['body' => "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone."], 'snippet');
+        $this->fakeTranslations(fn (string $text) => $text === 'Paste this snippet:' ? '- Fügen Sie dieses Snippet ein:' : '[T] '.$text);
+        $plan = pipelinePlan($origin);
+        pipelineRun($plan);
+
+        $body = tolkPipeline()->assemble($plan, pipelineTarget($origin), 'body');
+
+        expect(tolkPipeline()->translation($plan, 's1'))->toBe('- Fügen Sie dieses Snippet ein:')
+            ->and($body->value)->toBe("Paste this snippet:\n\n    <script>alert(1)</script>\n\n[T] Done.")
+            ->and($body->incomplete)->toBeTrue()
+            ->and($body->identical)->toBeFalse()
+            ->and($body->segments)->toBe([null, Fingerprint::ofText('Done.')])
+            ->and($body->targetHash)->toBe(Fingerprint::ofLeaves(['Paste this snippet:', '[T] Done.']))
+            ->and($body->warnings)->toBe(['Body: "Paste this snippet:" was left untranslated (the model kept breaking its formatting).']);
+
+        $strict = pipelinePlan($origin, ['strict' => true]);
+        pipelineRun($strict);
+
+        try {
+            tolkPipeline()->assemble($strict, pipelineTarget($origin), 'body');
+            $this->fail('FieldFailed was not thrown.');
+        } catch (FieldFailed $exception) {
+            expect($exception->reasons)->toBe(['s1' => UnitOutcome::INVALID]);
+        }
+    });
+
     it('repairs a translation over its length limit once, then accepts it with a warning', function () {
         $this->fakeTranslations(fn (string $text) => '[T] '.$text.' and a much longer tail');
         $plan = pipelinePlan($this->origin, ['fields' => ['seo_title']]);

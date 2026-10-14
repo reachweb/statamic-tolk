@@ -453,6 +453,26 @@ describe('reviewing and saving', function () {
             ->and($body->value[0])->toBe(reviewExistingParagraph('Κλείστε τη ', ['σουίτα με θέα', REVIEW_EXISTING_LINK], ' μας.'));
     });
 
+    // A correction is validated on its own block, and a list marker it adds makes the indented code of the next block the
+    // item's content: the page would render that code as Markdown or raw HTML.
+    it('discards a correction that would turn the code of the next block into markup', function () {
+        $this->makeCollection('notes', ['en', 'el'], ['body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body']]);
+        $origin = $this->makeEntry('notes', 'en', ['body' => "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone."], 'snippet');
+        reviewExistingTranslate($origin);
+        $this->fakeReview(fn (string $source, string $translation) => match ($source) {
+            'Paste this snippet:' => '- '.$translation,
+            'Done.' => 'Fertig.',
+        });
+
+        $plan = reviewExistingPlan($origin, ['fields' => ['body']]);
+        app(Pipeline::class)->runUnit($plan, 'b1');
+        $body = app(Pipeline::class)->assemble($plan, reviewExistingTarget($origin), 'body');
+
+        expect($body->value)->toBe("[T] Paste this snippet:\n\n    <script>alert(1)</script>\n\nFertig.")
+            ->and(array_column($body->corrections, 'after'))->toBe(['Fertig.'])
+            ->and($body->warnings)->toBe(['Body: the reviewer\'s correction of "Paste this snippet:" was not valid and was discarded.']);
+    });
+
     it('reviews the corrected text again with another model', function () {
         reviewExistingTranslate($this->origin, options: ['fields' => ['intro']]);
         $this->fakeReview(['s1' => 'Μια σύντομη εισαγωγή.']);

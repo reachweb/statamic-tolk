@@ -4,12 +4,19 @@ namespace Reach\StatamicTolk\Content;
 
 use Closure;
 use Reach\StatamicTolk\Exceptions\LeafCountMismatch;
+use SplObjectStorage;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fields;
 
 final class ContentWalker
 {
     private array $warnings = [];
+
+    /** @var list<Leaf> */
+    private array $keptLeaves = [];
+
+    /** @var list<int> */
+    private array $kept = [];
 
     public function __construct(private readonly FieldtypeRegistry $registry) {}
 
@@ -26,6 +33,7 @@ final class ContentWalker
             return $this->map($field, $value, $translate, $context->with($field->handle(), $field->display()));
         } finally {
             $this->warnings = $context->warnings();
+            $this->keptLeaves = $context->kept();
         }
     }
 
@@ -65,9 +73,10 @@ final class ContentWalker
     {
         $translations = array_values($translations);
         $count = 0;
+        $offered = new SplObjectStorage;
 
-        $result = $this->mapField($field, $value, function (Leaf $leaf) use ($translations, &$count): string {
-            $index = $count++;
+        $result = $this->mapField($field, $value, function (Leaf $leaf) use ($translations, &$count, $offered): string {
+            $offered[$leaf] = $index = $count++;
 
             return array_key_exists($index, $translations) ? $translations[$index] : $leaf->text;
         }, $target);
@@ -76,7 +85,20 @@ final class ContentWalker
             throw LeafCountMismatch::for($field->handle(), $count, count($translations));
         }
 
+        $this->kept = array_values(array_unique(array_map(fn (Leaf $leaf) => $offered[$leaf], $this->keptLeaves)));
+
         return $result;
+    }
+
+    /**
+     * The indexes of the translations the last inject() left out, because a handler found that the value they made
+     * would turn the source's code into markup: the value holds those leaves' source text instead.
+     *
+     * @return list<int>
+     */
+    public function kept(): array
+    {
+        return $this->kept;
     }
 
     public function warnings(): array

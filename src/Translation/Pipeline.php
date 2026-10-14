@@ -226,11 +226,21 @@ final readonly class Pipeline
             $hashes[] = Fingerprint::ofText($segment['text']);
         }
 
+        $value = $this->walker->inject($field, $sourceValue, $texts);
+        $kept = array_intersect_key(array_keys($segments), array_flip($this->walker->kept()));
+
+        // A valid translation the handler left out: with it, the value would turn the source's code into markup.
+        foreach ($kept as $index => $id) {
+            $segment = $segments[$id];
+            $failed[$id] = UnitOutcome::INVALID;
+            $texts[$index] = $segment['text'];
+            $hashes[$index] = null;
+            $warnings[] = __(':label: ":text" was left untranslated (:reason).', ['label' => $segment['label'], 'text' => $this->excerpt($segment), 'reason' => UnitOutcome::reasonLabel(UnitOutcome::INVALID)]);
+        }
+
         if ($failed !== [] && $plan->options->strict) {
             throw FieldFailed::for($handle, $failed);
         }
-
-        $value = $this->walker->inject($field, $sourceValue, $texts);
 
         return new AssembledField(
             handle: $handle,
@@ -244,7 +254,7 @@ final readonly class Pipeline
             identical: $texts === $sourceTexts,
             incomplete: $failed !== [],
             translator: $this->mostFrequent($resolved['models'], $segments),
-            corrections: array_values(array_intersect_key($resolved['corrections'], $segments)),
+            corrections: array_values(array_diff_key(array_intersect_key($resolved['corrections'], $segments), array_flip($kept))),
             warnings: array_values(array_unique($warnings)),
             reviewer: $this->mostFrequent($resolved['reviewers'], $segments),
         );
@@ -640,11 +650,22 @@ final readonly class Pipeline
             if (isset($resolved['corrections'][$id])) {
                 // A valid correction holds only placeholders of the translation, so it always renumbers back.
                 $texts[$segment['index']] = Renumber::back($resolved['corrections'][$id]['after'], $target, $source);
-                $corrections[] = $resolved['corrections'][$id];
+                $corrections[$segment['index']] = $resolved['corrections'][$id];
             }
         }
 
         $value = $corrections === [] ? $planned['value'] : $this->walker->inject($field, $planned['value'], $texts, target: true);
+
+        // A valid correction the handler left out: with it, the value would turn the code under review into markup.
+        foreach ($corrections === [] ? [] : $this->walker->kept() as $index) {
+            $segment = collect($segments)->firstWhere('index', $index);
+            $texts[$index] = $targetLeaves[$index]->text;
+            unset($corrections[$index]);
+            $warnings[] = "{$segment['label']}: the reviewer's correction of \"{$this->excerpt($segment)}\" was not valid and was discarded.";
+        }
+
+        $corrections = array_values($corrections);
+        $value = $corrections === [] ? $planned['value'] : $value;
         $targetHash = $this->resolver->targetHash($field, $value);
         $manual = $planned['status_before'] === FieldStatus::Manual->value;
 

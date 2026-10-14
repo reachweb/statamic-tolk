@@ -190,6 +190,53 @@ it('gives each leaf what its placeholders stand for in a translation, so the val
         ->toBe('A backslash, backtick or bracket in the text changes what <x1/> stands for.');
 });
 
+// Each block is validated on its own, but a container a translation opens reaches into the next block (§A3 rule 7).
+it('keeps the source of a block whose translation would turn code into markup, and names its leaf', function (string $value, array $translations, string $expected, array $kept) {
+    $walker = app(ContentWalker::class);
+
+    expect($walker->inject(markdownField(), $value, $translations))->toBe($expected)
+        ->and($walker->kept())->toBe($kept);
+})->with([
+    'a list marker before indented code' => [
+        "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone.",
+        ['- Fügen Sie dieses Snippet ein:', 'Fertig.'],
+        "Paste this snippet:\n\n    <script>alert(1)</script>\n\nFertig.",
+        [0],
+    ],
+    'a heading marker dropped above code' => [
+        "# Paste this\n    <script>alert(1)</script>\n\nDone.",
+        ["Fügen Sie ein\n    <x1/>", 'Fertig.'],
+        "# Paste this\n    <script>alert(1)</script>\n\nFertig.",
+        [0],
+    ],
+    'a translation of the next block that is fine on its own, after one that is not' => [
+        "Paste this:\n\n    `code`\n\nThen <b>this</b>.",
+        ['- Fügen Sie ein:', 'Dann <1>das</1>.'],
+        "Paste this:\n\n    `code`\n\nDann <b>das</b>.",
+        [0],
+    ],
+    'a list that holds no code' => [
+        "October 14 is the day.\n\nWe open at ten.",
+        ['14. Oktober ist der Tag.', '- Wir öffnen um zehn.'],
+        "14. Oktober ist der Tag.\n\n- Wir öffnen um zehn.",
+        [],
+    ],
+    'a list before code it does not reach' => [
+        "Paste this snippet:\n\n```\n<script>alert(1)</script>\n```",
+        ['- Fügen Sie dieses Snippet ein:'],
+        "- Fügen Sie dieses Snippet ein:\n\n```\n<script>alert(1)</script>\n```",
+        [],
+    ],
+]);
+
+it('reads the code with the default Markdown parser when the field names one that does not exist', function () {
+    $value = "Paste this snippet:\n\n    <script>alert(1)</script>";
+    $walker = app(ContentWalker::class);
+
+    expect($walker->inject(markdownField(['parser' => 'missing']), $value, ['- Fügen Sie dieses Snippet ein:']))->toBe($value)
+        ->and($walker->kept())->toBe([0]);
+});
+
 it('passes the translation hint and no character limit', function () {
     $leaf = app(ContentWalker::class)->leaves(markdownField(['tolk_hint' => '  Keep it short ', 'character_limit' => 50]), 'Rooms by the sea')[0];
 

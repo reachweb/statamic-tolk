@@ -752,6 +752,72 @@ describe('model output', function () {
         'with an info string' => "Beispiel:\n```text",
     ]);
 
+    // Each block is validated on its own, and a container a translation opens reaches into the next block: a list marker,
+    // a description or a wider list item made the indented code after it the item's content, rendered as Markdown or raw
+    // HTML, and a heading marker dropped made the code under it a paragraph's text.
+    it('saves the source of a Markdown block whose translation would make code, its own or the next block\'s, into markup', function (string $body, Closure $model, string $saved) {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'snippet');
+        $this->fakeTranslations($model);
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+        $html = (string) $german->augmentedValue('body');
+
+        expect($german->get('body'))->toBe($saved)
+            ->and($html)->not->toContain('<script>')->not->toContain(' x-init=')->not->toContain('href="javascript')
+            ->and(implode("\n", RunFixtures::items($run)[0]->warnings))->toContain('was left untranslated (the model kept breaking its formatting)');
+    })->with([
+        'a bullet before indented code' => [
+            "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => $text === 'Paste this snippet:' ? '- Fügen Sie dieses Snippet ein:' : '[T] '.$text,
+            "Paste this snippet:\n\n    <script>alert(1)</script>\n\n[T] Done.",
+        ],
+        'a number before indented code' => [
+            "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => $text === 'Paste this snippet:' ? '1. Fügen Sie dieses Snippet ein:' : '[T] '.$text,
+            "Paste this snippet:\n\n    <script>alert(1)</script>\n\n[T] Done.",
+        ],
+        'a description before indented code' => [
+            "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => $text === 'Paste this snippet:' ? "Snippet\n: Fügen Sie dieses Snippet ein:" : '[T] '.$text,
+            "Paste this snippet:\n\n    <script>alert(1)</script>\n\n[T] Done.",
+        ],
+        'a bullet on a later line' => [
+            "Paste this\nsnippet:\n\n    <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => $text === "Paste this\nsnippet:" ? "Fügen Sie\n- dieses Snippet ein:" : '[T] '.$text,
+            "Paste this\nsnippet:\n\n    <script>alert(1)</script>\n\n[T] Done.",
+        ],
+        'a link with an attribute list in the code' => [
+            "Paste this snippet:\n\n    [click](javascript:alert(1)){x-init=\"alert(2)\"}\n\nDone.",
+            fn (string $text) => $text === 'Paste this snippet:' ? '- Fügen Sie dieses Snippet ein:' : '[T] '.$text,
+            "Paste this snippet:\n\n    [click](javascript:alert(1)){x-init=\"alert(2)\"}\n\n[T] Done.",
+        ],
+        'more spaces after a list marker' => [
+            "- Step one:\n\n      <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => $text === '- Step one:' ? '-    Schritt eins:' : '[T] '.$text,
+            "- Step one:\n\n      <script>alert(1)</script>\n\n[T] Done.",
+        ],
+        'a wider list item' => [
+            "- Item\n\n      <script>alert(1)</script>\n\nMore text.",
+            fn (string $text) => $text === '- Item' ? '-   Artikel' : '[T] '.$text,
+            "- Item\n\n      <script>alert(1)</script>\n\n[T] More text.",
+        ],
+        'a heading marker dropped above code' => [
+            "# Paste this\n    <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => str_starts_with($text, '# ') ? substr($text, 2) : '[T] '.$text,
+            "# Paste this\n    <script>alert(1)</script>\n\n[T] Done.",
+        ],
+        'a list marker in a blockquote above code' => [
+            "> Paste this:\n>\n>     <script>alert(1)</script>\n\nDone.",
+            fn (string $text) => str_starts_with($text, '> ') ? str_replace('> Paste this:', '> - Fügen Sie ein:', $text) : '[T] '.$text,
+            "> Paste this:\n>\n>     <script>alert(1)</script>\n\n[T] Done.",
+        ],
+    ]);
+
     // CommonMark reads a reference definition in a blockquote or a list item, and one whose label spans lines, as it reads
     // one at the start of a line: a translation that added one gave a reference to its label any destination.
     it('saves the source of a Markdown block whose translation adds a reference definition in a container or over two lines, or swaps one of the source\'s', function (string $body, Closure $model) {

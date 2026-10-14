@@ -58,8 +58,14 @@ it('runs on a Pest that compares the committed snapshots instead of writing new 
 it('changes nothing but the texts of the leaves', function (string $fixture) {
     $field = ContentFixtures::field($fixture);
     $value = ContentFixtures::value($fixture);
-    $injected = goldenWalker()->mapField($field, $value, fn (Leaf $leaf) => '«'.$leaf->text.'»');
-    $constant = fn () => 'X';
+    // Every letter outside the placeholders changed, which changes no Markdown structure: the Markdown handler keeps the
+    // source of a block whose translation would change what of the document is code (§A3 rule 7).
+    $injected = goldenWalker()->mapField($field, $value, fn (Leaf $leaf) => preg_replace('/(?:<\/?\d+>|<x\d+\/>|<br\/>)(*SKIP)(*FAIL)|\p{L}/u', 'ä', $leaf->text));
+    // A text that does not depend on the leaf's but keeps its placeholders, as a valid translation must (§A3 rules 1 to 3).
+    $constant = fn (Leaf $leaf) => 'X'.implode('', array_map(
+        fn (string|int $id) => str_starts_with((string) $id, 'x') ? "<{$id}/>" : "<{$id}>X</{$id}>",
+        array_keys($leaf->placeholders),
+    ));
 
     expect($injected)->not->toBe($value)
         ->and(goldenWalker()->mapField($field, $injected, $constant))->toBe(goldenWalker()->mapField($field, $value, $constant));
