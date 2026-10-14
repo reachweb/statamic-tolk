@@ -462,6 +462,18 @@ describe('a used-up Gemini quota', function () {
     });
 });
 
+describe('an answer the content filter stops', function () {
+    it('fails the segment as refused after one OpenAI call, without a retry with a doubled cap', function () {
+        ProviderFixtures::fake('openai', ProviderFixtures::openaiContentFilter());
+        $origin = failingArticle('hello', []);
+
+        $result = failingTranslate($origin, ['translator' => 'openai:gpt-6.1-sol']);
+
+        expect($result->warnings)->toBe(['Title: "Hello" was left untranslated (refused).'])
+            ->and(Http::recorded())->toHaveCount(1);
+    });
+});
+
 describe('a lost plan', function () {
     beforeEach(function () {
         $this->signInAdmin();

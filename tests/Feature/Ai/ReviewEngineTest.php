@@ -250,6 +250,12 @@ it('reports a truncated, undecodable or refused review without throwing', functi
     'refused' => [fn (string $provider) => ProviderFixtures::refusal($provider), Finish::Refused],
 ]);
 
+it('reports an openai review stopped by the content filter as refused, not as length', function () {
+    ProviderFixtures::fake('openai', ProviderFixtures::openaiContentFilter());
+
+    expect(engineReview('openai')->finish)->toBe(Finish::Refused);
+});
+
 it('throws ProviderPaused without a request while the reviewer\'s provider is paused', function () {
     app(Throttle::class)->pause('gemini', 30);
     $this->fakeReview();

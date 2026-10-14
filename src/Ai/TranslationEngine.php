@@ -135,8 +135,8 @@ final readonly class TranslationEngine implements Engine
         $reason = $response->steps->last()?->finishReason;
 
         $finish = match (true) {
-            $reason === FinishReason::Length => Finish::Length,
             $reason === FinishReason::ContentFilter, $this->refusedByOpenAi($response, $call) => Finish::Refused,
+            $reason === FinishReason::Length => Finish::Length,
             $structured === [] => Finish::Empty,
             default => Finish::Stop,
         };
@@ -201,12 +201,14 @@ final readonly class TranslationEngine implements Engine
     }
 
     /**
-     * OpenAI reports a refusal as a normal stop with an empty result; only the raw response shows it (T2.1).
+     * OpenAI reports a refusal as a normal stop with an empty result (T2.1), and laravel/ai before 1.2.1 reports an
+     * answer the content filter stopped as `Length`; only the raw response shows either.
      */
     private function refusedByOpenAi(AgentResponse $response, EngineCall $call): bool
     {
         return $call->model->provider === 'openai'
-            && in_array('refusal', (array) $response->raw?->json('output.*.content.*.type'), true);
+            && ($response->raw?->json('incomplete_details.reason') === 'content_filter'
+                || in_array('refusal', (array) $response->raw?->json('output.*.content.*.type'), true));
     }
 
     private function failure(Throwable $exception, EngineCall $call, StructuredAgent $agent): Throwable

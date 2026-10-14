@@ -101,6 +101,16 @@ final class ProviderFixtures
         });
     }
 
+    /**
+     * An OpenAI answer the content filter stopped: `status: incomplete`, as a truncation, but with
+     * `incomplete_details.reason: content_filter`. laravel/ai reads it as `FinishReason::Length` before 1.2.1 and as
+     * `ContentFilter` from 1.2.1.
+     */
+    public static function openaiContentFilter(): array
+    {
+        return self::patch(self::truncated('openai'), ['incomplete_details' => ['reason' => 'content_filter']]);
+    }
+
     public static function error(string $provider, int $status, string $type, string $message, array $extra = []): array
     {
         return match ($provider) {
