@@ -1,5 +1,7 @@
 <?php
 
+use Composer\InstalledVersions;
+use Composer\Semver\Semver;
 use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Tests\Support\ContentFixtures;
@@ -43,6 +45,15 @@ it('gives the same leaves on every walk, as in the snapshot', function (string $
         ->and(goldenLeaves(goldenWalker()->leaves($field, $value)))->toBe($leaves)
         ->and(json_encode($leaves, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)."\n")->toMatchSnapshot();
 })->with(ContentFixtures::names());
+
+it('runs on a Pest that compares the committed snapshots instead of writing new ones', function () {
+    $constraint = json_decode(file_get_contents(dirname(__DIR__, 3).'/composer.json'), true)['require-dev']['pestphp/pest'];
+    $reason = 'Pest 4.0.0 to 4.1.2 name data-set snapshots differently, so the snapshot test writes new files and passes without comparing.';
+
+    expect(Semver::satisfies('4.0.0', $constraint))->toBeFalse($reason)
+        ->and(Semver::satisfies('4.1.2', $constraint))->toBeFalse($reason)
+        ->and(version_compare((string) InstalledVersions::getVersion('pestphp/pest'), '4.1.3', '>='))->toBeTrue($reason);
+});
 
 it('changes nothing but the texts of the leaves', function (string $fixture) {
     $field = ContentFixtures::field($fixture);
