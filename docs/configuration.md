@@ -219,7 +219,7 @@ A rate limit or an overloaded provider pauses every request to that provider for
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `state.driver` | `file` | Where the state is stored. `file` is the only driver in this version. |
-| `state.path` | `base_path('content/tolk')` | The state's folder. Keep it under `content/`, so it is committed with the content. |
+| `state.path` | `base_path('content/tolk')` | The state's folder. With content in files, keep it under `content/`, so it is committed with the content. With content in a database (Statamic's Eloquent driver), set it to a folder that every deploy keeps, such as `storage_path('statamic/tolk/state')`, and back it up with the database: a deploy that replaces the site's folder would take `content/tolk/` with it, and every translation would then read as edited by hand. `tolk:doctor` warns about it. |
 
 ### Runs and usage
 

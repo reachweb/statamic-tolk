@@ -118,8 +118,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | What Tolk remembers about each translated field. The file driver keeps
-    | it next to the content, so it travels with the content in git. Do not
-    | edit these files by hand.
+    | it next to the content, so it travels with the content in git. With
+    | content in a database (Statamic's Eloquent driver), set `path` to a
+    | folder every deploy keeps, such as storage_path('statamic/tolk/state'),
+    | and back it up with the database. Do not edit these files by hand.
     |
     */
 

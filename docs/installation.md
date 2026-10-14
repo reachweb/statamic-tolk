@@ -77,7 +77,7 @@ A user with `translate content` but without `run bulk translations` can still fo
 | What | Where | Committed |
 | --- | --- | --- |
 | Settings | `resources/addons/statamic-tolk.yaml` | yes |
-| Translation state (what Tolk remembers about each translated field) | `content/tolk/` | yes, with the content |
+| Translation state (what Tolk remembers about each translated field) | `content/tolk/` | yes, with the content (content in a database: below) |
 | Runs | `storage/statamic/tolk/runs/` | no |
 | Monthly usage | `storage/statamic/tolk/usage/` | no |
 | Plans, locks and cached counts | the cache store | no |
@@ -85,6 +85,8 @@ A user with `translate content` but without `run bulk translations` can still fo
 Commit `content/tolk/` together with the content it describes, and do not edit its files by hand. With Statamic's git integration on, Tolk holds back Statamic's commits while it saves and makes one commit per run or command ("Content translated"), and one when it records state on its own, such as after an editor saves a translation ("Translation state saved").
 
 Statamic's commits hold only the paths in `statamic.git.paths`. Their defaults include `content/`, and with it the state, but not `lang/`, where `tolk:lang` and `tolk:forms` write the translation files. If you run these commands where git commits for you, as on a production server, add `lang_path()` to `statamic.git.paths` in `config/statamic/git.php`, or commit `lang/` yourself. Otherwise the commit holds the state without the files: a deploy that replaces the site's files loses them, and the texts show in the source language until the command runs, and is paid for, again. Both commands warn after they write while git is on and `lang/` is not tracked, and `tolk:doctor` and the Audit page warn once either command has kept state.
+
+With content in a database (Statamic's Eloquent driver), the state cannot travel with the content in git. Set `state.path` to a folder that every deploy keeps, such as `storage_path('statamic/tolk/state')`, and back it up with the database ([Configuration](configuration.md#translation-state)). Left in `content/tolk/`, it is lost by any deploy that replaces the site's folder, as zero-downtime deploys to a new release folder do: every translation then reads as edited by hand and is no longer updated. `tolk:doctor` and the Audit page warn about it.
 
 ## In the Control Panel
 

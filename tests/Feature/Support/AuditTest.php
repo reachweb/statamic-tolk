@@ -326,6 +326,68 @@ describe('translation state', function () {
 
         expect(auditItems('state'))->toHaveCount(1);
     })->with(['tolk:lang', 'tolk:forms']);
+
+    it('warns when the Eloquent driver keeps the content in the database and the state is inside the site\'s folder', function () {
+        config([
+            'statamic.eloquent-driver.entries.driver' => 'eloquent',
+            'statamic.eloquent-driver.terms.driver' => 'eloquent',
+            'statamic.eloquent-driver.global_set_variables.driver' => 'file',
+            'tolk.state.path' => base_path('content/tolk'),
+        ]);
+
+        expect(auditCheck('state')['level'])->toBe('warning')
+            ->and(auditItems('state'))->toBe([
+                'ok: State files: content/tolk.',
+                "warning: Statamic's Eloquent driver keeps content Tolk translates in the database (entries, terms), but the state files are in content/tolk, inside the site's folder. A deploy that replaces that folder, such as a new release folder, loses them: every translation then reads as edited by hand and is no longer updated. Set tolk.state.path to a folder that every deploy keeps, such as storage_path('statamic/tolk/state'), and back it up with the database.",
+            ]);
+    });
+
+    it('keeps quiet about deploys when the state is in storage or outside the site\'s folder', function () {
+        config([
+            'statamic.eloquent-driver.entries.driver' => 'eloquent',
+            'tolk.state.path' => storage_path('statamic/tolk/state'),
+        ]);
+
+        $reminder = "ok: Statamic's Eloquent driver keeps content Tolk translates in the database (entries), so the state files belong with it, not in git: keep them when you deploy, and back them up with the database.";
+
+        expect(auditCheck('state')['level'])->toBe('ok')
+            ->and(auditItems('state'))->toBe(['ok: State files: storage/statamic/tolk/state.', $reminder]);
+
+        config(['tolk.state.path' => $this->temporaryPath('shared/tolk')]);
+
+        expect(auditCheck('state')['level'])->toBe('ok')
+            ->and(auditItems('state')[1])->toBe($reminder);
+    });
+
+    it('reads the Eloquent driver\'s older keys for global variables and navigation trees', function () {
+        config([
+            'statamic.eloquent-driver.global_sets' => ['driver' => 'eloquent', 'variables_model' => 'VariablesModel'],
+            'statamic.eloquent-driver.navigations' => ['driver' => 'eloquent', 'tree_model' => 'TreeModel'],
+            'tolk.state.path' => base_path('content/tolk'),
+        ]);
+
+        expect(auditItems('state')[1])->toStartWith("warning: Statamic's Eloquent driver keeps content Tolk translates in the database (global variables, navigation trees), but");
+
+        config([
+            'statamic.eloquent-driver.global_sets' => ['driver' => 'eloquent', 'model' => 'GlobalSetModel'],
+            'statamic.eloquent-driver.navigations' => ['driver' => 'eloquent', 'model' => 'NavModel'],
+        ]);
+
+        expect(auditItems('state'))->toBe(['ok: State files: content/tolk.']);
+    });
+
+    it('does not ask for the state in git when the content is in the database', function () {
+        config([
+            'statamic.git.enabled' => true,
+            'statamic.git.paths' => [base_path('content'), 'users'],
+            'statamic.eloquent-driver.entries.driver' => 'eloquent',
+            'tolk.state.path' => storage_path('statamic/tolk/state'),
+        ]);
+
+        expect(auditCheck('state')['level'])->toBe('ok')
+            ->and(auditItems('state'))->toHaveCount(2)
+            ->and(auditItems('state')[1])->toStartWith("ok: Statamic's Eloquent driver keeps content");
+    });
 });
 
 describe('localizable fields', function () {

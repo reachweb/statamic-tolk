@@ -69,7 +69,7 @@ final class Audit
             $this->check('providers', __('Providers and models'), __('Translating needs an API key for at least one provider, and every model chosen in the settings must use a provider that has one.'), $this->providerItems()),
             $this->check('queue', __('Queue'), __('Runs started in the Control Panel run as queue jobs when the queue connection has a worker, and are driven by the open run page otherwise. Each queue job must end before the connection hands it to another worker (retry_after).'), $this->queueItems()),
             $this->check('cache', __('Cache'), __('Plans, locks and progress live in one cache store, which must support locks and be shared by web requests, queue workers and the command line.'), $this->cacheItems()),
-            $this->check('state', __('Translation state'), __('Tolk keeps what it knows about each translated field in files next to the content, which it must be able to write and which belong in version control with the content.'), $this->stateItems()),
+            $this->check('state', __('Translation state'), __('Tolk keeps what it knows about each translated field in files, which it must be able to write and which must stay with the content: in version control with content in files, in a folder that every deploy keeps with content in a database.'), $this->stateItems()),
             $this->check(self::LOCALIZABLE, __('Localizable fields'), __('A text field that is not localizable is shared by every site, so Tolk does not translate it. Run php please tolk:doctor --fix-localizable to make these fields localizable, blueprint by blueprint.'), $this->notLocalizable()),
             $this->check(self::TECHNICAL_FIELDS, __('Nested fields that look like data'), __('These nested fields are translated, but their handles suggest identifiers, links or code. If one holds data rather than text, switch off "Translate automatically" in its field settings.'), $this->technicalFields()),
             $this->check('content_sites', __('Sites of collections, taxonomies and global sets'), __('Content is translated only into the sites its collection, taxonomy or global set is enabled for, and a global set translates each site from the origin it names for it.'), $this->contentSiteItems()),
@@ -402,6 +402,16 @@ final class Audit
             ? $this->item(AuditLevel::Ok, __('State files: :path.', ['path' => $this->relativePath($path)]))
             : $this->item(AuditLevel::Error, __('Tolk cannot write the state files to :path. Make the folder writable, or set another one (tolk.state.path).', ['path' => $this->relativePath($path)]));
 
+        $database = $this->databaseContent();
+
+        if ($database !== []) {
+            $replace = ['content' => implode(', ', $database), 'path' => $this->relativePath($path)];
+
+            return [...$items, $this->insideRelease($existing)
+                ? $this->item(AuditLevel::Warning, __('Statamic\'s Eloquent driver keeps content Tolk translates in the database (:content), but the state files are in :path, inside the site\'s folder. A deploy that replaces that folder, such as a new release folder, loses them: every translation then reads as edited by hand and is no longer updated. Set tolk.state.path to a folder that every deploy keeps, such as storage_path(\'statamic/tolk/state\'), and back it up with the database.', $replace))
+                : $this->item(AuditLevel::Ok, __('Statamic\'s Eloquent driver keeps content Tolk translates in the database (:content), so the state files belong with it, not in git: keep them when you deploy, and back them up with the database.', $replace))];
+        }
+
         if (! config('statamic.git.enabled')) {
             return $items;
         }
@@ -428,6 +438,37 @@ final class Audit
     private function hasLanguageState(string $path): bool
     {
         return is_dir($path.'/lang') || is_dir($path.'/forms');
+    }
+
+    /**
+     * The content Tolk translates that Statamic's Eloquent driver stores in the database, read from the driver's
+     * config as its service provider reads it (older installs name global variables and navigation trees by the keys
+     * of global sets and navigations).
+     *
+     * @return list<string>
+     */
+    private function databaseContent(): array
+    {
+        $keys = [
+            'entries' => __('entries'),
+            'terms' => __('terms'),
+            config()->has('statamic.eloquent-driver.global_sets.variables_model') ? 'global_sets' : 'global_set_variables' => __('global variables'),
+            config()->has('statamic.eloquent-driver.navigations.tree_model') ? 'navigations' : 'navigation_trees' => __('navigation trees'),
+        ];
+
+        return array_values(array_filter($keys, fn (string $key) => config("statamic.eloquent-driver.{$key}.driver") === 'eloquent', ARRAY_FILTER_USE_KEY));
+    }
+
+    /**
+     * Whether a folder lies in the app's folder outside its storage, which a deploy to a new release folder replaces
+     * (storage is shared between releases, often through a symlink, which is why the paths are resolved).
+     */
+    private function insideRelease(string $folder): bool
+    {
+        $resolve = fn (string $path) => str_replace('\\', '/', rtrim(realpath($path) ?: $path, '/\\')).'/';
+        $within = fn (string $root) => str_starts_with($resolve($folder), $resolve($root));
+
+        return $within(base_path()) && ! $within(storage_path());
     }
 
     private function contentSiteItems(): array

@@ -79,6 +79,7 @@ Content is saved by one process at a time, under a lock ([Why one writer](bulk-a
 - **A site translated by hand before Tolk** reads "edited by hand" and untracked: run `tolk:baseline` so origin changes are noticed.
 - **A page removed from a translated navigation came back after Update**, or pages moved by hand returned to the source's order. Only text marks a tree edited by hand, so Update rebuilt it from the source's tree. Protect the tree with `tolk:baseline --nav=main --site=el --protect` after changing it ([Navigation](content-types.md#navigation)).
 - **Translations a run saved read untranslated or outdated again.** A form of the localization that was open before the run was saved afterwards, and put back the text it was opened with. **Update** translates them again; reload a localization a run may have saved before you edit it ([Forms opened before a run](editor.md#forms-opened-before-a-run)).
+- **After a deploy, every translation reads "edited by hand" and Update sends nothing.** The state files are gone: with content in a database, a deploy that replaces the site's folder takes `content/tolk/` with it. Restore the folder from a backup and set `state.path` to a folder every deploy keeps ([Configuration](configuration.md#translation-state)). Without a backup, run `tolk:baseline`, which keeps the current translations as edited by hand but notices origin changes again, or translate them again with **Overwrite manual edits** (`--force`).
 
 ## The interface is in English
 
