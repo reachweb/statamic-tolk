@@ -204,6 +204,25 @@ it('refuses settings that would not mean what they say', function (array $values
         'glossary.2.term',
         '"Kyma Bay" is already in the glossary for every language.',
     ],
+    // Settings leaves the noparse tags out, so the rules judge the text without them.
+    'a term twice, once between noparse tags' => [
+        ['glossary' => [
+            tolkGlossaryRow(['term' => 'Kyma Bay', 'do_not_translate' => true]),
+            tolkGlossaryRow(['term' => '{{ noparse }}Kyma Bay{{ /noparse }}', 'translation' => 'Κύμα']),
+        ]],
+        'glossary.1.term',
+        '"Kyma Bay" is already in the glossary for every language.',
+    ],
+    'a term of nothing but noparse tags' => [
+        ['glossary' => [tolkGlossaryRow(['term' => '{{ noparse }} {{ /noparse }}', 'translation' => 'Αγορά'])]],
+        'glossary.0.term',
+        'is required',
+    ],
+    'a translation of nothing but noparse tags' => [
+        ['glossary' => [tolkGlossaryRow(['term' => 'Agora', 'translation' => '{{ noparse }}{{ /noparse }}'])]],
+        'glossary.0.translation',
+        'Enter a translation, or turn on Do not translate.',
+    ],
 ]);
 
 // Core parses every addon setting as Antlers when it saves them, so such text used to fail the save with a 500.

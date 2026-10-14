@@ -69,8 +69,8 @@ Entries only: terms, global sets and the navigation are not updated automaticall
 
 ### What the settings page refuses
 
-- A glossary row needs a term, and a translation or **Do not translate**.
-- The same term twice for one language, or twice for every language, is refused on the later row. "The same" means equal after trimming spaces: terms that differ only in case are separate rows. A row for one language may override the row for every language with the same term, ignoring case and accents.
+- A glossary row needs a term, and a translation or **Do not translate**. A term or translation of nothing but the noparse tags (below) counts as empty.
+- The same term twice for one language, or twice for every language, is refused on the later row. "The same" means equal after trimming spaces and leaving out the noparse tags: terms that differ only in case are separate rows. A row for one language may override the row for every language with the same term, ignoring case and accents.
 - Each language has at most one language instruction row, and the row needs a site.
 - Formality is `default`, `formal` or `informal`; New localizations is `draft` or `mirror`; a model is a `provider:model` reference.
 - Statamic reads `{{` and `}}` in every addon setting as Antlers, so a text it cannot read as Antlers, such as `Keep {{ and }} unchanged.`, is refused. To keep the braces as written, put the whole text between `{{ noparse }}` and `{{ /noparse }}`: Tolk leaves those two tags out of what it sends to the model. A text whose braces are valid Antlers, such as `{{ site:name }}`, is saved and sent as you wrote it.

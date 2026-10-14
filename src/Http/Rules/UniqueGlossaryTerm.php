@@ -7,17 +7,26 @@ use Reach\StatamicTolk\Support\Settings;
 
 /**
  * Refuses a second row with the same term (exact, after trimming) for the same site, or for every site: the glossary
- * keeps both and the prompt would show two lines for one term. A site's row may override a row for every site.
+ * keeps both and the prompt would show two lines for one term. A site's row may override a row for every site. It
+ * judges the term as `Settings::glossary()` returns it, without noparse tags, and so also refuses a term of nothing
+ * but those tags, which `required` lets through and the glossary drops.
  */
 final class UniqueGlossaryTerm extends GridRowRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        $term = Settings::text($value);
+        $term = Settings::prose($value);
+
+        if ($term === '') {
+            $fail('validation.required')->translate();
+
+            return;
+        }
+
         $site = Settings::siteOf($this->row($attribute));
 
         $taken = collect($this->rowsBefore($attribute))->contains(
-            fn (array $row) => Settings::text($row['term'] ?? null) === $term && Settings::siteOf($row) === $site
+            fn (array $row) => Settings::prose($row['term'] ?? null) === $term && Settings::siteOf($row) === $site
         );
 
         if (! $taken) {

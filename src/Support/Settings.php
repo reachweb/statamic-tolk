@@ -323,7 +323,7 @@ class Settings
     /**
      * A text someone wrote for the model, without the `{{ noparse }}` tags that let it hold `{{` and `}}`.
      */
-    private static function prose(mixed $value): string
+    public static function prose(mixed $value): string
     {
         return trim(preg_replace(self::NOPARSE_TAG, '', self::text($value)));
     }
