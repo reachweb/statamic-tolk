@@ -113,7 +113,7 @@ When one part of a field cannot be translated (the model refuses it, or still re
 - the editor's banner names it ("Intro is partly untranslated. Update translates the rest after you save."), runs list it as left incomplete, and the command line prints the part;
 - a new localization with such a field stays a draft even with **Same as origin**.
 
-To find the part the model refuses, Tolk splits the refused request in halves and sends each again, until the refused text is alone, so the rest of the request is still translated. That takes about two more requests per halving, and more when the model refuses most of the text.
+To find the part the model refuses, Tolk splits the refused request in halves and sends each again, until the refused text is alone, so the rest of the request is still translated. That takes about two more requests per halving, or three with **Review after translating** on, because each translated half is also reviewed on its own: for one refused text among 40 sent together, about 13 requests, or 19 with review. It takes more when the model refuses most of the text.
 
 With the **Strict fields** setting on, such a field is not delivered at all and keeps its previous value. A run lists it as "Could not be translated" with the reason, such as "the model refused it".
 

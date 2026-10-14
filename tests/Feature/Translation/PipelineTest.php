@@ -580,6 +580,25 @@ describe('finish reasons and request failures', function () {
             ->and($field->warnings)->toBe(['FAQ › Answer: "Answer 13." was left untranslated (refused).']);
     });
 
+    it('reviews each translated half of a refused unit on its own, so with review on a halving costs three calls', function () {
+        $engine = ScriptedEngine::bind(
+            fn (EngineCall $call) => in_array('Answer 13.', array_column($call->segments, 'text'), true)
+                ? ScriptedEngine::result($call, Finish::Refused)
+                : ScriptedEngine::translated($call),
+            fn (EngineCall $call) => ScriptedEngine::result($call, Finish::Stop),
+        );
+        $faq = array_map(fn (int $row) => ['question' => "Question {$row}?", 'answer' => "Answer {$row}."], range(1, 20));
+        $origin = $this->makeEntry('articles', 'en', ['title' => 'FAQ', 'faq' => $faq], 'faq');
+        $plan = pipelinePlan($origin, ['fields' => ['faq'], 'review' => true]);
+
+        $ran = pipelineRun($plan);
+
+        expect($ran)->toHaveCount(19)
+            ->and($engine->calls)->toHaveCount(13)
+            ->and($engine->reviews)->toHaveCount(6)
+            ->and(array_sum(array_map(fn (EngineCall $call) => count($call->segments), $engine->reviews)))->toBe(39);
+    });
+
     it('splits a unit with several segments after a timeout without counting a failure', function () {
         ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? throw ProviderTimeout::after('anthropic', 45, 2)
