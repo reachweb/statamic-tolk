@@ -115,17 +115,20 @@ final class LangFiles
     /**
      * Re-reads the file, sets and removes the given keys and keeps every other key with its value (§A16). Keys follow
      * the source's order, then the keys the source lacks in their own order; a PHP file puts each key where its source
-     * has it, nested or as a key that holds a dot, and a key the source lacks where the file had it. The file is
-     * replaced through a temporary file, so it is never half-written, and a failure leaves it as it was.
+     * has it, nested or as a key that holds a dot, and a key the source lacks where the file had it, unless the source
+     * nests its keys differently there: one array cannot hold a string and keys nested under it, and Laravel looks up
+     * the source's keys, so such a key of the file is dropped. The file is replaced through a temporary file, so it is
+     * never half-written, and a failure leaves it as it was.
      *
      * @param  array<string, string>  $set  flat key → value
      * @param  list<string>  $remove
      * @param  array<string, mixed>  $sourceShape  the source file's array, as contents() gives it
      * @param  list<int|string>  $carry  the flat keys of the source's values that have nothing to translate
+     * @return list<int|string> the keys only the file had that were dropped
      *
-     * @throws InvalidLangFile
+     * @throws InvalidLangFile also when the file cannot hold every key of $set with its value
      */
-    public function write(string $lang, string $group, array $set, array $remove, array $sourceShape, array $carry = []): void
+    public function write(string $lang, string $group, array $set, array $remove, array $sourceShape, array $carry = []): array
     {
         $file = $this->contents($lang, $group);
         $source = self::flat($group, $sourceShape);
@@ -135,7 +138,16 @@ final class LangFiles
         $values = array_replace(array_intersect_key($source, $values), $values);
         $name = self::name($lang, $group);
         $path = $this->path($lang, $group);
-        $contents = $group === self::JSON ? self::json($values) : self::php(self::nest($values, self::places($sourceShape) + self::places($file)), $name);
+        $dropped = [];
+
+        if ($group === self::JSON) {
+            $contents = self::json($values);
+        } else {
+            $sourcePlaces = self::places($sourceShape);
+            [$nested, $dropped] = self::nest($values, array_diff_key($values, $sourcePlaces, $set), $sourcePlaces + self::places($file));
+            self::holds($nested, $set, $name);
+            $contents = self::php($nested, $name);
+        }
 
         $this->writeAtomically($path, $contents, "the translation file {$name}");
 
@@ -143,6 +155,8 @@ final class LangFiles
         if (function_exists('opcache_invalidate')) {
             opcache_invalidate($path, true);
         }
+
+        return $dropped;
     }
 
     /**
@@ -187,19 +201,65 @@ final class LangFiles
 
     /**
      * The flat values in their places; a key without one is nested at every dot, as Arr::undot() nests it. Laravel
-     * finds a key either as one key that holds its dots or nested at every dot, so neither may become the other.
+     * finds a key either as one key that holds its dots or nested at every dot, so neither may become the other. The
+     * keys only the file had go last, each where nothing else is: one that would replace a value or the keys nested
+     * under it is dropped.
      *
+     * @param  array<int|string, mixed>  $kept  the values only the file had
      * @param  array<string, list<int|string>>  $places
+     * @return array{0: array, 1: list<int|string>} the nested values, and the keys of $kept that were dropped
      */
-    private static function nest(array $values, array $places): array
+    private static function nest(array $values, array $kept, array $places): array
     {
-        $nested = [];
+        $nested = $dropped = [];
 
-        foreach ($values as $key => $value) {
-            $nested = self::place($nested, $places[$key] ?? explode('.', (string) $key), $value);
+        foreach ([array_diff_key($values, $kept), $kept] as $pass => $group) {
+            foreach ($group as $key => $value) {
+                $path = $places[$key] ?? explode('.', (string) $key);
+
+                if ($pass === 1 && self::taken($nested, $path)) {
+                    $dropped[] = $key;
+                } else {
+                    $nested = self::place($nested, $path, $value);
+                }
+            }
         }
 
-        return $nested;
+        return [$nested, $dropped];
+    }
+
+    /**
+     * Whether a value at the path would replace one: there is a value at it or above it, or keys nested under it.
+     *
+     * @param  list<int|string>  $path
+     */
+    private static function taken(array $array, array $path): bool
+    {
+        $key = array_shift($path);
+
+        if (! array_key_exists($key, $array)) {
+            return false;
+        }
+
+        return $path === [] || ! is_array($array[$key]) || self::taken($array[$key], $path);
+    }
+
+    /**
+     * The values set must read back as they were set, or write() would report translations the file does not hold.
+     *
+     * @param  array<string, string>  $set
+     *
+     * @throws InvalidLangFile
+     */
+    private static function holds(array $nested, array $set, string $name): void
+    {
+        $written = Arr::dot($nested);
+
+        foreach ($set as $key => $value) {
+            if (($written[$key] ?? null) !== $value) {
+                throw InvalidLangFile::unholdable($name, (string) $key);
+            }
+        }
     }
 
     /**

@@ -167,6 +167,32 @@ it('keeps the keys only the target has, after the source keys, and removes only 
     expect(json_decode(file_get_contents(lang_path('de.json')), true))->toBe(['One' => 'Eins', 'Two' => 'Zwei', 'Mine' => 'Meins']);
 });
 
+it('drops a key only the target has where the source nests its keys differently, so the translations are written', function () {
+    putLangFile('en/validation.php', "<?php return ['password' => ['letters' => 'Letters', 'mixed' => 'Mixed'], 'title' => 'Book', 'nav' => ['home' => 'Home'], 'limit' => 5];");
+    putLangFile('de/validation.php', "<?php return ['password' => 'Altes Passwort', 'title' => ['short' => 'Buchen', 'long' => 'Jetzt buchen'], 'nav' => ['own' => 'Eigen'], 'limit' => ['max' => 9], 'mine' => 'Meins'];");
+
+    $dropped = langFiles()->write('de', 'validation', ['password.letters' => 'Buchstaben', 'title' => 'Buchen Sie', 'password.mixed' => 'Gemischt'], [], langFiles()->contents('en', 'validation'), ['limit']);
+
+    expect(includeLangFile('de/validation.php'))->toBe([
+        'password' => ['letters' => 'Buchstaben', 'mixed' => 'Gemischt'],
+        'title' => 'Buchen Sie',
+        'limit' => 5,
+        'nav' => ['own' => 'Eigen'],
+        'mine' => 'Meins',
+    ])->and($dropped)->toBe(['password', 'title.short', 'title.long', 'limit.max']);
+
+    expect(langFiles()->write('de', 'validation', ['title' => 'Buchen'], [], langFiles()->contents('en', 'validation'), ['limit']))->toBe([])
+        ->and(includeLangFile('de/validation.php')['title'])->toBe('Buchen');
+});
+
+it('refuses keys that one PHP file cannot hold together, and leaves the file as it was', function () {
+    putLangFile('de/messages.php', "<?php return ['a' => 'Ah'];");
+
+    expect(fn () => langFiles()->write('de', 'messages', ['x' => 'Iks', 'x.y' => 'Ypsilon'], [], []))
+        ->toThrow(InvalidLangFile::class, 'The translation file [lang/de/messages.php] cannot be written: it cannot hold [x] next to the other keys.')
+        ->and(includeLangFile('de/messages.php'))->toBe(['a' => 'Ah']);
+});
+
 it('carries the values it is told to over from the source where the target has none', function () {
     putLangFile('en/settings.php', "<?php return ['limit' => 5, 'title' => 'Title', 'enabled' => true, 'empty' => [], 'none' => null, 'url' => 'https://kymabay.example', 'other' => 'Other'];");
     putLangFile('de/settings.php', "<?php return ['limit' => 7];");

@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Targets\Concerns;
 
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
+use Reach\StatamicTolk\Support\LangFiles;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\TargetRef;
@@ -114,8 +115,9 @@ trait WritesLangFile
     }
 
     /**
-     * Writes the translated strings into the file, which LangFiles re-reads first, so every other key keeps its value.
-     * A string the source emptied is removed. There is no normalisation step: a string is not a blueprint's value.
+     * Writes the translated strings into the file, which LangFiles re-reads first, so every other key keeps its value,
+     * unless the source nests its keys differently there; the result's warning names the keys dropped. A string the
+     * source emptied is removed. There is no normalisation step: a string is not a blueprint's value.
      *
      * @param  list<AssembledField>  $fields
      */
@@ -124,21 +126,26 @@ trait WritesLangFile
         [$writes, $skipped] = $this->writable($this->keyByHandle($fields), $options);
         $ref = $this->targetRef();
         $created = false;
+        $warnings = [];
 
         if ($writes !== []) {
             $set = $this->prepareWrites(null, $ref, $writes);
             $created = ! $this->exists();
 
             try {
-                $this->files->write($this->lang, $this->group(), $set, $this->removedHandles($writes), $this->sourceShape(), $this->carried());
+                $dropped = $this->files->write($this->lang, $this->group(), $set, $this->removedHandles($writes), $this->sourceShape(), $this->carried());
             } catch (Throwable $exception) {
                 throw ApplyFailed::notWritten($this->name(), $exception);
+            }
+
+            if ($dropped !== []) {
+                $warnings[] = sprintf('Removed %s: %s nests its keys differently there.', implode(', ', $dropped), LangFiles::name($this->sourceLang, $this->group()));
             }
 
             $this->confirmWrites($ref, $writes);
         }
 
-        return new ApplyResult(ref: $ref, created: $created, applied: array_keys($writes), skipped: $skipped);
+        return new ApplyResult(ref: $ref, created: $created, applied: array_keys($writes), skipped: $skipped, warnings: $warnings);
     }
 
     private function source(): array

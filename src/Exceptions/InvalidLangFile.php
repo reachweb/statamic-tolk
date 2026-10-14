@@ -16,4 +16,9 @@ final class InvalidLangFile extends RuntimeException
     {
         return new self("The translation file [{$name}] cannot be written: the value of [{$key}] is not a string, number, boolean, null or array.");
     }
+
+    public static function unholdable(string $name, string $key): self
+    {
+        return new self("The translation file [{$name}] cannot be written: it cannot hold [{$key}] next to the other keys.");
+    }
 }

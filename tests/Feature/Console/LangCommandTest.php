@@ -141,6 +141,29 @@ it('writes a key that holds a dot as the source has it, so a key that is also it
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, 'help', 'de'))->hasPending())->toBeFalse();
 });
 
+it('writes the translations of keys the source nests differently from the target file, and says which keys of the file gave way', function () {
+    writeLang('en/validation.php', "<?php\n\nreturn ['password' => ['letters' => 'Use a letter.', 'mixed' => 'Mix the case.'], 'title' => 'Book', 'nav' => ['home' => 'Home']];\n");
+    writeLang('de/validation.php', "<?php\n\nreturn ['password' => 'Falsches Passwort.', 'title' => ['short' => 'Buchen', 'long' => 'Jetzt buchen'], 'nav' => ['own' => 'Eigen']];\n");
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['validation'], '--yes' => true]);
+    $calls = $this->modelCalls();
+    [, $second] = langCommand(['sites' => ['de'], '--group' => ['validation']]);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('lang/de/validation.php: done, 4 fields')
+        ->and($output)->toContain('Removed password, title.short, title.long: lang/en/validation.php nests its keys differently there.')
+        ->and(readLang('de/validation.php'))->toBe([
+            'password' => ['letters' => '[T] Use a letter.', 'mixed' => '[T] Mix the case.'],
+            'title' => '[T] Book',
+            'nav' => ['home' => '[T] Home', 'own' => 'Eigen'],
+        ])
+        ->and(langTranslator('de')->get('validation.password.letters'))->toBe('[T] Use a letter.')
+        ->and(langTranslator('de')->get('validation.title'))->toBe('[T] Book')
+        ->and($this->modelCalls())->toBe($calls)
+        ->and($second)->toContain('lang/de/validation.php: skipped, nothing to do');
+});
+
 it('tracks keys that read as integers, so their translations read current and update refreshes them', function () {
     writeLang('en.json', json_encode(['Book now' => 'Book now', '2026' => 'Season 2026', 'Contact us' => 'Contact us'], JSON_PRETTY_PRINT));
     writeLang('en/errors.php', "<?php\n\nreturn ['404' => 'Page not found', '500' => 'Something went wrong', 'title' => 'Error'];\n");
