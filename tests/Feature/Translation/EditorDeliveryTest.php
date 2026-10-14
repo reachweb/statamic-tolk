@@ -5,6 +5,7 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
@@ -116,6 +117,42 @@ it('promotes the pending entry once the form is saved with the delivered value',
     Entry::find($this->greek->id())->set('intro', $delivered['intro']['value'])->save();
 
     expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Current);
+});
+
+it('reads a delivery that a stale form saves after a server-side translation of the changed origin as outdated, not as edited by hand', function () {
+    $this->fakeTranslations();
+    $delivered = app(EditorDelivery::class)->deliver(runDeliveryPlan(greekDeliveryTarget()), greekDeliveryTarget(), ['intro']);
+
+    $this->origin->set('intro', 'A corrected intro.')->save();
+    app(TargetTranslator::class)->translate(greekDeliveryTarget(), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+
+    expect(Entry::find($this->greek->id())->get('intro'))->toBe('[T] A corrected intro.')
+        ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Current);
+
+    Entry::find($this->greek->id())->set('intro', $delivered['intro']['value'])->save();
+
+    expect($delivered['intro']['value'])->toBe('[T] A short intro.')
+        ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+});
+
+it('reads the delivery of a second form saved after the first as outdated, not as edited by hand', function () {
+    $calls = 0;
+    $this->fakeTranslations(function (string $text) use (&$calls) {
+        return '[T'.++$calls.'] '.$text;
+    });
+    $first = app(EditorDelivery::class)->deliver(runDeliveryPlan(greekDeliveryTarget()), greekDeliveryTarget(), ['intro']);
+    $second = app(EditorDelivery::class)->deliver(runDeliveryPlan(greekDeliveryTarget()), greekDeliveryTarget(), ['intro']);
+
+    Entry::find($this->greek->id())->set('intro', $first['intro']['value'])->save();
+    app(StateWriter::class)->confirm(greekDeliveryTarget());
+
+    expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Current);
+
+    Entry::find($this->greek->id())->set('intro', $second['intro']['value'])->save();
+    app(StateWriter::class)->confirm(greekDeliveryTarget());
+
+    expect($first['intro']['value'])->not->toBe($second['intro']['value'])
+        ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
 });
 
 it('records the hash of the target that was there when the plan was made', function () {

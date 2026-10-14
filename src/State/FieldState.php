@@ -136,16 +136,19 @@ final readonly class FieldState
     }
 
     /**
-     * A reviewed manual field stays manual: its entry becomes a baseline that records the reviewer (T7.4).
+     * A reviewed manual field stays manual: its entry becomes a baseline that records the reviewer (T7.4). The outputs of
+     * the other entries move to the history, so a form that saves one of them later reads outdated, not manual.
      */
     public function promote(PendingState $pending): self
     {
+        $history = $this->historyReplacedBy($pending->targetHash, $this->overtaken($pending));
+
         if ($pending->baseline) {
             return new self(
                 sourceHash: $pending->sourceHash,
                 translator: $pending->translator,
                 reviewer: $pending->reviewer,
-                history: $this->historyReplacedBy($pending->targetHash),
+                history: $history,
             );
         }
 
@@ -158,7 +161,7 @@ final readonly class FieldState
             translatedAt: $pending->createdAt,
             translator: $pending->translator,
             reviewer: $pending->reviewer,
-            history: $this->historyReplacedBy($pending->targetHash),
+            history: $history,
         );
     }
 
@@ -247,13 +250,30 @@ final readonly class FieldState
     }
 
     /**
-     * The history once a new output replaces this record: its machine pair first, no output twice, none equal to the new one.
+     * The machine outputs of the pending entries other than the promoted one, newest first. A reviewed manual field's
+     * output is no machine output.
+     *
+     * @return list<array{source_hash: string, target_hash: string}>
      */
-    private function historyReplacedBy(?string $targetHash): array
+    private function overtaken(PendingState $promoted): array
+    {
+        return array_values(array_map(
+            fn (PendingState $pending) => ['source_hash' => $pending->sourceHash, 'target_hash' => $pending->targetHash],
+            array_filter($this->pending, fn (PendingState $pending) => $pending->plan !== $promoted->plan && ! $pending->baseline),
+        ));
+    }
+
+    /**
+     * The history once a new output replaces this record: the outputs it overtook and its machine pair first, no output
+     * twice, none equal to the new one.
+     *
+     * @param  list<array{source_hash: ?string, target_hash: string}>  $overtaken
+     */
+    private function historyReplacedBy(?string $targetHash, array $overtaken = []): array
     {
         $pairs = $this->isMachine()
-            ? [['source_hash' => $this->sourceHash, 'target_hash' => $this->targetHash], ...$this->history]
-            : $this->history;
+            ? [...$overtaken, ['source_hash' => $this->sourceHash, 'target_hash' => $this->targetHash], ...$this->history]
+            : [...$overtaken, ...$this->history];
 
         $history = [];
 

@@ -8,7 +8,7 @@ Tolk tracks every translated field: whether its origin changed since it was tran
 | --- | --- | --- | --- | --- |
 | Untranslated | *untranslated* | The localization has no translation of the field: it inherits the origin's text, or holds a copy of it that nobody translated. | translates it | translates it |
 | Up to date | *up to date* | Tolk translated it, nobody changed its text since, and the origin has not changed. | leaves it | leaves it |
-| Outdated | *outdated* | Tolk translated it and nobody changed its text, but the origin changed since, or part of it is still untranslated. | leaves it | translates it again |
+| Outdated | *outdated* | Tolk translated it and nobody changed its text, but the origin changed since, part of it is still untranslated, or it holds an [earlier translation](#an-earlier-translation-saved-again) that a newer one replaced. | leaves it | translates it again |
 | Edited by hand | *edited by hand* | Someone changed its text after Tolk translated it, or wrote it by hand. | leaves it | leaves it |
 | Not applicable | not counted | The origin's field is empty or has no text to translate. | | |
 
@@ -64,6 +64,10 @@ The first time an editor saves origin content in the CP that was written another
 ### Saving without changes
 
 Opening a localization and saving it without editing a text changes no status.
+
+### An earlier translation saved again
+
+A field that holds a translation Tolk made, after a newer translation replaced it, reads **outdated**, not edited by hand, so Update translates it again from the origin. That happens when a localization's form is left open with a translation filled in while the same field is saved elsewhere (by a run, **Update translations** on the origin, an automatic update or another tab), and the form is then saved without editing that text. Tolk remembers the last three translations of each field that newer ones replaced; an older one reads edited by hand.
 
 ## How Update reuses earlier work
 

@@ -123,7 +123,7 @@ it('detects machine output and baselines', function () {
         ->isBaseline()->toBeTrue();
 });
 
-it('promotes a pending entry to the confirmed keys and drops the other entries', function () {
+it('promotes a pending entry to the confirmed keys and moves the outputs of the other entries to the history', function () {
     $older = pendingState('3333333333333333');
     $newer = pendingState('4444444444444444', [
         'segments' => ['a1b2c3d4e5f6', null],
@@ -144,7 +144,22 @@ it('promotes a pending entry to the confirmed keys and drops the other entries',
         ->and($field->translator)->toBe('anthropic:claude-sonnet-5-5')
         ->and($field->reviewer)->toBe('openai:gpt-6.1-sol')
         ->and($field->pending)->toBe([])
-        ->and($field->history)->toBe([['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222']]);
+        ->and($field->history)->toBe([
+            ['source_hash' => 'source-3333333333333333', 'target_hash' => '3333333333333333'],
+            ['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222'],
+        ]);
+});
+
+it('leaves the output of a reviewed manual field out of the history when another entry is promoted', function () {
+    $reviewed = pendingState('3333333333333333', ['baseline' => true]);
+    $translated = pendingState('4444444444444444');
+    $field = machineState('1111111111111111', '2222222222222222')->withPending($reviewed)->withPending($translated);
+
+    expect($field->promote($translated)->history)->toBe([['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222']])
+        ->and($field->promote($reviewed)->history)->toBe([
+            ['source_hash' => 'source-4444444444444444', 'target_hash' => '4444444444444444'],
+            ['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222'],
+        ]);
 });
 
 it('promotes the pending entry of a reviewed manual field to a baseline that records the reviewer', function () {
@@ -386,7 +401,7 @@ it('reconciles to the same record when nothing is pending', function () {
         ->and(machineState('s2', 't2', [['source_hash' => 's1', 'target_hash' => 't1']])->inHistory('t1'))->toBeTrue();
 });
 
-it('promotes the newest of several pending entries with the saved output and drops the rest', function () {
+it('promotes the newest of several pending entries with the saved output and keeps the other outputs in the history', function () {
     $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
     $older = pendingState('t1', ['plan' => 'older', 'createdAt' => $now->subHours(2)]);
     $newer = pendingState('t1', ['plan' => 'newer', 'createdAt' => $now->subHour()]);
@@ -399,7 +414,32 @@ it('promotes the newest of several pending entries with the saved output and dro
         ->and($field->savedPending(null))->toBeNull()
         ->and($reconciled->targetHash)->toBe('t1')
         ->and($reconciled->translatedAt)->toEqual($newer->createdAt)
-        ->and($reconciled->pending)->toBe([]);
+        ->and($reconciled->pending)->toBe([])
+        ->and($reconciled->history)->toBe([['source_hash' => $other->sourceHash, 'target_hash' => 't2']]);
+});
+
+it('reads a delivery that another save overtook as older machine output when it is saved later, not as an edit', function () {
+    $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
+    $form = pendingState('t2', ['targetBefore' => 't1', 'createdAt' => $now->subHour()]);
+    $run = pendingState('t3', ['targetBefore' => 't1', 'createdAt' => $now->subMinute()]);
+    $promoted = machineState('s1', 't1')->withPending($form)->withPending($run)->reconcile('t3', $now);
+
+    expect($promoted->targetHash)->toBe('t3')
+        ->and($promoted->pending)->toBe([])
+        ->and($promoted->history)->toBe([['source_hash' => $form->sourceHash, 'target_hash' => 't2'], ['source_hash' => 's1', 'target_hash' => 't1']])
+        ->and($promoted->inHistory('t2'))->toBeTrue()
+        ->and($promoted->reconcile('t2', $now))->toBe($promoted);
+});
+
+it('keeps three outputs in the history when it takes in the outputs of the other entries', function () {
+    $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
+    $field = machineState('s1', 't1', [['source_hash' => 's0', 'target_hash' => 't0']]);
+
+    foreach (['p1', 'p2', 'p3'] as $minutes => $targetHash) {
+        $field = $field->withPending(pendingState($targetHash, ['createdAt' => $now->subMinutes(3 - $minutes)]));
+    }
+
+    expect(array_column($field->reconcile('p2', $now)->history, 'target_hash'))->toBe(['p3', 'p1', 't1']);
 });
 
 it('writes a baseline from the newest pending entry whose plan saw other text', function () {
