@@ -199,15 +199,21 @@ it('rejects a Gemini key that Google blocks for the service, as the key it is', 
         ->and($error->message)->toBe('Requests to this API are blocked.');
 });
 
-it('rejects a Gemini project that Google refuses for its billing or region', function () {
-    $message = 'Gemini API free tier is not available in your country. Please enable billing on your project in Google AI Studio.';
-    $error = classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', $message)), 'gemini');
+it('rejects a Gemini project that Google refuses for its billing or region', function (array $body, string $message) {
+    $error = classifyError(failedRequest(400, $body), 'gemini');
 
     expect($error->kind)->toBe(ProviderErrorKind::Rejected)
         ->and($error->code)->toBe('FAILED_PRECONDITION')
         ->and($error->message)->toBe($message)
         ->and($error->describe())->toBe('HTTP 400, FAILED_PRECONDITION');
-});
+})->with([
+    'Google\'s usual error, in a list' => [
+        ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', 'Gemini API free tier is not available in your country. Please enable billing on your project in Google AI Studio.'),
+        'Gemini API free tier is not available in your country. Please enable billing on your project in Google AI Studio.',
+    ],
+    'as the Interactions API documents it' => [ProviderFixtures::geminiInteractionsError('failed_precondition', 'Billing is not enabled.'), 'Billing is not enabled.'],
+    'as the Interactions API documents it, in a list' => [[ProviderFixtures::geminiInteractionsError('failed_precondition', 'Billing is not enabled.')], 'Billing is not enabled.'],
+]);
 
 it('rejects only the request on a Gemini 400 about the request, and reads its list-shaped message', function () {
     $error = classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'INVALID_ARGUMENT', 'Invalid JSON payload received.', 'BAD_REQUEST')), 'gemini');
@@ -219,7 +225,8 @@ it('rejects only the request on a Gemini 400 about the request, and reads its li
 
 it('reads a key reason or a precondition only for Gemini', function (string $provider) {
     expect(classifyError(failedRequest(400, ProviderFixtures::geminiInvalidKey()), $provider)->kind)->toBe(ProviderErrorKind::RequestRejected)
-        ->and(classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', 'No.')), $provider)->kind)->toBe(ProviderErrorKind::RequestRejected);
+        ->and(classifyError(failedRequest(400, ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', 'No.')), $provider)->kind)->toBe(ProviderErrorKind::RequestRejected)
+        ->and(classifyError(failedRequest(400, ProviderFixtures::geminiInteractionsError('failed_precondition', 'No.')), $provider)->kind)->toBe(ProviderErrorKind::RequestRejected);
 })->with(['anthropic', 'openai']);
 
 it('rejects the request on other client errors', function (int $status) {

@@ -410,6 +410,7 @@ it('throws ProviderRejected when Google refuses the Gemini key or project with a
     'invalid key' => [ProviderFixtures::geminiInvalidKey(), 'The AI provider [gemini] rejected the request (HTTP 400, invalid_key): API key not valid. Please pass a valid API key.'],
     'expired key' => [ProviderFixtures::geminiInvalidKey('API key expired. Please renew the API key.', 'API_KEY_EXPIRED'), 'The AI provider [gemini] rejected the request (HTTP 400, invalid_key): API key expired. Please renew the API key.'],
     'billing' => [ProviderFixtures::geminiError(400, 'FAILED_PRECONDITION', 'Please enable billing on your project.'), 'The AI provider [gemini] rejected the request (HTTP 400, FAILED_PRECONDITION): Please enable billing on your project.'],
+    'billing, as the Interactions API documents it' => [[ProviderFixtures::geminiInteractionsError('failed_precondition', 'Billing is not enabled.')], 'The AI provider [gemini] rejected the request (HTTP 400, FAILED_PRECONDITION): Billing is not enabled.'],
 ]);
 
 it('throws ProviderRejected for an anthropic credit message on a 400', function () {

@@ -57,7 +57,8 @@ class ErrorClassifier
 
     /**
      * The status of a Gemini 400 that refuses the project, not the request: billing, or a region the free tier does not
-     * serve.
+     * serve. Google's usual error carries it in `error.status`; the Interactions API documents it in `error.code`, in
+     * lower case (`failed_precondition`).
      */
     public const string GEMINI_PRECONDITION = 'FAILED_PRECONDITION';
 
@@ -197,7 +198,15 @@ class ErrorClassifier
             }
         }
 
-        return data_get($body, 'error.status') === self::GEMINI_PRECONDITION ? self::GEMINI_PRECONDITION : null;
+        foreach (['error.status', 'error.code'] as $path) {
+            $value = data_get($body, $path);
+
+            if (is_string($value) && strtoupper($value) === self::GEMINI_PRECONDITION) {
+                return self::GEMINI_PRECONDITION;
+            }
+        }
+
+        return null;
     }
 
     private function retryAfter(Response $response): ?int
