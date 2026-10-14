@@ -192,6 +192,35 @@ it('makes reference definitions atoms, a title on the next line included', funct
         ]);
 });
 
+// CommonMark reads a definition in a blockquote or a list item, at any indentation in a list item's content, and one
+// whose label spans lines: left as text, its destination reached the model, which could change it.
+it('makes a reference definition in a blockquote or a list item, or with a label over several lines, an atom, and reads its label', function (string $text, string $tokenized, string $definition, array $labels) {
+    $result = tokenizeMarkdown($text);
+
+    expect($result->text)->toBe($tokenized)
+        ->and(array_values(array_filter($result->map, fn (string $original) => str_contains($original, ']:'))))->toBe([$definition])
+        ->and(Tokenizer::referenceLabels($text))->toBe($labels)
+        ->and(Tokenizer::restore($result->text, $result))->toBe($text)
+        ->and(Placeholders::validate($result->text, $result->text, SegmentKind::Markdown, $result->originals()))->toBeNull();
+})->with([
+    'in a blockquote' => ["> Read [our story][x].\n>\n> [x]: https://example.com", "> Read [our story]<x1/>.\n>\n> <x2/>", '[x]: https://example.com', ['x']],
+    'in a blockquote, its destination and title on the next lines' => ["> [x]:\n> https://example.com\n> \"Our story\"", '> <x1/>', "[x]:\n> https://example.com\n> \"Our story\"", ['x']],
+    'in a list item' => ["- Read [our story][x].\n- [x]: https://example.com", "- Read [our story]<x1/>.\n- <x2/>", '[x]: https://example.com', ['x']],
+    'in a numbered list item in a blockquote' => ["> 1. [x]: /about 'Our story'", '> 1. <x1/>', "[x]: /about 'Our story'", ['x']],
+    'indented in a list item\'s content' => ['    [x]: https://example.com', '    <x1/>', '[x]: https://example.com', ['x']],
+    'with a label over two lines' => ["Read [our story].\n\n[our\nstory]: https://example.com", "Read [our story]<x1/>.\n\n<x2/>", "[our\nstory]: https://example.com", ['our story']],
+    'with a label over two lines in a blockquote' => ["> [our\n> story]: https://example.com", '> <x1/>', "[our\n> story]: https://example.com", ['our story']],
+]);
+
+it('leaves text with "]:" that CommonMark does not read as a definition alone', function (string $text) {
+    expect(tokenizeMarkdown($text)->text)->toBe($text)
+        ->and(Tokenizer::referenceLabels($text))->toBe([]);
+})->with([
+    'in a table cell' => '| [x]: /url | Price |',
+    'after text' => 'Mind the gap [x]: /url',
+    'with text after its destination' => '- [Note]: this is important',
+]);
+
 it('keeps a collapsed or shortcut reference pointing at its definition once its text is translated', function () {
     $tokenized = tokenizeMarkdown(ContentFixtures::markup('md')['reference-definition.md']);
 
@@ -360,6 +389,29 @@ it('takes an attribute list of runs, lines or words that never closes within PHP
         'many lines' => '{a=b '.str_repeat("x\n", 100_000),
         'many words' => '{.a '.str_repeat('b c ', 50_000),
     ];
+
+    expect(tokenizedWithoutJit($texts))->toBe(array_fill_keys(array_keys($texts), true));
+});
+
+it('takes a reference definition whose label never closes over many lines within PHP\'s default PCRE limits, also without the JIT', function () {
+    $texts = [
+        'a label that never closes' => '[a'.str_repeat("x\n", 100_000),
+        'a label in a blockquote that never closes' => '> [a'.str_repeat("\n> x", 100_000),
+        'a label without a colon after it' => '[a'.str_repeat("x\n", 100_000).'] here',
+        'markers before every line' => str_repeat("> - 1. [x\n", 50_000),
+    ];
+
+    expect(tokenizedWithoutJit($texts))->toBe(array_fill_keys(array_keys($texts), true));
+});
+
+/**
+ * Tokenizes each text in a process without the JIT and with PHP's default backtrack limit.
+ *
+ * @param  array<string, string>  $texts
+ * @return array<string, true|string> whether each restores exactly, or the tokenizer's error
+ */
+function tokenizedWithoutJit(array $texts): array
+{
     $script = <<<'PHP'
         require $argv[1];
 
@@ -379,8 +431,8 @@ it('takes an attribute list of runs, lines or words that never closes within PHP
     $process = new Process([PHP_BINARY, '-d', 'pcre.jit=0', '-d', 'pcre.backtrack_limit=1000000', '-r', $script, dirname(__DIR__, 3).'/vendor/autoload.php'], timeout: 60);
     $process->setInput(json_encode($texts, JSON_THROW_ON_ERROR))->mustRun();
 
-    expect(json_decode($process->getOutput(), true))->toBe(array_fill_keys(array_keys($texts), true));
-});
+    return json_decode($process->getOutput(), true);
+}
 
 it('takes a link destination of Antlers openings that never close in one pass, within PHP\'s default PCRE limits', function () {
     $text = 'See [a]('.str_repeat('{', 200_000).' here';

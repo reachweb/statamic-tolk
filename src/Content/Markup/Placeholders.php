@@ -17,8 +17,13 @@ final class Placeholders
     // Paired tags, atoms, hard breaks, then anything a browser would start parsing as a tag (a "<" before a letter, "/", "!" or "?"), closed or not.
     private const string TOKENS = '/'.self::IDS.'|(<br\/>)|<[a-zA-Z\/!?][^<>]*>?/';
 
-    // An inline link or image destination, or a reference definition, that is not an atom.
-    private const string RAW_DESTINATION = '/\]\((?!\s*'.self::ATOM.')|^ {0,3}\[[^\]\n]+\]:(?!\s*'.self::ATOM.')/m';
+    // An inline link or image destination that is not an atom; and the "]:" of a reference definition, wherever it stands:
+    // CommonMark also reads one in a blockquote or a list item, at any indentation of a list item's content and with a
+    // label over several lines, and the source's own definitions are atoms. An escaped "]" closes no label.
+    private const array RAW_DESTINATIONS = [
+        '/\]\((?!\s*'.self::ATOM.')/',
+        '/(?<!\\\\)(?:\\\\\\\\)*+\]:/',
+    ];
 
     // The "{" of a CommonMark attribute list, which Statamic's Markdown parser renders with every attribute but on*.
     private const string ATTRIBUTE_LIST = '/\{(?='.Tokenizer::ATTRIBUTES_START.')/i';
@@ -158,7 +163,7 @@ final class Placeholders
             array_push($problems, ...self::changedTags($source, $translated));
         }
 
-        if ($kind === SegmentKind::Markdown && preg_match_all(self::RAW_DESTINATION, $translated) > preg_match_all(self::RAW_DESTINATION, $source)) {
+        if ($kind === SegmentKind::Markdown && self::addsDestinations($source, $translated)) {
             $problems[] = 'a link destination is not a placeholder';
         }
 
@@ -373,6 +378,21 @@ final class Placeholders
         return substr_count($translated, '{') > substr_count($source, '{')
             || substr_count($translated, '}') > substr_count($source, '}')
             || preg_match_all(self::ATTRIBUTE_LIST, $translated) > preg_match_all(self::ATTRIBUTE_LIST, $source);
+    }
+
+    /**
+     * Whether the translation holds more inline destinations that are not atoms, or more reference definitions, than the
+     * source does. Each is counted on its own, so a translation cannot trade a raw `](` of the source for a definition.
+     */
+    private static function addsDestinations(string $source, string $translated): bool
+    {
+        foreach (self::RAW_DESTINATIONS as $pattern) {
+            if (preg_match_all($pattern, $translated) > preg_match_all($pattern, $source)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

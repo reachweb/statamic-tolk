@@ -44,9 +44,18 @@ final class Tokenizer
 
     private const string FENCE_CLOSE = '[ \t]*(?:>[ \t]*)*\k<fence>\k<tick>*[ \t\r]*(?=\n|\z)';
 
-    // A whole reference definition, its title included, also when the title is on the next line. `[^…]` is a footnote.
-    private const string DEFINITION = '(?m:^)[ ]{0,3}\[(?!\^)(?<label>'.self::LABEL.')\]:[ \t]*(?:\r?\n[ \t]*)?(?:'.self::ANGLE_DESTINATION.'|(?!<)(?:'.self::ANTLERS_TAG.'|\{\{\S*+|[^\s{]++|\{)++)'
-        .'(?:(?:[ \t]+|[ \t]*\r?\n[ \t]*)(?:"(?:[^"\\\\]++|\\\\.)*+"|\'(?:[^\'\\\\]++|\\\\.)*+\'|\((?:[^()\\\\]++|\\\\.)*+\)))?[ \t\r]*(?=\n|\z)';
+    // A whole reference definition, its title included, also when the destination or the title is on the next line, after
+    // the blockquote and list markers and the indentation it stands behind (\K leaves them outside the match): CommonMark
+    // reads a definition in a blockquote or a list item, and at any indentation of a list item's content, as one at the
+    // start of a line. Its label may span lines, and its next lines may hold blockquote markers. `[^…]` is a footnote.
+    private const string DEFINITION = '(?m:^)'.self::CONTAINER.'\K\[(?!\^)(?<label>'.self::DEFINITION_LABEL.')\]:[ \t]*(?:\r?\n[ \t>]*)?(?:'.self::ANGLE_DESTINATION.'|(?!<)(?:'.self::ANTLERS_TAG.'|\{\{\S*+|[^\s{]++|\{)++)'
+        .'(?:(?:[ \t]+|[ \t]*\r?\n[ \t>]*)(?:"(?:[^"\\\\]++|\\\\.)*+"|\'(?:[^\'\\\\]++|\\\\.)*+\'|\((?:[^()\\\\]++|\\\\.)*+\)))?[ \t\r]*(?=\n|\z)';
+
+    // The blockquote markers, list markers and indentation before the content of a line, in any order and number.
+    private const string CONTAINER = '(?:[ \t]*+(?:>|[-+*](?=[ \t])|\d{1,9}[.)](?=[ \t])))*+[ \t]*+';
+
+    // A definition's label, which may span lines up to a blank one (one holding only blockquote markers included).
+    private const string DEFINITION_LABEL = '(?:[^\[\]\\\\\n]++|\\\\.|\n(?![ \t>]*+\r?\n))++';
 
     // A link label: no unescaped brackets, on one line.
     private const string LABEL = '(?:[^\[\]\\\\\n]++|\\\\.)++';
@@ -506,8 +515,11 @@ final class Tokenizer
         return array_keys($labels);
     }
 
+    // A label over several lines in a blockquote holds the markers of its next lines, which are not part of it.
     private static function normalize(string $label): string
     {
+        $label = preg_replace('/\R[ \t>]*+/', ' ', $label) ?? $label;
+
         return mb_convert_case(preg_replace('/\s+/u', ' ', trim($label)) ?? $label, MB_CASE_FOLD, 'UTF-8');
     }
 

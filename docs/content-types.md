@@ -53,10 +53,10 @@ Formatting, links, set types, ids and every value that is not text are kept exac
 
 A Markdown field is translated block by block (blank lines separate blocks), so a long article goes out in parts and an update sends only the changed blocks.
 
-- Code (fenced, indented and inline), link and image targets, reference definitions (their titles too), footnote references, autolinks, attribute lists and raw HTML tags stay as they are, also when a target is an Antlers tag (`[us]({{ link to="contact" }})`, `[about]: {{ link to="about" }}`). Link texts and titles are translated.
+- Code (fenced, indented and inline), link and image targets, reference definitions (their titles too, also in a quote or a list item), footnote references, autolinks, attribute lists and raw HTML tags stay as they are, also when a target is an Antlers tag (`[us]({{ link to="contact" }})`, `[about]: {{ link to="about" }}`). Link texts and titles are translated.
 - A collapsed or shortcut reference (`[price list][]`, `[our story]`) becomes a full one once translated (`[τιμοκατάλογος][price list]`), so it still points to its definition.
 - An indented block counts as code, unless it continues a list item.
-- A translation may not add or change a link, an image or a web or email address (`https://…`, `www.…`, `name@example.com`): a Markdown field with automatic links would turn such text into a link. The source's own addresses are kept.
+- A translation may not add or change a link, an image, a reference definition (also in a quote or a list item) or a web or email address (`https://…`, `www.…`, `name@example.com`): a Markdown field with automatic links would turn such text into a link. The source's own addresses are kept.
 - A translation may not add an attribute list or a curly brace (`{.hidden}`, `*today*{x-init="…"}`): Statamic's Markdown parser puts an attribute list's attributes on the element, scripts for Alpine.js or htmx included. The source's own attribute lists are kept.
 - Tolk reads each translated block back as Markdown, and rejects one in which a backslash or a backtick breaks inline code, a link target leaves its link, or an escaped character of the source loses its backslash (`\<b>`, `\[`, `\{`): the code's text, or the escaped text, would become markup on the page.
 

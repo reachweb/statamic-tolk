@@ -15,6 +15,7 @@ use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia;
 use Reach\StatamicTolk\Ai\Prompts\PromptBuilder;
 use Reach\StatamicTolk\Ai\Prompts\PromptContext;
+use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
@@ -602,6 +603,23 @@ describe('model output', function () {
         'an autolink' => 'Διαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test ή <https://evil.test>.',
         'an added bare address' => 'Διαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test ή στο https://evil.test.',
         'a changed bare address' => 'Διαβάστε [την ιστορία μας](<x1/>) στο www.kyma-evil.test.',
+        'a reference definition in a blockquote' => "> [e]: javascript:alert(1)\n\nΔιαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test [εδώ][e].",
+        'a reference definition in a list item' => "- [e]: javascript:alert(1)\n\nΔιαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test [εδώ][e].",
+        'a reference definition in a numbered list item' => "1. [e]: //evil.test\n\nΔιαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test [εδώ][e].",
+        'a reference definition with a label over two lines' => "[e\nf]: javascript:alert(1)\n\nΔιαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test [εδώ][e f].",
+        'a reference definition indented under a list item' => "1.  Διαβάστε [την ιστορία μας](<x1/>) στο www.kyma.test [εδώ][e].\n\n    [e]: //evil.test",
+        'a reference definition whose destination is a placeholder' => "> [e]: <x1/>\n\nΔιαβάστε [την ιστορία μας][e] στο www.kyma.test.",
+    ]);
+
+    it('rejects a Markdown translation that changes the destination of a reference definition in a blockquote, a list item or with a label over two lines', function (string $source, string $translation) {
+        $tokenized = Tokenizer::tokenize($source, SegmentKind::Markdown);
+
+        expect($tokenized->text)->not->toContain('example.com')
+            ->and(app(SegmentValidator::class)->validate(['text' => $tokenized->text, 'kind' => 'markdown', 'originals' => $tokenized->originals()], $translation))->not->toBeNull();
+    })->with([
+        'in a blockquote' => ["> Read [our story][x].\n>\n> [x]: https://example.com", "> Διαβάστε [την ιστορία μας]<x1/>.\n>\n> [x]: javascript:alert(1)"],
+        'in a list item' => ["- Read [our story][x].\n- [x]: https://example.com", "- Διαβάστε [την ιστορία μας]<x1/>.\n- [x]: javascript:alert(1)"],
+        'with a label over two lines' => ["Read [our story][x y].\n\n[x\ny]: https://example.com", "Διαβάστε [την ιστορία μας]<x1/>.\n\n[x\ny]: javascript:alert(1)"],
     ]);
 
     // CommonMark's attribute lists, which Statamic's Markdown parser renders: it drops only on* attributes, so Alpine's
@@ -678,6 +696,51 @@ describe('model output', function () {
         'a dropped backslash before a tag' => ['Type \\<script>alert(1)\\</script> to test.', fn (string $text) => str_replace('\\<', '<', '[T] '.$text)],
         'a dropped backslash before a link' => ['Type \\[click\\](javascript:alert(1)) to test.', fn (string $text) => str_replace('\\', '', '[T] '.$text)],
         'a dropped backslash before an attribute list' => ['Read *this*\\{x-init="go()"} today.', fn (string $text) => str_replace('\\', '', '[T] '.$text)],
+    ]);
+
+    // CommonMark reads a reference definition in a blockquote or a list item, and one whose label spans lines, as it reads
+    // one at the start of a line: a translation that added one gave a reference to its label any destination.
+    it('saves the source of a Markdown block whose translation adds a reference definition in a container or over two lines, or swaps one of the source\'s', function (string $body, Closure $model) {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'story');
+        $this->fakeTranslations($model);
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->get('body'))->toBe($body)
+            ->and((string) $german->augmentedValue('body'))->not->toContain('href="javascript')->not->toContain('href="//evil.test');
+    })->with([
+        'in a blockquote' => ['Read our story today.', fn () => "> [x]: javascript:alert(document.cookie)\n\nLesen Sie [unsere Geschichte][x] heute."],
+        'in a list item' => ['Read our story today.', fn () => "- [x]: javascript:alert(document.cookie)\n\nLesen Sie [unsere Geschichte][x] heute."],
+        'in a numbered list item' => ['Read our story today.', fn () => "1. [x]: //evil.test\n\nLesen Sie [unsere Geschichte][x] heute."],
+        'with a label over two lines' => ['Read our story today.', fn () => "[x\ny]: javascript:alert(document.cookie)\n\nLesen Sie [unsere Geschichte][x y] heute."],
+        'indented under a list item' => ['Read our story today.', fn () => "1.  Lesen Sie [unsere Geschichte][x] heute.\n\n    [x]: javascript:alert(document.cookie)"],
+        'the source\'s own, in a blockquote' => [
+            "> Read [our story][x].\n>\n> [x]: https://example.com",
+            fn (string $text) => preg_replace('/<x2\/>|https:\/\/example\.com/', '[x]: javascript:alert(document.cookie)', str_replace('[x]: https', 'https', '[T] '.$text)),
+        ],
+    ]);
+
+    it('translates a Markdown block with a reference definition in a blockquote or a list item, whose destination stays the source\'s', function (string $body, string $saved) {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'story');
+        $this->fakeTranslations(fn (string $text) => str_replace('Read [our story]', 'Lesen Sie [unsere Geschichte]', $text));
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->get('body'))->toBe($saved)
+            ->and((string) $german->augmentedValue('body'))->toContain('<a href="https://example.com">unsere Geschichte</a>');
+    })->with([
+        'in a blockquote' => ["> Read [our story][x].\n>\n> [x]: https://example.com", "> Lesen Sie [unsere Geschichte][x].\n>\n> [x]: https://example.com"],
+        'in a list item' => ["- Read [our story][x].\n- [x]: https://example.com", "- Lesen Sie [unsere Geschichte][x].\n- [x]: https://example.com"],
     ]);
 
     it('rejects a translation that rewrites, moves or drops the escaped markup of plain and inline segments, which are unescaped after', function (SegmentKind $kind, string $source, string $translation) {
