@@ -241,14 +241,16 @@ final class EntryTarget implements Target
         $ref = $this->ref();
         [$writes, $skipped] = $this->writable($fields, $options);
         $values = $this->prepareWrites($item, $ref, $writes);
-        $mirror = $new && $this->publishesAsOrigin($localization, $writes, $options);
+        // Somebody may have published the localization an earlier attempt created; mirroring never unpublishes it (§A11).
+        $mirror = $new && ($created || ! $localization->published() || $this->source()->published())
+            && $this->publishesAsOrigin($localization, $writes, $options);
 
         foreach ($writes as $handle => $field) {
             $field->remove ? $item->remove($handle) : $item->set($handle, $values[$handle]);
         }
 
         if ($new && $this->settings->translatesSlugs($this->container())) {
-            array_push($warnings, ...$this->translateSlug($item, $writes));
+            array_push($warnings, ...$this->translateSlug($item, $writes, $created));
         }
 
         if ($writes !== [] || $mirror) {
@@ -431,13 +433,13 @@ final class EntryTarget implements Target
 
     /**
      * D16: in a collection with translated slugs, a new localization gets the slug of its title as the CP's form makes
-     * it on save (EntriesController::resolveSlug()), once the title is translated; until then, the origin's. Returns the
-     * warnings.
+     * it on save (EntriesController::resolveSlug()), once the title is translated; until then, the origin's. A
+     * localization an earlier attempt created keeps a slug somebody gave it since. Returns the warnings.
      *
      * @param  array<string, AssembledField>  $writes
      * @return list<string>
      */
-    private function translateSlug(EntryContract $item, array $writes): array
+    private function translateSlug(EntryContract $item, array $writes, bool $created): array
     {
         $origin = $this->source()->slug();
 
@@ -459,6 +461,12 @@ final class EntryTarget implements Target
 
         $slug = Str::slug(Settings::text($translated), '-', Site::get($this->site)?->lang() ?? 'en');
         $slug = $slug === '' ? $origin : $slug;
+
+        // The creation gives the origin's slug and the earlier attempt may have saved this one, either with a suffix (uniqueSlug()).
+        if (! $created && ! self::suffixed((string) $item->slug(), $origin) && ! self::suffixed((string) $item->slug(), $slug)) {
+            return [];
+        }
+
         $unique = $this->uniqueSlug($slug, (string) $item->id());
         $item->slug($unique);
 
@@ -490,6 +498,12 @@ final class EntryTarget implements Target
         }
 
         return "{$slug}-{$suffix}";
+    }
+
+    // Whether $candidate is $slug or one of the `{slug}-2`, `{slug}-3`, … that uniqueSlug() gives.
+    private static function suffixed(string $candidate, string $slug): bool
+    {
+        return preg_match('/^'.preg_quote($slug, '/').'(-\d+)?$/', $candidate) === 1;
     }
 
     private function slugTakenWarning(string $slug, string $unique): string

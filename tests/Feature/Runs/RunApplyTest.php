@@ -544,6 +544,111 @@ describe('applyReady', function () {
             ->and($greek->slug())->toBe('t-hello');
     });
 
+    it('translates the slug of a localization an earlier attempt created while it keeps the slug the creation gave it', function () {
+        Exceptions::fake();
+        $this->withSettings(['translated_slugs' => ['articles']]);
+        $this->fakeTranslations();
+        $this->makeEntry('articles', 'el', ['title' => 'Γεια'], 'hello');
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        RunFixtures::translate($run);
+        $throws = 1;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && ! $event->entry->has('title') && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        applyRun($run);
+
+        expect($this->hello->fresh()->in('el')->slug())->toBe('hello-2');
+
+        $this->travel(5)->seconds();
+        applyRun($run);
+
+        expect(RunFixtures::items($run)[0]->status)->toBe(RunItemStatus::Done)
+            ->and($this->hello->fresh()->in('el')->slug())->toBe('t-hello');
+    });
+
+    it('keeps the slug and published state an earlier attempt saved before it threw', function () {
+        Exceptions::fake();
+        $this->withSettings(['translated_slugs' => ['articles']]);
+        $this->fakeTranslations();
+        $this->makeEntry('articles', 'el', ['title' => 'Γεια'], 't-hello');
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['new_status' => 'mirror']]);
+        RunFixtures::translate($run);
+        $throws = 1;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && $event->entry->has('title') && $event->entry->origin() !== null && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        applyRun($run);
+
+        expect($this->hello->fresh()->in('el')->slug())->toBe('t-hello-2')
+            ->and($this->hello->fresh()->in('el')->published())->toBeTrue();
+
+        $this->travel(5)->seconds();
+        applyRun($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($greek->slug())->toBe('t-hello-2')
+            ->and($greek->published())->toBeTrue()
+            ->and($item->warnings)->toBe([__('The slug ":slug" is already used in :site, so the new localization got ":new".', ['slug' => 't-hello', 'site' => 'Greek', 'new' => 't-hello-2'])]);
+    });
+
+    it('keeps the slug an editor gave the localization an earlier attempt created', function () {
+        Exceptions::fake();
+        $this->withSettings(['translated_slugs' => ['articles']]);
+        $this->fakeTranslations();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        RunFixtures::translate($run);
+        $throws = 1;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && ! $event->entry->has('title') && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        applyRun($run);
+        $this->hello->fresh()->in('el')->slug('my-own-slug')->save();
+        $this->travel(5)->seconds();
+        applyRun($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($greek->get('title'))->toBe('[T] Hello')
+            ->and($greek->slug())->toBe('my-own-slug');
+    });
+
+    it('keeps the published state an editor gave the localization an earlier attempt created', function () {
+        Exceptions::fake();
+        $this->fakeTranslations();
+        $this->hello->published(false)->save();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['new_status' => 'mirror']]);
+        RunFixtures::translate($run);
+        $throws = 1;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && ! $event->entry->has('title') && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        applyRun($run);
+        $this->hello->fresh()->in('el')->published(true)->save();
+        $this->travel(5)->seconds();
+        applyRun($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($greek->get('title'))->toBe('[T] Hello')
+            ->and($greek->published())->toBeTrue();
+    });
+
     it('treats a localization the failed attempts created as existing once Retry failed plans the item again', function () {
         Exceptions::fake();
         $this->withSettings(['translated_slugs' => ['articles']]);

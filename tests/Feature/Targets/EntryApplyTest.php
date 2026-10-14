@@ -313,6 +313,33 @@ describe('slugs', function () {
                 ->and(glob(dirname($localization->path()).'/*'))->toBe([$localization->path()]);
         });
 
+        it('publishes again, without a working copy, a localization with revisions that an earlier attempt published and threw', function () {
+            Collection::find('articles')->revisionsEnabled(true)->save();
+            config(['statamic.revisions.enabled' => true]);
+            $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? 'Hallo Welt' : '[T] '.$text);
+            $fields = applyAssembled($this->origin, 'de');
+            $throws = 1;
+
+            Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+                if ($event->entry->locale() === 'de' && $event->entry->published() && $throws-- > 0) {
+                    throw new RuntimeException('After publish');
+                }
+            });
+
+            expect(fn () => applyInWriter($this->origin, $fields, new ApplyOptions(newStatus: 'mirror'), 'de'))->toThrow(RuntimeException::class, 'After publish')
+                ->and($this->origin->fresh()->in('de')->published())->toBeTrue();
+
+            $result = applyInWriter($this->origin, $fields, new ApplyOptions(newStatus: 'mirror', createdEarlier: true), 'de');
+            $localization = $this->origin->fresh()->in('de');
+
+            expect($result->created)->toBeFalse()
+                ->and($result->applied)->toBe(['title', 'intro', 'body'])
+                ->and($result->slug)->toBe('hallo-welt')
+                ->and($localization->published())->toBeTrue()
+                ->and($localization->hasWorkingCopy())->toBeFalse()
+                ->and($localization->get('title'))->toBe('Hallo Welt');
+        });
+
         it('never changes the slug of an existing localization', function () {
             $localization = $this->localize($this->origin, 'el');
 
