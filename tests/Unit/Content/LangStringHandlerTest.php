@@ -54,8 +54,25 @@ it('gives each variant of a pluralised string its own leaf and keeps the prefixe
     expect(array_map(fn (Leaf $leaf) => [$leaf->text, $leaf->path, $leaf->placeholders], $leaves))->toBe([
         ['none', ['booking.rooms_left', 0], []],
         ['<x1/> items', ['booking.rooms_left', 1], ['x1' => ':count']],
-    ])->and($leaves[0]->hint)->toBe('Form 1 of 2 of a pluralised string, used for the count {0}. Translate only this form, without a | character.')
-        ->and($leaves[1]->hint)->toBe('Form 2 of 2 of a pluralised string, used for the count [1,*]. Translate only this form, without a | character.');
+    ])->and($leaves[0]->hint)->toBe('Part 1 of 2 of a string divided by |, used for the count {0}. Translate only this part, without a | character.')
+        ->and($leaves[1]->hint)->toBe('Part 2 of 2 of a string divided by |, used for the count [1,*]. Translate only this part, without a | character.');
+});
+
+it('cuts every string at its |, but does not call a string without conditions pluralised', function () {
+    $leaves = langStringLeaves('Blog | :site');
+
+    expect(array_map(fn (Leaf $leaf) => [$leaf->text, $leaf->path, $leaf->hint, $leaf->pluralForm], $leaves))->toBe([
+        ['Blog', ['booking.rooms_left', 0], 'Part 1 of 2 of a string divided by |. Translate only this part, without a | character.', true],
+    ])->and(app(ContentWalker::class)->inject(langStringField(), 'Blog | :site', ['Ιστολόγιο']))->toBe('Ιστολόγιο | :site');
+});
+
+it('gives a string that is never pluralised one leaf, whatever its |', function () {
+    $field = new Field('Rating | 1 to 5', ['type' => 'text', 'display' => 'Feedback › Rating', 'tolk_handler' => LangStringHandler::HANDLE, LangStringHandler::PLURAL => false]);
+    $leaves = app(ContentWalker::class)->leaves($field, 'Rating | 1 to 5');
+
+    expect(array_map(fn (Leaf $leaf) => [$leaf->text, $leaf->path, $leaf->hint, $leaf->pluralForm], $leaves))->toBe([
+        ['Rating | 1 to 5', ['Rating | 1 to 5'], null, false],
+    ])->and(app(ContentWalker::class)->inject($field, 'Rating | 1 to 5', ['Bewertung | 1 bis 5']))->toBe('Bewertung | 1 bis 5');
 });
 
 it('marks the leaves of a pluralised string as plural forms, whose translation must hold no |', function () {

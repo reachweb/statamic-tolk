@@ -183,6 +183,26 @@ it('touches only the texts of the forms --form names', function () {
     expect($dryRun)->toContain('lang/de.json: 7 untranslated, 1 current → 7 texts to translate');
 });
 
+it('translates a text that holds a | whole, since Statamic looks form texts up with trans(), which picks no plural form', function () {
+    FormFixtures::make('feedback', 'Feedback', [
+        'rating' => ['type' => 'text', 'display' => 'Rating | 1 to 5'],
+    ]);
+    $hints = new ArrayObject;
+    $this->fakeTranslations(function (string $text, array $segment) use ($hints) {
+        $hints[$text] = $segment['hint'] ?? null;
+
+        return $text === 'Rating | 1 to 5' ? 'Bewertung | 1 bis 5' : '[T] '.$text;
+    });
+
+    [$exitCode, $output] = formsCommand(['sites' => ['de'], '--form' => ['feedback']]);
+
+    expect($exitCode)->toBe(0)
+        ->and($hints->getArrayCopy())->toBe(['Feedback' => null, 'Rating | 1 to 5' => null])
+        ->and(formsJson('de'))->toBe(['Feedback' => '[T] Feedback', 'Rating | 1 to 5' => 'Bewertung | 1 bis 5'])
+        ->and(formsTranslator('de')->get('Rating | 1 to 5'))->toBe('Bewertung | 1 bis 5')
+        ->and($output)->toContain('lang/de.json: done, created, 2 fields');
+});
+
 it('translates into every site whose language differs from the source, once per language', function () {
     Site::setSites([
         'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],

@@ -40,7 +40,7 @@ it('counts what a reader sees: placeholders do not count and an escaped characte
 it('rejects a | in the translation of a plural form, which would add a form, and accepts one elsewhere', function () {
     $validator = new SegmentValidator;
     $form = [...validatorSegment('Many apples'), 'plural_form' => true];
-    $note = 'The translation contains |, which separates the forms of a pluralised string. Translate only this form, without a | character.';
+    $note = 'The translation contains |, which divides this string into its parts. Translate only this part, without a | character.';
 
     expect($validator->validate($form, 'Viele Äpfel | Stück'))->toBe($note)
         ->and($validator->structure($form, 'Viele Äpfel | Stück'))->toBe($note)

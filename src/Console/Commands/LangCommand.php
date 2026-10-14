@@ -137,8 +137,9 @@ class LangCommand extends Command
     }
 
     /**
-     * The pluralised strings of the files whose language Laravel gives more plural forms than the source language: their
-     * translations have as many variants as the source, which may be too few (§A16).
+     * The strings with a `|` of the files whose language Laravel gives more plural forms than the source language: their
+     * translations have as many variants as the source, which is too few for a pluralised string (§A16). A `|` may also
+     * be text, so the note says to leave such a string alone.
      *
      * @param  list<LangTarget>  $targets
      */
@@ -162,7 +163,7 @@ class LangCommand extends Command
         }
 
         $this->newLine();
-        $this->line("These pluralised strings keep the {$sourceForms} forms of the source language in their translations, but their language has more. Add the missing forms by hand:");
+        $this->line("These strings hold a |, which Laravel reads as dividing the forms of a pluralised string: their translations keep the {$sourceForms} forms of the source language, but their language has more. Add the missing forms by hand where a string is pluralised, and leave a string whose | is part of its text as it is:");
         $this->table(['File', 'Key', 'Plural forms'], $rows);
     }
 

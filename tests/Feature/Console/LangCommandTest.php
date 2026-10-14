@@ -34,6 +34,8 @@ const LANG_MESSAGES = <<<'PHP'
     ];
     PHP;
 
+const LANG_PLURAL_NOTE = 'These strings hold a |, which Laravel reads as dividing the forms of a pluralised string: their translations keep the 2 forms of the source language, but their language has more. Add the missing forms by hand where a string is pluralised, and leave a string whose | is part of its text as it is:';
+
 beforeEach(function () {
     $this->useFileCache();
     $this->app->useLangPath($this->temporaryPath('lang'));
@@ -402,11 +404,39 @@ it('lists the pluralised strings of a language with more plural forms than the s
     [, $output] = langCommand();
     [, $dryRun] = langCommand(['--dry-run' => true]);
 
-    expect($output)->toContain('These pluralised strings keep the 2 forms of the source language in their translations, but their language has more.')
+    expect($output)->toContain(LANG_PLURAL_NOTE)
         ->and($output)->toMatch('/\| lang\/ru\/messages\.php +\| booking\.rooms_left +\| 3 +\|/')
         ->and($output)->not->toContain('lang/de/messages.php | booking.rooms_left')
         ->and($output)->not->toMatch('/\| lang\/ru\/messages\.php +\| booking\.(title|welcome) /')
         ->and($dryRun)->toMatch('/\| lang\/ru\/messages\.php +\| booking\.rooms_left +\| 3 +\|/');
+});
+
+it('sends the parts of a string with a | without calling it pluralised, and says that the note lists every such string', function () {
+    Site::setSites([
+        'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],
+        'ru' => ['name' => 'Russian', 'url' => 'http://localhost/ru/', 'locale' => 'ru_RU', 'lang' => 'ru'],
+    ]);
+    writeLang('en/site.php', "<?php\n\nreturn ['title' => 'Blog | :site', 'apples' => 'One apple|Many apples'];\n");
+    $hints = new ArrayObject;
+    $this->fakeTranslations(function (string $text, array $segment) use ($hints) {
+        $hints[$text] = $segment['hint'] ?? null;
+
+        return '[T] '.$text;
+    });
+
+    [$exitCode, $output] = langCommand(['--group' => ['site']]);
+
+    expect($exitCode)->toBe(0)
+        ->and($hints->getArrayCopy())->toBe([
+            'Blog' => 'Part 1 of 2 of a string divided by |. Translate only this part, without a | character.',
+            'One apple' => 'Part 1 of 2 of a string divided by |. Translate only this part, without a | character.',
+            'Many apples' => 'Part 2 of 2 of a string divided by |. Translate only this part, without a | character.',
+        ])
+        ->and(readLang('ru/site.php'))->toBe(['title' => '[T] Blog | :site', 'apples' => '[T] One apple|[T] Many apples'])
+        ->and($output)->toContain(LANG_PLURAL_NOTE)
+        ->and($output)->toMatch('/\| lang\/ru\/site\.php +\| title +\| 3 +\|/')
+        ->and($output)->toMatch('/\| lang\/ru\/site\.php +\| apples +\| 3 +\|/')
+        ->and($output)->not->toContain('pluralised strings keep');
 });
 
 it('repairs a translated plural form that holds a |, so the string keeps the forms of its source', function () {
@@ -426,7 +456,7 @@ it('repairs a translated plural form that holds a |, so the string keeps the for
 
     expect($exitCode)->toBe(0)
         ->and($output)->toContain('lang/de/shop.php: done, created, 1 field')
-        ->and($notes->getArrayCopy())->toBe(['The translation contains |, which separates the forms of a pluralised string. Translate only this form, without a | character.'])
+        ->and($notes->getArrayCopy())->toBe(['The translation contains |, which divides this string into its parts. Translate only this part, without a | character.'])
         ->and(readLang('de/shop.php'))->toBe(['apples' => '[T] One apple|[T] Many apples'])
         ->and(langTranslator('de')->choice('shop.apples', 1))->toBe('[T] One apple')
         ->and(langTranslator('de')->choice('shop.apples', 5))->toBe('[T] Many apples')

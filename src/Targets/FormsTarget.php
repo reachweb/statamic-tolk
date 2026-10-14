@@ -191,7 +191,8 @@ final class FormsTarget implements Target
     }
 
     /**
-     * One field per distinct text, in the order the forms (by handle) use them first.
+     * One field per distinct text, in the order the forms (by handle) use them first. A text is never cut at a `|`:
+     * Statamic looks it up with `trans()`, which picks no plural form.
      */
     public function fields(): Collection
     {
@@ -201,6 +202,7 @@ final class FormsTarget implements Target
                 'type' => self::FIELDTYPE,
                 'display' => count($text['places']) === 1 ? $text['places'][0] : sprintf('%s (used in %d places)', $text['places'][0], count($text['places'])),
                 'tolk_handler' => LangStringHandler::HANDLE,
+                LangStringHandler::PLURAL => false,
             ])]);
     }
 

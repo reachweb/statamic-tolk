@@ -64,7 +64,8 @@ final class LangTarget implements Target
     }
 
     /**
-     * The keys of the source's pluralised strings, which have more than one variant.
+     * The keys of the source's strings with more than one variant: every string with a `|`, which Laravel reads as
+     * pluralised, although some only hold a `|` as text.
      *
      * @return list<string>
      */

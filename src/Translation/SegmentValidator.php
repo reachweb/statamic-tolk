@@ -38,7 +38,7 @@ final class SegmentValidator
     public function pluralForm(array $segment, string $translation): ?string
     {
         return ($segment['plural_form'] ?? false) === true && str_contains($translation, '|')
-            ? 'The translation contains |, which separates the forms of a pluralised string. Translate only this form, without a | character.'
+            ? 'The translation contains |, which divides this string into its parts. Translate only this part, without a | character.'
             : null;
     }
 
