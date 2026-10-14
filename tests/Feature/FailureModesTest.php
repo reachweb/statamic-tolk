@@ -415,6 +415,53 @@ describe('a wrong or revoked key', function () {
     ]);
 });
 
+describe('a used-up Gemini quota', function () {
+    beforeEach(function () {
+        $this->origin = failingArticle('hello', [failingParagraph('Breakfast is served until ten.')]);
+        $this->signInAdmin();
+    });
+
+    it('aborts a run whose daily quota is used up after one call, without waiting or saving', function () {
+        Sleep::fake();
+        ProviderFixtures::fake('gemini', ProviderFixtures::geminiQuota(), 429);
+        $commits = RunFixtures::commits();
+        $run = failingRun(['entry_ids' => [$this->origin->id()], 'options' => ['translator' => 'gemini:gemini-3.8-flash']]);
+
+        failingDrive($run);
+        $stored = RunFixtures::stored($run);
+
+        expect($stored->status)->toBe(RunStatus::Aborted)
+            ->and($stored->error)->toStartWith('The AI provider [gemini] rejected the request (HTTP 429, quota_exceeded): You exceeded your current quota, please check your plan and billing details.')
+            ->and($stored->saves)->toBe(0)
+            ->and(Http::recorded())->toHaveCount(1)
+            ->and(app(Throttle::class)->pausedFor('gemini'))->toBe(0)
+            ->and($this->origin->fresh()->existsIn('el'))->toBeFalse()
+            ->and($commits)->toHaveCount(0);
+        Sleep::assertNeverSlept();
+    });
+
+    it('waits as long as Google asks when a per-minute quota is used up, then translates', function () {
+        Sleep::fake();
+        ProviderFixtures::fake('gemini', ProviderFixtures::geminiRateLimit('40s'), 429);
+        $run = failingRun(['entry_ids' => [$this->origin->id()], 'options' => ['translator' => 'gemini:gemini-3.8-flash']]);
+
+        $ticked = failingTick($run)->assertOk();
+
+        expect($ticked->json('report.wait'))->toBe(40)
+            ->and(RunFixtures::items($run)[0])->toMatchObject(['status' => RunItemStatus::Pending, 'waits' => 1])
+            ->and(app(Throttle::class)->pausedFor('gemini'))->toBe(40)
+            ->and(Http::recorded())->toHaveCount(1);
+        Sleep::assertNeverSlept();
+
+        $this->travel(40)->seconds();
+        failingModel();
+        failingDrive($run);
+
+        expect(RunFixtures::statuses($run))->toBe(['done'])
+            ->and(failingGreek($this->origin)->get('title'))->toBe('[T] Hello');
+    });
+});
+
 describe('a lost plan', function () {
     beforeEach(function () {
         $this->signInAdmin();

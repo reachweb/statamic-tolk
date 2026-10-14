@@ -36,8 +36,20 @@ it('throws the same RateLimitedException for a 429 that reports a spend cap or q
 })->with([
     'anthropic' => ['anthropic', 'rate_limit_error', ['details' => ['error_code' => 'enforced_spend_limit_reached']], 'error.details.error_code', 'enforced_spend_limit_reached'],
     'openai' => ['openai', 'organization_spend_limit_exceeded', [], 'error.code', 'organization_spend_limit_exceeded'],
-    'gemini' => ['gemini', 'RESOURCE_EXHAUSTED', ['details' => [['reason' => 'quota_exceeded']]], 'error.details.0.reason', 'quota_exceeded'],
 ]);
+
+it('throws the same RateLimitedException for Gemini\'s quota 429, its list-shaped body left as sent', function () {
+    ProviderFixtures::fake('gemini', ProviderFixtures::geminiQuota(), 429);
+
+    $exception = ProviderFixtures::thrown('gemini');
+    $response = $exception->getPrevious()->response;
+
+    expect($exception)->toBeInstanceOf(RateLimitedException::class)
+        ->and($response->json('0.error.status'))->toBe('RESOURCE_EXHAUSTED')
+        ->and($response->json('0.error.details.0.violations.0.quotaId'))->toBe('GenerateRequestsPerDayPerProjectPerModel-FreeTier')
+        ->and($response->json('0.error.details.2.retryDelay'))->toBe('1s')
+        ->and($response->header('retry-after'))->toBe('');
+});
 
 it('throws ProviderOverloadedException on 503 and on transient gateway errors', function (string $provider, int $status) {
     $exception = ProviderFixtures::failure($provider, $status, 'overloaded_error', 'The service is temporarily overloaded.', ['retry-after' => '3']);

@@ -42,7 +42,7 @@ A single piece of text that times out alone (a very long paragraph) is retried a
 ## The provider asks to wait, or rejects requests
 
 - **Rate limits and overloaded providers**: Tolk pauses every request to that provider for as long as it asks, then continues. The editor shows "The provider asked to wait. Trying again shortly." A run's item fails after ten waits in a row, and three such failures in a row abort the run. Lower `concurrency.*`, set a **Fallback model** of another provider, or raise your account's limits with the provider.
-- **Rejected**: an invalid or revoked key, a spending limit reached, a model the provider no longer offers, or, for Gemini, a project Google serves only with billing enabled (its free tier is not offered in every country). The run is aborted with the provider's message (with any key removed). For a retired model, choose another in the settings, or Automatic, which follows Tolk's catalog; an update of Tolk brings the catalog up to date.
+- **Rejected**: an invalid or revoked key, a spending limit reached, a model the provider no longer offers, or, for Gemini, a daily quota used up (it resets at midnight Pacific time; **Resume** the run then) or a project Google serves only with billing enabled (its free tier is not offered in every country). The run is aborted with the provider's message (with any key removed). For a retired model, choose another in the settings, or Automatic, which follows Tolk's catalog; an update of Tolk brings the catalog up to date.
 
 ## Runs
 

@@ -9,6 +9,7 @@ use Laravel\Ai\Responses\StructuredTextResponse;
 use Reach\StatamicTolk\Ai\Agents\TranslationAgent;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Ai\EngineResult;
+use Reach\StatamicTolk\Ai\ErrorClassifier;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Prompts\PromptBuilder;
@@ -275,8 +276,35 @@ it('rejects a 429 that reports a spend cap or quota and does not pause', functio
 })->with([
     'anthropic' => ['anthropic', 'rate_limit_error', ['details' => ['error_code' => 'enforced_spend_limit_reached']]],
     'openai' => ['openai', 'organization_spend_limit_exceeded', []],
-    'gemini' => ['gemini', 'RESOURCE_EXHAUSTED', ['details' => [['reason' => 'quota_exceeded']]]],
 ]);
+
+it('rejects a used-up Gemini quota that no wait refills and does not pause', function (array $body, string $message) {
+    ProviderFixtures::fake('gemini', $body, 429);
+
+    $exception = engineFailure('gemini');
+
+    expect($exception)->toBeInstanceOf(ProviderRejected::class)
+        ->and($exception->provider)->toBe('gemini')
+        ->and($exception->status)->toBe(429)
+        ->and($exception->errorCode)->toBe(ErrorClassifier::GEMINI_QUOTA_CODE)
+        ->and($exception->getMessage())->toStartWith("The AI provider [gemini] rejected the request (HTTP 429, quota_exceeded): {$message}")
+        ->and(app(Throttle::class)->pausedFor('gemini'))->toBe(0);
+})->with([
+    'a daily quota' => [ProviderFixtures::geminiQuota(), 'You exceeded your current quota, please check your plan and billing details.'],
+    'a quota of zero' => [ProviderFixtures::geminiQuota('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '0', '30s'), 'You exceeded your current quota'],
+    'the code the Interactions API documents' => [ProviderFixtures::geminiInteractionsError('quota_exceeded', 'You have exceeded your daily quota.'), 'You have exceeded your daily quota.'],
+]);
+
+it('pauses Gemini for the delay of a used-up per-minute quota', function () {
+    $this->freezeTime();
+    ProviderFixtures::fake('gemini', ProviderFixtures::geminiRateLimit('40s'), 429);
+
+    $exception = engineFailure('gemini');
+
+    expect($exception)->toBeInstanceOf(ProviderPaused::class)
+        ->and($exception->seconds)->toBe(40)
+        ->and(app(Throttle::class)->pausedFor('gemini'))->toBe(40);
+});
 
 it('pauses and throws ProviderPaused on a server error, an overload and an error inside a 200 response', function (string $provider, int $status, array $headers, int $seconds) {
     $this->freezeTime();

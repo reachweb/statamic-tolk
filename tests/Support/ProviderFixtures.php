@@ -139,6 +139,60 @@ final class ProviderFixtures
         return self::geminiError(400, 'INVALID_ARGUMENT', $message, $reason);
     }
 
+    /**
+     * Google's answer to a used-up Gemini quota (HTTP 429, RESOURCE_EXHAUSTED, no retry-after header), as developers
+     * posted it in 2025 and 2026, in the list the Interactions endpoint wraps Google's errors in: the violated quota in a
+     * QuotaFailure, whose id names its window (PerMinute or PerDay), a Help link, and a RetryInfo delay. The defaults
+     * are a free tier's daily request quota, which still comes with a delay of one second.
+     */
+    public static function geminiQuota(
+        string $quotaId = 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+        string $quotaValue = '250',
+        string $retryDelay = '1s',
+        string $metric = 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+    ): array {
+        $message = 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.';
+
+        return [['error' => [
+            'code' => 429,
+            'message' => "{$message}\n* Quota exceeded for metric: {$metric}, limit: {$quotaValue}, model: gemini-3.8-flash\nPlease retry in {$retryDelay}.",
+            'status' => 'RESOURCE_EXHAUSTED',
+            'details' => [
+                [
+                    '@type' => 'type.googleapis.com/google.rpc.QuotaFailure',
+                    'violations' => [[
+                        'quotaMetric' => $metric,
+                        'quotaId' => $quotaId,
+                        'quotaDimensions' => ['location' => 'global', 'model' => 'gemini-3.8-flash'],
+                        'quotaValue' => $quotaValue,
+                    ]],
+                ],
+                [
+                    '@type' => 'type.googleapis.com/google.rpc.Help',
+                    'links' => [['description' => 'Learn more about Gemini API quotas', 'url' => 'https://ai.google.dev/gemini-api/docs/rate-limits']],
+                ],
+                ['@type' => 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay' => $retryDelay],
+            ],
+        ]]];
+    }
+
+    /**
+     * A per-minute Gemini quota on a paid tier: the delay is when the window has room again.
+     */
+    public static function geminiRateLimit(string $retryDelay = '40s'): array
+    {
+        return self::geminiQuota('GenerateContentPaidTierInputTokensPerModelPerMinute', '1000000', $retryDelay, 'generativelanguage.googleapis.com/generate_content_paid_tier_input_token_count');
+    }
+
+    /**
+     * An error in the format Google documents for the Interactions API: a snake_case code and a message, such as
+     * `quota_exceeded` ("You have exceeded your daily quota.") or `rate_limit_exceeded` for a 429.
+     */
+    public static function geminiInteractionsError(string $code, string $message): array
+    {
+        return ['error' => ['code' => $code, 'message' => $message]];
+    }
+
     public static function fake(string $provider, array $body, int $status = 200, array $headers = []): void
     {
         Http::fake([self::HOSTS[$provider] => Http::response($body, $status, $headers)]);

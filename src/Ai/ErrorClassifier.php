@@ -23,9 +23,16 @@ use Throwable;
 class ErrorClassifier
 {
     /**
-     * Unverified: the body of a Gemini quota error has not been seen live (T13.4).
+     * The code Google documents for a used-up daily quota of the Interactions API, and the code of a Gemini quota whose
+     * QuotaFailure no wait refills. Neither body has been seen live yet (T13.4).
      */
     public const string GEMINI_QUOTA_CODE = 'quota_exceeded';
+
+    /**
+     * In the `quotaId` of a Gemini QuotaFailure violation, a quota counted per day: it resets at midnight Pacific time,
+     * however short the RetryInfo delay Google sends with it.
+     */
+    public const string GEMINI_DAILY_QUOTA = 'PerDay';
 
     /**
      * 429 codes that report a spend cap, quota or billing limit rather than a rate limit (R6 §1.5, §2.5, §3.5).
@@ -108,7 +115,7 @@ class ErrorClassifier
             default => ProviderErrorKind::RequestRejected,
         };
 
-        $retryAfter = $kind === ProviderErrorKind::Paused ? $this->retryAfter($response) : null;
+        $retryAfter = $kind === ProviderErrorKind::Paused ? $this->retryAfter($response) ?? $this->retryDelay($body) : null;
 
         return new ProviderError($kind, $message, $status, retryAfter: $retryAfter);
     }
@@ -139,7 +146,8 @@ class ErrorClassifier
 
     /**
      * The code of a client error that refuses the account rather than the request: a spend-cap, quota or billing code
-     * on a 429, and for Gemini a key Google refuses or a failed precondition, whatever their status.
+     * on a 429 (for Gemini also a quota that no wait refills), and for Gemini a key Google refuses or a failed
+     * precondition, whatever their status.
      */
     private function rejectedCode(array $body, int $status, string $provider): ?string
     {
@@ -154,10 +162,31 @@ class ErrorClassifier
                 }
             }
 
-            return null;
+            return $provider === 'gemini' && $this->geminiQuotaUsedUp($body) ? self::GEMINI_QUOTA_CODE : null;
         }
 
         return $provider === 'gemini' && $status >= 400 && $status < 500 ? $this->geminiRejectedCode($body) : null;
+    }
+
+    /**
+     * Whether a Gemini 429 names, in its QuotaFailure, a quota that no wait of a run refills: one counted per day, or
+     * one of zero, which the project's tier does not include.
+     */
+    private function geminiQuotaUsedUp(array $body): bool
+    {
+        foreach ((array) data_get($body, 'error.details.*.violations.*') as $violation) {
+            if (! is_array($violation)) {
+                continue;
+            }
+
+            $id = $violation['quotaId'] ?? null;
+
+            if ((is_string($id) && str_contains($id, self::GEMINI_DAILY_QUOTA)) || in_array($violation['quotaValue'] ?? null, ['0', 0], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function geminiRejectedCode(array $body): ?string
@@ -186,6 +215,21 @@ class ErrorClassifier
         $date = strtotime($value);
 
         return $date === false ? null : max(0, $date - Carbon::now()->getTimestamp());
+    }
+
+    /**
+     * The delay of Google's RetryInfo detail, a protobuf duration such as "40s" or "40.152753394s", for a provider that
+     * sends no retry-after header.
+     */
+    private function retryDelay(array $body): ?int
+    {
+        foreach ((array) data_get($body, 'error.details.*.retryDelay') as $delay) {
+            if (is_string($delay) && preg_match('/^(\d+(?:\.\d+)?)s$/', trim($delay), $match)) {
+                return (int) ceil((float) $match[1]);
+            }
+        }
+
+        return null;
     }
 
     private function timedOut(?Throwable $previous): bool

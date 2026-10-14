@@ -79,7 +79,7 @@ it('rejects a 429 that carries a spend-cap or quota code of its provider', funct
     'openai project spend' => ['openai', ['code' => 'project_spend_limit_exceeded', 'message' => 'Spend.'], 'project_spend_limit_exceeded'],
     'openai usage limit' => ['openai', ['code' => 'organization_usage_limit_exceeded', 'message' => 'Usage.'], 'organization_usage_limit_exceeded'],
     'openai quota' => ['openai', ['type' => 'insufficient_quota', 'code' => 'insufficient_quota', 'message' => 'Quota.'], 'insufficient_quota'],
-    'gemini' => ['gemini', ['code' => 429, 'status' => 'RESOURCE_EXHAUSTED', 'message' => 'Quota.', 'details' => [['reason' => ErrorClassifier::GEMINI_QUOTA_CODE]]], 'quota_exceeded'],
+    'gemini, as the Interactions API documents it' => ['gemini', ProviderFixtures::geminiInteractionsError(ErrorClassifier::GEMINI_QUOTA_CODE, 'You have exceeded your daily quota.')['error'], 'quota_exceeded'],
 ]);
 
 it('treats a code of another provider as a rate limit', function () {
@@ -87,6 +87,63 @@ it('treats a code of another provider as a rate limit', function () {
 
     expect($error->kind)->toBe(ProviderErrorKind::Paused);
 });
+
+it('rejects a Gemini quota that no wait refills: a daily one, or one of zero', function (array $body) {
+    $error = classifyError(RateLimitedException::forProvider('tolk_gemini', 0, failedRequest(429, $body)), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Rejected)
+        ->and($error->code)->toBe(ErrorClassifier::GEMINI_QUOTA_CODE)
+        ->and($error->status)->toBe(429)
+        ->and($error->retryAfter)->toBeNull()
+        ->and($error->message)->toStartWith('You exceeded your current quota, please check your plan and billing details.')
+        ->and($error->describe())->toBe('HTTP 429, quota_exceeded');
+})->with([
+    'a free tier\'s daily requests, in a list as the Interactions endpoint sends it' => [ProviderFixtures::geminiQuota()],
+    'a free tier\'s daily requests, as an object' => [ProviderFixtures::geminiQuota()[0]],
+    'a paid tier\'s daily requests' => [ProviderFixtures::geminiQuota('GenerateRequestsPerDayPerProjectPerModel', '10000', '21s', 'generativelanguage.googleapis.com/generate_requests_per_model_per_day')],
+    'a per-minute quota of zero, which the tier does not include' => [ProviderFixtures::geminiQuota('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '0', '30s')],
+]);
+
+it('rejects the daily quota Google documents for the Interactions API, also in a list-shaped body', function () {
+    $error = classifyError(RateLimitedException::forProvider('tolk_gemini', 0, failedRequest(429, [ProviderFixtures::geminiInteractionsError('quota_exceeded', 'You have exceeded your daily quota.')])), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Rejected)
+        ->and($error->code)->toBe('quota_exceeded')
+        ->and($error->message)->toBe('You have exceeded your daily quota.');
+});
+
+it('pauses on a Gemini per-minute quota for the delay Google gives, without a retry-after header', function (string $delay, ?array $headers, int $expected) {
+    $error = classifyError(RateLimitedException::forProvider('tolk_gemini', 0, failedRequest(429, ProviderFixtures::geminiRateLimit($delay), $headers ?? [])), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Paused)
+        ->and($error->code)->toBeNull()
+        ->and($error->status)->toBe(429)
+        ->and($error->retryAfter)->toBe($expected)
+        ->and($error->message)->toStartWith('You exceeded your current quota');
+})->with([
+    'seconds' => ['40s', null, 40],
+    'a fraction' => ['40.152753394s', null, 41],
+    'a retry-after header comes first' => ['40s', ['retry-after' => '7'], 7],
+]);
+
+it('pauses on a Gemini 429 that names no quota, with the backoff', function (array $body) {
+    $error = classifyError(RateLimitedException::forProvider('tolk_gemini', 0, failedRequest(429, $body)), 'gemini');
+
+    expect($error->kind)->toBe(ProviderErrorKind::Paused)
+        ->and($error->code)->toBeNull()
+        ->and($error->retryAfter)->toBeNull();
+})->with([
+    'a bare RESOURCE_EXHAUSTED' => [[['error' => ['code' => 429, 'message' => 'Resource has been exhausted (e.g. check quota).', 'status' => 'RESOURCE_EXHAUSTED']]]],
+    'the Interactions API\'s rate limit' => [ProviderFixtures::geminiInteractionsError('rate_limit_exceeded', 'You have exceeded the per-minute request limit.')],
+    'a delay that is no duration' => [ProviderFixtures::geminiRateLimit('soon')],
+]);
+
+it('reads a Gemini quota only for Gemini', function (string $provider) {
+    $error = classifyError(RateLimitedException::forProvider("tolk_{$provider}", 0, failedRequest(429, ProviderFixtures::geminiQuota())), $provider);
+
+    expect($error->kind)->toBe(ProviderErrorKind::Paused)
+        ->and($error->code)->toBeNull();
+})->with(['anthropic', 'openai']);
 
 it('pauses on an overload, a server error and a request timeout', function (Throwable $exception, int $status, ?int $retryAfter) {
     $error = classifyError($exception);
