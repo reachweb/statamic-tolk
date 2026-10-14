@@ -108,7 +108,7 @@ A **baseline** records which origin text a field edited by hand belongs to, with
 
 ## Protecting translations
 
-**Protect this entry from updates**, in the editor's options, turns the entry's machine-translated fields into fields edited by hand, with a baseline. Translate and Update then leave them alone, and a change to the origin shows as needing attention instead of being translated over. It also marks the fields already edited by hand as up to date. The action is shown while the entry has a machine-translated field.
+**Protect this entry from updates**, in the editor's options, turns the entry's machine-translated fields into fields edited by hand, with a baseline. Translate and Update then leave them alone, and a change to the origin shows as needing attention instead of being translated over. The baseline records the origin a field was translated from, so a field that was outdated needs attention right away. It also marks the fields already edited by hand as up to date. A field left partly untranslated ([below](#fields-left-partly-untranslated)) is not protected: it stays outdated, so Update translates the rest; edit it if that part should stay as it is. The action is shown while the entry has a machine-translated field that is not partly untranslated.
 
 Global sets and navigations have no editor, so they have no such action. Protect them from the command line instead: `tolk:baseline --protect` does the same for every item of the containers it names, for example `php please tolk:baseline --nav=main --site=el --protect` ([The command line](cli.md#tolkbaseline)). It works for collections and taxonomies too.
 

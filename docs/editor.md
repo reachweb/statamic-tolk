@@ -82,7 +82,7 @@ Every time the menu opens, **Retranslate everything** and **Overwrite manual edi
 Under **Translation status** are two actions that take effect at once, without **Translate**, each shown only while it has something to do:
 
 - **Mark manual fields as up to date** records that the fields edited by hand match the current source. They stay edited by hand, and a later change to the source shows them as needing attention. Use it after you checked hand-written fields against their source, and on content translated by hand before Tolk was installed.
-- **Protect this entry from updates** turns the entry's translated fields into fields edited by hand, so Translate and Update leave them alone from then on. It also marks the fields that were already edited by hand as up to date. It is shown while the entry has a machine-translated field, up to date or outdated.
+- **Protect this entry from updates** turns the entry's translated fields into fields edited by hand, so Translate and Update leave them alone from then on. An outdated field is recorded against the origin it was translated from, so it needs attention until you check it and mark it as up to date. A field left partly untranslated is not protected: it stays outdated, so Update can still translate the rest. Protect also marks the fields that were already edited by hand as up to date. It is shown while the entry has a machine-translated field, up to date or outdated, that is not partly untranslated.
 
 The **Offer to translate new localizations** switch turns the offer on or off for your user, as soon as you flip it. It shows only while the setting is on.
 

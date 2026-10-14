@@ -107,13 +107,14 @@ export function reviewRequest({ reviewer = null, defaultReviewer = null, overwri
 }
 
 // Whether the state actions have work: manual fields whose source changed or that are untracked, and fields holding
-// machine output.
+// machine output without a part left untranslated, which Protect leaves to Update (D28).
 export function stateActions(status) {
     const counts = status?.localization?.counts ?? {};
+    const incomplete = Object.values(status?.localization?.fields ?? {}).filter((field) => field.incomplete).length;
 
     return {
         markCurrent: (counts.attention ?? 0) + (counts.untracked ?? 0) > 0,
-        protect: (counts.current ?? 0) + (counts.outdated ?? 0) > 0,
+        protect: (counts.current ?? 0) + (counts.outdated ?? 0) - incomplete > 0,
     };
 }
 

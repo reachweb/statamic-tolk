@@ -437,6 +437,51 @@ describe('baseline', function () {
             ]);
     });
 
+    it('records outdated machine output against the source it was translated from, so it needs attention', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Παλιά εισαγωγή.']);
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hi', 'Γεια'),
+            'intro' => StateFixtures::machine('A short intro.', 'Νέα εισαγωγή.', ['history' => [
+                ['source_hash' => Fingerprint::of('An old intro.'), 'target_hash' => Fingerprint::ofLeaves(['Παλιά εισαγωγή.'])],
+            ]]),
+        ]);
+
+        $before = writerStatus($this->origin);
+        $count = writer()->baseline(writerTarget($this->origin), includeMachine: true);
+        $after = writerStatus($this->origin);
+        $state = storedState($localization);
+
+        expect($before->fields['title']->status)->toBe(FieldStatus::Outdated)
+            ->and($before->fields['intro']->status)->toBe(FieldStatus::Outdated)
+            ->and($count)->toBe(2)
+            ->and($state->field('title')->sourceHash)->toBe(Fingerprint::of('Hi'))
+            ->and($state->field('intro')->sourceHash)->toBe(Fingerprint::of('An old intro.'))
+            ->and($after->fields['title']->status)->toBe(FieldStatus::Manual)
+            ->and($after->fields['title']->needsAttention())->toBeTrue()
+            ->and($after->fields['intro']->status)->toBe(FieldStatus::Manual)
+            ->and($after->fields['intro']->needsAttention())->toBeTrue()
+            ->and($after->counts['attention'])->toBe(2);
+    });
+
+    it('leaves a machine field with a part left untranslated out of $includeMachine, so Update still translates the rest', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'A short intro.']);
+        StateFixtures::store($localization, [
+            'title' => StateFixtures::machine('Hello', 'Γεια'),
+            'intro' => StateFixtures::machine('A short intro.', 'A short intro.', ['incomplete' => true]),
+        ]);
+
+        $dryRun = writer()->baseline(writerTarget($this->origin), includeMachine: true, dryRun: true);
+        $count = writer()->baseline(writerTarget($this->origin), includeMachine: true);
+        $status = writerStatus($this->origin);
+
+        expect($dryRun)->toBe(1)
+            ->and($count)->toBe(1)
+            ->and($status->fields['title']->status)->toBe(FieldStatus::Manual)
+            ->and($status->fields['intro']->status)->toBe(FieldStatus::Outdated)
+            ->and($status->fields['intro']->incomplete)->toBeTrue()
+            ->and(storedState($localization)->field('intro'))->toEqual(StateFixtures::machine('A short intro.', 'A short intro.', ['incomplete' => true]));
+    });
+
     it('turns a copy of the source\'s text manual only with $includeMachine', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Hello']);
 

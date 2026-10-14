@@ -73,6 +73,25 @@ final readonly class FieldState
     }
 
     /**
+     * The source that the machine output with this text fingerprint, the confirmed one or one in the history, was
+     * translated from; null for any other text, or when its source is not known.
+     */
+    public function machineSourceHash(string $targetHash): ?string
+    {
+        if ($targetHash === $this->targetHash) {
+            return $this->sourceHash;
+        }
+
+        foreach ($this->history as $pair) {
+            if ($pair['target_hash'] === $targetHash) {
+                return $pair['source_hash'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * An entry of the same plan is replaced: parallel editor requests can deliver the same field of a plan twice.
      */
     public function withPending(PendingState $pending): self

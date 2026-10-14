@@ -97,9 +97,10 @@ final readonly class StateWriter
 
     /**
      * Records that a human owns the text of every manual field, checked against the current source, so later origin changes
-     * are detected. With $includeMachine, machine output is turned manual too ("mark as manual", D27), and with
-     * $includeCopies a copy of the source's text that nobody vouched for (§A6), which reads untranslated. Returns how many
-     * fields changed; a dry run counts them and writes nothing.
+     * are detected. With $includeMachine, machine output is turned manual too ("mark as manual", D27), checked against the
+     * source it was translated from, so an outdated one needs attention; one with a part left untranslated stays machine
+     * output, which the next Update completes (D28). With $includeCopies also a copy of the source's text that nobody
+     * vouched for (§A6), which reads untranslated. Returns how many fields changed; a dry run counts them and writes nothing.
      *
      * @param  ?list<string>  $handles  null for every in-scope field
      */
@@ -117,7 +118,7 @@ final readonly class StateWriter
         foreach ($this->resolver->resolve($target)->fields as $handle => $field) {
             if (($handles === null || in_array((string) $handle, $handles, true))
                 && $this->ownedByHuman($field, $includeMachine, $includeCopies)
-                && $field->state->baselined($field->sourceHash, $field->targetHash)->toArray() !== $field->state->toArray()) {
+                && $this->baselined($field, $field->state)->toArray() !== $field->state->toArray()) {
                 $fields[$handle] = $field;
             }
         }
@@ -134,7 +135,7 @@ final readonly class StateWriter
 
             foreach ($fields as $handle => $field) {
                 $current = $state->field($handle)->reconcile($field->targetHash, $now, $field->sourceTextHash);
-                $baseline = $current->baselined($field->sourceHash, $field->targetHash);
+                $baseline = $this->baselined($field, $current);
 
                 // State written since the status was read can mean that the status no longer holds.
                 if ($current->toArray() !== $field->state->toArray() || $baseline->toArray() === $current->toArray()) {
@@ -361,15 +362,15 @@ final readonly class StateWriter
     }
 
     /**
-     * A manual field, with $includeMachine also machine output or a copy of the source's text the target holds, and with
-     * $includeCopies such a copy. A field the target inherits has no text to own; an untranslated field with text of its
-     * own is a copy (StatusResolver).
+     * A manual field, with $includeMachine also machine output without a part left untranslated or a copy of the source's
+     * text the target holds, and with $includeCopies such a copy. A field the target inherits has no text to own; an
+     * untranslated field with text of its own is a copy (StatusResolver).
      */
     private function ownedByHuman(FieldStatusInfo $field, bool $includeMachine, bool $includeCopies): bool
     {
         return $field->targetHash !== null && match ($field->status) {
             FieldStatus::Manual => true,
-            FieldStatus::Current, FieldStatus::Outdated => $includeMachine,
+            FieldStatus::Current, FieldStatus::Outdated => $includeMachine && ! $field->incomplete,
             FieldStatus::Untranslated => $includeMachine || $includeCopies,
             default => false,
         };
@@ -384,6 +385,15 @@ final readonly class StateWriter
         $state = $state->withSourceSite($target->sourceSite());
 
         return $target->type() === ContentType::Entry ? $state->withCollection($target->container(), $target->targetSite()) : $state;
+    }
+
+    /**
+     * The field's state once its text is a baseline. Machine output is checked against the source it was translated
+     * from, any other text against the current source.
+     */
+    private function baselined(FieldStatusInfo $field, FieldState $state): FieldState
+    {
+        return $state->baselined($state->machineSourceHash($field->targetHash) ?? $field->sourceHash, $field->targetHash);
     }
 
     private function commit(bool $commit): void

@@ -275,6 +275,19 @@ describe('stateActions', () => {
         expect(stateActions(status({ untranslated: 2, manual: 1 })).protect).toBe(false);
     });
 
+    it('does not offer to protect while the only machine output has a part left untranslated', () => {
+        const partly = (counts, fields) => {
+            const value = status(counts);
+
+            return { ...value, localization: { ...value.localization, fields } };
+        };
+        const intro = { status: 'outdated', label: 'Intro', source_changed: false, incomplete: true };
+        const title = { status: 'current', label: 'Title', source_changed: false, incomplete: false };
+
+        expect(stateActions(partly({ outdated: 1 }, { intro })).protect).toBe(false);
+        expect(stateActions(partly({ outdated: 1, current: 1 }, { intro, title })).protect).toBe(true);
+    });
+
     it('offers nothing without a localization block', () => {
         expect(stateActions(null)).toEqual({ markCurrent: false, protect: false });
         expect(stateActions({ ...status(), localization: null })).toEqual({ markCurrent: false, protect: false });
