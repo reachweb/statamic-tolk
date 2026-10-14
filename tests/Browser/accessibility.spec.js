@@ -268,10 +268,13 @@ test('a run is created on the Overview, started and followed to its end from the
     const failed = page.getByRole('option', { name: 'Failed' });
     await expect(failed).toBeVisible();
 
-    for (let presses = 0; presses < 10 && (await failed.getAttribute('data-highlighted')) === null; presses++) {
+    // The first press highlights the first option. A press can be lost while the page re-renders, so the loop runs
+    // until Failed is highlighted rather than for a set count.
+    for (let presses = 0; presses < 20 && (await failed.getAttribute('data-highlighted')) === null; presses++) {
         await page.keyboard.press('ArrowDown');
     }
 
+    await expect(failed).toHaveAttribute('data-highlighted');
     await page.keyboard.press('Enter');
     await expect(failed).toHaveCount(0);
     await expect(page.locator('[data-tolk-item]')).toHaveCount(0);
