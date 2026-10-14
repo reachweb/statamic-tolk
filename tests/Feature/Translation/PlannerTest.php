@@ -229,6 +229,7 @@ describe('fields and segments', function () {
             'label' => 'SEO title',
             'hint' => 'Search result title',
             'max_length' => 60,
+            'plural_form' => false,
             'before' => null,
             'after' => null,
             'translation' => null,

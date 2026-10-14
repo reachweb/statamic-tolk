@@ -349,6 +349,7 @@ final readonly class Planner
             'label' => $leaf->label !== '' ? $leaf->label : $handle,
             'hint' => $leaf->hint,
             'max_length' => $leaf->maxLength,
+            'plural_form' => $leaf->pluralForm,
             'before' => null,
             'after' => null,
             'translation' => $translation,

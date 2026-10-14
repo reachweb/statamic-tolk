@@ -13,8 +13,8 @@ use Statamic\Fields\Field;
 /**
  * One string of a Laravel translation file, the value of a synthetic field of LangTarget (§A16). Laravel's parameters
  * (`:name`, `:Name`, `:NAME`) are atoms. A pluralised string is cut at each `|`, as Laravel's MessageSelector cuts it:
- * each variant is a `plain` leaf under {…path, index}, and its `{n}` or `[a,b]` prefix and the whitespace around its
- * text stay outside the leaf.
+ * each variant is a `plain` leaf under {…path, index}, marked as a plural form, and its `{n}` or `[a,b]` prefix and the
+ * whitespace around its text stay outside the leaf.
  */
 final class LangStringHandler implements FieldHandler
 {
@@ -49,7 +49,7 @@ final class LangStringHandler implements FieldHandler
                 $condition === '' ? '' : ", used for the count {$condition}",
             );
 
-            $variants[$index] = $condition.$this->block(substr($variant, strlen($condition)), self::tokenize(...), $hint, $translate, $context->with($index));
+            $variants[$index] = $condition.$this->block(substr($variant, strlen($condition)), self::tokenize(...), $hint, $translate, $context->with($index), pluralForm: true);
         }
 
         return implode('|', $variants);

@@ -409,6 +409,46 @@ it('lists the pluralised strings of a language with more plural forms than the s
         ->and($dryRun)->toMatch('/\| lang\/ru\/messages\.php +\| booking\.rooms_left +\| 3 +\|/');
 });
 
+it('repairs a translated plural form that holds a |, so the string keeps the forms of its source', function () {
+    writeLang('en/shop.php', "<?php\n\nreturn ['apples' => 'One apple|Many apples'];\n");
+    $notes = new ArrayObject;
+    $this->fakeTranslations(function (string $text, array $segment) use ($notes) {
+        if (isset($segment['note'])) {
+            $notes[] = $segment['note'];
+        }
+
+        return $text === 'One apple' && ! isset($segment['note']) ? 'Ein Apfel | ein Stück' : '[T] '.$text;
+    });
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['shop']]);
+    $calls = $this->modelCalls();
+    [, $update] = langCommand(['sites' => ['de'], '--group' => ['shop'], '--mode' => 'update']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('lang/de/shop.php: done, created, 1 field')
+        ->and($notes->getArrayCopy())->toBe(['The translation contains |, which separates the forms of a pluralised string. Translate only this form, without a | character.'])
+        ->and(readLang('de/shop.php'))->toBe(['apples' => '[T] One apple|[T] Many apples'])
+        ->and(langTranslator('de')->choice('shop.apples', 1))->toBe('[T] One apple')
+        ->and(langTranslator('de')->choice('shop.apples', 5))->toBe('[T] Many apples')
+        ->and($this->modelCalls())->toBe($calls)
+        ->and($update)->toContain('lang/de/shop.php: skipped, nothing to do');
+});
+
+it('leaves a plural form in the source language when its translation keeps holding a |, and discards a correction that holds one', function () {
+    writeLang('en/shop.php', "<?php\n\nreturn ['apples' => 'One apple|Many apples', 'pears' => 'One pear|Many pears'];\n");
+    $this->fakeTranslations(fn (string $text) => $text === 'One apple' ? 'Ein Apfel | ein Stück' : '[T] '.$text);
+    $this->fakeReview(fn (string $source) => $source === 'Many pears' ? 'Viele Birnen | Birnen' : null);
+
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['shop'], '--reviewer' => 'openai:gpt-6.1-sol']);
+
+    expect($exitCode)->toBe(0)
+        ->and(readLang('de/shop.php'))->toBe(['apples' => 'One apple|[T] Many apples', 'pears' => '[T] One pear|[T] Many pears'])
+        ->and(langTranslator('de')->choice('shop.apples', 5))->toBe('[T] Many apples')
+        ->and(langTranslator('de')->choice('shop.pears', 5))->toBe('[T] Many pears')
+        ->and($output)->toContain('"One apple" was left untranslated (invalid)')
+        ->and($output)->toContain('the reviewer\'s correction of "Many pears" was not valid and was discarded');
+});
+
 it('reviews with --reviewer and applies the corrections', function () {
     $this->fakeTranslations();
     $this->fakeReview(fn (string $source, string $translation) => $source === 'Book now' ? 'Jetzt buchen' : null);

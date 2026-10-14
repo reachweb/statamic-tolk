@@ -291,7 +291,7 @@ final readonly class Pipeline
                 continue;
             }
 
-            if ($this->validator->placeholders($segment, $text) !== null) {
+            if ($this->validator->structure($segment, $text) !== null) {
                 if ($unit->repair < Unit::MAX_REPAIRS) {
                     $spawned[] = $unit->repairOf($id, $this->validator->validate($segment, $text), $fallback);
                 } else {

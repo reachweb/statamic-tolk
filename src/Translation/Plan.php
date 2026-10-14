@@ -16,7 +16,7 @@ final readonly class Plan
      * @param  array{type: string, source_id: string, site: string}  $target
      * @param  array{type: string, title: string, container: string, url: ?string, summary: string}  $document
      * @param  array<string, array{source_hash: string, target_before: ?string, leaf_count: int, status_before: string, segment_ids: list<string>, reused: int, reused_translator: ?string, clear: bool}>  $fields
-     * @param  array<string, array{field: string, index: int, kind: string, text: string, label: string, hint: ?string, max_length: ?int, before: ?string, after: ?string, translation: ?string}>  $segments
+     * @param  array<string, array{field: string, index: int, kind: string, text: string, label: string, hint: ?string, max_length: ?int, plural_form: bool, before: ?string, after: ?string, translation: ?string}>  $segments
      * @param  list<array{id: string, segment_ids: list<string>, chars: int}>  $batches
      * @param  array<string, string>  $skipped  in-scope fields that are not planned, with the reason
      * @param  array<string, list<string>>  $notes  what the handlers noticed about fields that are not planned, such as a source they leave untouched

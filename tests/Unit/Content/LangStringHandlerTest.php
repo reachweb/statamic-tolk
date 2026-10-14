@@ -58,6 +58,11 @@ it('gives each variant of a pluralised string its own leaf and keeps the prefixe
         ->and($leaves[1]->hint)->toBe('Form 2 of 2 of a pluralised string, used for the count [1,*]. Translate only this form, without a | character.');
 });
 
+it('marks the leaves of a pluralised string as plural forms, whose translation must hold no |', function () {
+    expect(array_map(fn (Leaf $leaf) => $leaf->pluralForm, langStringLeaves('{0} none|[1,*] :count items')))->toBe([true, true])
+        ->and(langStringLeaves('Welcome back, :name!')[0]->pluralForm)->toBeFalse();
+});
+
 it('reassembles a pluralised string with its prefixes and parameters', function () {
     $field = langStringField();
     $walker = app(ContentWalker::class);

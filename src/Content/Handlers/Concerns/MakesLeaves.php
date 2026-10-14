@@ -31,10 +31,10 @@ trait MakesLeaves
      *
      * @param  Closure(string): Tokenized  $tokenize
      */
-    private function block(string $block, Closure $tokenize, ?string $hint, Closure $translate, WalkContext $context): string
+    private function block(string $block, Closure $tokenize, ?string $hint, Closure $translate, WalkContext $context, bool $pluralForm = false): string
     {
         $core = trim($block, self::WHITESPACE);
-        $restored = $this->offer($tokenize($core), $hint, $translate, $context);
+        $restored = $this->offer($tokenize($core), $hint, $translate, $context, $pluralForm);
 
         return $restored === null ? $block : substr_replace($block, $restored, strspn($block, self::WHITESPACE), strlen($core));
     }
@@ -42,18 +42,18 @@ trait MakesLeaves
     /**
      * The restored translation of a tokenized text, or null when it is no leaf or its leaf kept its text.
      */
-    private function offer(Tokenized $tokenized, ?string $hint, Closure $translate, WalkContext $context): ?string
+    private function offer(Tokenized $tokenized, ?string $hint, Closure $translate, WalkContext $context, bool $pluralForm = false): ?string
     {
         if (! LeafRules::isTranslatable(Placeholders::visible($tokenized->text, $tokenized->kind))) {
             return null;
         }
 
-        $translated = $translate($this->leaf($tokenized->text, $tokenized->kind, $tokenized->placeholders, $hint, $context));
+        $translated = $translate($this->leaf($tokenized->text, $tokenized->kind, $tokenized->placeholders, $hint, $context, $pluralForm));
 
         return $translated === $tokenized->text ? null : Tokenizer::restore($translated, $tokenized);
     }
 
-    private function leaf(string $text, SegmentKind $kind, array $placeholders, ?string $hint, WalkContext $context): Leaf
+    private function leaf(string $text, SegmentKind $kind, array $placeholders, ?string $hint, WalkContext $context, bool $pluralForm = false): Leaf
     {
         return new Leaf(
             text: $text,
@@ -62,6 +62,7 @@ trait MakesLeaves
             label: $context->label(),
             hint: $hint,
             placeholders: $placeholders,
+            pluralForm: $pluralForm,
         );
     }
 
