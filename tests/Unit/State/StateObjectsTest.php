@@ -442,6 +442,28 @@ it('keeps three outputs in the history when it takes in the outputs of the other
     expect(array_column($field->reconcile('p2', $now)->history, 'target_hash'))->toBe(['p3', 'p1', 't1']);
 });
 
+it('keeps only the history once the override is removed, with the machine output and the outputs of the pending entries', function () {
+    $reviewed = pendingState('3333333333333333', ['baseline' => true]);
+    $delivered = pendingState('4444444444444444');
+    $field = new FieldState(
+        sourceHash: '1111111111111111',
+        targetHash: '2222222222222222',
+        segments: ['a1b2c3d4e5f6'],
+        translatedAt: CarbonImmutable::parse('2026-10-01T12:00:00Z'),
+        translator: 'anthropic:claude-sonnet-5-5',
+        history: [['source_hash' => '0000000000000000', 'target_hash' => '5555555555555555']],
+    );
+    $removed = $field->withPending($delivered)->withPending($reviewed)->removed();
+
+    expect($removed->toArray())->toBe(['history' => [
+        ['source_hash' => 'source-4444444444444444', 'target_hash' => '4444444444444444'],
+        ['source_hash' => '1111111111111111', 'target_hash' => '2222222222222222'],
+        ['source_hash' => '0000000000000000', 'target_hash' => '5555555555555555'],
+    ]])
+        ->and($removed->removed())->toEqual($removed)
+        ->and((new FieldState(sourceHash: '1111111111111111'))->removed()->isEmpty())->toBeTrue();
+});
+
 it('writes a baseline from the newest pending entry whose plan saw other text', function () {
     $now = CarbonImmutable::parse('2026-10-03T12:00:00Z');
     $unchanged = pendingState('t2', ['targetBefore' => 'edited', 'createdAt' => $now->subMinute()]);

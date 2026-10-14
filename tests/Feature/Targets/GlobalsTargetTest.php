@@ -310,7 +310,7 @@ describe('applying', function () {
             ->and(globalsStatuses()['tagline'])->toBe(FieldStatus::Current);
     });
 
-    it('removes the override of a field whose source was emptied, keeps the rest, and forgets its state', function () {
+    it('removes the override of a field whose source was emptied, keeps the rest, and keeps only the history of its state', function () {
         translateGlobals();
         GlobalSet::findByHandle('site_settings')->in('en')->remove('footer')->save();
 
@@ -320,11 +320,14 @@ describe('applying', function () {
 
         expect(array_map(fn (AssembledField $field) => [$field->handle, $field->remove], $fields))->toBe([['footer', true]]);
 
+        $translated = app(StateRepository::class)->get(globalsTarget()->ref())->field('footer');
         $result = applyGlobals($fields);
 
         expect($result->applied)->toBe(['footer'])
             ->and(array_keys(GlobalSet::findByHandle('site_settings')->in('el')->data()->all()))->toBe(['tagline', 'links'])
-            ->and(app(StateRepository::class)->get($result->ref)->fields)->not->toHaveKey('footer')
+            ->and(app(StateRepository::class)->get($result->ref)->field('footer')->toArray())->toBe(['history' => [
+                ['source_hash' => $translated->sourceHash, 'target_hash' => $translated->targetHash],
+            ]])
             ->and(globalsStatuses()['footer'])->toBe(FieldStatus::NotApplicable);
     });
 

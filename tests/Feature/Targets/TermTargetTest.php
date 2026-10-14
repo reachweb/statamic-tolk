@@ -265,7 +265,7 @@ describe('applying', function () {
             ->and(termStatuses()['title'])->toBe(FieldStatus::Current);
     });
 
-    it('removes the override of a field whose source was emptied, keeps the rest of the site\'s data, and forgets its state', function () {
+    it('removes the override of a field whose source was emptied, keeps the rest of the site\'s data, and keeps only the history of its state', function () {
         $user = $this->signInAdmin();
         translateTerm(options: new ApplyOptions(user: $user));
         $term = Term::find('topics::food');
@@ -278,12 +278,15 @@ describe('applying', function () {
 
         expect(array_map(fn (AssembledField $field) => [$field->handle, $field->remove], $fields))->toBe([['description', true]]);
 
+        $translated = app(StateRepository::class)->get(termTarget()->ref())->field('description');
         $result = applyTerm($fields);
         $localized = Term::find('topics::food')->in('el');
 
         expect($result->applied)->toBe(['description'])
             ->and($localized->data()->keys()->all())->toEqualCanonicalizing(['title', 'updated_by', 'updated_at'])
-            ->and(app(StateRepository::class)->get($result->ref)->fields)->not->toHaveKey('description')
+            ->and(app(StateRepository::class)->get($result->ref)->field('description')->toArray())->toBe(['history' => [
+                ['source_hash' => $translated->sourceHash, 'target_hash' => $translated->targetHash],
+            ]])
             ->and(termStatuses())->toBe(['title' => FieldStatus::Current, 'description' => FieldStatus::NotApplicable]);
     });
 

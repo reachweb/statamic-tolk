@@ -560,6 +560,21 @@ describe('forget', function () {
     });
 });
 
+describe('recordRemoved', function () {
+    it('keeps only the history of removed fields, leaves the others alone and stores nothing for a field without a record', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια'), 'intro' => StateFixtures::machine('A short intro.', 'Εισαγωγή.')]);
+
+        writer()->recordRemoved(StateFixtures::ref($localization), ['intro', 'body']);
+
+        expect(storedState($localization)->field('title')->toArray())->toBe(StateFixtures::machine('Hello', 'Γεια')->toArray())
+            ->and(storedState($localization)->field('intro')->toArray())->toBe(['history' => [
+                ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['Εισαγωγή.'])],
+            ]])
+            ->and(storedState($localization)->fields)->not->toHaveKey('body');
+    });
+});
+
 describe('adopt', function () {
     it('moves the records of fields the target has a value for but no record of', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Εισαγωγή.']);

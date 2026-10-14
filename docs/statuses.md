@@ -113,4 +113,4 @@ With the **Strict fields** setting on, such a field is not delivered at all and 
 
 ## When the origin is emptied
 
-When a field is emptied in the origin, its translation reads outdated, and Update removes it, so the localization inherits the empty field again. A field edited by hand is kept and needs attention.
+When a field is emptied in the origin, its translation reads outdated, and Update removes it, so the localization inherits the empty field again. Tolk remembers the removed translation: if a form that was open before, or a restored revision, puts it back, it reads outdated again, and the next Update removes it again. A field edited by hand is kept and needs attention.

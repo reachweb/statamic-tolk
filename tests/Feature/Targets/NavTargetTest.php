@@ -443,7 +443,7 @@ describe('applying', function () {
             ->and(navTree())->toBe([['id' => 'book', 'title' => 'Κράτηση']]);
     });
 
-    it('empties the target tree when the source tree was emptied, and forgets its state', function () {
+    it('empties the target tree when the source tree was emptied, and keeps only the history of its state', function () {
         translateNav();
         Nav::findByHandle('main')->in('en')->tree([])->save();
 
@@ -453,11 +453,14 @@ describe('applying', function () {
 
         expect(array_map(fn (AssembledField $field) => [$field->handle, $field->remove], $fields))->toBe([['tree', true]]);
 
+        $translated = app(StateRepository::class)->get(navTarget()->ref())->field('tree');
         $result = applyNav($fields);
 
         expect($result->applied)->toBe(['tree'])
             ->and(navTree())->toBe([])
-            ->and(app(StateRepository::class)->get($result->ref)->fields)->not->toHaveKey('tree')
+            ->and(app(StateRepository::class)->get($result->ref)->field('tree')->toArray())->toBe(['history' => [
+                ['source_hash' => $translated->sourceHash, 'target_hash' => $translated->targetHash],
+            ]])
             ->and(navStatus())->toBe(FieldStatus::NotApplicable);
     });
 

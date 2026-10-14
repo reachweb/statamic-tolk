@@ -215,6 +215,22 @@ final readonly class StateWriter
     }
 
     /**
+     * Records that the overrides of the given fields were removed because their source lost its value: each record keeps
+     * only its history, the outputs it held included (FieldState::removed()), so one that a form or a restored revision
+     * saves again reads outdated, not manual.
+     *
+     * @param  list<string>  $handles
+     */
+    public function recordRemoved(TargetRef $ref, array $handles): void
+    {
+        $this->repository->update($ref, fn (ItemState $state) => array_reduce(
+            $handles,
+            fn (ItemState $state, string $handle) => $state->withField($handle, $state->field($handle)->removed()),
+            $state,
+        ));
+    }
+
+    /**
      * Deletes the target's state, or only the state of the given fields. Returns whether there was any.
      *
      * @param  ?list<string>  $handles

@@ -688,7 +688,7 @@ describe('existing localizations', function () {
             ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Current);
     });
 
-    it('removes the override of a field whose source was emptied, and forgets its state', function () {
+    it('removes the override of a field whose source was emptied, and keeps only the history of its state', function () {
         translateInto($this->origin);
         $this->origin->fresh()->remove('intro')->save();
 
@@ -703,12 +703,55 @@ describe('existing localizations', function () {
 
         expect($result->applied)->toBe(['intro'])
             ->and($localization->has('intro'))->toBeFalse()
-            ->and(app(StateRepository::class)->get($result->ref)->fields)->not->toHaveKey('intro')
+            ->and(app(StateRepository::class)->get($result->ref)->field('intro')->toArray())->toBe(['history' => [
+                ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['[T] A short intro.'])],
+            ]])
             ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::NotApplicable, 'body' => FieldStatus::Current]);
 
         $this->origin->fresh()->set('intro', 'Back again.')->save();
 
         expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Untranslated);
+    });
+
+    it('reads a removed translation that a stale form or a restored revision saves again as outdated, and removes it again', function () {
+        translateInto($this->origin);
+        $this->origin->fresh()->remove('intro')->save();
+        applyInWriter($this->origin, applyAssembled($this->origin, 'el', ['mode' => Mode::Update]));
+
+        $this->origin->fresh()->in('el')->set('intro', '[T] A short intro.')->save();
+
+        expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+
+        $fields = applyAssembled($this->origin, 'el', ['mode' => Mode::Update]);
+
+        expect(array_map(fn (AssembledField $field) => [$field->handle, $field->remove], $fields))->toBe([['intro', true]]);
+
+        applyInWriter($this->origin, $fields);
+
+        expect($this->origin->fresh()->in('el')->has('intro'))->toBeFalse()
+            ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::NotApplicable);
+    });
+
+    it('reads a delivery that the removal overtook as outdated when a form saves it later, and a reviewed manual text as manual', function () {
+        translateInto($this->origin);
+        $localization = $this->origin->fresh()->in('el');
+        $before = Fingerprint::ofLeaves(['[T] A short intro.']);
+        app(StateWriter::class)->recordPendingFields(StateFixtures::ref($localization), 'en', ['intro' => StateFixtures::pending('A short intro.', '[F] A short intro.', ['targetBefore' => $before])]);
+        app(StateWriter::class)->recordPendingFields(StateFixtures::ref($localization), 'en', ['intro' => StateFixtures::pending('A short intro.', 'Reviewed by hand.', ['targetBefore' => $before, 'baseline' => true])]);
+        $this->origin->fresh()->remove('intro')->save();
+
+        applyInWriter($this->origin, applyAssembled($this->origin, 'el', ['mode' => Mode::Update]));
+
+        expect(StateFixtures::stored($localization)->field('intro')->pending)->toBe([])
+            ->and(array_column(StateFixtures::stored($localization)->field('intro')->history, 'target_hash'))->toBe([Fingerprint::ofLeaves(['[F] A short intro.']), $before]);
+
+        $localization->fresh()->set('intro', '[F] A short intro.')->save();
+
+        expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+
+        $localization->fresh()->set('intro', 'Reviewed by hand.')->save();
+
+        expect(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Manual);
     });
 
     it('leaves a pending entry that reads as machine and current when it fails after save()', function () {
@@ -782,7 +825,9 @@ describe('existing localizations', function () {
             ->and($result->skipped)->toBe([])
             ->and($localization->get('title'))->toBe('[T] Hello again')
             ->and($localization->has('intro'))->toBeFalse()
-            ->and(StateFixtures::stored($localization)->fields)->not->toHaveKey('intro')
+            ->and(StateFixtures::stored($localization)->field('intro')->toArray())->toBe(['history' => [
+                ['source_hash' => Fingerprint::of('A short intro.'), 'target_hash' => Fingerprint::ofLeaves(['[T] A short intro.'])],
+            ]])
             ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::NotApplicable, 'body' => FieldStatus::Current]);
     });
 });

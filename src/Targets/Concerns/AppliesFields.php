@@ -121,7 +121,7 @@ trait AppliesFields
     }
 
     /**
-     * After the save: forgets the state of the removed fields and promotes the pending entries (§A11 step 4).
+     * After the save: keeps only the history of the removed fields' state and promotes the pending entries (§A11 step 4).
      *
      * @param  array<string, AssembledField>  $writes
      */
@@ -130,7 +130,7 @@ trait AppliesFields
         $removed = $this->removedHandles($writes);
 
         if ($removed !== []) {
-            $this->stateWriter->forget($ref, $removed);
+            $this->stateWriter->recordRemoved($ref, $removed);
         }
 
         $this->stateWriter->confirm($this->fresh());

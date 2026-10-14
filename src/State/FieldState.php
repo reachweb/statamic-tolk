@@ -218,6 +218,16 @@ final readonly class FieldState
         ]);
     }
 
+    /**
+     * The record once the override is removed because the source lost its value (§A7): only the history, which takes
+     * in the machine output and the outputs of the pending entries, so a form or a restored revision that saves one of
+     * them again reads outdated (§A6 rule 1) and Update removes it again.
+     */
+    public function removed(): self
+    {
+        return new self(history: $this->historyReplacedBy(null, $this->overtaken()));
+    }
+
     public function toArray(): array
     {
         return array_filter([
@@ -250,16 +260,16 @@ final readonly class FieldState
     }
 
     /**
-     * The machine outputs of the pending entries other than the promoted one, newest first. A reviewed manual field's
-     * output is no machine output.
+     * The machine outputs of the pending entries other than the promoted one, or of all of them, newest first. A
+     * reviewed manual field's output is no machine output.
      *
      * @return list<array{source_hash: string, target_hash: string}>
      */
-    private function overtaken(PendingState $promoted): array
+    private function overtaken(?PendingState $promoted = null): array
     {
         return array_values(array_map(
             fn (PendingState $pending) => ['source_hash' => $pending->sourceHash, 'target_hash' => $pending->targetHash],
-            array_filter($this->pending, fn (PendingState $pending) => $pending->plan !== $promoted->plan && ! $pending->baseline),
+            array_filter($this->pending, fn (PendingState $pending) => $pending->plan !== $promoted?->plan && ! $pending->baseline),
         ));
     }
 
