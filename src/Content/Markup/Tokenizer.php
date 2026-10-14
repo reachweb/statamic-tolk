@@ -57,10 +57,33 @@ final class Tokenizer
     private const string AUTOLINK = '<[a-zA-Z][a-zA-Z\d+.-]{1,31}:[^\s<>]*>'
         .'|<[\w.!#$%&\'*+\/=?^`{|}~-]+@[a-zA-Z\d](?:[a-zA-Z\d-]{0,61}[a-zA-Z\d])?(?:\.[a-zA-Z\d](?:[a-zA-Z\d-]{0,61}[a-zA-Z\d])?)*>';
 
+    // What follows the "{" of a CommonMark attribute list (`{#id .class name="value"}`, `{: …}`), case-insensitively: a
+    // class, an id, or a name and "=". No league/commonmark 2 release reads any other "{" as one.
+    public const string ATTRIBUTES_START = ':?\s*+(?:\.[\w-]|#[^\s}]|[a-z_:][\w:.-]*+\s*+=)';
+
+    // Whitespace inside an attribute list, which ends at a blank line with its paragraph.
+    private const string ATTRIBUTE_SPACE = '(?:[ \t\r\f\x0B]|\n(?![ \t\r]*+\n))';
+
+    private const string QUOTED = '"(?:[^"\n]++|\n(?![ \t\r]*+\n))*+"|\'(?:[^\'\n]++|\n(?![ \t\r]*+\n))*+\'';
+
+    // An unquoted value, which CommonMark lets hold a "}" when another one closes the list (`{title=a}b}`).
+    private const string UNQUOTED = '(?:'.self::ANTLERS_TAG.'|[^"\'=<>`\x00-\x20{}]++|\{(?!'.self::ATTRIBUTES_START.')|\}(?=[^"\'=<>`\x00-\x20}]*+\}))++';
+
+    // An attribute list's names, ids, classes and whitespace, as CommonMark reads them but wider: an id or a class may
+    // hold any character but whitespace and "}", and whitespace is followed by an attribute, "=" or the end. A "{" that
+    // would open another list ends the list, so one that never closes costs one pass.
+    private const string ATTRIBUTE_TEXT = '[^\s={}]++|\{(?!'.self::ATTRIBUTES_START.')|'.self::ATTRIBUTE_SPACE.'++(?=[.#a-z_:=}]|\{\{)';
+
+    // An attribute list, from its "{" to its "}", at least as long as CommonMark reads it, also over several lines: Antlers
+    // tags and values are taken whole. When that finds no "}" (`{.a="b}`: a quote in a class), quotes are read as text.
+    private const string ATTRIBUTE_LIST = '\{(?='.self::ATTRIBUTES_START.')(?:'
+        .'(?:'.self::ANTLERS_TAG.'|='.self::ATTRIBUTE_SPACE.'*+(?:'.self::QUOTED.'|'.self::UNQUOTED.')?|'.self::ATTRIBUTE_TEXT.')*+\}'
+        .'|(?:'.self::ANTLERS_TAG.'|='.self::ATTRIBUTE_SPACE.'*+(?:'.self::UNQUOTED.')?|'.self::ATTRIBUTE_TEXT.')*+\})';
+
     // Atoms, in this order at each position: Antlers, fences, reference definitions, hard breaks (two spaces or a backslash
     // before a line break), code spans, then (as text) backslash escapes and unmatched backticks, footnote references,
     // link destinations, the label of a full or collapsed reference (`[text][label]`, `[text][]`), autolinks, attribute
-    // lists (`{#id .class}`), and raw HTML as in the html kind.
+    // lists, and raw HTML as in the html kind.
     private const string MARKDOWN_TOKENS = '/'.self::ANTLERS_TAG
         .'|'.self::FENCE
         .'|'.self::DEFINITION
@@ -71,7 +94,7 @@ final class Tokenizer
         .'|'.self::DESTINATION
         .'|\]\K(?<reference>\[(?:'.self::LABEL.')?\])'
         .'|'.self::AUTOLINK
-        .'|\{(?=[ \t]*[#.:]|[ \t]*[a-zA-Z_][\w-]*=)[^{}\n]*\}'
+        .'|'.self::ATTRIBUTE_LIST
         .'|'.self::HTML.'/si';
 
     // A shortcut reference (`[text]` alone), when its text is the label of a definition.

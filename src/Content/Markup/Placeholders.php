@@ -19,6 +19,9 @@ final class Placeholders
     // An inline link or image destination, or a reference definition, that is not an atom.
     private const string RAW_DESTINATION = '/\]\((?!\s*'.self::ATOM.')|^ {0,3}\[[^\]\n]+\]:(?!\s*'.self::ATOM.')/m';
 
+    // The "{" of a CommonMark attribute list, which Statamic's Markdown parser renders with every attribute but on*.
+    private const string ATTRIBUTE_LIST = '/\{(?='.Tokenizer::ATTRIBUTES_START.')/i';
+
     // A web or email address in the text, which a Markdown field with `automatic_links` turns into a link (T12.3).
     private const string BARE_ADDRESS = '/(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
 
@@ -134,6 +137,10 @@ final class Placeholders
             $problems[] = 'it adds or changes a web or email address';
         }
 
+        if ($kind === SegmentKind::Markdown && self::addsAttributes($source, $translated)) {
+            $problems[] = 'it adds an attribute list or a curly brace ({…})';
+        }
+
         if (mb_strlen($translated) > 4 * mb_strlen($source) + 200) {
             $problems[] = 'it is too long';
         }
@@ -198,6 +205,18 @@ final class Placeholders
     {
         return substr_count($translated, '&lt;') > substr_count($source, '&lt;')
             || substr_count($translated, '&gt;') > substr_count($source, '&gt;');
+    }
+
+    /**
+     * Whether the translation holds more curly braces than the source, or more that open an attribute list. The source's
+     * own attribute lists are atoms, so a list can only come from an added brace, from a "}" that lengthens a list ending
+     * in an unquoted value, or from a brace of the source's text moved in front of an attribute (`{1, 2}`).
+     */
+    private static function addsAttributes(string $source, string $translated): bool
+    {
+        return substr_count($translated, '{') > substr_count($source, '{')
+            || substr_count($translated, '}') > substr_count($source, '}')
+            || preg_match_all(self::ATTRIBUTE_LIST, $translated) > preg_match_all(self::ATTRIBUTE_LIST, $source);
     }
 
     /**

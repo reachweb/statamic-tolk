@@ -7,6 +7,7 @@ use Reach\StatamicTolk\Content\Markup\Tokenized;
 use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Tests\Support\ContentFixtures;
+use Statamic\Facades\Markdown;
 
 function tokenizeMarkdown(string $text): Tokenized
 {
@@ -160,6 +161,42 @@ it('makes Antlers tags, hard breaks and attribute lists atoms', function () {
         ->and($tokenized->placeholders)->toBe(['x1' => '{{ site:phone }}', 'x2' => '{#call}', 'x3' => '  ', 'x4' => '\\']);
 });
 
+it('makes every attribute list that CommonMark reads an atom', function (string $text, string $tokenized, string $list, string $rendered) {
+    $result = tokenizeMarkdown($text);
+
+    expect(Markdown::parse($text))->toContain($rendered)
+        ->and($result->text)->toBe($tokenized)
+        ->and(array_values(array_filter($result->map, fn (string $original) => str_starts_with($original, '{') && ! str_starts_with($original, '{{'))))->toBe([$list])
+        ->and(Tokenizer::restore($result->text, $result))->toBe($text);
+})->with([
+    'a name with a colon' => ['Open *the menu*{x-on:click="open = true"} now', 'Open *the menu*<x1/> now', '{x-on:click="open = true"}', 'x-on:click="open = true"'],
+    'a name that starts with a colon' => ['Open *the menu*{:class="open"} now', 'Open *the menu*<x1/> now', '{:class="open"}', 'class="open"'],
+    'spaces around the equals sign' => ['Open *the menu*{ data-state = "open" } now', 'Open *the menu*<x1/> now', '{ data-state = "open" }', 'data-state='],
+    'a value holding braces' => ['Open *the menu*{x-data="{ open: false }"} now', 'Open *the menu*<x1/> now', '{x-data="{ open: false }"}', 'x-data="{ open: false }"'],
+    'an id holding dots' => ['## Before you go {#before.you.go}', '## Before you go <x1/>', '{#before.you.go}', 'id="before.you.go"'],
+    'a Kramdown colon' => ['Open *the menu*{: .wide} now', 'Open *the menu*<x1/> now', '{: .wide}', 'class="wide"'],
+    'an unquoted value before a full stop' => ['Read [our story](/about){rel=nofollow}.', 'Read [our story](<x1/>)<x2/>.', '{rel=nofollow}', 'rel="nofollow"'],
+    'an unquoted value holding a brace' => ['Open *the menu*{title=a}b} now', 'Open *the menu*<x1/> now', '{title=a}b}', 'title="a}b"'],
+    'across two lines' => ["Open *the menu*{title=\"Menu\"\ndata-state=open} now", 'Open *the menu*<x1/> now', "{title=\"Menu\"\ndata-state=open}", 'data-state="open"'],
+    'on its own line' => ["{.lead}\nOpen the menu now", "<x1/>\nOpen the menu now", '{.lead}', 'class="lead"'],
+]);
+
+it('leaves braces that CommonMark does not read as an attribute list as text', function (string $text) {
+    expect(Markdown::parse($text))->toContain(htmlspecialchars($text, ENT_NOQUOTES))
+        ->and(tokenizeMarkdown($text)->text)->toBe($text);
+})->with([
+    'words' => 'Hello {see below} there',
+    'numbers' => 'Pick a number from {1, 2} today',
+    'a name CommonMark does not allow' => 'Mention {@click} as text',
+]);
+
+it('makes an attribute list holding an Antlers tag one atom', function () {
+    $tokenized = tokenizeMarkdown('Open *the menu*{data-id={{ id }}} now');
+
+    expect($tokenized->text)->toBe('Open *the menu*<x1/> now')
+        ->and($tokenized->map)->toBe(['x1' => '{data-id={{ id }}}']);
+});
+
 it('does not escape', function () {
     $tokenized = tokenizeMarkdown('Kids < 12 &amp; seniors > 65 &lt;3');
 
@@ -225,6 +262,7 @@ it('takes a construct that never closes in one pass, within PHP\'s default PCRE 
     'a comment' => ["<!--\n", SegmentKind::Markdown],
     'a pre element' => ["<pre>\n", SegmentKind::Markdown],
     'an Antlers tag' => ['{{ ', SegmentKind::Markdown],
+    'an attribute list' => ['{x-data="', SegmentKind::Markdown],
     'a definition title' => ['[a]: /url "', SegmentKind::Markdown],
     'a code span' => ['`` ', SegmentKind::Markdown],
     'a comment in HTML' => ["<!--\n", SegmentKind::Html],
