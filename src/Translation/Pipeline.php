@@ -285,7 +285,7 @@ final readonly class Pipeline
         } catch (RequestRejected $exception) {
             return $exception->tooLarge()
                 ? $this->splitOrFail($unit, $model, $fallback, UnitOutcome::REQUEST_REJECTED)
-                : $this->failed($unit, $model, UnitOutcome::REQUEST_REJECTED);
+                : new UnitOutcome(unit: $unit->id, model: (string) $model, failed: array_fill_keys($unit->segmentIds, UnitOutcome::REQUEST_REJECTED), rejected: $exception->getMessage());
         }
 
         $usage = $this->usage($result, $recordUsage);
@@ -424,8 +424,8 @@ final readonly class Pipeline
             }
 
             return $this->reviewSkipped($plan, $unit, UnitOutcome::UNAVAILABLE);
-        } catch (RequestRejected) {
-            return $this->reviewSkipped($plan, $unit, UnitOutcome::REQUEST_REJECTED);
+        } catch (RequestRejected $exception) {
+            return $this->reviewSkipped($plan, $unit, UnitOutcome::REQUEST_REJECTED, rejected: $exception->getMessage());
         }
 
         $usage = $this->usage($result, $recordUsage);
@@ -476,7 +476,7 @@ final readonly class Pipeline
         return new UnitOutcome(unit: $unit->id, model: (string) $result->model, corrections: $corrections, warnings: $warnings, usage: $usage);
     }
 
-    private function reviewSkipped(Plan $plan, Unit $unit, string $reason, UsageMap $usage = new UsageMap): UnitOutcome
+    private function reviewSkipped(Plan $plan, Unit $unit, string $reason, UsageMap $usage = new UsageMap, ?string $rejected = null): UnitOutcome
     {
         $warnings = [];
 
@@ -484,7 +484,7 @@ final readonly class Pipeline
             $warnings[$id] = [__(':label: review skipped (:reason).', ['label' => $plan->segments[$id]['label'], 'reason' => UnitOutcome::reasonLabel($reason)])];
         }
 
-        return new UnitOutcome(unit: $unit->id, warnings: $warnings, usage: $usage);
+        return new UnitOutcome(unit: $unit->id, warnings: $warnings, usage: $usage, rejected: $rejected);
     }
 
     /**

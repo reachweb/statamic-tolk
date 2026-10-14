@@ -21,6 +21,7 @@ use Reach\StatamicTolk\Events\RunStarted;
 use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
+use Reach\StatamicTolk\Exceptions\RequestRejected;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
@@ -611,6 +612,67 @@ describe('failures', function () {
         RunFixtures::translate($run);
 
         expect($engine->calls)->toHaveCount(1);
+    });
+
+    it('aborts the run after three requests in a row the provider rejected, with its message, and plans the last item again on resume', function () {
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => throw RequestRejected::from('openai', new ProviderError(ProviderErrorKind::RequestRejected, 'Unsupported parameter: prompt_cache_options.', 400)));
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id(), $this->again->id()]]);
+
+        for ($call = 1; $call <= 5 && RunFixtures::stored($run)->status === RunStatus::Running; $call++) {
+            RunFixtures::translate($run);
+        }
+
+        $stored = RunFixtures::stored($run);
+        $last = RunFixtures::items($run)[2];
+
+        expect($stored->status)->toBe(RunStatus::Aborted)
+            ->and($stored->error)->toBe('The AI provider [openai] rejected the request (HTTP 400): Unsupported parameter: prompt_cache_options. The run stopped after 3 requests in a row were rejected.')
+            ->and(RunFixtures::statuses($run))->toBe(['translated', 'translated', 'pending'])
+            ->and(app(PlanStore::class)->get($last->planId))->toBeNull()
+            ->and($engine->calls)->toHaveCount(3);
+
+        // Resumed, the run counts from zero again and plans the item whose plan it dropped.
+        ScriptedEngine::bind(fn (EngineCall $call) => ScriptedEngine::translated($call));
+        $resumed = RunFixtures::stored($run);
+        $resumed->status = RunStatus::Running;
+        $resumed->error = null;
+        app(RunRepository::class)->save($resumed);
+        app(RunProcessor::class)->start($resumed);
+        RunFixtures::translate($resumed);
+
+        expect(RunFixtures::statuses($run))->toBe(['translated', 'translated', 'translated'])
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Running);
+    });
+
+    it('does not abort when the requests the provider rejected are not in a row', function () {
+        ScriptedEngine::bind(fn (EngineCall $call) => $call->target->site === 'de'
+            ? throw RequestRejected::from('anthropic', new ProviderError(ProviderErrorKind::RequestRejected, 'Bad request.', 400))
+            : ScriptedEngine::translated($call));
+        $run = RunFixtures::started(['sites' => ['el', 'de']]);
+
+        for ($call = 1; $call <= 10 && in_array('pending', RunFixtures::statuses($run), true); $call++) {
+            RunFixtures::translate($run);
+        }
+
+        expect(RunFixtures::statuses($run))->toBe(array_fill(0, 6, 'translated'))
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Running);
+    });
+
+    it('counts the review requests the provider rejected apart from the translations it answered', function () {
+        $engine = ScriptedEngine::bind(
+            fn (EngineCall $call) => ScriptedEngine::translated($call),
+            fn (EngineCall $call) => throw RequestRejected::from('anthropic', new ProviderError(ProviderErrorKind::RequestRejected, 'Bad review request.', 400)),
+        );
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id(), $this->world->id(), $this->again->id()], 'options' => ['review' => true]]);
+
+        for ($call = 1; $call <= 5 && RunFixtures::stored($run)->status === RunStatus::Running; $call++) {
+            RunFixtures::translate($run);
+        }
+
+        expect(RunFixtures::stored($run))->toMatchObject(['status' => RunStatus::Aborted])
+            ->and(RunFixtures::stored($run)->error)->toEndWith('Bad review request. The run stopped after 3 requests in a row were rejected.')
+            ->and($engine->calls)->toHaveCount(3)
+            ->and($engine->reviews)->toHaveCount(3);
     });
 
     it('releases an item that throws with a growing delay, reports it, and fails it at the third attempt', function () {

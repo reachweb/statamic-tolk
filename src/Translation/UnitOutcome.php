@@ -55,6 +55,7 @@ final readonly class UnitOutcome
      * @param  array<string, string>  $failed  segment id → why it failed for good
      * @param  array<string, list<string>>  $warnings  segment id → warnings
      * @param  list<Unit>  $spawned
+     * @param  ?string  $rejected  the provider's message when it rejected the unit's request (`request_rejected`)
      */
     public function __construct(
         public string $unit,
@@ -65,6 +66,7 @@ final readonly class UnitOutcome
         public array $warnings = [],
         public UsageMap $usage = new UsageMap,
         public array $spawned = [],
+        public ?string $rejected = null,
     ) {}
 
     public function toArray(): array
@@ -78,6 +80,7 @@ final readonly class UnitOutcome
             'warnings' => $this->warnings,
             'usage' => $this->usage->toArray(),
             'spawned' => array_map(fn (Unit $unit) => $unit->toArray(), $this->spawned),
+            'rejected' => $this->rejected,
         ];
     }
 
@@ -92,6 +95,7 @@ final readonly class UnitOutcome
             warnings: $data['warnings'] ?? [],
             usage: UsageMap::fromArray($data['usage'] ?? []),
             spawned: array_map(fn (array $unit) => Unit::fromArray($unit), $data['spawned'] ?? []),
+            rejected: $data['rejected'] ?? null,
         );
     }
 }

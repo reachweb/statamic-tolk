@@ -17,6 +17,7 @@ use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
+use Reach\StatamicTolk\Enums\UnitKind;
 use Reach\StatamicTolk\Enums\UsageSource;
 use Reach\StatamicTolk\Events\RunFinished;
 use Reach\StatamicTolk\Events\RunStarted;
@@ -49,6 +50,8 @@ use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\TargetResult;
+use Reach\StatamicTolk\Translation\Unit;
+use Reach\StatamicTolk\Translation\UnitOutcome;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\User;
 use Throwable;
@@ -69,6 +72,11 @@ final readonly class RunProcessor
      * Items failed in a row because the provider stayed unavailable before the run is aborted.
      */
     public const int MAX_UNAVAILABLE_ITEMS = 3;
+
+    /**
+     * Requests of one kind, translation or review, the provider rejected in a row before the run is aborted.
+     */
+    public const int MAX_REJECTED_UNITS = 3;
 
     /**
      * Attempts at an item that throws, or whose process dies, before it fails.
@@ -101,7 +109,8 @@ final readonly class RunProcessor
 
     /**
      * Sets a pending or running run running, from now on: `progressedAt` is set, so a run without progress is measured
-     * from its start, and the count of items failed in a row for an unavailable provider starts over. Fires RunStarted
+     * from its start, and the counts of items failed in a row for an unavailable provider and of requests the provider
+     * rejected in a row start over. Fires RunStarted
      * when the run was pending. A finished run is left as it is.
      */
     public function start(Run $run): void
@@ -118,6 +127,10 @@ final readonly class RunProcessor
             $run->progressedAt = CarbonImmutable::now();
             $this->runs->save($run);
             $this->cache()->forget($this->unavailableKey($run));
+
+            foreach (UnitKind::cases() as $kind) {
+                $this->cache()->forget($this->rejectedKey($run, $kind));
+            }
 
             return $started;
         });
@@ -546,12 +559,25 @@ final readonly class RunProcessor
             // The units are run in the profile of the run's driver now, not the plan's: a command-line run resumed in the
             // browser or on a queue splits a unit planned larger than this driver's batches first, and that makes no call.
             $unitId = array_key_first($runnable);
-            $fits = $this->pipeline->fits($plan, $runnable[$unitId], $options->profile);
-            $this->pipeline->runUnit($plan, $unitId, $record, $options->profile);
+            $unit = $runnable[$unitId];
+            $fits = $this->pipeline->fits($plan, $unit, $options->profile);
+            $outcome = $this->pipeline->runUnit($plan, $unitId, $record, $options->profile);
             $runnable = $this->pipeline->runnable($plan);
 
             if (! $fits) {
                 continue;
+            }
+
+            // A provider that keeps rejecting the requests, such as for a model option it does not accept, would reject the
+            // rest of the run too. The item's plan goes, so a resume does not take the units it rejected as translated.
+            if ($this->rejectedInARow($run, $unit, $outcome)) {
+                $this->forget($plan);
+                $this->abort($run, Sanitizer::message(__(':message The run stopped after :count requests in a row were rejected.', [
+                    'message' => $outcome->rejected,
+                    'count' => self::MAX_REJECTED_UNITS,
+                ])));
+
+                return 0;
             }
 
             $units++;
@@ -923,16 +949,44 @@ final readonly class RunProcessor
 
     private function countUnavailable(Run $run): int
     {
-        $key = $this->unavailableKey($run);
-
-        $this->cache()->add($key, 0, max(1, (int) config('tolk.plan_ttl', 7200)));
-
-        return (int) $this->cache()->increment($key);
+        return $this->countInARow($this->unavailableKey($run));
     }
 
     private function unavailableKey(Run $run): string
     {
         return "tolk:run-unavailable:{$run->id}";
+    }
+
+    /**
+     * Counts a request of the unit's kind that the provider rejected, and starts the count over when it answered one.
+     *
+     * @return bool whether MAX_REJECTED_UNITS were rejected in a row now
+     */
+    private function rejectedInARow(Run $run, Unit $unit, UnitOutcome $outcome): bool
+    {
+        $key = $this->rejectedKey($run, $unit->kind);
+
+        if ($outcome->rejected === null) {
+            if ($outcome->model !== null) {
+                $this->cache()->forget($key);
+            }
+
+            return false;
+        }
+
+        return $this->countInARow($key) >= self::MAX_REJECTED_UNITS;
+    }
+
+    private function rejectedKey(Run $run, UnitKind $kind): string
+    {
+        return "tolk:run-rejected:{$run->id}:{$kind->value}";
+    }
+
+    private function countInARow(string $key): int
+    {
+        $this->cache()->add($key, 0, max(1, (int) config('tolk.plan_ttl', 7200)));
+
+        return (int) $this->cache()->increment($key);
     }
 
     private function report(Run $run, int $units, int $items, ?int $wait): WorkReport
