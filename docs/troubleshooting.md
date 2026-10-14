@@ -27,7 +27,9 @@ A field Tolk does not translate is left as it is, so "nothing was translated" us
 
   and reload the CP. The browser's developer tools show a 404 for `vendor/statamic-tolk/build/…` when this is the cause.
 
-The banner says **Translation is not set up yet** when no provider has an API key, or the translator model's provider has none. Set a key in `.env` ([Installation](installation.md#api-keys)) and check it with **Test connection** on the settings page.
+The banner says **Translation is not set up yet**, and offers no Translate or Update, when no provider has an API key. Set a key in `.env` ([Installation](installation.md#api-keys)) and check it with **Test connection** on the settings page. It says so too when **Translator model** is Automatic and the model catalog has no quality model for the first provider with a key; `tolk:doctor` names that provider.
+
+When the **Translator model** chosen in the settings uses a provider without a key while another provider has one, the banner looks as usual and Translate stops with "The AI provider [gemini] has no API key. Set GEMINI_API_KEY or TOLK_GEMINI_API_KEY in .env." `tolk:doctor` and the Audit page report it as an error ("The translator model … uses gemini, which has no API key, so every translation fails."). Set that provider's key, or choose a model of a provider with a key, or Automatic, in the settings.
 
 ## Requests time out
 

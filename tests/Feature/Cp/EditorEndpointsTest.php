@@ -567,6 +567,22 @@ describe('unit', function () {
             ->and($response->getContent())->not->toContain('Secret');
     });
 
+    it('offers a translator whose provider has no key while another has one, and answers 502 naming its variables', function () {
+        $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);
+        $this->withSettings(['translator_model' => 'gemini:gemini-3.8-flash']);
+        greekEditor();
+
+        $this->getJson(cp_route('tolk.editor.status', ['reference' => $this->greek->reference()]))
+            ->assertJsonPath('defaults.translator', 'gemini:gemini-3.8-flash')
+            ->assertJsonPath('defaults.providers_configured', true);
+        $plan = editorPlan($this->greek)->assertOk()->json('plan');
+
+        editorUnit($plan, 'b1')
+            ->assertStatus(502)
+            ->assertJsonPath('code', 'provider_rejected')
+            ->assertJsonPath('message', 'The AI provider [gemini] has no API key. Set GEMINI_API_KEY or TOLK_GEMINI_API_KEY in .env.');
+    });
+
     it('raises a time limit that is too low for a provider call', function () {
         $this->fakeTranslations();
         greekEditor();

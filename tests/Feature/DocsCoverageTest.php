@@ -7,6 +7,7 @@ use Reach\StatamicTolk\Content\ContentWalker;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\TranslatableFields;
+use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
 use Reach\StatamicTolk\Tests\Support\Fieldtypes\NoteFieldtype;
 use Reach\StatamicTolk\Tolk;
 use Statamic\Facades\YAML;
@@ -357,6 +358,15 @@ it('shows a site registering its handler from the AppServiceProvider once Statam
     $boot = collect(docsCodeBlocks('extending.md'))->first(fn (array $block) => str_contains($block['code'], 'public function boot()'))['code'] ?? '';
 
     expect($boot)->toContain('Statamic::booted(fn () => Tolk::registerFieldtype(');
+});
+
+it('quotes the setup notice and the error a translator whose provider has no key stops with', function () {
+    $setup = Str::of(docsFile('troubleshooting.md'))->after("\n## The banner does not appear\n")->before("\n## ")->toString();
+
+    expect(File::get(DOCS_ROOT.'/resources/js/components/EditorBanner.vue'))->toContain("__('Translation is not set up yet.')")
+        ->and($setup)->toContain('**Translation is not set up yet**')
+        ->and($setup)->toContain(ProviderNotConfigured::for('gemini')->getMessage())
+        ->and($setup)->toContain('`tolk:doctor`');
 });
 
 it('reads the per-field options of the configuration sample as documented', function () {

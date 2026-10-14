@@ -417,6 +417,14 @@ describe('setup', () => {
     it('is needed when no default model resolves', () => {
         expect(needsSetup(payload({}, { translator: null, providers_configured: true }))).toBe(true);
     });
+
+    // The payload says only that some provider has a key: Translate reports the translator's missing key.
+    it('is not needed for a translator whose provider has no key while another provider has one', () => {
+        const status = payload({ localization: block() }, { translator: 'gemini:gemini-3.8-flash', providers_configured: true });
+
+        expect(needsSetup(status)).toBe(false);
+        expect(describeStatus(status).localization.translate).toBe(true);
+    });
 });
 
 describe('not translatable', () => {
