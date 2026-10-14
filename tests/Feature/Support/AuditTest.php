@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Support\Audit;
+use Reach\StatamicTolk\Support\WebServer;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\FormFixtures;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
@@ -226,6 +227,45 @@ describe('queue', function () {
         config(['queue.connections.jobs' => ['driver' => 'database', 'table' => 'jobs'], 'tolk.runs.queue.connection' => 'jobs']);
 
         expect(auditItems('queue'))->toContain('ok: Automatic updates are on: saving a published entry starts a run of it on jobs after 10 seconds.');
+    });
+
+    it('warns when the web server keeps a save waiting for its automatic update without a queue worker', function () {
+        $warning = "warning: PHP runs here as apache2handler, which cannot send a response before the process that made it ends: each save of a published entry keeps the editor waiting until its automatic update has run, and a proxy that gives up first (Cloudflare after 100 seconds) shows the save as failed although it was stored. Give Tolk's runs a queue with a worker (tolk.runs.execution auto or queue), or serve the site with PHP-FPM, LiteSpeed or FrankenPHP.";
+        $this->app->instance(WebServer::class, new WebServer('apache2handler', false));
+
+        expect(implode("\n", auditItems('queue')))->not->toContain('apache2handler');
+
+        $this->withSettings(['auto_update' => true]);
+
+        expect(auditItems('queue'))->toContain($warning)
+            ->and(auditCheck('queue')['level'])->toBe('warning');
+
+        config(['tolk.runs.execution' => 'browser', 'queue.connections.jobs' => ['driver' => 'database', 'table' => 'jobs'], 'tolk.runs.queue.connection' => 'jobs']);
+
+        expect(auditItems('queue'))->toContain($warning);
+
+        config(['tolk.runs.execution' => 'auto']);
+
+        expect(implode("\n", auditItems('queue')))->not->toContain('apache2handler')
+            ->and(auditCheck('queue')['level'])->toBe('ok');
+    });
+
+    it('says nothing more of a web server that sends a response before the automatic update', function () {
+        $this->withSettings(['auto_update' => true]);
+        $this->app->instance(WebServer::class, new WebServer('fpm-fcgi', true));
+
+        expect(auditCheck('queue')['level'])->toBe('ok')
+            ->and(implode("\n", auditItems('queue')))->not->toContain('web server');
+    });
+
+    it('says on the command line that it cannot tell whether the web server keeps a save waiting', function () {
+        $this->withSettings(['auto_update' => true]);
+
+        expect(auditItems('queue'))->toContain("ok: From the command line Tolk cannot tell whether the web server sends the response to a save before the save's automatic update runs. PHP-FPM, LiteSpeed and FrankenPHP do; under Apache's mod_php, php-cgi or php artisan serve, each save keeps the editor waiting until its update has run. The Audit page in the Control Panel checks the web server.");
+
+        $this->artisan('tolk:doctor')
+            ->expectsOutputToContain('From the command line Tolk cannot tell whether the web server sends the response')
+            ->assertSuccessful();
     });
 
     it('warns that an SQS connection needs retry_after set to its visibility timeout', function () {

@@ -7,6 +7,7 @@
 - Laravel 12.62 or later, or Laravel 13.15 or later.
 - The Laravel AI SDK (`laravel/ai` 1.0.1 or later). Composer installs it with Tolk.
 - An API key for at least one of Anthropic, OpenAI or Google Gemini.
+- For automatic updates without a queue worker, a web server that sends a response before PHP has finished: PHP-FPM (behind Nginx or Apache), LiteSpeed or FrankenPHP. Under Apache's mod_php, php-cgi or `php artisan serve`, a save waits for its update; run a queue worker there ([Automatic updates](bulk-and-runs.md#automatic-updates)).
 - A cache store that supports locks: `file`, `redis`, `database`, `memcached` or `dynamodb`. A flat-file site on Statamic's defaults (the `file` cache and the `sync` queue, no database) needs nothing more. A site on more than one server needs a cache store and folders they share ([Several servers](#several-servers)).
 - Recommended for `tolk:translate`: PHP's pcntl and posix extensions on the command line, which Windows lacks and some Docker images leave out, with `pcntl_signal` not in php.ini's `disable_functions`. Without pcntl, Ctrl-C ends a run at once instead of cancelling it after the current requests; without posix, the workers of a command that was killed go on translating until the run is cancelled ([details](cli.md#how-the-command-runs)). `tolk:doctor` says whether PHP has them.
 

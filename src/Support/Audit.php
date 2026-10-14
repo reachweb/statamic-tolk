@@ -59,6 +59,7 @@ final class Audit
         private readonly TranslatableFields $translatableFields,
         private readonly StatusScanner $scanner,
         private readonly StateRepository $state,
+        private readonly WebServer $webServer,
     ) {}
 
     /**
@@ -331,9 +332,12 @@ final class Audit
         };
 
         if ($runDriver !== null && $this->settings->autoUpdate()) {
-            $items[] = AutoUpdater::queued()
-                ? $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry starts a run of it on :connection after :seconds seconds.', ['connection' => $connection, 'seconds' => UpdateTranslations::DELAY_SECONDS]))
-                : $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response; a save inside a queue job runs it in a job of its own on that job\'s queue. A queue worker for Tolk\'s runs keeps those processes free.'));
+            if (AutoUpdater::queued()) {
+                $items[] = $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry starts a run of it on :connection after :seconds seconds.', ['connection' => $connection, 'seconds' => UpdateTranslations::DELAY_SECONDS]));
+            } else {
+                $items[] = $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response; a save inside a queue job runs it in a job of its own on that job\'s queue. A queue worker for Tolk\'s runs keeps those processes free.'));
+                $items[] = $this->webServerItem();
+            }
         }
 
         if (RunDispatcher::hasWorker()) {
@@ -352,6 +356,19 @@ final class Audit
         }
 
         return array_values(array_filter($items));
+    }
+
+    /**
+     * Whether a save's response reaches the browser before the automatic update its process runs after it: a web server
+     * that cannot end a response early (Apache's mod_php, php-cgi, php artisan serve) keeps the editor waiting for it.
+     */
+    private function webServerItem(): ?array
+    {
+        return match ($this->webServer->endsResponsesEarly()) {
+            true => null,
+            false => $this->item(AuditLevel::Warning, __('PHP runs here as :sapi, which cannot send a response before the process that made it ends: each save of a published entry keeps the editor waiting until its automatic update has run, and a proxy that gives up first (Cloudflare after 100 seconds) shows the save as failed although it was stored. Give Tolk\'s runs a queue with a worker (tolk.runs.execution auto or queue), or serve the site with PHP-FPM, LiteSpeed or FrankenPHP.', ['sapi' => $this->webServer->sapi])),
+            null => $this->item(AuditLevel::Ok, __('From the command line Tolk cannot tell whether the web server sends the response to a save before the save\'s automatic update runs. PHP-FPM, LiteSpeed and FrankenPHP do; under Apache\'s mod_php, php-cgi or php artisan serve, each save keeps the editor waiting until its update has run. The Audit page in the Control Panel checks the web server.')),
+        };
     }
 
     private function cacheItems(): array
