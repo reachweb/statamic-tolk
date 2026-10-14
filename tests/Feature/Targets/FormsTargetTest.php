@@ -117,9 +117,24 @@ it('leaves a key of the JSON file to tolk:lang, and a subject with Antlers out',
     $target = formsTarget();
 
     expect($target->fields()->has('Contact us'))->toBeFalse()
-        ->and($target->leftToLang())->toBe(['Contact us'])
+        ->and($target->leftToLang())->toBe(['lang/en.json' => ['Contact us']])
+        ->and($target->packageKeys())->toBe([])
         ->and($target->fields()->keys())->not->toContain('Thank you, {{ name }}')
         ->and($target->renderedSubjects())->toBe(['Contact us › email subject']);
+});
+
+it('leaves a text that is a key of a PHP translation file to tolk:lang, and a key of a package out', function () {
+    FormFixtures::keys('en', ['Write to us', 'Your full name', 'A new enquiry']);
+    app('translator')->addNamespace('acme', $this->temporaryPath('acme/lang'));
+    FormFixtures::keyed();
+    $target = formsTarget();
+    $keys = ['forms.contact.title', 'forms.contact.name', 'forms.contact.subject', 'acme::forms.placeholder'];
+
+    expect(array_intersect($keys, $target->fields()->keys()->all()))->toBe([])
+        ->and($target->fields()->get('forms.contact.missing')->display())->toBe('forms.contact.title › forms.contact.name › instructions')
+        ->and($target->leftToLang())->toBe(['lang/en.json' => ['Contact us'], 'lang/en/forms.php' => ['forms.contact.title', 'forms.contact.name', 'forms.contact.subject']])
+        ->and($target->packageKeys())->toBe(['acme::forms.placeholder'])
+        ->and(array_intersect($keys, formsTarget('de', 'el')->fields()->keys()->all()))->toBe(['forms.contact.title', 'forms.contact.name', 'forms.contact.subject']);
 });
 
 it('gives the texts of the named forms, shared texts included', function () {
@@ -251,4 +266,21 @@ it('names the keys it translated that no form uses any more', function () {
     app(LangFiles::class)->write('de', LangFiles::JSON, [], ['Food', 'Wine'], []);
 
     expect(formsTarget()->unusedKeys($state))->toBe(['Interests', 'Consent', 'Yes, send me news', 'New subscriber']);
+});
+
+it('names the keys it wrote for texts that are translation keys now, and not as unused', function () {
+    $this->fakeTranslations();
+    FormFixtures::keyed();
+    translateForms();
+    FormFixtures::keys('en', ['Write to us', 'Your full name', 'A new enquiry']);
+    app('translator')->addNamespace('acme', $this->temporaryPath('acme/lang'));
+    FormFixtures::make('newsletter', 'Newsletter', ['email' => ['type' => 'text', 'display' => 'Your email address']]);
+    $state = app(StateRepository::class)->get(new TargetRef(ContentType::Forms, 'de'));
+
+    expect(formsTarget()->hidingKeys($state))->toBe(['forms.contact.title', 'forms.contact.name', 'acme::forms.placeholder', 'forms.contact.subject'])
+        ->and(formsTarget()->unusedKeys($state))->toBe(['Interests', 'Food', 'Wine', 'Consent', 'Yes, send me news', 'New subscriber']);
+
+    app(LangFiles::class)->write('de', LangFiles::JSON, [], ['forms.contact.name'], []);
+
+    expect(formsTarget()->hidingKeys($state))->toBe(['forms.contact.title', 'acme::forms.placeholder', 'forms.contact.subject']);
 });

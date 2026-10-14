@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use Illuminate\Filesystem\Filesystem;
 use Statamic\Contracts\Forms\Form as FormContract;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Form;
@@ -39,6 +40,28 @@ final class FormFixtures
             'interests' => ['type' => 'checkboxes', 'display' => 'Interests', 'options' => ['Food', 'Wine']],
             'consent' => ['type' => 'radio', 'display' => 'Consent', 'options' => [['key' => 'yes', 'value' => 'Yes, send me news'], ['key' => 'no', 'value' => null]]],
         ], ['to' => 'news@example.com', 'subject' => 'New subscriber']);
+    }
+
+    /**
+     * A form whose texts are translation keys, as a site that keeps its form texts in `lang/{lang}/forms.php` writes
+     * them: `forms.contact.*` (`missing` is a key that file lacks) and a package's `acme::forms.placeholder`.
+     */
+    public static function keyed(): FormContract
+    {
+        return self::make('keyed', 'forms.contact.title', [
+            'name' => ['type' => 'text', 'display' => 'forms.contact.name', 'instructions' => 'forms.contact.missing', 'placeholder' => 'acme::forms.placeholder'],
+        ], ['to' => 'hotel@example.com', 'subject' => 'forms.contact.subject']);
+    }
+
+    /**
+     * Writes `lang/{lang}/forms.php` with the keyed form's texts, but not `missing`.
+     *
+     * @param  array{0: string, 1: string, 2: string}  $lines  the title, the name and the subject
+     */
+    public static function keys(string $lang, array $lines): void
+    {
+        (new Filesystem)->ensureDirectoryExists(lang_path($lang));
+        file_put_contents(lang_path("{$lang}/forms.php"), '<?php return '.var_export(['contact' => array_combine(['title', 'name', 'subject'], $lines)], true).';');
     }
 
     /**

@@ -90,6 +90,7 @@ class FormsCommand extends Command
 
         if ($this->option('dry-run')) {
             $this->dryRunLanguages($targets, $this->planLanguages($targets, $options, $planner), $options, $settings, $resolver, $estimator);
+            $this->hidingKeys($targets, $state);
             $this->unusedKeys($targets, $state);
             $this->templateHint();
 
@@ -98,6 +99,7 @@ class FormsCommand extends Command
 
         $exitCode = $this->translateLanguages($targets, $options, $translator);
         $this->summarize();
+        $this->hidingKeys($targets, $state);
         $this->unusedKeys($targets, $state);
         $this->templateHint();
 
@@ -126,8 +128,8 @@ class FormsCommand extends Command
     }
 
     /**
-     * A target per language. The JSON files are read here, so one that cannot be read stops the command before
-     * anything is sent.
+     * A target per language. The JSON files, and the PHP files of the source language that a form text names as a key,
+     * are read here, so one that cannot be read stops the command before anything is sent.
      *
      * @param  list<string>  $langs
      * @return non-empty-list<FormsTarget>
@@ -138,11 +140,14 @@ class FormsCommand extends Command
     {
         $files->read($sourceLang, LangFiles::JSON);
 
-        return array_map(function (string $lang) use ($factory, $files, $sourceLang) {
+        $targets = array_map(function (string $lang) use ($factory, $files, $sourceLang) {
             $files->read($lang, LangFiles::JSON);
 
             return $factory->forForms($lang, $sourceLang);
         }, $langs);
+        $targets[0]->fields();
+
+        return $targets;
     }
 
     /**
@@ -150,16 +155,26 @@ class FormsCommand extends Command
      */
     private function leftOut(FormsTarget $target): void
     {
-        $lang = $target->leftToLang();
+        $packages = $target->packageKeys();
         $subjects = $target->renderedSubjects();
 
-        if ($lang !== []) {
+        foreach ($target->leftToLang() as $file => $texts) {
             $this->line(sprintf(
                 '%s %s of %s, so tolk:lang translates %s.',
-                $this->count(count($lang), 'text'),
-                count($lang) === 1 ? 'is a key' : 'are keys',
-                LangFiles::name($target->sourceLang(), LangFiles::JSON),
-                count($lang) === 1 ? 'it' : 'them',
+                $this->count(count($texts), 'text'),
+                count($texts) === 1 ? 'is a key' : 'are keys',
+                $file,
+                count($texts) === 1 ? 'it' : 'them',
+            ));
+        }
+
+        if ($packages !== []) {
+            $this->line(sprintf(
+                '%s %s, which %s: %s.',
+                $this->count(count($packages), 'text'),
+                count($packages) === 1 ? 'is a key of a package' : 'are keys of packages',
+                count($packages) === 1 ? 'translates it' : 'translate them',
+                implode(', ', $packages),
             ));
         }
 
@@ -194,6 +209,36 @@ class FormsCommand extends Command
         $this->newLine();
         $this->line(sprintf('No form uses %s any more: the text was changed or removed. Delete %s from the file once no template uses %s:', $this->count(count($rows), 'key'), count($rows) === 1 ? 'it' : 'them', count($rows) === 1 ? 'it' : 'them'));
         $this->table(['File', 'Unused key'], $rows);
+    }
+
+    /**
+     * The keys that hold a translation this command wrote for a form text that is a translation key now. Laravel finds
+     * them first, so they hide the key's own translation; the command leaves them in the file, like unused keys.
+     *
+     * @param  list<FormsTarget>  $targets
+     */
+    private function hidingKeys(array $targets, StateRepository $state): void
+    {
+        $rows = [];
+
+        foreach ($targets as $target) {
+            $target = $target->fresh();
+            $ref = $target->ref();
+
+            foreach ($ref === null ? [] : $target->hidingKeys($state->get($ref)) as $key) {
+                $rows[] = [$target->name(), $key];
+            }
+        }
+
+        if ($rows === []) {
+            return;
+        }
+
+        $this->newLine();
+        $this->line('<comment>'.(count($rows) === 1
+            ? 'An earlier run wrote 1 key for a form text that is a translation key. Laravel looks in the JSON file first, so it hides the translation of that key. Delete it from the file:'
+            : sprintf('An earlier run wrote %d keys for form texts that are translation keys. Laravel looks in the JSON file first, so they hide the translations of those keys. Delete them from the file:', count($rows))).'</comment>');
+        $this->table(['File', 'Key'], $rows);
     }
 
     private function templateHint(): void

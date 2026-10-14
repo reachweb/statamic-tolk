@@ -81,6 +81,48 @@ it('adds the texts of every form to lang/{lang}.json under their English keys an
         ->and($output)->toContain('{{ display | trans }}, {{ instructions | trans }}, {{ placeholder | trans }}, and {{ label | trans }} for options');
 });
 
+it('leaves the texts that are keys of a PHP translation file to tolk:lang, so the German form keeps their translations', function () {
+    FormFixtures::keys('en', ['Write to us', 'Your full name', 'A new enquiry']);
+    FormFixtures::keys('de', ['Schreiben Sie uns', 'Ihr Name', 'Eine neue Anfrage']);
+    app('translator')->addNamespace('acme', $this->temporaryPath('acme/lang'));
+    FormFixtures::keyed();
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = formsCommand(['sites' => ['de']]);
+    $written = formsJson('de');
+
+    expect($exitCode)->toBe(0)
+        ->and(array_intersect_key($written, array_flip(['forms.contact.title', 'forms.contact.name', 'forms.contact.subject', 'acme::forms.placeholder'])))->toBe([])
+        ->and($written['forms.contact.missing'])->toBe('[T] forms.contact.missing')
+        ->and(formsTranslator('de')->get('forms.contact.name'))->toBe('Ihr Name')
+        ->and(formsTranslator('de')->get('forms.contact.title'))->toBe('Schreiben Sie uns')
+        ->and(formsTranslator('de')->get('forms.contact.subject'))->toBe('Eine neue Anfrage')
+        ->and($output)->toContain('1 text is a key of lang/en.json, so tolk:lang translates it.')
+        ->and($output)->toContain('3 texts are keys of lang/en/forms.php, so tolk:lang translates them.')
+        ->and($output)->toContain('1 text is a key of a package, which translates it: acme::forms.placeholder.')
+        ->and($output)->toContain('lang/de.json: done, created, 17 fields');
+});
+
+it('names the keys an earlier run wrote for texts that are translation keys now, which hide their translations', function () {
+    FormFixtures::keyed();
+    $this->fakeTranslations();
+    formsCommand(['sites' => ['de']]);
+    FormFixtures::keys('en', ['Write to us', 'Your full name', 'A new enquiry']);
+    FormFixtures::keys('de', ['Schreiben Sie uns', 'Ihr Name', 'Eine neue Anfrage']);
+
+    [$exitCode, $output] = formsCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(0)
+        ->and(formsTranslator('de')->get('forms.contact.name'))->toBe('[T] forms.contact.name')
+        ->and($output)->toContain('An earlier run wrote 3 keys for form texts that are translation keys. Laravel looks in the JSON file first, so they hide the translations of those keys. Delete them from the file:')
+        ->and($output)->toMatch('/\| lang\/de\.json +\| forms\.contact\.name +\|/')
+        ->and($output)->not->toContain('No form uses');
+
+    [, $dryRun] = formsCommand(['sites' => ['de'], '--dry-run' => true]);
+
+    expect($dryRun)->toContain('An earlier run wrote 3 keys');
+});
+
 it('sends nothing on a second run', function () {
     $this->fakeTranslations();
     formsCommand(['sites' => ['de']]);
@@ -233,6 +275,20 @@ it('exits 1 when the JSON file cannot be read', function () {
     expect($exitCode)->toBe(1)
         ->and($output)->toContain('The translation file [lang/de.json] could not be read')
         ->and(file_get_contents(lang_path('de.json')))->toBe('{"Your name": ');
+    $this->assertNoModelCalls();
+});
+
+it('exits 1 when a PHP file of the source language that a form text names cannot be read', function () {
+    (new Filesystem)->ensureDirectoryExists(lang_path('en'));
+    file_put_contents(lang_path('en/forms.php'), "<?php\n\nreturn 'forms';\n");
+    FormFixtures::keyed();
+    $this->fakeTranslations();
+
+    [$exitCode, $output] = formsCommand(['sites' => ['de']]);
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toContain('The translation file [lang/en/forms.php] could not be read')
+        ->and(formsJson('de'))->toBeNull();
     $this->assertNoModelCalls();
 });
 

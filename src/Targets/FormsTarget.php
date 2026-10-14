@@ -2,11 +2,13 @@
 
 namespace Reach\StatamicTolk\Targets;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use LogicException;
 use Reach\StatamicTolk\Content\Handlers\LangStringHandler;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Exceptions\InvalidLangFile;
 use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
@@ -21,8 +23,10 @@ use Statamic\Support\Str;
 /**
  * The texts of every form in one language, stored in `lang/{lang}.json` under the source text, as Laravel's JSON
  * convention has it (§A16). Each distinct text is a synthetic `text` field whose handle is the text and whose label is
- * where it is used; a text the source language's JSON file already has is left to the `_json` LangTarget. There is no
- * CP surface, so no user may translate it there. Build it with TargetFactory.
+ * where it is used. A text that is a translation key is no field: Laravel looks in the JSON file first, so an entry
+ * there would hide the key's own translation. A key of the source language's JSON file or of one of its PHP files is
+ * left to that file's LangTarget, a package's key to the package. There is no CP surface, so no user may translate it
+ * there. Build it with TargetFactory.
  */
 final class FormsTarget implements Target
 {
@@ -37,6 +41,12 @@ final class FormsTarget implements Target
     private ?array $texts = null;
 
     private ?Collection $fields = null;
+
+    /** @var ?list<string> */
+    private ?array $groups = null;
+
+    /** @var array<string, array> the source language's PHP files a text names, by group */
+    private array $groupContents = [];
 
     public function __construct(
         private readonly string $lang,
@@ -71,13 +81,34 @@ final class FormsTarget implements Target
     }
 
     /**
-     * The texts left to the `_json` LangTarget, because the source language's JSON file has them as keys.
+     * The texts left to tolk:lang, by the file of the source language that has them as keys: its JSON file, or one of
+     * its PHP files for a key such as `forms.contact.name`.
      *
-     * @return list<string>
+     * @return array<string, list<string>> file name → texts
      */
     public function leftToLang(): array
     {
-        return array_values(array_filter(array_map('strval', array_keys($this->texts())), fn (string $text) => $this->inSourceJson($text)));
+        $files = [];
+
+        foreach (array_map('strval', array_keys($this->texts())) as $text) {
+            if ($this->inSourceJson($text)) {
+                $files[LangFiles::name($this->sourceLang, LangFiles::JSON)][] = $text;
+            } elseif (($group = $this->groupOf($text)) !== null) {
+                $files[LangFiles::name($this->sourceLang, $group)][] = $text;
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * The texts that are keys of a package's translations, such as `acme::forms.name`, which the package translates.
+     *
+     * @return list<string>
+     */
+    public function packageKeys(): array
+    {
+        return array_values(array_filter(array_map('strval', array_keys($this->texts())), fn (string $text) => self::packageKey($text)));
     }
 
     /**
@@ -111,7 +142,22 @@ final class FormsTarget implements Target
     {
         return array_values(array_filter(
             array_map('strval', array_keys($state->fields)),
-            fn (string $key) => ! $this->fields()->has($key) && ! $this->inSourceJson($key) && array_key_exists($key, $this->target()),
+            fn (string $key) => ! $this->fields()->has($key) && ! $this->inSourceJson($key) && ! $this->hides($key) && array_key_exists($key, $this->target()),
+        ));
+    }
+
+    /**
+     * The keys of the target file that hold a translation this target recorded for a text that is a key of a PHP file
+     * of the source language or of a package now, such as a label translated before its key was added to the PHP file.
+     * Laravel looks in the JSON file first, so the entry hides the key's own translation.
+     *
+     * @return list<string>
+     */
+    public function hidingKeys(ItemState $state): array
+    {
+        return array_values(array_filter(
+            array_map('strval', array_keys($state->fields)),
+            fn (string $key) => $this->hides($key) && array_key_exists($key, $this->target()),
         ));
     }
 
@@ -150,7 +196,7 @@ final class FormsTarget implements Target
     public function fields(): Collection
     {
         return $this->fields ??= collect($this->texts())
-            ->reject(fn (array $text, string $handle) => $this->inSourceJson($handle))
+            ->reject(fn (array $text, string $handle) => $this->inSourceJson($handle) || $this->hides($handle))
             ->mapWithKeys(fn (array $text, string $handle) => [$handle => new Field($handle, [
                 'type' => self::FIELDTYPE,
                 'display' => count($text['places']) === 1 ? $text['places'][0] : sprintf('%s (used in %d places)', $text['places'][0], count($text['places'])),
@@ -327,5 +373,43 @@ final class FormsTarget implements Target
     private function inSourceJson(string $text): bool
     {
         return array_key_exists($text, $this->source());
+    }
+
+    // A key Laravel finds in a PHP file of the source language or in a package's translations, after the JSON file.
+    private function hides(string $text): bool
+    {
+        return self::packageKey($text) || $this->groupOf($text) !== null;
+    }
+
+    /**
+     * The PHP file of the source language that has the text as a key, as Laravel's translator reads `group.key`: the
+     * group is a file tolk:lang translates, and its line, or its lines, under `key` resolve.
+     *
+     * @throws InvalidLangFile for a file the text names that cannot be read
+     */
+    private function groupOf(string $text): ?string
+    {
+        if (str_contains($text, '::') || ! str_contains($text, '.')) {
+            return null;
+        }
+
+        [$group, $item] = explode('.', $text, 2);
+
+        if ($group === LangFiles::JSON || ! in_array($group, $this->groups ??= $this->files->groups($this->sourceLang), true)) {
+            return null;
+        }
+
+        $line = Arr::get($this->groupContents[$group] ??= $this->files->contents($this->sourceLang, $group), $item);
+
+        return is_string($line) || (is_array($line) && $line !== []) ? $group : null;
+    }
+
+    // `namespace::group.key`, whose namespace the translator has files for: Laravel reads it from the package's files,
+    // in every language, and from `lang/vendor/`.
+    private static function packageKey(string $text): bool
+    {
+        $namespace = strstr($text, '::', true);
+
+        return $namespace !== false && array_key_exists($namespace, app('translator')->getLoader()->namespaces());
     }
 }
