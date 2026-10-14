@@ -234,6 +234,27 @@ describe('translate', function () {
             ->and($engine->segmentIds())->toBe([['s1'], ['s2']]);
     });
 
+    it('starts no claim or unit once the caller says to stop, as a worker whose command has ended does', function () {
+        config(['tolk.batch.max_chars.web' => 10]);
+        $stop = false;
+        $engine = ScriptedEngine::bind(function (EngineCall $call) use (&$stop) {
+            $stop = true;
+
+            return ScriptedEngine::translated($call);
+        });
+        $run = RunFixtures::started();
+
+        $report = app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300, proceed: function () use (&$stop) {
+            return ! $stop;
+        });
+
+        expect($report->toArray())->toBe(['units' => 1, 'items' => 0, 'remains' => true, 'wait' => 0])
+            ->and(RunFixtures::statuses($run))->toBe(['translating', 'pending', 'pending'])
+            ->and($engine->segmentIds())->toBe([['s1']])
+            ->and(app(RunProcessor::class)->translate($run, 'lane-1', CarbonImmutable::now()->addSeconds(30), 300, proceed: fn () => false)->units)->toBe(0)
+            ->and($engine->segmentIds())->toBe([['s1']]);
+    });
+
     it('starts no unit once the deadline has passed', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started();

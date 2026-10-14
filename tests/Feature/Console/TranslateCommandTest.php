@@ -29,6 +29,7 @@ use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Tests\Support\CliRun;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
@@ -36,6 +37,7 @@ use Reach\StatamicTolk\Tests\Support\TerminalTranslate;
 use Statamic\Facades\Blink;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Site;
 use Statamic\Facades\Term;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Process\InputStream;
@@ -1082,7 +1084,7 @@ describe('the run engine', function () {
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello');
 
         foreach ([1, 2, 3] as $lane) {
-            Process::assertRan(fn (PendingProcess $process) => $process->command === [PHP_BINARY, $please, 'tolk:work', $run->id, "--lane={$lane}"]
+            Process::assertRan(fn (PendingProcess $process) => $process->command === [PHP_BINARY, $please, 'tolk:work', $run->id, "--lane={$lane}", '--parent='.getmypid()]
                 && $process->path === base_path()
                 && $process->timeout === null);
         }
@@ -1393,7 +1395,101 @@ describe('the run engine', function () {
             ->and($output)->toContain("\n  ".cp_route('tolk.runs.show', $run->id)."\n")
             ->and($output)->not->toContain('Run the command again');
     });
+
+    it('cancels the run when this process ends with a fatal error, which skips its catch and finally blocks', function () {
+        $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+
+        foreach (range(1, 2) as $n) {
+            $this->makeEntry('pages', 'en', ['title' => "Page {$n}"], "page-{$n}");
+        }
+
+        $directory = $this->temporaryPath();
+        $command = startCliRun($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 1], 'fatal' => true]);
+        $command->wait();
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($command->getExitCode())->toBe(255, $command->getOutput().$command->getErrorOutput())
+            ->and($command->getOutput().$command->getErrorOutput())->toContain('Allowed memory size')
+            ->and($run->status)->toBe(RunStatus::Cancelled)
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'pending']);
+    })->group('slow');
+
+    it('has its workers cancel the run and stop when this process is killed', function () {
+        if (! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the posix extension.');
+        }
+
+        $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+
+        foreach (range(1, 12) as $n) {
+            $this->makeEntry('pages', 'en', ['title' => "Page {$n}"], "page-{$n}");
+        }
+
+        $directory = $this->temporaryPath();
+        $command = startCliRun($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 2], 'delay_ms' => 500]);
+
+        try {
+            // kill -9 once a worker calls the model, as the out-of-memory killer ends the command.
+            for ($deadline = microtime(true) + 60; cliRunCalls($directory) === []; usleep(20_000)) {
+                expect($command->isRunning() && microtime(true) < $deadline)->toBeTrue("The workers did not start:\n{$command->getOutput()}{$command->getErrorOutput()}");
+            }
+
+            $command->signal(SIGKILL);
+            $command->wait();
+
+            for ($deadline = microtime(true) + 60; ! is_file("{$directory}/ended/worker-1") || ! is_file("{$directory}/ended/worker-2"); usleep(50_000)) {
+                expect(microtime(true) < $deadline)->toBeTrue('The workers did not stop.');
+            }
+        } finally {
+            foreach (glob("{$directory}/pids/worker-*") as $pid) {
+                @posix_kill((int) file_get_contents($pid), SIGKILL);
+            }
+        }
+
+        // Before, the workers translated all 12 pages for nobody, and the run stayed running.
+        $run = app(RunRepository::class)->recent(1)[0];
+        $calls = cliRunCalls($directory);
+        expect($run->status)->toBe(RunStatus::Cancelled)
+            ->and(file_get_contents("{$directory}/ended/worker-1"))->toBe('0')
+            ->and(file_get_contents("{$directory}/ended/worker-2"))->toBe('0')
+            ->and(array_keys($calls))->not->toContain('command')
+            ->and(array_sum($calls))->toBeLessThan(8)
+            ->and(array_count_values(RunFixtures::statuses($run))['pending'] ?? 0)->toBeGreaterThan(4);
+    })->group('slow');
 });
+
+/**
+ * Starts tolk:translate in a process of its own (CliRun) with the job's options, model delay and fatal error.
+ *
+ * @param  array{options: array<string, mixed>, delay_ms?: int, fatal?: bool}  $job
+ */
+function startCliRun(string $directory, array $job): SymfonyProcess
+{
+    File::ensureDirectoryExists($directory);
+    File::put("{$directory}/cli-run.json", json_encode([
+        'directory' => $directory,
+        'cache' => config('cache.stores.tolk-test-file.path'),
+        'sites' => Site::config(),
+        'delay_ms' => 0,
+        'fatal' => false,
+        ...$job,
+    ], JSON_THROW_ON_ERROR));
+
+    $command = new SymfonyProcess([PHP_BINARY, '-d', 'display_errors=stderr', CliRun::SCRIPT, $directory, 'command'], env: ['TEST_TOKEN' => false], timeout: 120);
+    $command->start();
+
+    return $command;
+}
+
+/**
+ * The model calls CliRun's processes made, by role.
+ *
+ * @return array<string, int>
+ */
+function cliRunCalls(string $directory): array
+{
+    return array_count_values(is_file("{$directory}/calls.log") ? file("{$directory}/calls.log", FILE_IGNORE_NEW_LINES) : []);
+}
 
 /**
  * Runs the callback with Laravel's signal traps on, which it turns off under tests, so the test can send itself one.

@@ -6,10 +6,12 @@ use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Ai\EngineCall;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
+use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
+use Symfony\Component\Process\Process as SymfonyProcess;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -103,7 +105,55 @@ it('ends quietly when the run is deleted while it works', function () {
         ->and(app(RunRepository::class)->find($run->id))->toBeNull();
 });
 
-it('refuses an unknown run and an invalid lane', function (Closure $arguments, string $message) {
+it('cancels the run and stops before its next unit when the command that started it has ended without cancelling it', function () {
+    if (! function_exists('posix_kill')) {
+        $this->markTestSkipped('Needs the posix extension.');
+    }
+
+    // Stands in for tolk:translate; it is not this process's parent, so the worker checks that the process exists.
+    $command = new SymfonyProcess([PHP_BINARY, '-r', 'sleep(60);']);
+    $command->start();
+    $run = RunFixtures::started(['driver' => RunDriver::Cli]);
+    $engine = ScriptedEngine::bind(function (EngineCall $call) use ($command) {
+        // kill -9 while the worker waits for the model, as the out-of-memory killer ends the command.
+        $command->signal(SIGKILL);
+        $command->wait();
+
+        return ScriptedEngine::translated($call);
+    });
+
+    try {
+        [$exitCode] = workCommand(['run' => $run->id, '--parent' => $command->getPid()]);
+    } finally {
+        $command->stop(0);
+    }
+
+    expect($exitCode)->toBe(0)
+        ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Cancelled)
+        ->and(RunFixtures::statuses($run))->toBe(['translated', 'pending'])
+        ->and($engine->calls)->toHaveCount(1);
+});
+
+it('keeps working while the command that started it runs', function (Closure $parent) {
+    if (! function_exists('posix_getppid')) {
+        $this->markTestSkipped('Needs the posix extension.');
+    }
+
+    $this->fakeTranslations();
+    $run = RunFixtures::started(['driver' => RunDriver::Cli]);
+
+    [$exitCode] = workCommand(['run' => $run->id, '--parent' => $parent()]);
+
+    expect($exitCode)->toBe(0)
+        ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Running)
+        ->and(RunFixtures::statuses($run))->toBe(['translated', 'translated']);
+})->with([
+    'its parent' => [fn () => posix_getppid()],
+    // Started through a shell, as Symfony's Process does on PHP built with --enable-sigchild.
+    'another process' => [fn () => getmypid()],
+]);
+
+it('refuses an unknown run, an invalid lane and an invalid parent', function (Closure $arguments, string $message) {
     $this->fakeTranslations();
     $run = RunFixtures::started(['driver' => RunDriver::Cli]);
 
@@ -117,6 +167,8 @@ it('refuses an unknown run and an invalid lane', function (Closure $arguments, s
     'unknown run' => [fn () => ['run' => 'missing'], 'Run [missing] not found.'],
     'lane 0' => [fn ($run) => ['run' => $run->id, '--lane' => '0'], 'Invalid lane [0]. Use a whole number of at least 1.'],
     'lane x' => [fn ($run) => ['run' => $run->id, '--lane' => 'x'], 'Invalid lane [x].'],
+    'parent 0' => [fn ($run) => ['run' => $run->id, '--parent' => '0'], 'Invalid parent [0]. Use the process id of the command that starts the worker.'],
+    'parent x' => [fn ($run) => ['run' => $run->id, '--parent' => 'x'], 'Invalid parent [x].'],
 ]);
 
 it('is hidden from the command list', function () {

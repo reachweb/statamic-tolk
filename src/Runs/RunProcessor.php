@@ -256,16 +256,19 @@ final readonly class RunProcessor
      * provider timeout after the deadline. An item whose plan is finished is `translated`. The loop stops when nothing
      * can be claimed, after a transient provider failure, when the run stops running, once $maxItems items finished
      * translating, so a caller that also applies can save each item before it translates the next, and once it ran
-     * $maxUnits units, so a web request makes at most one provider call (D24). Items with nothing to translate cost no
-     * unit and are worked through until the deadline.
+     * $maxUnits units, so a web request makes at most one provider call (D24), and once $proceed returns false, which it
+     * is asked before each claim and each unit (a `tolk:work` whose command has ended). Items with nothing to translate
+     * cost no unit and are worked through until the deadline.
+     *
+     * @param  ?Closure(): bool  $proceed
      */
-    public function translate(Run $run, string $workerId, CarbonInterface $deadline, int $claimTtl, ?int $maxItems = null, ?int $maxUnits = null): WorkReport
+    public function translate(Run $run, string $workerId, CarbonInterface $deadline, int $claimTtl, ?int $maxItems = null, ?int $maxUnits = null, ?Closure $proceed = null): WorkReport
     {
         $units = $items = 0;
         $wait = null;
         $options = null;
-        $mayStartUnit = function () use ($deadline, $maxUnits, &$units): bool {
-            return CarbonImmutable::now()->lessThan($deadline) && ($maxUnits === null || $units < $maxUnits);
+        $mayStartUnit = function () use ($deadline, $maxUnits, $proceed, &$units): bool {
+            return CarbonImmutable::now()->lessThan($deadline) && ($maxUnits === null || $units < $maxUnits) && ($proceed === null || $proceed());
         };
 
         // claimNext() refreshes the run and hands out nothing while it is not running, so a cancel or an abort ends the loop.
@@ -490,7 +493,7 @@ final readonly class RunProcessor
     }
 
     /**
-     * @param  Closure(): bool  $mayStartUnit  false once the deadline passed or the call ran its units
+     * @param  Closure(): bool  $mayStartUnit  false once the deadline passed, the call ran its units or the caller stops it
      * @return ?int as work()
      */
     private function translateItem(Run $run, RunItem $item, PlanOptions $options, Closure $mayStartUnit, int &$units, int &$items): ?int

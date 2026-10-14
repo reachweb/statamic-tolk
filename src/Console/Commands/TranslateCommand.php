@@ -74,6 +74,11 @@ class TranslateCommand extends Command
     public const int ESTIMATE_BUDGET_MS = 250;
 
     /**
+     * Bytes above what the process uses that the shutdown function after a fatal error may use to cancel the run.
+     */
+    public const int SHUTDOWN_MEMORY = 32 * 1024 * 1024;
+
+    /**
      * The worker id of this process when it translates; the workers are `cli-1` and up (`tolk:work --lane`).
      */
     public const string WORKER = 'cli-0';
@@ -283,10 +288,25 @@ class TranslateCommand extends Command
      * Applies translated items in this process while the workers translate, until the run ends, and shows the progress.
      * When no worker runs (none could be started, or they ended while the apply sent items back), this process
      * translates too, one item at a time. If this process fails, the run is cancelled, so the workers stop and the run
-     * can be resumed.
+     * can be resumed: an exception cancels it in the catch block, a fatal error (memory_limit), which skips the catch and
+     * finally blocks, in a shutdown function, and when this process is killed the workers cancel it (`tolk:work --parent`).
      */
     private function drive(Run $run, int $concurrency): Run
     {
+        $cancel = fn () => $this->processor->cancel($run);
+
+        // Holds $cancel by reference, so the command and its application are freed once the finally block below drops it.
+        register_shutdown_function(static function () use (&$cancel) {
+            if ($cancel !== null) {
+                // After memory_limit ended the process, the cancel needs memory of its own.
+                if (str_starts_with(error_get_last()['message'] ?? '', 'Allowed memory size')) {
+                    ini_set('memory_limit', (string) (memory_get_usage(true) + self::SHUTDOWN_MEMORY));
+                }
+
+                rescue($cancel, report: false);
+            }
+        });
+
         $workers = $concurrency > 1 ? $this->startWorkers($run, $concurrency) : [];
         $ttl = max(1, (int) config('tolk.runs.claim_ttl'));
 
@@ -325,10 +345,11 @@ class TranslateCommand extends Command
                 $this->processor->cancel($run);
             }
         } catch (Throwable $exception) {
-            rescue(fn () => $this->processor->cancel($run), report: false);
+            rescue($cancel, report: false);
 
             throw $exception;
         } finally {
+            $cancel = null;
             $this->waitFor($workers);
         }
 
@@ -357,7 +378,7 @@ class TranslateCommand extends Command
         try {
             foreach (range(1, $count) as $lane) {
                 $workers[$lane] = Process::path(base_path())->forever()->quietly()
-                    ->start([PHP_BINARY, $please, 'tolk:work', $run->id, "--lane={$lane}"]);
+                    ->start([PHP_BINARY, $please, 'tolk:work', $run->id, "--lane={$lane}", '--parent='.getmypid()]);
             }
         } catch (Throwable $exception) {
             report($exception);

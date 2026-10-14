@@ -112,6 +112,7 @@ The command creates a run, like the CP's runs, and drives it itself. It starts `
 The run is listed on the CP's Runs page with its progress.
 
 - **Ctrl-C** at the question translates nothing and keeps no run. During the run it cancels the run after the current requests: the workers stop before their next request, and everything saved stays saved. A second Ctrl-C stops the workers at once. The cancelled run can be resumed on its run page, which saves the items already translated and translates the rest. The command counts the targets translated but not saved: resume the run within `plan_ttl` (2 hours) to save them without paying for them again, since running the command again, or resuming later, translates them anew.
+- **A crash** of the command does not leave its workers translating for nobody. A fatal error, such as `memory_limit`, cancels the run as the command ends, unless it leaves PHP too little memory to do so. When the command is killed on its own (`kill -9`, the out-of-memory killer), or the fatal error could not cancel the run, its workers cancel it before their next request (with PHP's posix extension, which Windows lacks). Resume the cancelled run on its run page, as after Ctrl-C. A run nothing cancelled reads ["This run is not moving"](troubleshooting.md#this-run-is-not-moving) after `runs.claim_ttl` (5 minutes).
 - **`--queue`** creates a queue run, starts its lane jobs and prints the run page's address; the command then ends and a queue worker does the work. It is refused on a connection without a worker, such as `sync`; use `--concurrency` there.
 
 ### Exit codes
@@ -385,3 +386,4 @@ A worker process that `tolk:translate` and `tolk:site` start, as many as their c
 | --- | --- |
 | `run` | The id of the run. |
 | `--lane=` | The lane of this worker, which gives its worker id (`cli-1`, `cli-2`, …). Default: 1. |
+| `--parent=` | The process id of the command that started the worker. When that process ends before the worker, the worker cancels the run before its next request and stops. Needs PHP's posix extension, which Windows lacks. |
