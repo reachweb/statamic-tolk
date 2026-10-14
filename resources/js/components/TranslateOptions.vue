@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { Button, Checkbox, Combobox, Description, Field, Heading, Label, Modal, Switch, Text } from '@statamic/cms/ui';
 import { isTermReference } from '../editor/banner.js';
 import { offersEnabled } from '../editor/offer.js';
-import { initialModel, modelOptions, options, rememberedModel, REVIEWER_PREFERENCE, stateActions } from '../editor/options.js';
+import { initialModel, modelOptions, options, pickedModel, rememberedModel, REVIEWER_PREFERENCE, stateActions } from '../editor/options.js';
 import { useEditorStore } from '../editor/store.js';
 import { reviewable } from '../editor/translate.js';
 import { createModal } from '../modal.js';
@@ -136,23 +136,25 @@ async function toggleOffers(enabled) {
                     <Field id="tolk-options-model" :label="__('Model')">
                         <Combobox
                             id="tolk-options-model"
-                            v-model="model"
+                            :model-value="model"
                             :options="choices"
                             :taggable="mayType"
                             :disabled="loading"
                             :placeholder="loading ? __('Loading…') : __('Choose a model')"
                             data-tolk-options-model
+                            @update:model-value="model = pickedModel($event, choices, model)"
                         />
                     </Field>
                     <Field id="tolk-options-reviewer" :label="__('Reviewer')" data-tolk-options-review>
                         <Combobox
                             id="tolk-options-reviewer"
-                            v-model="reviewer"
+                            :model-value="reviewer"
                             :options="reviewerChoices"
                             :taggable="mayType"
                             :disabled="loading || !reviewerUsed"
                             :placeholder="loading ? __('Loading…') : __('Choose a model')"
                             data-tolk-options-reviewer
+                            @update:model-value="reviewer = pickedModel($event, reviewerChoices, reviewer)"
                         />
                     </Field>
                 </div>

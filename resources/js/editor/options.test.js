@@ -9,6 +9,7 @@ import {
     initialModel,
     modelOptions,
     optionsRequest,
+    pickedModel,
     rememberedModel,
     REVIEWER_PREFERENCE,
     reviewRequest,
@@ -172,12 +173,37 @@ describe('initialModel', () => {
     });
 });
 
+describe('pickedModel', () => {
+    const options = modelOptions(catalog());
+
+    it('picks a model of the list, or one typed as provider:model', () => {
+        expect(pickedModel('anthropic:claude-haiku-5-5', options, 'anthropic:claude-sonnet-5-5')).toBe('anthropic:claude-haiku-5-5');
+        expect(pickedModel('openai:gpt-custom', options, 'anthropic:claude-sonnet-5-5')).toBe('openai:gpt-custom');
+        expect(pickedModel(' openai:gpt-custom ', options, 'anthropic:claude-sonnet-5-5')).toBe('openai:gpt-custom');
+    });
+
+    // Core's taggable select commits the text typed to search its list when it loses focus.
+    it('keeps the model for text that searches the list', () => {
+        for (const text of ['son', 'Claude Haiku 5.5', 'openai: gpt', ':gpt', '', '   ', null, undefined]) {
+            expect(pickedModel(text, options, 'anthropic:claude-sonnet-5-5')).toBe('anthropic:claude-sonnet-5-5');
+        }
+    });
+});
+
 describe('rememberedModel', () => {
     it('reads the preference, treating null and an empty string as none', () => {
         expect(rememberedModel(preferences)).toBeNull();
         expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: 'gemini:gemini-3.8-flash' }))).toBe('gemini:gemini-3.8-flash');
         expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: null }))).toBeNull();
         expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: '' }))).toBeNull();
+    });
+
+    // Search text a select stored before it was kept from doing so: not preselected, and not offered as a model.
+    it('ignores a stored value that does not name a model', () => {
+        expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: 'son' }))).toBeNull();
+        expect(rememberedModel(fakePreferences({ [REVIEWER_PREFERENCE]: 'Claude Haiku 5.5' }), REVIEWER_PREFERENCE)).toBeNull();
+        expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: 42 }))).toBeNull();
+        expect(rememberedModel(fakePreferences({ [TRANSLATOR_PREFERENCE]: 'openai:gpt-custom' }))).toBe('openai:gpt-custom');
     });
 
     it('reads the reviewer from its own preference', () => {
@@ -334,6 +360,23 @@ describe('translate', () => {
         preferences.set.mockClear();
         created.translate('base', { model: 'anthropic:claude-sonnet-5-5', defaultModel: 'anthropic:claude-sonnet-5-5' });
         expect(preferences.set).not.toHaveBeenCalled();
+    });
+
+    it('replaces a stored value that does not name a model when the default is chosen', async () => {
+        preferences = fakePreferences({ [TRANSLATOR_PREFERENCE]: 'son', [REVIEWER_PREFERENCE]: 'hai' });
+        mount();
+        create().translate('base', {
+            model: 'anthropic:claude-sonnet-5-5',
+            defaultModel: 'anthropic:claude-sonnet-5-5',
+            review: true,
+            reviewer: 'openai:gpt-6.1-sol',
+            defaultReviewer: 'openai:gpt-6.1-sol',
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(translations.translate.mock.calls[0][1]).toMatchObject({ translator: null, reviewer: null });
+        expect(preferences.values).toEqual({ [TRANSLATOR_PREFERENCE]: null, [REVIEWER_PREFERENCE]: null });
     });
 
     it('reviews after translating with the chosen reviewer, and remembers it', () => {

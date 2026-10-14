@@ -63,7 +63,7 @@ Terms have no offer, because a term exists in every site of its taxonomy and the
 
 **Options** in the banner opens the translation options:
 
-- **Model**: the model to translate with. The menu remembers your choice for your user and preselects it the next time; the banner's Translate and Update and the offer always use the model of the settings. Choosing the default model forgets your choice. Users who may edit Tolk's settings may also type a model outside the list, as `provider:model`.
+- **Model**: the model to translate with. The menu remembers your choice for your user and preselects it the next time; the banner's Translate and Update and the offer always use the model of the settings. Choosing the default model forgets your choice. Users who may edit Tolk's settings may also type a model outside the list, as `provider:model`; other text only searches the list and leaves the model as it was.
 - **Retranslate everything**: translates every field again, the up-to-date ones too. Without it, the menu's Translate fills untranslated fields and updates outdated ones, as Update does.
 - **Overwrite manual edits**: also replaces the fields edited by hand. They count as machine-translated afterwards.
 - **Review after translating** and **Reviewer**: review this translation with a second model, whatever the setting says, and with which model (see [Review](review.md)). The reviewer can be chosen while **Review after translating** is checked, or while the form holds translations that **Review** can check: machine translations, and with **Overwrite manual edits** checked also fields edited by hand. The reviewer shown is the one that reviews, also when you choose another **Model**: the one marked "(default)" is the reviewer the settings give their own model.

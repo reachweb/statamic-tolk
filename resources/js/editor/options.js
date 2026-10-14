@@ -1,5 +1,6 @@
 import * as defaultApi from '../api.js';
 import { asMap } from '../api.js';
+import { isReference } from '../fieldtypes/modelSelect.js';
 import { OFFER_PREFERENCE, savePreference } from './offer.js';
 import { registry as sharedRegistry } from './registry.js';
 import { useEditorStore } from './store.js';
@@ -9,10 +10,18 @@ import { BUSY, translations as sharedTranslations } from './translate.js';
 export const TRANSLATOR_PREFERENCE = 'tolk.editor.translator';
 export const REVIEWER_PREFERENCE = 'tolk.editor.reviewer';
 
-export function rememberedModel(preferences = Statamic.$preferences, key = TRANSLATOR_PREFERENCE) {
+function storedModel(preferences, key) {
     const value = preferences.get(key, null);
 
     return typeof value === 'string' && value !== '' ? value : null;
+}
+
+// The remembered model, or null for none and for a stored value that names no model (search text a select stored
+// before `pickedModel()` kept it from doing so).
+export function rememberedModel(preferences = Statamic.$preferences, key = TRANSLATOR_PREFERENCE) {
+    const value = storedModel(preferences, key);
+
+    return value !== null && isReference(value) ? value : null;
 }
 
 // The models the select offers, in catalog order: those of configured providers, or all of them while the fake engine
@@ -33,6 +42,19 @@ export function modelOptions(catalog, { fakeEngine = false, defaultModel = null,
     }
 
     return options;
+}
+
+// The model a select keeps for what it commits: a model it offers, or text typed as provider:model. Core's taggable
+// Combobox also commits text typed only to search its list, when the input loses focus or on Enter; the model then
+// stays as it was, as in the settings' model fields.
+export function pickedModel(choice, options, current) {
+    if (options.some((option) => option.value === choice)) {
+        return choice;
+    }
+
+    const text = typeof choice === 'string' ? choice.trim() : '';
+
+    return isReference(text) ? text : current;
 }
 
 // The remembered model while the select still offers it, else the default, else the first model.
@@ -128,9 +150,9 @@ export function createOptions({
         return models;
     }
 
-    // Stores a model choice only when it changed; the default is stored as null.
+    // Stores a model choice only when it changed; the default is stored as null, also over a value that names no model.
     function remember(key, model) {
-        if (model !== rememberedModel(preferences(), key)) {
+        if (model !== storedModel(preferences(), key)) {
             savePreference(key, model, { preferences, toast });
         }
     }
