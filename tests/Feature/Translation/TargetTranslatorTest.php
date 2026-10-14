@@ -29,6 +29,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetResult;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Actions\DuplicateEntry;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
@@ -185,6 +186,31 @@ describe('translating a target', function () {
             ->and($result->created)->toBeFalse()
             ->and($result->fields)->toBe(['title' => 'current', 'intro' => 'applied', 'body' => 'current'])
             ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('[T] A longer intro.')
+            ->and(StateFixtures::statuses($this->origin))->each->toBe(FieldStatus::Current);
+    });
+
+    it('updates the translations of a duplicated entry whose origin was rewritten, and its duplicated title', function () {
+        $this->signInAdmin();
+        $sent = [];
+        $this->fakeTranslations(function (string $text) use (&$sent) {
+            $sent[] = $text;
+
+            return '[T] '.$text;
+        });
+        translateTarget($this->origin);
+        (new DuplicateEntry)->run(collect([$this->origin]), []);
+        $copy = Entry::all()->first(fn (EntryContract $entry) => $entry->get('duplicated_from') === $this->origin->id());
+        $sent = [];
+
+        $copy->set('intro', 'A new intro.')->save();
+        $result = translateTarget($copy, options: translatorOptions(['mode' => 'update']));
+
+        expect($sent)->toEqualCanonicalizing(['Hello (Duplicated)', 'A new intro.'])
+            ->and($result->fields)->toBe(['title' => 'applied', 'intro' => 'applied', 'body' => 'current'])
+            ->and($copy->fresh()->in('el')->get('title'))->toBe('[T] Hello (Duplicated)')
+            ->and($copy->fresh()->in('el')->get('intro'))->toBe('[T] A new intro.')
+            ->and(StateFixtures::statuses($copy))->each->toBe(FieldStatus::Current)
+            ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('[T] A short intro.')
             ->and(StateFixtures::statuses($this->origin))->each->toBe(FieldStatus::Current);
     });
 

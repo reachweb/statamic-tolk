@@ -72,6 +72,12 @@ On a collection with revisions, the changes to a published entry wait in its wor
 
 So a site translated from a localization (`de_CH` from `de`) follows an update of `de` only once `de` is published. See [Bulk translations and runs](bulk-and-runs.md#revisions).
 
+### Duplicated entries
+
+Statamic's **Duplicate** action copies an entry with its localizations, translations included. Tolk gives each copied localization the records of the localization it was copied from, so its fields keep their statuses and follow the copy's own origin from then on: rewrite the copy's origin, and Update translates the copy again. Statamic adds "(Duplicated)" to each copy's title, so a machine-translated title reads outdated, and Update translates the new title. A field edited by hand stays edited by hand.
+
+A copy made another way (files copied, an import) has no records: its translations read edited by hand and untracked. Translate it again with **Overwrite manual edits**, or record them with `tolk:baseline` ([Baselines](#baselines)).
+
 ### Saving without changes
 
 Opening a localization and saving it without editing a text changes no status, as long as nothing saved the localization while its form was open. A form saves what it was opened with: when a run or an automatic update translated the localization in the meantime, the save puts the earlier text back. A field it inherited before then reads untranslated, and a field whose earlier translation came back reads outdated ([Forms opened before a run](editor.md#forms-opened-before-a-run)).

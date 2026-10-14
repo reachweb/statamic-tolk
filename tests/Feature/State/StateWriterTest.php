@@ -7,6 +7,8 @@ use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Enums\ItemStatus;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Listeners\MoveStateOfRenamedTerms;
 use Reach\StatamicTolk\State\ConfirmReport;
 use Reach\StatamicTolk\State\FieldState;
@@ -20,6 +22,7 @@ use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Statamic\Actions\DuplicateEntry;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\TermSaved;
 use Statamic\Facades\Entry;
@@ -74,6 +77,16 @@ function stateReferences(): array
 function switchGitOn(): void
 {
     config(['statamic.git.enabled' => true, 'statamic.git.automatic' => true]);
+}
+
+/**
+ * Core's Duplicate action on the entry, as a signed-in user runs it from a listing; returns the copy of the entry.
+ */
+function duplicated(EntryContract $entry): EntryContract
+{
+    (new DuplicateEntry)->run(collect([$entry]), []);
+
+    return Entry::all()->first(fn (EntryContract $copy) => $copy->get('duplicated_from') === $entry->id());
 }
 
 describe('recordPending', function () {
@@ -988,5 +1001,96 @@ describe('renamed terms', function () {
 
         expect($withoutState)->not->toContain(StateWriter::COMMIT_MESSAGE)
             ->and(array_values(array_filter($messages, fn (?string $message) => $message === StateWriter::COMMIT_MESSAGE)))->toBe([StateWriter::COMMIT_MESSAGE]);
+    });
+});
+
+describe('duplicated entries', function () {
+    beforeEach(function () {
+        $this->signInAdmin();
+    });
+
+    it('gives the localizations of a duplicated entry the records of their originals, so their translations stay tracked and the changed title reads outdated', function () {
+        $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Μια σύντομη εισαγωγή.']);
+        $german = $this->localize($this->origin, 'de', ['intro' => 'Eine kurze Einleitung.']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια'), 'intro' => StateFixtures::machine('A short intro.', 'Μια σύντομη εισαγωγή.')]);
+        StateFixtures::store($german, ['intro' => StateFixtures::machine('A short intro.', 'Eine kurze Einleitung.')]);
+
+        $copy = duplicated($this->origin);
+
+        expect($copy->in('el')->get('title'))->toBe('Γεια (Duplicated)')
+            ->and(StateFixtures::statuses($copy))->toMatchArray(['title' => FieldStatus::Outdated, 'intro' => FieldStatus::Current])
+            ->and(writerStatus($copy)->itemStatus)->toBe(ItemStatus::Outdated)
+            ->and(StateFixtures::statuses($copy, 'de'))->toMatchArray(['title' => FieldStatus::Untranslated, 'intro' => FieldStatus::Current])
+            ->and(StateFixtures::statuses($this->origin))->toMatchArray(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+
+        $copy->set('intro', 'A new intro.')->save();
+
+        expect(StateFixtures::statuses($copy)['intro'])->toBe(FieldStatus::Outdated)
+            ->and(StateFixtures::statuses($copy, 'de')['intro'])->toBe(FieldStatus::Outdated);
+    });
+
+    it('copies each record as the original reads it, without pending entries, and keeps a field edited by hand edited by hand', function () {
+        $this->origin->set('body', 'Body.')->save();
+        $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Η δική μου εισαγωγή.', 'body' => 'Σώμα.']);
+        $german = $this->localize($this->origin, 'de', ['title' => 'Hallo Welt']);
+        StateFixtures::store($german, ['title' => new FieldState(sourceHash: Fingerprint::of('Hello'))]);
+        StateFixtures::store($greek, [
+            'title' => StateFixtures::machine('Hello', 'Γεια')->withPending(StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])])),
+            'intro' => new FieldState(sourceHash: Fingerprint::of('A short intro.'), translator: 'anthropic:claude-sonnet-5-5'),
+            'body' => (new FieldState)->withPending(StateFixtures::pending('Body.', 'Σώμα.')),
+        ]);
+
+        $copy = duplicated($this->origin);
+        $stored = storedState($copy->in('el'));
+
+        expect(StateFixtures::statuses($copy))->toMatchArray(['title' => FieldStatus::Outdated, 'intro' => FieldStatus::Manual, 'body' => FieldStatus::Current])
+            ->and(writerStatus($copy)->fields['intro']->sourceChanged)->toBeFalse()
+            ->and($stored->hasPending())->toBeFalse()
+            ->and($stored->sourceSite)->toBe('en')
+            ->and($stored->collection)->toBe('articles')
+            ->and($stored->site)->toBe('el')
+            ->and($stored->field('intro'))->toEqual(new FieldState(sourceHash: Fingerprint::of('A short intro.'), translator: 'anthropic:claude-sonnet-5-5'))
+            ->and($stored->field('body')->targetHash)->toBe(Fingerprint::ofLeaves(['Σώμα.']))
+            ->and($stored->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['Γεια']))
+            ->and($stored->field('title')->history)->toBe([['source_hash' => Fingerprint::of('Hello'), 'target_hash' => Fingerprint::ofLeaves(['Γεια (Duplicated)'])]])
+            ->and(storedState($greek)->hasPending())->toBeTrue()
+            ->and(StateFixtures::statuses($copy, 'de')['title'])->toBe(FieldStatus::Manual)
+            ->and(writerStatus($copy, 'de')->fields['title']->sourceChanged)->toBeTrue();
+    });
+
+    it('writes the state before core commits the copy, so its commit takes the state along', function () {
+        $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        switchGitOn();
+        $commits = [];
+        Git::shouldReceive('as')->andReturnSelf();
+        Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use (&$commits) {
+            $commits[] = [$message, count(iterator_to_array(app(StateRepository::class)->references(), false))];
+        });
+
+        duplicated($this->origin);
+
+        expect($commits)->toBe([['Entry saved', 1], ['Entry saved', 2]]);
+    });
+
+    it('writes no state for a duplicate whose originals have none', function () {
+        $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+
+        duplicated($this->origin);
+
+        expect(iterator_to_array(app(StateRepository::class)->references(), false))->toBe([]);
+    });
+
+    it('reports a state it cannot read and still duplicates the entry', function () {
+        $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        StateFixtures::conflict($greek);
+        Exceptions::fake();
+
+        $copy = duplicated($this->origin);
+
+        expect($copy->in('el')?->get('title'))->toBe('Γεια (Duplicated)')
+            ->and(storedState($copy->in('el'))->isEmpty())->toBeTrue();
+        Exceptions::assertReported(UnreadableState::class);
     });
 });

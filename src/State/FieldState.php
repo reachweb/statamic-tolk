@@ -92,6 +92,26 @@ final readonly class FieldState
     }
 
     /**
+     * The record with this earlier machine output first in its history, which holds each output once and never the
+     * confirmed one.
+     */
+    public function withHistory(?string $sourceHash, string $targetHash): self
+    {
+        if ($targetHash === $this->targetHash) {
+            return $this;
+        }
+
+        $history = [['source_hash' => $sourceHash, 'target_hash' => $targetHash], ...array_filter($this->history, fn (array $pair) => $pair['target_hash'] !== $targetHash)];
+
+        return new self(...[...get_object_vars($this), 'history' => array_slice(array_values($history), 0, self::MAX_HISTORY)]);
+    }
+
+    public function withoutPending(): self
+    {
+        return $this->withPendingEntries([]);
+    }
+
+    /**
      * An entry of the same plan is replaced: parallel editor requests can deliver the same field of a plan twice.
      */
     public function withPending(PendingState $pending): self

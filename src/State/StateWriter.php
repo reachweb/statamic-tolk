@@ -295,6 +295,58 @@ final readonly class StateWriter
     }
 
     /**
+     * Gives a target without state the records of the target of the same sites that its text was copied from, as core's
+     * Duplicate action copies a localization. A record is copied as the original reads it, without the pending entries
+     * of the original's plans. Where the copy holds other text than the original, such as the title core adds
+     * "(Duplicated)" to, machine output keeps its record with that text as an earlier output, so it reads outdated; a
+     * field edited by hand keeps its record and stays manual, and any other field gets none.
+     *
+     * @return list<string> the handles given a record
+     */
+    public function copy(Target $target, Target $original): array
+    {
+        $ref = $target->ref();
+
+        if ($ref === null || $original->ref() === null || $target->targetSite() !== $original->targetSite() || $target->sourceSite() !== $original->sourceSite() || ! $this->repository->get($ref)->isEmpty()) {
+            return [];
+        }
+
+        $originals = $this->resolver->resolve($original)->fields;
+        $records = [];
+
+        foreach ($target->fields() as $handle => $field) {
+            if (isset($originals[$handle]) && ($record = $this->copied($originals[$handle], $this->resolver->currentTargetHash($target, $field))) !== null) {
+                $records[(string) $handle] = $record;
+            }
+        }
+
+        if ($records === []) {
+            return [];
+        }
+
+        $copied = [];
+
+        $this->repository->update($ref, function (ItemState $state) use ($records, $target, &$copied) {
+            // State written since it was read belongs to the copy itself.
+            if (! $state->isEmpty()) {
+                $copied = [];
+
+                return $state;
+            }
+
+            foreach ($records as $handle => $record) {
+                $state = $state->withField((string) $handle, $record);
+            }
+
+            $copied = array_map('strval', array_keys($records));
+
+            return $this->located($state, $target);
+        });
+
+        return $copied;
+    }
+
+    /**
      * Deletes the target's state, or only the state of the given fields. Returns whether there was any. Nothing of a
      * record that is deleted whole is kept, so one that cannot be read is deleted too; single fields are not.
      *
@@ -374,6 +426,27 @@ final readonly class StateWriter
         }
 
         return [$state, new ConfirmReport($promoted, $baselined, $unresolved, $expired, array_values(array_unique($plans)))];
+    }
+
+    /**
+     * The record copy() gives a field whose text has the fingerprint $targetHash (null while it inherits), from the
+     * status of the field it was copied from; null for none.
+     */
+    private function copied(FieldStatusInfo $original, ?string $targetHash): ?FieldState
+    {
+        $record = $original->state->withoutPending();
+
+        return match (true) {
+            $record->isEmpty() => null,
+            $targetHash === $original->targetHash => $record,
+            $targetHash === null => null,
+            $original->status === FieldStatus::Manual, $targetHash === $record->targetHash, $record->inHistory($targetHash) => $record,
+            $original->status === FieldStatus::Current, $original->status === FieldStatus::Outdated => $record->withHistory(
+                ($original->targetHash === null ? null : $record->machineSourceHash($original->targetHash)) ?? $record->sourceHash,
+                $targetHash,
+            ),
+            default => null,
+        };
     }
 
     /**

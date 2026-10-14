@@ -219,6 +219,20 @@ it('keeps each output once in the history and never the confirmed one', function
         ->toBe([['source_hash' => 's1', 'target_hash' => 't1']]);
 });
 
+it('adds an earlier output first to the history, once, never the confirmed one, and keeps three', function () {
+    $field = machineState('s3', 't3', [['source_hash' => 's1', 'target_hash' => 't1'], ['source_hash' => 's2', 'target_hash' => 't2']])->withPending(pendingState('p1'));
+
+    expect($field->withHistory('s4', 't4')->history)->toBe([
+        ['source_hash' => 's4', 'target_hash' => 't4'],
+        ['source_hash' => 's1', 'target_hash' => 't1'],
+        ['source_hash' => 's2', 'target_hash' => 't2'],
+    ])
+        ->and($field->withHistory('s4', 't2')->history)->toBe([['source_hash' => 's4', 'target_hash' => 't2'], ['source_hash' => 's1', 'target_hash' => 't1']])
+        ->and($field->withHistory('s4', 't3'))->toBe($field)
+        ->and($field->withHistory('s4', 't4')->pending)->toEqual($field->pending)
+        ->and($field->withoutPending()->toArray())->toBe(machineState('s3', 't3', $field->history)->toArray());
+});
+
 it('promotes onto a baseline or an empty record without adding history', function () {
     expect((new FieldState(sourceHash: 's1'))->promote(pendingState('t1'))->history)->toBe([])
         ->and((new FieldState)->promote(pendingState('t1')))->isMachine()->toBeTrue();
