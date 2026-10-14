@@ -1,5 +1,5 @@
 import { expect, sessions, test } from './support/test.js';
-import { cpUrl, entryFile, openEntry } from './support/sandbox.js';
+import { cpUrl, entryFile, openEntry, please, reset } from './support/sandbox.js';
 
 const isStatusRequest = (request) => request.url().includes('/tolk/editor/status');
 
@@ -123,4 +123,77 @@ test('without a provider the banner points to the settings', async ({ page, brow
     await expect(setup.getByRole('link', { name: 'Open the Tolk settings' })).toHaveAttribute('href', new RegExp(`${cpUrl('addons/statamic-tolk/settings')}$`));
     await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toHaveText('4 fields untranslated');
     expect(browserErrors()).toEqual([]);
+});
+
+test.describe('a translated field that holds the origin\'s text again', () => {
+    const ARTICLE = 'our-new-spa';
+    const copies = (page) => banner(page).locator('[data-tolk-copies]');
+    const part = (page, key) => banner(page).locator(`[data-tolk-localization] [data-tolk-part="${key}"]`);
+
+    test.beforeEach(() => {
+        reset();
+    });
+
+    test.afterAll(() => {
+        reset();
+    });
+
+    // A form opened before a run translated the entry and saved after it puts the origin's title back.
+    async function saveOriginTitle(page) {
+        const origin = entryFile('articles', 'en', ARTICLE);
+        please(`tolk:translate --entry=${origin.id} --site=el --concurrency=1 --yes`);
+
+        await openEntry(page, 'articles', ARTICLE, 'el');
+        await expect(part(page, 'current')).toBeVisible();
+        await expect(copies(page)).toHaveCount(0);
+
+        await page.locator('#field_title').fill(origin.title);
+        const confirmed = page.waitForResponse((response) => response.url().includes('/tolk/editor/confirm'));
+        await page.keyboard.press('ControlOrMeta+s');
+        expect((await confirmed).status()).toBe(200);
+
+        return origin;
+    }
+
+    test('needs attention, and Translate it fills only that field into the form', async ({ page, browserErrors }) => {
+        const origin = await saveOriginTitle(page);
+
+        await expect(part(page, 'attention')).toHaveText('1 needs attention');
+        await expect(copies(page)).toContainText('Title holds the text of the origin again. Translate it, or mark it as up to date to keep it.');
+        await expect(banner(page).locator('[data-tolk-action="update"]')).toHaveCount(0);
+
+        const excerpt = await page.locator('#field_excerpt').inputValue();
+        await copies(page).locator('[data-tolk-action="translate-copies"]').click();
+
+        await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with .+\.$/);
+        await expect(page.locator('#field_title')).toHaveValue(`[el] ${origin.title}`);
+        await expect(page.locator('#field_excerpt')).toHaveValue(excerpt);
+        await expect(banner(page).locator('[data-tolk-action="undo"]')).toBeVisible();
+        expect(entryFile('articles', 'el', ARTICLE).title).toBe(origin.title);
+
+        const confirmed = page.waitForResponse((response) => response.url().includes('/tolk/editor/confirm'));
+        await page.keyboard.press('ControlOrMeta+s');
+        expect((await confirmed).status()).toBe(200);
+
+        await expect(part(page, 'attention')).toHaveCount(0);
+        await expect(copies(page)).toHaveCount(0);
+        expect(entryFile('articles', 'el', ARTICLE).title).toBe(`[el] ${origin.title}`);
+        expect(browserErrors()).toEqual([]);
+    });
+
+    test('Mark manual fields as up to date keeps the text and clears the flag', async ({ page, browserErrors }) => {
+        const origin = await saveOriginTitle(page);
+        await expect(copies(page)).toBeVisible();
+
+        await banner(page).locator('[data-tolk-action="options"]').click();
+        await page.locator('[data-tolk-options] [data-tolk-action="mark-current"]').click();
+
+        await expect(page.locator('[data-tolk-options]')).toHaveCount(0);
+        await expect(copies(page)).toHaveCount(0);
+        await expect(part(page, 'attention')).toHaveCount(0);
+        await expect(part(page, 'manual')).toBeVisible();
+        await expect(page.locator('#field_title')).toHaveValue(origin.title);
+        expect(entryFile('articles', 'el', ARTICLE).title).toBe(origin.title);
+        expect(browserErrors()).toEqual([]);
+    });
 });
