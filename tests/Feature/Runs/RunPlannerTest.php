@@ -29,6 +29,7 @@ use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\EntrySaved;
 use Statamic\Events\NavTreeSaved;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
@@ -900,5 +901,38 @@ describe('estimate', function () {
 
         expect($progress->estimate->segments)->toBe(0)
             ->and(app(RunRepository::class)->counts($run))->toMatchArray(['translating' => 2, 'skipped' => 0]);
+    });
+
+    it('holds no entry of the items it has planned while it plans the next, and keeps what was memoized before', function () {
+        foreach (range(1, 10) as $number) {
+            $this->localize($this->makeEntry('articles', 'en', ['title' => "More {$number}", 'intro' => 'More.'], "more-{$number}"), 'el', ['title' => "Κι άλλο {$number}"]);
+        }
+
+        $run = storedRun(planRun(['sites' => ['el', 'de'], 'collections' => ['articles']]));
+        Blink::flush();
+        Blink::put('origin-Entry-earlier', 'kept');
+        $held = [];
+        $alive = [];
+
+        // Called with each item while its entries are loaded: what core memoized for them meanwhile holds them.
+        app(RunPlanner::class)->estimate($run, 0, 60_000, function () use (&$held, &$alive) {
+            gc_collect_cycles();
+            $alive[] = collect($held)->map(fn (WeakReference $reference) => $reference->get())->filter()->unique(fn (EntryContract $entry) => spl_object_id($entry))->count();
+            $values = [...Blink::store()->all(), ...Blink::store('structure-entries')->all()];
+
+            foreach ($values as $value) {
+                foreach (is_iterable($value) ? $value : [$value] as $entry) {
+                    if ($entry instanceof EntryContract) {
+                        $held[] = WeakReference::create($entry);
+                    }
+                }
+            }
+        });
+
+        // A collection's entries share one blueprint, whose fields keep the entry they were first read for.
+        expect($alive)->toHaveCount(24)
+            ->and(count($held))->toBeGreaterThan(24)
+            ->and(max($alive))->toBeLessThanOrEqual(1)
+            ->and(Blink::get('origin-Entry-earlier'))->toBe('kept');
     });
 });

@@ -6,10 +6,10 @@ use Closure;
 use Generator;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
+use Reach\StatamicTolk\Support\EntryMemo;
 use Statamic\Contracts\Entries\Collection as CollectionContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Contracts\Query\Builder;
-use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 
@@ -22,11 +22,6 @@ final class EntryFamilies
      * Roots loaded by one query while roots() is read.
      */
     public const int CHUNK = 50;
-
-    /**
-     * What core memoizes in Blink for one entry: its localizations, its origin and its blueprint.
-     */
-    private const string MEMOIZED = '/^(entry-descendants-|origin-Entry-|entry-.+-blueprint$)/';
 
     /**
      * The roots of rootIds(), loaded CHUNK at a time as the caller reads them. Before it loads the next chunk, it forgets
@@ -170,7 +165,7 @@ final class EntryFamilies
     {
         foreach ($idsByCollection as $handle => $ids) {
             foreach (array_chunk($ids, self::CHUNK) as $chunk) {
-                $memoized = self::memoized();
+                $memo = EntryMemo::mark();
                 $loaded = Entry::query()->where('collection', $handle)->whereIn('id', $chunk)->get()
                     ->keyBy(fn (EntryContract $entry) => (string) $entry->id())
                     ->all();
@@ -182,35 +177,7 @@ final class EntryFamilies
                 }
 
                 $loaded = [];
-                self::forgetMemoizedSince($memoized);
-            }
-        }
-    }
-
-    /**
-     * @return array{default: array<string, true>, pages: array<string, true>} the keys of the Blink stores entries are memoized in
-     */
-    private static function memoized(): array
-    {
-        return [
-            'default' => array_fill_keys(array_keys(Blink::store()->all()), true),
-            'pages' => array_fill_keys(array_keys(Blink::store('structure-entries')->all()), true),
-        ];
-    }
-
-    /**
-     * Forgets the entries memoized since memoized() was read: the default store's entry keys, and the entries of tree
-     * pages (Page::entry(), which a page's parent is read through).
-     *
-     * @param  array{default: array<string, true>, pages: array<string, true>}  $before
-     */
-    private static function forgetMemoizedSince(array $before): void
-    {
-        foreach (['default' => Blink::store(), 'pages' => Blink::store('structure-entries')] as $name => $store) {
-            foreach (array_keys($store->all()) as $key) {
-                if (! isset($before[$name][$key]) && ($name === 'pages' || preg_match(self::MEMOIZED, (string) $key) === 1)) {
-                    $store->forget((string) $key);
-                }
+                $memo->forget();
             }
         }
     }

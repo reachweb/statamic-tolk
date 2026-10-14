@@ -33,6 +33,7 @@ use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Tests\Support\TerminalTranslate;
+use Statamic\Facades\Blink;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
 use Statamic\Facades\Term;
@@ -931,6 +932,21 @@ describe('the run engine', function () {
             ->and($output)->toContain('Dry run: 2 of 2 targets would be translated (4 segments, 38 characters).')
             ->and(app(RunRepository::class)->recent(10))->toBe([]);
         $this->assertNoModelCalls();
+    });
+
+    it('keeps no entry in core\'s memo once the scan has planned it, so a scan over a whole collection holds one item\'s entries', function () {
+        $this->fakeTranslations();
+        $this->localize($this->hello, 'el', ['title' => 'Γεια σου']);
+        $this->localize($this->world, 'el', ['title' => 'Κόσμος']);
+        Blink::flush();
+
+        [$exitCode] = translateCommand(['--collection' => ['articles'], '--site' => ['el', 'de'], '--mode' => 'update', '--dry-run' => true]);
+
+        // An entry's localizations, a localization's origin and an entry's blueprint.
+        $memoized = array_filter(array_keys(Blink::store()->all()), fn (string $key) => preg_match('/^(entry-descendants-|origin-Entry-|entry-.+-blueprint$)/', $key) === 1);
+
+        expect($exitCode)->toBe(0)
+            ->and($memoized)->toBe([]);
     });
 
     it('says that the cost is unknown when a model has no price', function () {

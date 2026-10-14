@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Support\EntryMemo;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\EntryTarget;
@@ -101,7 +102,9 @@ final readonly class RunPlanner
      * one item), adds them to the run's estimate, and marks an item whose plan is empty `skipped` unless it waits for
      * other items: the run may give it something to do before its turn, by translating its source or creating the
      * localizations its navigation links (§A12), and it is planned again then. Index 0 starts the estimate over; a call
-     * from any index other than where the last one stopped (a retried request) adds nothing.
+     * from any index other than where the last one stopped (a retried request) adds nothing. What core memoized for an
+     * item's entries is forgotten once the item is planned (EntryMemo), so a scan over a whole collection, which the
+     * CLI makes in one process, holds the entries of one item, not of every item it planned.
      *
      * @param  ?Closure(RunItem, Plan): void  $planned  called with each item and its plan, empty or not
      */
@@ -121,7 +124,9 @@ final readonly class RunPlanner
         $index = max(0, $fromIndex);
 
         while ($index < $size) {
+            $memo = EntryMemo::mark();
             $estimate = $estimate->add($this->estimateItem($run, $index++, $options, $contexts, $planned));
+            $memo->forget();
 
             if (hrtime(true) >= $deadline) {
                 break;
