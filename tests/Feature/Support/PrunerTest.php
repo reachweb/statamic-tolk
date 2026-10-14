@@ -239,7 +239,12 @@ it('records no Bard copy of a source without text, which it would not report', f
     $localization->saveQuietly();
     StateFixtures::store($localization, ['title' => StateFixtures::machine('Home', 'Αρχική')]);
 
-    expect(pruned()->isEmpty())->toBeTrue()
+    $report = pruned();
+
+    // It records the entry's collection and site, which the stored state lacks, and nothing else.
+    expect($report->resolved)->toBe(0)
+        ->and($report->located)->toBe(1)
+        ->and(pruned()->isEmpty())->toBeTrue()
         ->and(StateFixtures::stored($localization)->field('content')->isEmpty())->toBeTrue();
 });
 

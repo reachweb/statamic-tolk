@@ -303,7 +303,7 @@ describe('translation state', function () {
         $ref = TargetRef::parse('entry::0b5f');
         app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: 's1')));
         $path = StateFixtures::conflict($ref);
-        $state = fn (bool $stateFiles) => collect(app(Audit::class)->run($stateFiles))->firstWhere('id', 'state');
+        $state = fn (bool $stateFiles) => collect(app(Audit::class)->run(stateFiles: $stateFiles))->firstWhere('id', 'state');
 
         expect($state(false)['level'])->toBe('ok')
             ->and($state(false)['items'])->toHaveCount(1)
