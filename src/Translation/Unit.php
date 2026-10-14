@@ -49,6 +49,15 @@ final readonly class Unit
     }
 
     /**
+     * Whether a refusal splits the unit again: at any depth, so the refused segments end up alone (§A10). That takes
+     * about two calls per halving, and up to twice as many calls as segments when every segment is refused.
+     */
+    public function canIsolate(): bool
+    {
+        return count($this->segmentIds) > 1;
+    }
+
+    /**
      * @param  bool  $deeper  false for a split that only fits the unit to a smaller batch size (Pipeline::fits()), which
      *                        leaves the halves the splits a timeout or an answer may still need
      * @return list<self> `{id}.a` and `{id}.b`

@@ -47,6 +47,11 @@ it('stops splitting at depth three and never splits one segment', function () {
         ->and((new Unit('b1', UnitKind::Translate, ['s1']))->canSplit())->toBeFalse();
 });
 
+it('isolates a refusal at any depth but never splits one segment for it', function () {
+    expect((new Unit('b1.a.b.a.b', UnitKind::Translate, ['s1', 's2'], depth: 4))->canIsolate())->toBeTrue()
+        ->and((new Unit('b1.a.b.a.b.a', UnitKind::Translate, ['s1'], depth: 5))->canIsolate())->toBeFalse();
+});
+
 it('gives a repair one segment, its note and the next repair count', function () {
     $repair = (new Unit('b1?', UnitKind::Translate, ['s1', 's2'], capMultiplier: 2, missingRetry: true))->repairOf('s2', 'Fix it.', true);
 

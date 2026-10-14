@@ -283,7 +283,7 @@ final readonly class Pipeline
             Finish::Length, Finish::Empty => ! $unit->canSplit() && $unit->capMultiplier === 1
                 ? new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: [$unit->withDoubledCap($fallback)])
                 : $this->splitOrFail($unit, $model, $fallback, UnitOutcome::TOO_LONG, $usage),
-            Finish::Refused => $this->splitOrFail($unit, $model, $fallback, UnitOutcome::REFUSED, $usage),
+            Finish::Refused => $this->splitOrFail($unit, $model, $fallback, UnitOutcome::REFUSED, $usage, $unit->canIsolate()),
         };
     }
 
@@ -298,9 +298,9 @@ final readonly class Pipeline
         return new UnitOutcome(unit: $unit->id, spawned: $unit->halves($fallback, deeper: false));
     }
 
-    private function splitOrFail(Unit $unit, ModelRef $model, bool $fallback, string $reason, UsageMap $usage = new UsageMap): UnitOutcome
+    private function splitOrFail(Unit $unit, ModelRef $model, bool $fallback, string $reason, UsageMap $usage = new UsageMap, ?bool $split = null): UnitOutcome
     {
-        return $unit->canSplit()
+        return ($split ?? $unit->canSplit())
             ? new UnitOutcome(unit: $unit->id, model: (string) $model, usage: $usage, spawned: $unit->halves($fallback))
             : $this->failed($unit, $model, $reason, $usage);
     }

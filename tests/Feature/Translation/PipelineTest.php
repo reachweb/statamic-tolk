@@ -555,6 +555,31 @@ describe('finish reasons and request failures', function () {
             ->and($intro->warnings)->toBe(['Introduction: "A short intro." was left untranslated (the model refused it).']);
     });
 
+    it('halves a refused unit past the split depth until only the refused segment fails', function () {
+        $engine = ScriptedEngine::bind(fn (EngineCall $call) => in_array('Answer 13.', array_column($call->segments, 'text'), true)
+            ? ScriptedEngine::result($call, Finish::Refused)
+            : ScriptedEngine::translated($call));
+        $faq = array_map(fn (int $row) => ['question' => "Question {$row}?", 'answer' => "Answer {$row}."], range(1, 20));
+        $origin = $this->makeEntry('articles', 'en', ['title' => 'FAQ', 'faq' => $faq], 'faq');
+        $plan = pipelinePlan($origin, ['fields' => ['faq']]);
+        $refused = array_search('Answer 13.', array_map(fn (array $segment) => $segment['text'], $plan->segments), true);
+
+        expect(tolkPipeline()->units($plan))->toHaveCount(1);
+
+        $ran = pipelineRun($plan);
+        $failures = collect($plan->segments)->keys()->mapWithKeys(fn (string $id) => [$id => tolkPipeline()->failure($plan, $id)])->filter();
+
+        expect($failures->all())->toBe([$refused => UnitOutcome::REFUSED])
+            ->and($ran)->toHaveCount(13)
+            ->and($engine->calls)->toHaveCount(13);
+
+        $field = tolkPipeline()->assemble($plan, pipelineTarget($origin), 'faq');
+
+        expect($field->value[12])->toBe(['question' => '[T] Question 13?', 'answer' => 'Answer 13.'])
+            ->and($field->value[11])->toBe(['question' => '[T] Question 12?', 'answer' => '[T] Answer 12.'])
+            ->and($field->warnings)->toBe(['FAQ › Answer: "Answer 13." was left untranslated (refused).']);
+    });
+
     it('splits a unit with several segments after a timeout without counting a failure', function () {
         ScriptedEngine::bind(fn (EngineCall $call, int $number) => $number === 1
             ? throw ProviderTimeout::after('anthropic', 45, 2)
