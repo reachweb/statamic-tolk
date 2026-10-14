@@ -17,6 +17,7 @@ use Reach\StatamicTolk\State\OverviewCache;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\State\TargetStatus;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\EntryTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
@@ -25,6 +26,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Actions\DuplicateEntry;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\TermSaved;
+use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Git;
 use Statamic\Facades\GlobalSet;
@@ -381,11 +383,13 @@ describe('confirm', function () {
     it('records the form\'s copy of a Bard value without text as one, so the field reads outdated once its origin has text', function () {
         $this->makeCollection('pages', ['en', 'el'], ['content' => ['type' => 'bard', 'localizable' => true, 'buttons' => ['image']]]);
         $origin = $this->makeEntry('pages', 'en', ['content' => [['type' => 'image', 'attrs' => ['src' => 'asset::assets::pool.jpg']], ['type' => 'horizontalRule']]], 'home');
-        // Bard's own JSON of that value, as the CP saves an inherited Bard field that desynced itself when the form loaded.
-        $localization = $this->localize($origin, 'el', ['content' => [
+        // Bard's own JSON of that value, as the CP saves an inherited Bard field that desynced itself when the form loaded,
+        // saved without events, as a save before Tolk was installed, which recorded nothing.
+        $localization = $origin->makeLocalization('el')->merge(['content' => [
             ['type' => 'paragraph', 'attrs' => ['textAlign' => null], 'content' => [['type' => 'image', 'attrs' => ['src' => 'asset::assets::pool.jpg', 'alt' => null]]]],
             ['type' => 'horizontalRule'],
         ]]);
+        $localization->saveQuietly();
         $before = writerStatus($origin)->fields['content'];
 
         $dryRun = writer()->confirm(writerTarget($origin), dryRun: true);
@@ -430,6 +434,98 @@ describe('confirm', function () {
         expect($report)->toEqual(new ConfirmReport)
             ->and(storedState($localization)->toArray())->toBe($before)
             ->and(StateFixtures::statuses($origin))->toBe(['content' => FieldStatus::Manual, 'aside' => FieldStatus::Manual, 'notes' => FieldStatus::Manual, 'link' => FieldStatus::Manual]);
+    });
+});
+
+describe('Bard copies saved', function () {
+    beforeEach(function () {
+        $this->rule = [['type' => 'horizontalRule']];
+        $this->text = [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Once upon a time.']]], ['type' => 'horizontalRule']];
+        $this->makeCollection('stories', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true], 'content' => ['type' => 'bard', 'localizable' => true]]);
+    });
+
+    it('records a localization\'s Bard copy of an origin without text whoever saves it, and commits it, so the field reads outdated once the origin has text', function () {
+        $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'content' => $this->rule], 'story');
+        $greek = $this->localize($origin, 'el', ['title' => 'Ιστορία']);
+        switchGitOn();
+        $commits = [];
+        Git::shouldReceive('as')->andReturnSelf();
+        Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use (&$commits) {
+            $commits[] = $message;
+        });
+
+        // The save of a form whose inherited Bard field desynced itself, by a user without the editor's banner.
+        Entry::find($greek->id())->set('content', $this->rule)->save();
+        $recorded = StateFixtures::statuses($origin)['content'];
+        $committed = $commits;
+        Entry::find($greek->id())->set('title', 'Μια ιστορία')->save();
+        $again = array_slice($commits, count($committed));
+        $origin->set('content', $this->text)->save();
+
+        expect(storedState($greek)->field('content'))->toEqual(new FieldState(sourceHash: Fingerprint::of($this->rule), targetHash: Fingerprint::ofLeaves([])))
+            ->and(storedState($greek)->sourceSite)->toBe('en')
+            ->and($recorded)->toBe(FieldStatus::Current)
+            ->and($committed)->toContain(StateWriter::COMMIT_MESSAGE)
+            ->and($again)->not->toContain(StateWriter::COMMIT_MESSAGE)
+            ->and(StateFixtures::statuses($origin)['content'])->toBe(FieldStatus::Outdated);
+    });
+
+    it('records it for a term saved in another site, global variables and the working copy of a collection with revisions', function () {
+        $this->makeTaxonomy('topics', ['en', 'el'], ['description' => ['type' => 'bard', 'localizable' => true]]);
+        $this->makeTerm('topics', 'drinks', ['en' => ['title' => 'Drinks', 'description' => $this->rule]]);
+        $this->makeGlobalSet('footer', ['en' => null, 'el' => 'en'], ['notice' => ['type' => 'bard', 'localizable' => true]], ['en' => ['notice' => $this->rule]]);
+        config(['statamic.revisions.enabled' => true]);
+        Collection::find('stories')->revisionsEnabled(true)->save();
+        $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'content' => $this->rule], 'story');
+        $greek = $this->localize($origin, 'el', ['title' => 'Ιστορία']);
+        $term = fn () => app(TargetFactory::class)->forTerm('topics::drinks', 'el');
+        $globals = fn () => app(TargetFactory::class)->forGlobalSet('footer', 'el');
+
+        Term::find('topics::drinks')->in('el')->set('description', $this->rule)->save();
+        GlobalSet::findByHandle('footer')->in('el')->set('notice', $this->rule)->save();
+        Entry::find($greek->id())->fromWorkingCopy()->set('content', $this->rule)->makeWorkingCopy()->save();
+        $recorded = [
+            app(StatusResolver::class)->resolve($term())->fields['description']->status,
+            app(StatusResolver::class)->resolve($globals())->fields['notice']->status,
+            StateFixtures::statuses($origin)['content'],
+        ];
+        Term::find('topics::drinks')->in('en')->set('description', $this->text)->save();
+        GlobalSet::findByHandle('footer')->in('en')->set('notice', $this->text)->save();
+        $origin->set('content', $this->text)->save();
+
+        expect($recorded)->each->toBe(FieldStatus::Current)
+            ->and(Entry::find($greek->id())->get('content'))->toBeNull()
+            ->and(app(StatusResolver::class)->resolve($term())->fields['description']->status)->toBe(FieldStatus::Outdated)
+            ->and(app(StatusResolver::class)->resolve($globals())->fields['notice']->status)->toBe(FieldStatus::Outdated)
+            ->and(StateFixtures::statuses($origin)['content'])->toBe(FieldStatus::Outdated);
+    });
+
+    it('leaves Tolk\'s own saves, a field emptied while its origin has text and content that is no target alone, and fails no save on a state it cannot read', function () {
+        $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'content' => $this->rule], 'story');
+        $told = $this->makeEntry('stories', 'en', ['title' => 'Tale', 'content' => $this->text], 'tale');
+        $greek = $this->localize($origin, 'el', ['title' => 'Ιστορία']);
+        $emptied = $this->localize($told, 'el', ['title' => 'Παραμύθι']);
+        $broken = $this->localize($this->makeEntry('stories', 'en', ['title' => 'Myth', 'content' => $this->rule], 'myth'), 'el', ['title' => 'Μύθος']);
+        StateFixtures::store($broken, ['title' => StateFixtures::machine('Myth', 'Μύθος')]);
+        StateFixtures::conflict($broken);
+        Exceptions::fake();
+
+        ContentWriter::write(fn () => Entry::find($greek->id())->set('content', $this->rule)->save());
+        Entry::find($emptied->id())->set('content', [])->save();
+        $saved = Entry::find($broken->id())->set('content', $this->rule)->save();
+        $emptiedStatus = StateFixtures::statuses($told)['content'];
+        // A localization in a site its collection no longer has.
+        Collection::find('stories')->sites(['en'])->save();
+        $orphaned = Entry::find($emptied->id())->set('content', $this->rule)->save();
+
+        expect(storedState($greek)->isEmpty())->toBeTrue()
+            ->and(storedState($emptied)->isEmpty())->toBeTrue()
+            ->and($emptiedStatus)->toBe(FieldStatus::Manual)
+            ->and($saved)->toBeTrue()
+            ->and(Entry::find($broken->id())->get('content'))->toBe($this->rule)
+            ->and($orphaned)->toBeTrue();
+        Exceptions::assertReported(UnreadableState::class);
+        Exceptions::assertReportedCount(1);
     });
 });
 

@@ -234,7 +234,9 @@ it('keeps the state of a translation file and of form texts whose file cannot be
 it('records no Bard copy of a source without text, which it would not report', function () {
     $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true], 'content' => ['type' => 'bard', 'localizable' => true]]);
     $home = $this->makeEntry('pages', 'en', ['title' => 'Home', 'content' => [['type' => 'horizontalRule']]], 'home');
-    $localization = $this->localize($home, 'el', ['title' => 'Αρχική', 'content' => [['type' => 'horizontalRule']]]);
+    // Saved without events, as before Tolk was installed, so nothing recorded the copy.
+    $localization = $home->makeLocalization('el')->merge(['title' => 'Αρχική', 'content' => [['type' => 'horizontalRule']]]);
+    $localization->saveQuietly();
     StateFixtures::store($localization, ['title' => StateFixtures::machine('Home', 'Αρχική')]);
 
     expect(pruned()->isEmpty())->toBeTrue()

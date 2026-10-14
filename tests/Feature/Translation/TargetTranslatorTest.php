@@ -191,6 +191,22 @@ describe('translating a target', function () {
             ->and(StateFixtures::statuses($this->origin))->each->toBe(FieldStatus::Current);
     });
 
+    it('updates a Bard copy saved without the editor\'s banner while its origin had no text, once the origin has text', function () {
+        $this->fakeTranslations();
+        $this->makeCollection('stories', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true], 'content' => ['type' => 'bard', 'localizable' => true]]);
+        $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'content' => [['type' => 'horizontalRule']]], 'story');
+        $greek = $this->localize($origin, 'el', ['title' => 'Ιστορία']);
+
+        // The save of a form whose inherited Bard field desynced itself, by a user who may not translate.
+        Entry::find($greek->id())->set('content', [['type' => 'horizontalRule']])->save();
+        Entry::find($origin->id())->set('content', [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Once upon a time.']]], ['type' => 'horizontalRule']])->save();
+        $result = translateTarget($origin, options: translatorOptions(['mode' => 'update']));
+
+        expect($result->fields)->toBe(['title' => 'manual', 'content' => 'applied'])
+            ->and(json_encode(Entry::find($greek->id())->get('content'), JSON_UNESCAPED_UNICODE))->toContain('[T] Once upon a time.')
+            ->and(StateFixtures::statuses($origin))->toBe(['title' => FieldStatus::Manual, 'content' => FieldStatus::Current]);
+    });
+
     it('updates the translations of a duplicated entry whose origin was rewritten, and its duplicated title', function () {
         $this->signInAdmin();
         $sent = [];

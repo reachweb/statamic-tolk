@@ -102,6 +102,45 @@ final readonly class StateWriter
     }
 
     /**
+     * Records the Bard copies of a source without text that confirm() records, and nothing else, for a localization
+     * just saved by anyone (Listeners\RecordBardCopiesOfSavedContent): once the source has text, such a copy can no
+     * longer be told apart from a field emptied by hand.
+     *
+     * @return list<string> the handles recorded
+     */
+    public function recordCopies(Target $target, bool $commit = false): array
+    {
+        $ref = $target->ref();
+
+        if ($ref === null || ! $target->fields()->contains(fn (Field $field) => $field->type() === 'bard')) {
+            return [];
+        }
+
+        $copies = $this->textlessCopies($target, $this->repository->get($ref));
+
+        if ($copies === []) {
+            return [];
+        }
+
+        $copied = [];
+
+        $this->repository->update($ref, function (ItemState $state) use ($target, $copies, &$copied) {
+            [$state, $report] = $this->reconciled($state, [], CarbonImmutable::now(), $target, $copies);
+            $copied = $report->copies;
+
+            return $state;
+        });
+
+        if ($copied !== []) {
+            $this->overview->bump($target->type(), $target->container());
+        }
+
+        $this->commit($commit && $copied !== []);
+
+        return $copied;
+    }
+
+    /**
      * Records that a human owns the text of every manual field, checked against the current source, so later origin changes
      * are detected. With $includeMachine, machine output is turned manual too ("mark as manual", D27), checked against the
      * source it was translated from, so an outdated one needs attention; one with a part left untranslated stays machine
