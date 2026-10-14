@@ -32,7 +32,7 @@ OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
 ```
 
-Then give your roles Tolk's permissions under **Users › Permissions**: `translate content` for the editor, `run bulk translations` for listings, the Overview and runs. Statamic's own site, edit and publish permissions still apply. See [Installation](docs/installation.md) for the details.
+Then give your roles Tolk's permissions under **Users › Permissions**: `translate content` for the editor, `run bulk translations` for listings, the Overview, the Runs pages and the Audit page. Statamic's own site, edit and publish permissions still apply. See [Installation](docs/installation.md) for the details.
 
 ## Quick start
 

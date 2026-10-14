@@ -93,7 +93,7 @@ class ServiceProvider extends AddonServiceProvider
 
             Permission::register('run bulk translations', fn ($permission) => $permission
                 ->label(__('Run bulk translations'))
-                ->description(__('Start and manage bulk translation runs from listings, the overview and the runs page.')));
+                ->description(__('Start and manage bulk translation runs from listings and from the Overview and Runs pages, and open the Audit page. The pages are under Tools › Translations.')));
         }));
     }
 

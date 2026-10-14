@@ -291,6 +291,21 @@ it('documents the permissions and the events', function () {
     }
 });
 
+// PermissionsTest holds the permission's own description to the pages its routes open.
+it('names the pages running bulk translations opens wherever the docs sum the permission up', function () {
+    $summaries = [
+        'README.md' => Str::of(File::get(DOCS_ROOT.'/README.md'))->after('`run bulk translations` for ')->before("\n")->before('. ')->toString(),
+        'installation.md' => Str::of(docsFile('installation.md'))->after('| `run bulk translations` (Run bulk translations) |')->before("\n")->toString(),
+        'the Boost guideline' => Str::of(File::get(DOCS_ROOT.'/resources/boost/guidelines/core.blade.php'))->after('- `run bulk translations`: ')->before("\n")->toString(),
+    ];
+
+    foreach ($summaries as $source => $summary) {
+        foreach (['listings', 'Overview', 'Runs', 'Audit'] as $page) {
+            expect(str_contains($summary, $page))->toBeTrue("{$source} leaves out {$page}: {$summary}");
+        }
+    }
+});
+
 it('links only to files and headings that exist', function () {
     $files = ['README.md' => File::get(DOCS_ROOT.'/README.md')];
 

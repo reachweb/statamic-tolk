@@ -1,6 +1,27 @@
 <?php
 
+use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Route as Router;
+use Illuminate\Support\Str;
 use Statamic\Facades\Permission;
+
+/**
+ * The CP pages `run bulk translations` opens, from the routes it guards: Overview, Audit and Runs.
+ *
+ * @return list<string>
+ */
+function bulkPermissionPages(): array
+{
+    return collect(Router::getRoutes()->getRoutes())
+        ->filter(fn (Route $route) => str_starts_with((string) $route->getName(), 'statamic.cp.tolk.')
+            && in_array('GET', $route->methods(), true)
+            && in_array('can:run bulk translations', $route->gatherMiddleware(), true))
+        ->map(fn (Route $route) => Str::of($route->getName())->after('statamic.cp.tolk.')->before('.')->ucfirst()->toString())
+        ->unique()
+        ->sort()
+        ->values()
+        ->all();
+}
 
 it('registers both permissions exactly once in the Tolk group', function () {
     $values = Permission::boot()->flattened()->map->value();
@@ -30,6 +51,18 @@ it('describes what each permission grants: the listing action comes with running
 
     expect($permissions->get('translate content')->description())->toContain('entry and term forms')->not->toContain('listing')
         ->and($permissions->get('run bulk translations')->description())->toContain('listings');
+});
+
+it('names every page and the menu that running bulk translations opens', function () {
+    $description = Permission::boot()->get('run bulk translations')->description();
+
+    expect(bulkPermissionPages())->toBe(['Audit', 'Overview', 'Runs']);
+
+    foreach (bulkPermissionPages() as $page) {
+        expect($description)->toMatch("/\\b{$page}\\b/");
+    }
+
+    expect($description)->toContain('Tools › Translations');
 });
 
 it('grants the permissions through a role', function () {
