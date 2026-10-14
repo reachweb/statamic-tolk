@@ -254,6 +254,27 @@ it('takes over the record of a string that moved out of lang/en.json into the fo
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Lang, '_json', 'de'))->fields)->not->toHaveKey('Contact us');
 });
 
+it('keeps machine output the record of a string with a | that moved out of lang/en.json, which tolk:lang cut and the forms do not', function () {
+    FormFixtures::make('feedback', 'Feedback', ['rating' => ['type' => 'text', 'display' => 'Rating | 1 to 5']]);
+    file_put_contents(lang_path('en.json'), json_encode(['Book now' => 'Book now', 'Rating | 1 to 5' => 'Rating | 1 to 5'], JSON_PRETTY_PRINT));
+    $this->fakeTranslations();
+    Artisan::call('tolk:lang', ['sites' => ['de']]);
+
+    file_put_contents(lang_path('en.json'), json_encode(['Book now' => 'Book now'], JSON_PRETTY_PRINT));
+    [$exitCode, $output] = formsCommand(['sites' => ['de'], '--form' => ['feedback']]);
+    $forms = app(TargetFactory::class)->forForms('de', 'en');
+
+    expect($exitCode)->toBe(0)
+        ->and(app(StatusResolver::class)->resolve($forms)->fields['Rating | 1 to 5']->status)->toBe(FieldStatus::Current)
+        ->and($output)->toContain('lang/de.json: done, 1 field')
+        ->and($output)->not->toContain('manual edits kept')
+        ->and(formsJson('de')['Rating | 1 to 5'])->toBe('[T] Rating | [T] 1 to 5');
+
+    file_put_contents(lang_path('de.json'), json_encode(['Rating | 1 to 5' => 'Bewertung | 1 bis 5', ...array_diff_key(formsJson('de'), ['Rating | 1 to 5' => true])]));
+
+    expect(app(StatusResolver::class)->resolve($forms->fresh())->fields['Rating | 1 to 5']->status)->toBe(FieldStatus::Manual);
+});
+
 it('keeps a text edited by hand unless --force is given', function () {
     $this->fakeTranslations();
     formsCommand(['sites' => ['de']]);

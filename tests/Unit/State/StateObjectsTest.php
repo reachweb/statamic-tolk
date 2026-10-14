@@ -241,6 +241,22 @@ it('replaces a pending entry of the same plan', function () {
     expect(array_map(fn (PendingState $pending) => [$pending->plan, $pending->targetHash], $field->pending))->toBe([['one', 'p3'], ['two', 'p2']]);
 });
 
+it('replaces a fingerprint wherever a record holds it when another walk reads the text', function () {
+    $field = machineState('s2', 'cut', [['source_hash' => 's1', 'target_hash' => 'cut'], ['source_hash' => 's0', 'target_hash' => 't0']])
+        ->withPending(pendingState('cut', ['plan' => 'one']))
+        ->withPending(pendingState('p2', ['plan' => 'two', 'targetBefore' => 'cut']));
+
+    $rewalked = $field->rewalked('cut', 'whole');
+
+    expect($rewalked->targetHash)->toBe('whole')
+        ->and($rewalked->sourceHash)->toBe('s2')
+        ->and($rewalked->history)->toBe([['source_hash' => 's1', 'target_hash' => 'whole'], ['source_hash' => 's0', 'target_hash' => 't0']])
+        ->and(array_map(fn (PendingState $pending) => [$pending->plan, $pending->targetHash, $pending->targetBefore], $rewalked->pending))->toBe([['two', 'p2', 'whole'], ['one', 'whole', null]])
+        ->and($rewalked->pending[0]->segments)->toBe(['a1b2c3d4e5f6'])
+        ->and($field->rewalked('other', 'whole'))->toEqual($field)
+        ->and($field->rewalked('cut', 'cut'))->toBe($field);
+});
+
 it('changes fields of an item without changing the item', function () {
     $item = ItemState::empty(TargetRef::parse('term::topics::food::el'));
     $title = machineState('s1', 't1');

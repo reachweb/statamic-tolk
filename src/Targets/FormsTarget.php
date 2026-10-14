@@ -169,6 +169,23 @@ final class FormsTarget implements Target
         return new TargetRef(ContentType::Lang, LangFiles::JSON, $this->lang);
     }
 
+    /**
+     * The field the `_json` LangTarget makes of a text, which cuts it at each `|` (§A16).
+     */
+    public function sharedFileField(string $text): Field
+    {
+        return LangTarget::keyField($text);
+    }
+
+    /**
+     * The field of a text, labelled with where it is used. It is never cut at a `|`: Statamic looks a form text up with
+     * `trans()`, which picks no plural form.
+     */
+    public static function textField(string $text, string $display): Field
+    {
+        return new Field($text, ['type' => self::FIELDTYPE, 'display' => $display, 'tolk_handler' => LangStringHandler::HANDLE, LangStringHandler::PLURAL => false]);
+    }
+
     public function type(): ContentType
     {
         return ContentType::Forms;
@@ -198,12 +215,10 @@ final class FormsTarget implements Target
     {
         return $this->fields ??= collect($this->texts())
             ->reject(fn (array $text, string $handle) => $this->inSourceJson($handle) || $this->hides($handle))
-            ->mapWithKeys(fn (array $text, string $handle) => [$handle => new Field($handle, [
-                'type' => self::FIELDTYPE,
-                'display' => count($text['places']) === 1 ? $text['places'][0] : sprintf('%s (used in %d places)', $text['places'][0], count($text['places'])),
-                'tolk_handler' => LangStringHandler::HANDLE,
-                LangStringHandler::PLURAL => false,
-            ])]);
+            ->mapWithKeys(fn (array $text, string $handle) => [$handle => self::textField(
+                $handle,
+                count($text['places']) === 1 ? $text['places'][0] : sprintf('%s (used in %d places)', $text['places'][0], count($text['places'])),
+            )]);
     }
 
     public function sourceHasValue(string $handle): bool

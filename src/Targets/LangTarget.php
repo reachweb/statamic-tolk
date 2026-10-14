@@ -85,6 +85,22 @@ final class LangTarget implements Target
         return $this->group === LangFiles::JSON ? new TargetRef(ContentType::Forms, $this->lang) : null;
     }
 
+    /**
+     * The field the forms make of a key of the JSON file, which keeps a string with `|` whole (§A16).
+     */
+    public function sharedFileField(string $key): Field
+    {
+        return FormsTarget::textField($key, $key);
+    }
+
+    /**
+     * The field of a key, whose handle and label are the key.
+     */
+    public static function keyField(string $key): Field
+    {
+        return new Field($key, ['type' => self::FIELDTYPE, 'display' => $key, 'tolk_handler' => LangStringHandler::HANDLE]);
+    }
+
     public function type(): ContentType
     {
         return ContentType::Lang;
@@ -117,11 +133,7 @@ final class LangTarget implements Target
         return $this->fields ??= collect($this->source())
             ->filter(fn (mixed $value) => is_string($value))
             ->keys()
-            ->mapWithKeys(fn (int|string $key) => [(string) $key => new Field((string) $key, [
-                'type' => self::FIELDTYPE,
-                'display' => (string) $key,
-                'tolk_handler' => LangStringHandler::HANDLE,
-            ])])
+            ->mapWithKeys(fn (int|string $key) => [(string) $key => self::keyField((string) $key)])
             ->filter(fn (Field $field, int|string $key) => $this->source()[$key] === '' || $this->walker->leaves($field, $this->source()[$key]) !== []);
     }
 

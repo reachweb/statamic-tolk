@@ -223,6 +223,22 @@ it('takes over the record of a form text that moved into lang/en.json, so its tr
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Forms, 'de'))->fields)->not->toHaveKey('Your message');
 });
 
+it('keeps machine output the record of a form text with a | that moved into lang/en.json, which the forms did not cut and tolk:lang does', function () {
+    FormFixtures::make('feedback', 'Feedback', ['rating' => ['type' => 'text', 'display' => 'Rating | 1 to 5']]);
+    $this->fakeTranslations();
+    Artisan::call('tolk:forms', ['sites' => ['de']]);
+
+    writeLang('en.json', json_encode(['Book now' => 'Book now', 'Contact us' => 'Contact us', 'Hello, :name' => 'Hello, :name', 'Rating | 1 to 5' => 'Rating | 1 to 5'], JSON_PRETTY_PRINT));
+    [$exitCode, $output] = langCommand(['sites' => ['de'], '--group' => ['_json']]);
+    $status = app(StatusResolver::class)->resolve(app(TargetFactory::class)->forLang('_json', 'de', 'en'))->fields['Rating | 1 to 5'];
+
+    expect($exitCode)->toBe(0)
+        ->and($status->status)->toBe(FieldStatus::Current)
+        ->and($output)->toContain('lang/de.json: done, 3 fields')
+        ->and($output)->not->toContain('manual edits kept')
+        ->and(readLang('de.json')['Rating | 1 to 5'])->toBe('[T] Rating | 1 to 5');
+});
+
 it('re-sends only the edited key in mode update', function () {
     $this->fakeTranslations();
     langCommand(['sites' => ['de']]);

@@ -170,13 +170,14 @@ trait TranslatesLanguages
 
     /**
      * A key of `lang/{lang}.json` that moved between the source language's JSON file and the forms takes its record
-     * along, so its translation does not read as edited by hand. Returns whether a record moved.
+     * along, fingerprinted as this target walks it, so its translation does not read as edited by hand. Returns whether
+     * a record moved.
      */
     private function adoptMovedKeys(LangTarget|FormsTarget $target): bool
     {
         $from = $target->sharesFileWith();
 
-        return $from !== null && app(StateWriter::class)->adopt($target, $from) !== [];
+        return $from !== null && app(StateWriter::class)->adopt($target, $from, $target->sharedFileField(...)) !== [];
     }
 
     /**

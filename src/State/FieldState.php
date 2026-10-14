@@ -190,6 +190,31 @@ final readonly class FieldState
         );
     }
 
+    /**
+     * The record as another walk of the field reads it, under which the text whose fingerprint was $from has the
+     * fingerprint $to: a key of `lang/{lang}.json` that moves between the source language's JSON file and the forms is
+     * cut at each `|` in one and kept whole in the other (§A16). Every fingerprint of that text is replaced.
+     */
+    public function rewalked(string $from, string $to): self
+    {
+        if ($from === $to) {
+            return $this;
+        }
+
+        $swap = fn (?string $hash) => $hash === $from ? $to : $hash;
+
+        return new self(...[
+            ...get_object_vars($this),
+            'targetHash' => $swap($this->targetHash),
+            'history' => array_map(fn (array $pair) => [...$pair, 'target_hash' => $swap($pair['target_hash'])], $this->history),
+            'pending' => array_map(fn (PendingState $entry) => new PendingState(...[
+                ...get_object_vars($entry),
+                'targetHash' => $swap($entry->targetHash),
+                'targetBefore' => $swap($entry->targetBefore),
+            ]), $this->pending),
+        ]);
+    }
+
     public function toArray(): array
     {
         return array_filter([

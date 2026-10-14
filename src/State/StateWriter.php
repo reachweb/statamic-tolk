@@ -3,11 +3,13 @@
 namespace Reach\StatamicTolk\State;
 
 use Carbon\CarbonImmutable;
+use Closure;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Support\GitListeners;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Statamic\Fields\Field;
 
 /**
  * Writes translation state. With `commit`, a method that changed state dispatches a git commit: the state lives under
@@ -156,10 +158,13 @@ final readonly class StateWriter
      * Moves to the target's state the records that the state of $from holds for fields the target has a value for but
      * no record of its own. A key of `lang/{lang}.json` that moves between the source language's JSON file and the forms
      * changes the target it belongs to (§A16), and without its record its translation would read as edited by hand.
+     * The other target may walk the value differently, so its fingerprint of the value the target holds is replaced in
+     * the record by the target's own.
      *
+     * @param  ?Closure(string): Field  $fromField  the field the target of $from makes of a handle; null when it is the target's own
      * @return list<string> the handles whose records moved
      */
-    public function adopt(Target $target, TargetRef $from): array
+    public function adopt(Target $target, TargetRef $from, ?Closure $fromField = null): array
     {
         $ref = $target->ref();
 
@@ -171,8 +176,15 @@ final readonly class StateWriter
         $records = [];
 
         foreach ($target->fields() as $handle => $field) {
-            if (! $other->field((string) $handle)->isEmpty() && $target->hasOverride((string) $handle)) {
-                $records[(string) $handle] = $other->field((string) $handle);
+            $handle = (string) $handle;
+            $record = $other->field($handle);
+
+            if (! $record->isEmpty() && $target->hasOverride($handle)) {
+                $value = $target->targetValue($handle);
+                $records[$handle] = $fromField === null ? $record : $record->rewalked(
+                    $this->resolver->targetHash($fromField($handle), $value),
+                    $this->resolver->targetHash($field, $value),
+                );
             }
         }
 
