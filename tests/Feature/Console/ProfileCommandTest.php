@@ -105,6 +105,31 @@ it('saves a profile with braces between noparse tags, so core keeps it as writte
     'an @ at the end, which would escape the closing tag' => ['Find us on {{ social }} as @', 'Find us on {{ social }} as @', 'Find us on {{ social }} as @ '],
 ]);
 
+// Core ends a noparse region at any tag that starts with `{{/noparse` once lower-cased and without spaces, so such a tag
+// in the profile, a final "{" or an "@{{{" made the wrapped text fail core's parse: the command stopped with core's
+// syntax error after the provider call. Such a profile is stored with its `{{` taken apart, which core reads as text.
+it('saves a profile that core could not read between noparse tags with its braces taken apart', function (string $profile, string $saved) {
+    SiteProfileAgent::fake(fn () => ['profile' => $profile, 'terms' => []]);
+
+    $this->artisan('tolk:profile', ['--save' => true])
+        ->expectsConfirmation('Save this profile as the site profile?', 'yes')
+        ->expectsOutputToContain('Saved the site profile.')
+        ->assertExitCode(0);
+
+    expect(siteProfile())->toBe($saved)
+        ->and(storedProfile())->toBe(['raw' => $saved, 'parsed' => $saved]);
+
+    $this->artisan('tolk:profile', ['--save' => true])
+        ->expectsOutputToContain('The settings already hold this site profile.')
+        ->assertExitCode(0);
+})->with([
+    'an upper-case end tag' => ['Warm voice. {{ /NOPARSE }} {{ config:app.name }} rest', 'Warm voice. { { /NOPARSE }} { { config:app.name }} rest'],
+    'an end tag with a suffix' => ['Warm voice. {{/noparse_x}} rest', 'Warm voice. { {/noparse_x}} rest'],
+    'an end tag with a space inside' => ['Warm voice. {{/no parse}} rest', 'Warm voice. { {/no parse}} rest'],
+    'a final curly brace' => ['Use {{ title }} or {', 'Use { { title }} or {'],
+    'an escaped tag with three braces' => ['Write @{{{ title }}} for {{ title }} in braces.', 'Write @{ { { title }}} for { { title }} in braces.'],
+]);
+
 it('saves nothing when the question is declined', function () {
     $this->artisan('tolk:profile', ['--save' => true])
         ->expectsConfirmation('Save this profile as the site profile?', 'no')

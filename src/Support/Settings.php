@@ -13,6 +13,8 @@ use Statamic\Addons\FileSettingsRepository;
 use Statamic\Contracts\Addons\Settings as AddonSettings;
 use Statamic\Contracts\Addons\SettingsRepository;
 use Statamic\Facades\Addon;
+use Statamic\Facades\Antlers;
+use Statamic\View\Cascade;
 use Throwable;
 
 class Settings
@@ -332,7 +334,9 @@ class Settings
      * The text to store for one that no one checked as Antlers, such as a model's, so that core neither fails on its
      * `{{` nor runs it as a template, and prose() returns it as written: between noparse tags when it holds `{{`,
      * without noparse tags of its own, which would end them early, and with a space after a final `@`, which would
-     * escape the closing tag.
+     * escape the closing tag. Core ends the region at any tag that starts with `{{/noparse` once lower-cased and
+     * without spaces (`{{ /NOPARSE }}`, `{{/noparse_x}}`), and a final `{` or an `@{{{` breaks it too, so a wrapped
+     * text that core does not read back as written is stored with every `{{` taken apart instead (`{ {`).
      */
     public static function literal(mixed $value): string
     {
@@ -342,6 +346,19 @@ class Settings
             return $text;
         }
 
-        return '{{ noparse }}'.$text.(str_ends_with($text, '@') ? ' ' : '').'{{ /noparse }}';
+        $literal = '{{ noparse }}'.$text.(str_ends_with($text, '@') ? ' ' : '').'{{ /noparse }}';
+
+        try {
+            if (trim((string) Antlers::parse($literal, ['config' => Cascade::config()])) === $text) {
+                return $literal;
+            }
+        } catch (Throwable) {
+        }
+
+        while (str_contains($text, '{{')) {
+            $text = str_replace('{{', '{ {', $text);
+        }
+
+        return $text;
     }
 }

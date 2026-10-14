@@ -285,7 +285,7 @@ php please tolk:profile
 php please tolk:profile --save
 ```
 
-`--save` shows the current profile, if there is one, and asks before it replaces it. It saves a profile that holds `{{` between `{{ noparse }}` and `{{ /noparse }}`, because Statamic reads every addon setting as Antlers ([What the settings page refuses](configuration.md#what-the-settings-page-refuses)); Tolk leaves the tags out of the prompts. The suggested names are only printed: add them to the glossary with **Do not translate** on. In the CP, **Generate** on the settings page does the same and can add the names to the glossary for you.
+`--save` shows the current profile, if there is one, and asks before it replaces it. It saves a profile that holds `{{` between `{{ noparse }}` and `{{ /noparse }}`, because Statamic reads every addon setting as Antlers ([What the settings page refuses](configuration.md#what-the-settings-page-refuses)); Tolk leaves the tags out of the prompts. A profile that Statamic would not read back as written even between them, such as one that holds `{{ /NOPARSE }}` or ends in `{`, is saved with each `{{` written as `{ {`. The suggested names are only printed: add them to the glossary with **Do not translate** on. In the CP, **Generate** on the settings page does the same and can add the names to the glossary for you.
 
 ## `tolk:lang`
 

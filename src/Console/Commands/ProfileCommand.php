@@ -84,7 +84,7 @@ class ProfileCommand extends Command
     {
         $current = $settings->siteProfile();
 
-        if ($current === Settings::prose($profile)) {
+        if ($current === Settings::prose(Settings::literal($profile))) {
             $this->components->info('The settings already hold this site profile.');
 
             return;

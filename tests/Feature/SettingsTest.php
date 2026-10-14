@@ -10,7 +10,9 @@ use Reach\StatamicTolk\Http\Rules\AntlersText;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\CP\PublishForm;
 use Statamic\Facades\Addon;
+use Statamic\Facades\Antlers;
 use Statamic\Facades\YAML;
+use Statamic\View\Cascade;
 
 function tolkSettingsBlueprintFields(): array
 {
@@ -331,6 +333,23 @@ it('checks every text the settings page saves as Antlers, inside the grids too',
 
     expect(collect((new ModelSelect)->rules())->map(fn (object $rule) => $rule::class)->all())->toContain(AntlersText::class);
 });
+
+// Core parses every setting as Antlers, on save and on every read (Settings::resolveAntlersValue()).
+it('stores a text no one checked as Antlers so that core reads it back, as written or with its {{ taken apart', function (string $text, string $read) {
+    $literal = Settings::literal($text);
+
+    expect(trim((string) Antlers::parse($literal, ['config' => Cascade::config()])))->toBe($read)
+        ->and(Settings::prose($literal))->toBe($read);
+})->with([
+    'plain text' => ['A warm, practical tone.', 'A warm, practical tone.'],
+    'an Antlers tag' => ['Print {{ site:name }} in the footer.', 'Print {{ site:name }} in the footer.'],
+    'an @ at the end' => ['Find us on {{ social }} as @', 'Find us on {{ social }} as @'],
+    'an upper-case end tag' => ['Warm voice. {{ /NOPARSE }} {{ config:app.name }} rest', 'Warm voice. { { /NOPARSE }} { { config:app.name }} rest'],
+    'a mixed-case end tag' => ['Warm voice. {{ /NoParse }} rest {{', 'Warm voice. { { /NoParse }} rest { {'],
+    'an end tag with a suffix' => ['Warm voice. {{/noparse_x}} rest', 'Warm voice. { {/noparse_x}} rest'],
+    'a final curly brace' => ['Use {{ title }} or {', 'Use { { title }} or {'],
+    'an escaped tag with three braces' => ['a @{{{ b {{ c', 'a @{ { { b { { c'],
+]);
 
 it('throws on a model reference that does not parse', function () {
     $this->withSettings(['translator_model' => 'mistral:large'])->translatorModel();
