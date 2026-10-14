@@ -9,7 +9,8 @@ final class Tolk
     /**
      * Registers the handler of a fieldtype and adds Tolk's per-field options to that fieldtype. Call it from your addon's
      * `bootAddon()`, after your fieldtypes are registered: Statamic reads a fieldtype's config fields once per request.
-     * A handler the host configures for the same handle in `tolk.fieldtypes` wins.
+     * A site calls it from `AppServiceProvider::boot()` inside `Statamic::booted()`, since `boot()` runs before the addons
+     * register their fieldtypes. A handler the host configures for the same handle in `tolk.fieldtypes` wins.
      *
      * @param  class-string<Contracts\FieldHandler>  $handlerClass
      */

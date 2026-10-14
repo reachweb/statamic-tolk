@@ -353,6 +353,12 @@ it('runs the handler of the extension guide and holds it to the golden propertie
         ->and($walker->mapField($field, 'not an array', $constant))->toBe('not an array');
 });
 
+it('shows a site registering its handler from the AppServiceProvider once Statamic has booted', function () {
+    $boot = collect(docsCodeBlocks('extending.md'))->first(fn (array $block) => str_contains($block['code'], 'public function boot()'))['code'] ?? '';
+
+    expect($boot)->toContain('Statamic::booted(fn () => Tolk::registerFieldtype(');
+});
+
 it('reads the per-field options of the configuration sample as documented', function () {
     $yaml = collect(docsCodeBlocks('configuration.md'))->first(fn (array $block) => $block['language'] === 'yaml')['code'];
     $blueprint = $this->makeBlueprint('collections.pages', 'page', YAML::parse($yaml));

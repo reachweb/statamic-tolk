@@ -83,6 +83,6 @@ it('names the events with their properties, the permissions, the per-field optio
     }
 
     expect($guideline)
-        ->toContain('`translate content`', '`run bulk translations`', 'Tolk::registerFieldtype(', 'Do not edit the files under `content/tolk/` by hand')
+        ->toContain('`translate content`', '`run bulk translations`', 'Statamic::booted(fn () => Tolk::registerFieldtype(', 'Do not edit the files under `content/tolk/` by hand')
         ->toContain('`ANTHROPIC_API_KEY`', '`OPENAI_API_KEY`', '`GEMINI_API_KEY`');
 });

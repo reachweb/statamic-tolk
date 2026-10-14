@@ -105,13 +105,26 @@ In a site, register it in the published `config/tolk.php`:
 ],
 ```
 
-or call `Tolk::registerFieldtype()` from the `boot()` method of your `AppServiceProvider`.
+or call `Tolk::registerFieldtype()` from the `boot()` method of your `AppServiceProvider`, inside `Statamic::booted()`:
+
+```php
+use App\Tolk\SeoMetaHandler;
+use Reach\StatamicTolk\Tolk;
+use Statamic\Statamic;
+
+public function boot(): void
+{
+    Statamic::booted(fn () => Tolk::registerFieldtype('seo_meta', SeoMetaHandler::class));
+}
+```
+
+Your providers' `boot()` methods run before Statamic boots its addons, and an addon registers its fieldtypes as it boots. Called straight from `boot()`, `Tolk::registerFieldtype()` still registers the handler, but a fieldtype of an addon that boots after Tolk does not exist yet, so it gets no per-field options in the blueprint editor. Inside `Statamic::booted()` the call waits until every addon has booted.
 
 Precedence and boot order:
 
 - A handler the site configures in `tolk.fieldtypes` wins over one an addon registers for the same fieldtype, so a site can replace an addon's handler, or a built-in one.
 - An addon that registers a handler for a core fieldtype (`text`, `bard`, …) replaces Tolk's own.
-- Tolk adds its per-field options to the fieldtypes in `tolk.fieldtypes` when it boots. A fieldtype that an addon booting after Tolk registers is not there yet, so a config entry for it translates its fields but gives it no options in the blueprint editor. Registering through `Tolk::registerFieldtype()` from that addon (or from your `AppServiceProvider`) adds them.
+- Tolk adds its per-field options to the fieldtypes in `tolk.fieldtypes` when it boots. A fieldtype that an addon booting after Tolk registers is not there yet, so a config entry for it translates its fields but gives it no options in the blueprint editor. Registering through `Tolk::registerFieldtype()` from that addon, or from your `AppServiceProvider` inside `Statamic::booted()` as above, adds them.
 
 ### Testing a handler
 

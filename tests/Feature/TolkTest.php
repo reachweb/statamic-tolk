@@ -9,11 +9,14 @@ use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Exceptions\InvalidFieldHandler;
 use Reach\StatamicTolk\ServiceProvider;
+use Reach\StatamicTolk\Tests\Support\Fieldtypes\LateFieldtype;
 use Reach\StatamicTolk\Tests\Support\Fieldtypes\NoteFieldtype;
 use Reach\StatamicTolk\Tests\Support\Handlers\FakeTextHandler;
 use Reach\StatamicTolk\Tolk;
+use Statamic\Facades\Blink;
 use Statamic\Facades\CP\Nav;
 use Statamic\Fields\Field;
+use Statamic\Statamic;
 
 it('registers a handler that the walker uses', function () {
     NoteFieldtype::register();
@@ -58,6 +61,23 @@ it('lets a handler registered before Tolk boots replace a built-in one', functio
     expect($registry->for(new Field('intro', ['type' => 'textarea'])))->toBeInstanceOf(FakeTextHandler::class)
         ->and($registry->for(new Field('title', ['type' => 'text'])))->toBeInstanceOf(TextHandler::class)
         ->and($registry->handles())->toContain('text', 'textarea', 'markdown', 'bard', 'replicator', 'grid', 'group', 'table', 'list', 'array');
+});
+
+it('adds the per-field options to the fieldtype of an addon booting after Tolk only when the site registers it once Statamic has booted', function () {
+    // An addon's provider queues its boot, fieldtypes first, in Statamic's booted callbacks, which run after the boot() of
+    // the site's providers. Each boot is a new request, which reads a fieldtype's config fields afresh.
+    $boot = function (Closure $siteBoot) {
+        Blink::flush();
+        Statamic::booted(fn () => LateFieldtype::register());
+        $siteBoot();
+        Statamic::runBootedCallbacks();
+
+        return FieldtypeRepository::find('tolk_test_late')->configFields()->all()->keys()->intersect(['tolk_translate', 'tolk_hint'])->values()->all();
+    };
+
+    expect($boot(fn () => Tolk::registerFieldtype('tolk_test_late', FakeTextHandler::class)))->toBe([])
+        ->and(app(FieldtypeRegistry::class)->has('tolk_test_late'))->toBeTrue()
+        ->and($boot(fn () => Statamic::booted(fn () => Tolk::registerFieldtype('tolk_test_late', FakeTextHandler::class))))->toBe(['tolk_translate', 'tolk_hint']);
 });
 
 it('refuses a class that is not a field handler', function () {
