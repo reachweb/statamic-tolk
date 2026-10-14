@@ -16,6 +16,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 
 beforeEach(function () {
@@ -59,6 +60,26 @@ it('keeps the state of content in a site its collection or taxonomy no longer ha
     expect(pruned()->isEmpty())->toBeTrue()
         ->and(app(StateRepository::class)->get(StateFixtures::ref($localization))->isEmpty())->toBeFalse()
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Term, 'topics::food', 'el'))->isEmpty())->toBeFalse();
+});
+
+it('keeps the state of a term, a global set and a navigation in a site the configuration leaves out now', function () {
+    $this->makeTaxonomy('topics', ['en', 'de'], ['title' => ['type' => 'text', 'localizable' => true]]);
+    $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food'], 'de' => ['title' => 'Essen']]);
+    $this->makeGlobalSet('site_settings', ['en' => null, 'de' => 'en'], ['tagline' => ['type' => 'text', 'localizable' => true]], ['en' => ['tagline' => 'By the sea']]);
+    $this->makeNav('main', ['en' => [['id' => 'book', 'title' => 'Book now']], 'de' => [['id' => 'book', 'title' => 'Jetzt buchen']]]);
+    $references = ['term::topics::food::de', 'globals::site_settings::de', 'nav::main::de'];
+
+    foreach ($references as $reference) {
+        prunerState(TargetRef::parse($reference));
+    }
+
+    Site::setSites([
+        'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],
+        'el' => ['name' => 'Greek', 'url' => 'http://localhost/el/', 'locale' => 'el_GR', 'lang' => 'el'],
+    ]);
+
+    expect(pruned()->orphans)->toBe([])
+        ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing($references);
 });
 
 it('deletes the state of a global set\'s site without an origin and of a navigation\'s tree that is gone, and reports each reason', function () {

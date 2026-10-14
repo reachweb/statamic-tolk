@@ -296,12 +296,13 @@ final class TargetFactory
     }
 
     // A nav reference names a site with a tree, translated from the tree of its recorded source site; forNav() throws
-    // UnknownSite when that site is left out now.
+    // UnknownSite when either site is left out now. The tree is looked up with in(): existsIn() is false in a site left
+    // out, whose tree is still there.
     private function navFromReference(TargetRef $ref): NavTarget
     {
         $nav = Nav::findByHandle($ref->id) ?? throw TargetNotFound::nav($ref->id);
 
-        if (! $nav->existsIn($ref->site)) {
+        if ($nav->in($ref->site) === null) {
             throw TargetNotFound::nav($ref->id, $ref->site);
         }
 

@@ -29,6 +29,7 @@ use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Events\NavTreeSaving;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Site;
 use Statamic\Facades\Stache;
 use Statamic\Tags\Loader;
 
@@ -223,6 +224,16 @@ describe('TargetFactory', function () {
         'unknown site' => ['nav::main::fr', TargetNotFound::class],
         'default site' => ['nav::main::en', NotALocalization::class],
     ]);
+
+    it('rejects a reference of a tree in a site the configuration leaves out now as an unknown site, not a missing tree', function () {
+        Nav::findByHandle('main')->makeTree('de', [])->save();
+        Site::setSites([
+            'en' => ['name' => 'English', 'url' => 'http://localhost/', 'locale' => 'en_US', 'lang' => 'en'],
+            'el' => ['name' => 'Greek', 'url' => 'http://localhost/el/', 'locale' => 'el_GR', 'lang' => 'el'],
+        ]);
+
+        expect(fn () => app(TargetFactory::class)->fromReference('nav::main::de'))->toThrow(UnknownSite::class);
+    });
 
     it('rebuilds a target from its description, or from a handle alone with the default site\'s tree', function () {
         Nav::findByHandle('main')->makeTree('de', [])->save();
