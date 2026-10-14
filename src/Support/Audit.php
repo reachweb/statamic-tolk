@@ -562,14 +562,18 @@ final class Audit
 
         $strategy = config('statamic.static_caching.strategy');
         $lanes = RunDispatcher::browserLanes();
+        // As the state check says: with content in the database, the state files do not go into git.
+        $database = $this->databaseContent() !== [];
 
         return [
             $this->item(AuditLevel::Ok, $revisions->isEmpty()
                 ? __('Revisions: off for the collections Tolk translates, so translations are saved directly.')
                 : __('Revisions: on for :collections. A new localization gets a revision, translations of a published localization go to its working copy, and "publish changes" (--publish-changes) publishes them only when it had no working copy before.', ['collections' => $revisions->implode(', ')])),
             $this->item(AuditLevel::Ok, match (true) {
+                ! config('statamic.git.enabled') && $database => __('Git integration: off. With content in the database, the state files stay out of git too: keep them when you deploy, and back them up with the database.'),
                 ! config('statamic.git.enabled') => __('Git integration: off. Commit the state files together with the content.'),
                 (bool) config('statamic.git.automatic') => __('Git integration: on, with automatic commits. Tolk saves without Statamic\'s commit listener and dispatches one commit (":commit") once a run or command has saved content.', ['commit' => ContentWriter::COMMIT_MESSAGE]),
+                $database => __('Git integration: on, without automatic commits. Commit translated content yourself, but not the state files, which stay with the content in the database: keep them when you deploy, and back them up with the database.'),
                 default => __('Git integration: on, without automatic commits. Commit translated content and the state files yourself.'),
             }),
             $this->item(AuditLevel::Ok, is_string($strategy) && $strategy !== '' && $strategy !== 'null'

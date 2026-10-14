@@ -610,4 +610,18 @@ describe('information', function () {
             'ok: A run driven by the browser keeps 2 PHP workers busy while its page is open: 1 lane (tolk.concurrency.browser) and the apply loop.',
         ]);
     });
+
+    it('keeps the state files out of git, as the state check does, when the Eloquent driver keeps the content in the database', function () {
+        config([
+            'statamic.eloquent-driver.entries.driver' => 'eloquent',
+            'tolk.state.path' => storage_path('statamic/tolk/state'),
+        ]);
+
+        expect(auditItems('information')[1])->toBe('ok: Git integration: off. With content in the database, the state files stay out of git too: keep them when you deploy, and back them up with the database.')
+            ->and(auditItems('state')[1])->toEndWith('not in git: keep them when you deploy, and back them up with the database.');
+
+        config(['statamic.git.enabled' => true, 'statamic.git.automatic' => false]);
+
+        expect(auditItems('information')[1])->toBe('ok: Git integration: on, without automatic commits. Commit translated content yourself, but not the state files, which stay with the content in the database: keep them when you deploy, and back them up with the database.');
+    });
 });
