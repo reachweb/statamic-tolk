@@ -83,7 +83,7 @@ final readonly class RunPlanner
 
         $options = $this->runOptions($request);
         $notes = ['skipped' => [], 'out_of_scope' => [], 'explained' => []];
-        $items = $this->entryItems($this->entryTargets($request, $notes), Mode::from($options['mode']) !== Mode::Review);
+        $items = $this->entryItems($this->entryTargets($request, Mode::from($options['mode']) !== Mode::Review, $notes));
         $items = [...$items, ...$this->termItems($request, count($items), $notes)];
         $items = [...$items, ...$this->globalItems($request, count($items), $notes)];
         $items = [...$items, ...$this->navItems($request, count($items), $notes)];
@@ -174,13 +174,16 @@ final readonly class RunPlanner
     }
 
     /**
-     * Every family × site target the user may edit, family by family, keyed by site. The other pairs are counted in
-     * the notes; a root's own site is not a target at all.
+     * Every family × site target the user may edit, family by family, keyed by site, as the scalars entryItems() needs:
+     * the roots are read a chunk at a time (EntryFamilies::roots()) and each target is built from the root it read, so
+     * memory holds the entries of one chunk of families, not of the whole collection or site. The other pairs are
+     * counted in the notes; a root's own site is not a target at all.
      *
+     * @param  bool  $creates  whether missing localizations are created (every mode but review)
      * @param  array  $notes  see sitesFor()
-     * @return list<array<string, array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}>>
+     * @return list<array<string, array{root: string, site: string, source: string, source_site: string, chained: bool, title: string, root_missing: ?array{family: ?string, error: string, page: ?array}, parent: ?array{family: string, title: mixed}}>>
      */
-    private function entryTargets(RunRequest $request, array &$notes): array
+    private function entryTargets(RunRequest $request, bool $creates, array &$notes): array
     {
         $assumed = RunRequest::assumed($request->assumedSites, 'collection');
         $collections = $this->containers($request->collections, Collection::class, 'Collection', $assumed);
@@ -204,10 +207,10 @@ final readonly class RunPlanner
 
             foreach ($sites as $site) {
                 $source = $this->source($root, $site, $request->sourceSite);
-                $target = $this->factory->forEntry($source, $site, $request->assumedSites);
+                $target = $this->factory->forLoadedEntry($source, $site, $request->assumedSites);
 
                 if ($this->admits($request, $target, $collection->handle().'.'.$source->blueprint()->handle(), $notes)) {
-                    $family[$site] = compact('root', 'site', 'source', 'target');
+                    $family[$site] = $this->entryTargetInfo($root, $site, $source, $target, $creates);
                 }
             }
 
@@ -445,27 +448,66 @@ final readonly class RunPlanner
     }
 
     /**
+     * What entryItem() needs of a target, read while its entries are loaded. Only a localization created by the run is
+     * placed in a tree (§A11 "Create" and "Root page"), so only a missing one, in a run that creates it, notes the root
+     * page it waits for and a parent page without a localization in the site, each by the root id of its family.
+     *
+     * @return array the shape entryTargets() returns per target
+     */
+    private function entryTargetInfo(EntryContract $root, string $site, EntryContract $source, EntryTarget $target, bool $creates): array
+    {
+        $info = [
+            'root' => (string) $root->id(),
+            'site' => $site,
+            'source' => (string) $source->id(),
+            'source_site' => $source->locale(),
+            'chained' => $source->hasOrigin(),
+            'title' => $target->title(),
+            'root_missing' => null,
+            'parent' => null,
+        ];
+
+        if (! $creates || $target->exists()) {
+            return $info;
+        }
+
+        try {
+            $target->ensureRootExists();
+        } catch (RootMissing $missing) {
+            $rootPage = Entry::find($missing->rootId ?? '');
+            $info['root_missing'] = ['family' => $rootPage === null ? null : (string) $rootPage->root()->id(), 'error' => $missing->getMessage(), 'page' => $missing->rootPage()];
+        }
+
+        $parent = $this->parentPage($source);
+
+        if ($parent !== null && $parent->in($site) === null) {
+            $info['parent'] = ['family' => (string) $parent->root()->id(), 'title' => $parent->value('title') ?? $parent->slug()];
+        }
+
+        return $info;
+    }
+
+    /**
      * Indexes the targets in family order, a family's chain sources before the targets translated from them, then
      * gives each item its dependencies. They may point at any item of the run, since the source trees of a run's
      * targets need not have one shape.
      *
-     * @param  list<array<string, array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}>>  $families
-     * @param  bool  $creates  whether missing localizations are created (every mode but review)
+     * @param  list<array<string, array>>  $families  as entryTargets() returns them
      * @return list<RunItem>
      */
-    private function entryItems(array $families, bool $creates): array
+    private function entryItems(array $families): array
     {
         $targets = [];
         $indexes = [];
 
         foreach ($families as $family) {
-            foreach (self::chainOrder($family, fn (array $target) => $target['source']->locale()) as $target) {
-                $indexes[$target['root']->id().'|'.$target['site']] = count($targets);
+            foreach (self::chainOrder($family, fn (array $target) => $target['source_site']) as $target) {
+                $indexes[$target['root'].'|'.$target['site']] = count($targets);
                 $targets[] = $target;
             }
         }
 
-        return array_map(fn (array $target, int $index) => $this->entryItem($index, $target, $indexes, $creates), $targets, array_keys($targets));
+        return array_map(fn (array $target, int $index) => $this->entryItem($index, $target, $indexes), $targets, array_keys($targets));
     }
 
     /**
@@ -500,50 +542,43 @@ final readonly class RunPlanner
     }
 
     /**
-     * @param  array{root: EntryContract, site: string, source: EntryContract, target: EntryTarget}  $target
+     * @param  array  $target  as entryTargets() returns it
      * @param  array<string, int>  $indexes  root id|site → item index
      */
-    private function entryItem(int $index, array $target, array $indexes, bool $creates): RunItem
+    private function entryItem(int $index, array $target, array $indexes): RunItem
     {
-        ['root' => $root, 'site' => $site, 'source' => $source, 'target' => $entryTarget] = $target;
-        $item = new RunItem($index, ContentType::Entry, (string) $source->id(), $site, $entryTarget->title());
+        ['root' => $root, 'site' => $site, 'root_missing' => $missing, 'parent' => $parent] = $target;
+        $item = new RunItem($index, ContentType::Entry, $target['source'], $site, $target['title']);
         $dependsOn = [];
 
-        if ($source->hasOrigin()) {
-            $dependsOn[] = $indexes[$root->id().'|'.$source->locale()] ?? null;
+        if ($target['chained']) {
+            $dependsOn[] = $indexes[$root.'|'.$target['source_site']] ?? null;
         }
 
-        // Only a localization created by the run is placed in a tree (§A11 "Create" and "Root page").
-        if ($creates && ! $entryTarget->exists()) {
-            try {
-                $entryTarget->ensureRootExists();
-            } catch (RootMissing $missing) {
-                $rootIndex = $this->indexOf(Entry::find($missing->rootId ?? ''), $site, $indexes);
+        if ($missing !== null) {
+            $rootIndex = $missing['family'] === null ? null : $indexes[$missing['family'].'|'.$site] ?? null;
 
-                if ($rootIndex === null) {
-                    $item->status = RunItemStatus::Skipped;
-                    $item->reason = TargetResult::ROOT_MISSING;
-                    $item->error = $missing->getMessage();
-                    $item->rootPage = $missing->rootPage();
+            if ($rootIndex === null) {
+                $item->status = RunItemStatus::Skipped;
+                $item->reason = TargetResult::ROOT_MISSING;
+                $item->error = $missing['error'];
+                $item->rootPage = $missing['page'];
 
-                    return $item;
-                }
-
-                $dependsOn[] = $rootIndex;
+                return $item;
             }
 
-            $parent = $this->parentPage($source);
+            $dependsOn[] = $rootIndex;
+        }
 
-            if ($parent !== null && $parent->in($site) === null) {
-                $parentIndex = $this->indexOf($parent, $site, $indexes);
-                $dependsOn[] = $parentIndex;
+        if ($parent !== null) {
+            $parentIndex = $indexes[$parent['family'].'|'.$site] ?? null;
+            $dependsOn[] = $parentIndex;
 
-                if ($parentIndex === null) {
-                    $item->warnings[] = __('Its parent page, :parent, has no localization in :site, so this page will be placed at the top level.', [
-                        'parent' => $parent->value('title') ?? $parent->slug(),
-                        'site' => Site::get($site)->name(),
-                    ]);
-                }
+            if ($parentIndex === null) {
+                $item->warnings[] = __('Its parent page, :parent, has no localization in :site, so this page will be placed at the top level.', [
+                    'parent' => $parent['title'],
+                    'site' => Site::get($site)->name(),
+                ]);
             }
         }
 
@@ -567,14 +602,6 @@ final readonly class RunPlanner
         $parent = $source->parent();
 
         return $parent === null || $parent->isRoot() ? null : $parent->entry();
-    }
-
-    /**
-     * @param  array<string, int>  $indexes
-     */
-    private function indexOf(?EntryContract $entry, string $site, array $indexes): ?int
-    {
-        return $entry === null ? null : $indexes[$entry->root()->id().'|'.$site] ?? null;
     }
 
     // §A11: an existing localization is translated from its origin; a missing one from the family's entry in the source site, else from the root.

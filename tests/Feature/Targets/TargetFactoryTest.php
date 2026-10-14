@@ -121,6 +121,14 @@ describe('forLoadedEntry', function () {
         'an unknown site' => ['fr', UnknownSite::class],
         'the source\'s own site' => ['en', InvalidTarget::class],
     ]);
+
+    it('takes a site the collection lacks when the request assumes the collection to have it, as forEntry() does', function () {
+        $this->makeCollection('notes', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $note = $this->makeEntry('notes', 'en', ['title' => 'Note']);
+
+        expect(targets()->forLoadedEntry($note, 'de', ['collection:notes' => null])->describe())->toBe(['type' => 'entry', 'source_id' => $note->id(), 'site' => 'de'])
+            ->and(fn () => targets()->forLoadedEntry($note, 'de'))->toThrow(InvalidTarget::class);
+    });
 });
 
 describe('fromDescription', function () {

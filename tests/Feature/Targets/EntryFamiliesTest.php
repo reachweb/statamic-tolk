@@ -3,6 +3,7 @@
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 
@@ -16,9 +17,19 @@ beforeEach(function () {
     $this->headline = $this->makeEntry('news', 'en', ['title' => 'Headline'], 'headline');
 });
 
-function familySlugs(array $roots): array
+function familySlugs(iterable $roots): array
 {
-    return array_map(fn (EntryContract $root) => $root->slug(), $roots);
+    return array_map(fn (EntryContract $root) => $root->slug(), [...$roots]);
+}
+
+/**
+ * The slugs of entries, by id.
+ *
+ * @param  list<string>  $ids
+ */
+function slugsOf(array $ids): array
+{
+    return array_map(fn (string $id) => Entry::find($id)->slug(), $ids);
 }
 
 describe('roots', function () {
@@ -32,7 +43,7 @@ describe('roots', function () {
         $greek = $this->localize($this->hello, 'el', ['title' => 'Γεια σου']);
         $swiss = $this->localize($greek, 'de');
 
-        $roots = app(EntryFamilies::class)->roots([], [$swiss->id(), $this->hello->id(), $greek->id()]);
+        $roots = [...app(EntryFamilies::class)->roots([], [$swiss->id(), $this->hello->id(), $greek->id()])];
 
         expect(familySlugs($roots))->toBe(['hello'])
             ->and($roots[0]->id())->toBe($this->hello->id());
@@ -64,13 +75,81 @@ describe('roots', function () {
     it('throws for an unknown entry', function () {
         expect(fn () => app(EntryFamilies::class)->roots([], ['missing-id']))->toThrow(TargetNotFound::class, 'Entry [missing-id] not found.');
     });
+
+    it('loads the roots a chunk at a time, as the caller reads them', function () {
+        $this->useFileCache();
+
+        foreach (range(1, EntryFamilies::CHUNK) as $number) {
+            $this->makeEntry('articles', 'en', ['title' => "More {$number}"], "more-{$number}");
+        }
+
+        $families = app(EntryFamilies::class);
+        $ids = array_map(fn (EntryContract $root) => (string) $root->id(), [...$families->roots(['articles'], [])]);
+        $titles = [];
+
+        foreach ($families->roots(['articles'], []) as $position => $root) {
+            if ($position === 0) {
+                foreach ([$ids[1], $ids[EntryFamilies::CHUNK]] as $id) {
+                    Entry::find($id)->set('title', 'Changed meanwhile')->save();
+                }
+            }
+
+            $titles[] = $root->get('title');
+        }
+
+        expect(count($titles))->toBe(EntryFamilies::CHUNK + 3)
+            ->and($titles[1])->not->toBe('Changed meanwhile')
+            ->and($titles[EntryFamilies::CHUNK])->toBe('Changed meanwhile');
+    });
+
+    it('forgets what core memoized for the entries of a chunk before it loads the next, and keeps what was memoized before', function () {
+        foreach (range(1, EntryFamilies::CHUNK) as $number) {
+            $this->localize($this->makeEntry('articles', 'en', ['title' => "More {$number}"], "more-{$number}"), 'el');
+        }
+
+        Blink::flush();
+        Blink::put('origin-Entry-earlier', 'kept');
+        $memoized = [];
+        $leftOver = null;
+
+        foreach (app(EntryFamilies::class)->roots(['articles'], []) as $position => $root) {
+            if ($position === EntryFamilies::CHUNK) {
+                $leftOver = array_values(array_filter($memoized, fn (string $key) => Blink::has($key)));
+            }
+
+            // An entry's blueprint and localizations, and a localization's origin, as building a target reads them.
+            $root->blueprint();
+            $localization = $root->in('el');
+            $localization?->origin();
+
+            if ($position < EntryFamilies::CHUNK) {
+                $keys = ["entry-{$root->id()}-blueprint", "entry-descendants-{$root->id()}", 'origin-Entry-'.$localization?->id()];
+                $memoized = [...$memoized, ...array_filter($keys, fn (string $key) => Blink::has($key))];
+            }
+        }
+
+        expect(count($memoized))->toBeGreaterThan(2 * EntryFamilies::CHUNK)
+            ->and($leftOver)->toBe([])
+            ->and(Blink::get('origin-Entry-earlier'))->toBe('kept');
+    });
+});
+
+describe('rootIds', function () {
+    it('lists the ids of the roots in the order of roots(), without loading the collections\' entries', function () {
+        $this->makePages(['home', 'rooms' => ['suites'], 'dining'], creationOrder: ['suites', 'dining', 'rooms', 'home']);
+        $suites = Entry::query()->where('slug', 'suites')->first();
+        $families = app(EntryFamilies::class);
+
+        expect(slugsOf($families->rootIds(['pages', 'news'], [$this->greek->id(), $suites->id()])))->toBe(['home', 'rooms', 'suites', 'dining', 'headline', 'geia'])
+            ->and($families->rootIds(['pages', 'news'], [$this->greek->id()]))->toBe(array_map(fn (EntryContract $root) => (string) $root->id(), [...$families->roots(['pages', 'news'], [$this->greek->id()])]));
+    });
 });
 
 describe('rootIdsOutside', function () {
     it('lists the ids of the roots in other sites than the given one, in the order of roots()', function (string $site) {
         $this->localize($this->hello, 'el', ['title' => 'Γεια σου']);
         $families = app(EntryFamilies::class);
-        $roots = array_filter($families->roots(['articles'], []), fn (EntryContract $root) => $root->locale() !== $site);
+        $roots = array_filter([...$families->roots(['articles'], [])], fn (EntryContract $root) => $root->locale() !== $site);
 
         expect($families->rootIdsOutside(Collection::find('articles'), $site))->toBe(array_values(array_map(fn (EntryContract $root) => $root->id(), $roots)));
     })->with(['en', 'el', 'de']);

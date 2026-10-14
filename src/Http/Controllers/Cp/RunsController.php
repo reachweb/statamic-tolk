@@ -49,6 +49,11 @@ class RunsController extends Controller
 
     public const int APPLY_SECONDS = 10;
 
+    /**
+     * What creating a run may take: it lists every target of the request, which for a whole site reads every entry.
+     */
+    public const int STORE_SECONDS = 120;
+
     public function __construct(
         private readonly RunRepository $runs,
         private readonly RunState $state,
@@ -90,6 +95,7 @@ class RunsController extends Controller
 
     public function store(RunStoreRequest $request, RunPlanner $planner): JsonResponse
     {
+        $this->raiseTimeLimit(self::STORE_SECONDS);
         $driver = RunDispatcher::resolveDriver();
 
         try {

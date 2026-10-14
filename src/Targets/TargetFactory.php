@@ -68,13 +68,15 @@ final class TargetFactory
     }
 
     /**
-     * As forEntry(), for an entry the caller has just loaded, such as a root of the status scan: the target reads that
-     * instance instead of finding the entry again, which filters the whole id index (T12.2). Its fresh(), which apply()
-     * works on (§A11), loads the entry anew.
+     * As forEntry(), for an entry the caller has just loaded, such as a root of the status scan or of a run being
+     * built: the target reads that instance instead of finding the entry again, which filters the whole id index
+     * (T12.2). Its fresh(), which apply() works on (§A11), loads the entry anew.
+     *
+     * @param  array<string, ?string>  $assumedSites  containers to treat as having the site (RunRequest::$assumedSites)
      */
-    public function forLoadedEntry(EntryContract $entry, string $site): EntryTarget
+    public function forLoadedEntry(EntryContract $entry, string $site, array $assumedSites = []): EntryTarget
     {
-        return $this->entryTarget($entry, $site, loaded: true);
+        return $this->entryTarget($entry, $site, loaded: true, assumedSites: $assumedSites);
     }
 
     /**

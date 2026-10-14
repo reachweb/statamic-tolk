@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -19,11 +20,13 @@ use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
+use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\EntrySaved;
 use Statamic\Events\NavTreeSaved;
 use Statamic\Facades\Entry;
@@ -654,6 +657,88 @@ describe('pages', function () {
 
         expect(itemDependencies($planned))->toBe(['home→el' => [], 'rooms→el' => [], 'suites→el' => []])
             ->and($alone->items[0])->toMatchObject(['status' => RunItemStatus::Pending, 'warnings' => []]);
+    });
+});
+
+describe('large collections', function () {
+    it('authorizes every target of a family on the root it loaded, without finding the root again per target', function () {
+        $first = [];
+        $same = [];
+
+        Gate::before(function ($user, string $ability, array $arguments) use (&$first, &$same) {
+            $entry = $arguments[0] ?? null;
+
+            if ($ability !== 'edit' || ! $entry instanceof EntryContract) {
+                return null;
+            }
+
+            $id = (string) $entry->id();
+
+            if (isset($first[$id])) {
+                $same[$id] = $first[$id]->get() === $entry;
+            } else {
+                $first[$id] = WeakReference::create($entry);
+            }
+
+            return null;
+        });
+
+        planRun(['sites' => ['el', 'de'], 'collections' => ['articles'], 'user' => $this->signInAdmin()]);
+
+        expect($same)->toBe([$this->hello->id() => true, $this->world->id() => true]);
+    });
+
+    it('holds no entry of the chunks of families it has listed while it lists the next, but the one core\'s shared blueprint keeps', function () {
+        $rootOf = [];
+
+        foreach (range(1, EntryFamilies::CHUNK) as $number) {
+            $root = $this->makeEntry('articles', 'en', ['title' => "More {$number}", 'intro' => 'More.'], "more-{$number}");
+            $rootOf[(string) $this->localize($root, 'el', ['title' => "Κι άλλο {$number}"])->id()] = (string) $root->id();
+        }
+
+        $ids = array_map(fn (EntryContract $root) => (string) $root->id(), [...app(EntryFamilies::class)->roots(['articles'], [])]);
+        $firstChunk = array_flip(array_slice($ids, 0, EntryFamilies::CHUNK));
+        $held = [];
+        $alive = null;
+
+        // Called with each target's localization, or its source when the localization is missing.
+        Gate::before(function ($user, string $ability, array $arguments) use ($rootOf, $ids, $firstChunk, &$held, &$alive) {
+            $entry = $arguments[0] ?? null;
+
+            if ($ability !== 'edit' || ! $entry instanceof EntryContract) {
+                return null;
+            }
+
+            $root = $rootOf[(string) $entry->id()] ?? (string) $entry->id();
+
+            if ($alive === null && $root === $ids[EntryFamilies::CHUNK]) {
+                gc_collect_cycles();
+                $alive = collect($held)->map(fn (WeakReference $reference) => $reference->get())->filter()->unique(fn (EntryContract $entry) => spl_object_id($entry))->count();
+            }
+
+            if (isset($firstChunk[$root])) {
+                $held[] = WeakReference::create($entry);
+            }
+
+            return null;
+        });
+
+        $planned = planRun(['sites' => ['el', 'de'], 'collections' => ['articles'], 'user' => $this->signInAdmin()]);
+
+        // A collection's entries share one blueprint, whose fields keep the entry they were first read for.
+        expect($planned->items)->toHaveCount(2 * (EntryFamilies::CHUNK + 2))
+            ->and($held)->toHaveCount(2 * EntryFamilies::CHUNK)
+            ->and($alive)->toBeLessThanOrEqual(1);
+    });
+
+    it('makes a page of a later chunk of families wait for the root and parent items of an earlier one', function () {
+        $rooms = array_map(fn (int $number) => "room-{$number}", range(1, EntryFamilies::CHUNK));
+        $this->makePages(['home', 'rooms' => $rooms]);
+
+        $dependencies = itemDependencies(planRun(['sites' => ['el'], 'collections' => ['pages']]));
+
+        expect($dependencies)->toHaveCount(EntryFamilies::CHUNK + 2)
+            ->and($dependencies['room-'.EntryFamilies::CHUNK.'→el'])->toBe(['home→el', 'rooms→el']);
     });
 });
 

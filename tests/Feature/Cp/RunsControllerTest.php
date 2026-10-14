@@ -135,6 +135,19 @@ describe('store', function () {
         $this->assertNoModelCalls();
     });
 
+    it('raises a time limit that is too low for listing the targets of a large site', function () {
+        $this->signInAdmin();
+
+        try {
+            set_time_limit(30);
+            storeRun()->assertCreated();
+
+            expect(ini_get('max_execution_time'))->toBe('120');
+        } finally {
+            set_time_limit(0);
+        }
+    });
+
     it('takes the driver from the execution setting', function () {
         config(['tolk.runs.execution' => 'queue']);
         Queue::fake();
