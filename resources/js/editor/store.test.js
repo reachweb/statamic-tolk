@@ -82,12 +82,12 @@ describe('switched', () => {
 });
 
 describe('saved', () => {
-    it('returns and clears the delivered handles and records the time', () => {
+    it('returns and clears the delivered fields and records the time', () => {
         store.switched('base', 'entry::a', 1_000);
         store.container('base').delivered = { title: { value: 'Τίτλος' }, intro: { value: 'Εισαγωγή' } };
         store.container('base').created = true;
 
-        expect(store.saved('base', 2_000)).toEqual(['title', 'intro']);
+        expect(store.saved('base', 2_000)).toEqual({ title: { value: 'Τίτλος' }, intro: { value: 'Εισαγωγή' } });
         expect(store.container('base').delivered).toEqual({});
         expect(store.container('base').lastChangeAt).toBe(2_000);
         expect(store.container('base').reference).toBe('entry::a');
@@ -98,7 +98,7 @@ describe('saved', () => {
     it('keeps a later switch as the last change', () => {
         store.switched('base', 'entry::a', 3_000);
 
-        expect(store.saved('base', 2_000)).toEqual([]);
+        expect(store.saved('base', 2_000)).toEqual({});
         expect(store.container('base').lastChangeAt).toBe(3_000);
     });
 });

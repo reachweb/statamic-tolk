@@ -1,5 +1,5 @@
 import * as defaultApi from '../api.js';
-import { leaveOutHidden } from './fill.js';
+import { leaveOutHidden, savedFills } from './fill.js';
 import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
@@ -88,7 +88,10 @@ export function createSaveHooks({
             return;
         }
 
-        const delivered = editor.saved(BASE, now());
+        const ctx = registry.context(BASE);
+        const records = editor.saved(BASE, now());
+        // `localizedFields` is what the save posted as `_localized`; core keeps it after a save.
+        const delivered = ctx?.reference.value === reference ? savedFills(ctx, records) : Object.keys(records);
 
         // Core's request step has already put the response's values into the form (SavePipeline's `Request`, before the
         // `*.saved` hooks); with revisions core sets them again after the hooks. No later refresh: text typed after the

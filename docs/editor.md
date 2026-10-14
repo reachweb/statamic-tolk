@@ -32,6 +32,7 @@ The filled fields are not saved yet. Read them, change what you like, then press
 
 - A field you did not change after it was filled counts as machine-translated, so a later change to the origin marks it outdated and Update replaces it.
 - A field whose text you changed before saving counts as edited by hand: Translate and Update leave it alone from then on (see [Statuses](statuses.md#manual-fields)).
+- A field you set back to follow the origin with Statamic's sync button keeps following the origin and stays untranslated.
 
 A field you typed into before pressing Translate is skipped, and the banner names it ("Intro was skipped because you edited it."), so your text is never overwritten. A field that a condition hides is skipped too ("Button label was skipped because it is hidden. Show it and translate again."), because Statamic would save it empty. A field that a condition hid after it was filled is left out of the save and keeps following the origin; the banner lists it so you can show it and translate it again. A field that already had text of its own is different: when a condition hides it as you save, Statamic saves it empty, whether Tolk filled it or not, so show it before you save.
 

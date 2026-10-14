@@ -88,6 +88,15 @@ function reemit(ctx, handle, value) {
     setTimeout(() => (ctx.values.value[handle] = value), 150);
 }
 
+const filled = (extra = {}) => ({ plan: 'p1', value: '[de] Text', pending: false, incomplete: false, sync: false, localizedBefore: false, ...extra });
+const hide = (ctx, ...handles) => handles.forEach((handle) => (ctx.hiddenFields.value[handle] = { hidden: true, omitValue: true }));
+
+// `editor/confirm` as the server answers it: a delivered field the save did not post in `_localized` holds no override,
+// whether a condition hid it or the editor put it back to inheriting, and is listed.
+function confirming(ctx) {
+    return { post: vi.fn(async (url, { delivered }) => ({ ...freshStatus(), not_saved: delivered.filter((handle) => !ctx.localizedFields.value.includes(handle)) })) };
+}
+
 describe('listen', () => {
     it('registers the hooks of the entry and term forms once', () => {
         const registered = [];
@@ -131,9 +140,6 @@ describe('entry.saving', () => {
 
     // Core posts a field a condition hides without its value but with its handle in `_localized`, which the server
     // stores as an empty value of the localization's own.
-    const filled = (extra = {}) => ({ plan: 'p1', value: '[de] Text', pending: false, incomplete: false, sync: false, localizedBefore: false, ...extra });
-    const hide = (ctx, ...handles) => handles.forEach((handle) => (ctx.hiddenFields.value[handle] = { hidden: true, omitValue: true }));
-
     it('leaves a filled field that a condition now hides out of `_localized`, so it keeps inheriting instead of being stored empty', async () => {
         const ctx = mount();
         ctx.localizedFields.value.push('intro', 'seo_title');
@@ -192,6 +198,7 @@ describe('entry.saved', () => {
         const api = { post: vi.fn(async () => ({ ...freshStatus(), not_saved: [] })) };
         store.container('base').delivered = { intro: { plan: 'p1' }, seo_title: { plan: 'p1' } };
         ctx.values.value.intro = '[de] Intro';
+        ctx.localizedFields.value.push('intro', 'seo_title');
 
         const outcome = await run(hooks({ api }).saved, savedPayload());
 
@@ -246,6 +253,38 @@ describe('entry.saved', () => {
         expect(store.container('base').notSaved).toEqual(['intro', 'seo_title']);
         expect(toasts).toEqual([['error', message, { duration: 10_000 }]]);
         expect(notSavedMessage(['intro'], freshStatus())).toBe('Intro was not saved because it was hidden when you saved. Show it and translate it again.');
+    });
+
+    it('does not list a filled field that the editor put back to inheriting before saving', async () => {
+        const ctx = mount();
+        // Core's sync button took `intro` out of `localizedFields`; a sync fill did the same to `excerpt`.
+        ctx.localizedFields.value.push('seo_title');
+        store.container('base').delivered = { intro: filled(), seo_title: filled(), excerpt: filled({ value: 'Origin', sync: true }) };
+        const api = confirming(ctx);
+        const save = hooks({ api });
+
+        await run(save.saving, {});
+        await run(save.saved, savedPayload());
+
+        expect(api.post).toHaveBeenCalledExactlyOnceWith('editor/confirm', { reference: 'entry::de', delivered: ['seo_title'] });
+        expect(store.container('base').notSaved).toEqual([]);
+        expect(toasts).toEqual([]);
+    });
+
+    it('still lists a filled field that a condition hid, which the saving hook left out of the save', async () => {
+        const ctx = mount();
+        ctx.localizedFields.value.push('intro', 'seo_title');
+        store.container('base').delivered = { intro: filled(), seo_title: filled() };
+        hide(ctx, 'intro');
+        const api = confirming(ctx);
+        const save = hooks({ api });
+
+        await run(save.saving, {});
+        await run(save.saved, savedPayload());
+
+        expect(api.post).toHaveBeenCalledExactlyOnceWith('editor/confirm', { reference: 'entry::de', delivered: ['intro', 'seo_title'] });
+        expect(store.container('base').notSaved).toEqual(['intro']);
+        expect(toasts).toEqual([['error', 'Intro was not saved because it was hidden when you saved. Show it and translate it again.', { duration: 10_000 }]]);
     });
 
     it('ends a finished translation: the summary and Undo no longer apply', async () => {
@@ -314,9 +353,10 @@ describe('entry.saved', () => {
     });
 
     it('confirms a term saved by its form, whose response names no reference', async () => {
-        mount('term::topics::food::el');
+        const ctx = mount('term::topics::food::el');
         const api = { post: vi.fn(async () => ({ ...freshStatus(), not_saved: [] })) };
         store.container('base').delivered = { description: { plan: 'p1' } };
+        ctx.localizedFields.value.push('description');
         const response = { data: { data: { id: 'topics::food', title: 'Food', edit_url: 'http://localhost/cp/taxonomies/topics/terms/food/el' } } };
 
         // As core's term form runs `term.saved`: with the reference it was opened with.

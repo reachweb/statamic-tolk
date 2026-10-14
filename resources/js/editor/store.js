@@ -51,10 +51,10 @@ export function useEditorStore() {
                 this.containers[name] = { ...initialState(), reference, lastChangeAt: at };
             },
 
-            // Returns the handles delivered since the previous save, for `editor/confirm`.
+            // Returns what was delivered since the previous save, by handle, for `editor/confirm`.
             saved(name, at = Date.now()) {
                 const container = this.container(name);
-                const delivered = Object.keys(container.delivered);
+                const delivered = container.delivered;
 
                 container.lastChangeAt = Math.max(container.lastChangeAt, at);
                 container.delivered = {};

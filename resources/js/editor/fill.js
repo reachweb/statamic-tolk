@@ -83,6 +83,15 @@ export function leaveOutHidden(ctx, delivered) {
     }
 }
 
+// The delivered handles a save was meant to store, sent to `editor/confirm`: those still localized, and those
+// `leaveOutHidden()` left out, which the server then lists as not saved. A field the editor put back to inheriting with
+// core's sync button, or a sync fill, holds no override either, and the server cannot tell it from a hidden one.
+export function savedFills(ctx, delivered) {
+    const localized = ctx.localizedFields.value;
+
+    return Object.keys(delivered).filter((handle) => delivered[handle].leftOut || localized.includes(handle));
+}
+
 // Whether `restore()` puts a handle back: it holds a fill delivered since the snapshot was taken.
 export function filledSince(before, record) {
     return Boolean(record) && !record.pending && record.plan !== before.delivered?.plan;
