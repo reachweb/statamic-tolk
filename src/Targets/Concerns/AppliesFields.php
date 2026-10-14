@@ -69,7 +69,8 @@ trait AppliesFields
     /**
      * The fields to write, and those whose text somebody changed since the plan was made, which are skipped unless
      * the operation overwrites manual edits (§A11 step 2). A reviewed field is skipped either way: its value is the
-     * text the plan read with the corrections, so writing it would undo the edit.
+     * text the plan read with the corrections, so writing it would undo the edit. A target that already holds what the
+     * field writes has not changed: a run's attempt that saved it and then threw writes it again on its next attempt.
      *
      * @param  array<string, AssembledField>  $fields
      * @return array{0: array<string, AssembledField>, 1: array<string, string>} the writes, and the skipped handles with the reason
@@ -79,7 +80,8 @@ trait AppliesFields
         $writes = $skipped = [];
 
         foreach ($fields as $handle => $field) {
-            $changed = $this->resolver->currentTargetHash($this, $this->fields()->get($handle)) !== $field->targetBefore;
+            $current = $this->resolver->currentTargetHash($this, $this->fields()->get($handle));
+            $changed = $current !== $field->targetBefore && $current !== $field->targetHash;
 
             if ($changed && ($field->fromTarget || ! $options->overwriteManual)) {
                 $skipped[$handle] = TargetResult::TARGET_CHANGED;

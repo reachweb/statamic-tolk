@@ -235,18 +235,19 @@ final class EntryTarget implements Target
         $fields = $this->keyByHandle($fields);
         $created = ! $this->exists();
         $warnings = $created ? $this->createLocalization($options) : [];
+        $new = $created || $options->createdEarlier;
         $localization = $this->localization();
         $item = $this->working();
         $ref = $this->ref();
         [$writes, $skipped] = $this->writable($fields, $options);
         $values = $this->prepareWrites($item, $ref, $writes);
-        $mirror = $created && $this->publishesAsOrigin($localization, $writes, $options);
+        $mirror = $new && $this->publishesAsOrigin($localization, $writes, $options);
 
         foreach ($writes as $handle => $field) {
             $field->remove ? $item->remove($handle) : $item->set($handle, $values[$handle]);
         }
 
-        if ($created && $this->settings->translatesSlugs($this->container())) {
+        if ($new && $this->settings->translatesSlugs($this->container())) {
             array_push($warnings, ...$this->translateSlug($item, $writes));
         }
 
@@ -258,7 +259,7 @@ final class EntryTarget implements Target
         return new ApplyResult(
             ref: $ref,
             created: $created,
-            slug: $created ? $item->slug() : null,
+            slug: $new ? $item->slug() : null,
             applied: array_keys($writes),
             skipped: $skipped,
             warnings: $warnings,

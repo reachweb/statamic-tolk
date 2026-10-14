@@ -553,7 +553,7 @@ final readonly class RunProcessor
                 return $this->settle($run, $item, RunItemStatus::Pending, null);
             }
 
-            $result = $this->applyPlan($run, $plan, $target, $user);
+            $result = $this->applyPlan($run, $item, $plan, $target, $user);
         } catch (ClaimLost|RunNotFound $quiet) {
             throw $quiet;
         } catch (SourceChanged $changed) {
@@ -585,14 +585,17 @@ final readonly class RunProcessor
         return $result->status === TargetResultStatus::Done ? $result : null;
     }
 
-    private function applyPlan(Run $run, Plan $plan, Target $target, ?UserContract $user): TargetResult
+    private function applyPlan(Run $run, RunItem $item, Plan $plan, Target $target, ?UserContract $user): TargetResult
     {
         $options = new ApplyOptions(
             user: $user,
             newStatus: (string) ($run->options['new_status'] ?? 'draft'),
             publishChanges: (bool) ($run->options['publish_changes'] ?? false),
             overwriteManual: (bool) ($run->options['overwrite_manual'] ?? false),
+            // Only a retry of the plan made before the localization existed: Retry failed plans the item again.
+            createdEarlier: $item->created && $plan->reference === null,
         );
+        $existed = $target->exists();
 
         try {
             $result = RunSaves::as($user, fn () => $this->applier->apply($plan, $target, $options));
@@ -600,6 +603,8 @@ final readonly class RunProcessor
             // Anything but a changed source may come after a save had begun, so finalize() commits it.
             if (! $exception instanceof SourceChanged) {
                 $this->countSave($run);
+                // When this attempt created the localization, the next one finishes it as a new one (§A11).
+                $item->created = $item->created || (! $existed && rescue(fn () => $target->fresh()->exists(), false, false));
             }
 
             throw $exception;
@@ -626,7 +631,7 @@ final readonly class RunProcessor
         };
 
         $item->fields = $result->fields;
-        $item->created = $result->created;
+        $item->created = $item->created || $result->created;
         $item->corrections = $result->corrections;
         // The planner's own warnings, such as a parent page without a localization, stay.
         $item->warnings = array_values(array_unique([...$item->warnings, ...$result->warnings]));

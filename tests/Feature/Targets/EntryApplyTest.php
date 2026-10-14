@@ -12,6 +12,7 @@ use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
+use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
@@ -729,6 +730,60 @@ describe('existing localizations', function () {
             ->and($state->field('title')->targetHash)->toBeNull()
             ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current])
             ->and(ContentWriter::active())->toBeFalse();
+    });
+
+    it('applies the fields again when the attempt that saved them threw afterwards', function (bool $confirmedMeanwhile) {
+        $localization = $this->localize($this->origin, 'el');
+        $fields = applyAssembled($this->origin);
+        $throws = 1;
+
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && $throws-- > 0) {
+                throw new RuntimeException('After save');
+            }
+        });
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(RuntimeException::class, 'After save');
+
+        // As the editor's status request does when somebody opens the localization before the attempt is repeated.
+        if ($confirmedMeanwhile) {
+            app(StateWriter::class)->confirm(applyTarget($this->origin));
+        }
+
+        $result = applyInWriter($this->origin, $fields);
+        $state = StateFixtures::stored($localization);
+
+        expect($result->applied)->toBe(['title', 'intro', 'body'])
+            ->and($result->skipped)->toBe([])
+            ->and($localization->fresh()->get('title'))->toBe('[T] Hello')
+            ->and($state->hasPending())->toBeFalse()
+            ->and($state->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['[T] Hello']))
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+    })->with(['repeated at once' => false, 'confirmed meanwhile' => true]);
+
+    it('removes a field again whose override the attempt that threw had removed', function () {
+        translateInto($this->origin);
+        $this->origin->fresh()->set('title', 'Hello again')->remove('intro')->save();
+        $fields = applyAssembled($this->origin, 'el', ['mode' => Mode::Update]);
+        $throws = 1;
+
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && $throws-- > 0) {
+                throw new RuntimeException('After save');
+            }
+        });
+
+        expect(fn () => applyInWriter($this->origin, $fields))->toThrow(RuntimeException::class, 'After save');
+
+        $result = applyInWriter($this->origin, $fields);
+        $localization = $this->origin->fresh()->in('el');
+
+        expect($result->applied)->toBe(['title', 'intro'])
+            ->and($result->skipped)->toBe([])
+            ->and($localization->get('title'))->toBe('[T] Hello again')
+            ->and($localization->has('intro'))->toBeFalse()
+            ->and(StateFixtures::stored($localization)->fields)->not->toHaveKey('intro')
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::NotApplicable, 'body' => FieldStatus::Current]);
     });
 });
 

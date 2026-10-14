@@ -476,6 +476,108 @@ describe('applyReady', function () {
         Exceptions::assertReportedCount(3);
     });
 
+    it('saves an item again whose apply threw after its save, and reports it done', function () {
+        Exceptions::fake();
+        Event::fake([TargetTranslated::class]);
+        $this->fakeTranslations();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        RunFixtures::translate($run);
+        $throws = 1;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && $event->entry->has('title') && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        applyRun($run);
+
+        expect(RunFixtures::statuses($run))->toBe(['translated'])
+            ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello');
+
+        $this->travel(5)->seconds();
+        $report = applyRun($run);
+        $item = RunFixtures::items($run)[0];
+
+        expect($report->items)->toBe(1)
+            ->and($item->status)->toBe(RunItemStatus::Done)
+            ->and($item->reason)->toBeNull()
+            ->and($item->fields)->toBe(['title' => 'applied', 'intro' => 'applied'])
+            ->and($item->created)->toBeTrue()
+            ->and(greekStatus($this->hello))->toBe(ItemStatus::Current)
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Completed);
+        Event::assertDispatchedTimes(TargetTranslated::class, 1);
+        Exceptions::assertReportedCount(1);
+    });
+
+    it('finishes a localization as a new one when the attempt that created it threw before saving its fields', function () {
+        Exceptions::fake();
+        $this->withSettings(['translated_slugs' => ['articles']]);
+        $this->fakeTranslations();
+        $this->hello->published(true)->save();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['new_status' => 'mirror']]);
+        RunFixtures::translate($run);
+        $throws = 1;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && ! $event->entry->has('title') && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        applyRun($run);
+        $draft = $this->hello->fresh()->in('el');
+
+        expect(RunFixtures::statuses($run))->toBe(['translated'])
+            ->and(RunFixtures::items($run)[0]->created)->toBeTrue()
+            ->and($draft->published())->toBeFalse()
+            ->and($draft->slug())->toBe('hello')
+            ->and($draft->has('title'))->toBeFalse();
+
+        $this->travel(5)->seconds();
+        applyRun($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($item->created)->toBeTrue()
+            ->and($greek->get('title'))->toBe('[T] Hello')
+            ->and($greek->published())->toBeTrue()
+            ->and($greek->slug())->toBe('t-hello');
+    });
+
+    it('treats a localization the failed attempts created as existing once Retry failed plans the item again', function () {
+        Exceptions::fake();
+        $this->withSettings(['translated_slugs' => ['articles']]);
+        $this->fakeTranslations();
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+        RunFixtures::translate($run);
+        $throws = 3;
+        Event::listen(EntrySaved::class, function (EntrySaved $event) use (&$throws) {
+            if ($event->entry->locale() === 'el' && $throws-- > 0) {
+                throw new RuntimeException('The search index is unavailable.');
+            }
+        });
+
+        foreach ([5, 10, 0] as $seconds) {
+            applyRun($run);
+            $this->travel($seconds)->seconds();
+        }
+
+        expect(RunFixtures::statuses($run))->toBe(['failed'])
+            ->and(RunFixtures::items($run)[0]->created)->toBeTrue();
+
+        $this->hello->fresh()->in('el')->slug('my-own-slug')->remove('intro')->save();
+        app(RunProcessor::class)->retry($run);
+        RunFixtures::finish($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($item->fields)->toBe(['title' => 'current', 'intro' => 'applied'])
+            ->and($item->created)->toBeTrue()
+            ->and($greek->get('intro'))->toBe('[T] A short intro.')
+            ->and($greek->slug())->toBe('my-own-slug');
+    });
+
     it('applies the item of a worker that holds it again, and leaves an item another request works on', function () {
         $this->fakeTranslations();
         $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
