@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFollower } from './follow.js';
 import { latest } from './ticker.js';
 
@@ -33,7 +33,20 @@ function fakeTicker() {
             });
         });
 
-    const handle = { active: 0 };
+    const listeners = new Set();
+    const handle = {
+        active: 0,
+        subscribe: (listener) => {
+            listeners.add(listener);
+
+            return () => listeners.delete(listener);
+        },
+        // Every lane ends, as the real handle tells its subscribers.
+        end: () => {
+            handle.active = 0;
+            listeners.forEach((listener) => listener({ lane: 1, ended: 'finished' }));
+        },
+    };
 
     return {
         started,
@@ -66,7 +79,7 @@ function fakeApi(answers = {}) {
     return { requests, get: vi.fn(answer('get')), post: vi.fn(answer('post')) };
 }
 
-function follower({ api = fakeApi(), ticker = fakeTicker(), query = () => ({ page: 2, per_page: 25 }) } = {}) {
+function follower({ api = fakeApi(), ticker = fakeTicker(), query = () => ({ page: 2, per_page: 25 }), dirty = undefined } = {}) {
     const states = [];
     const estimates = [];
     const failures = [];
@@ -76,6 +89,7 @@ function follower({ api = fakeApi(), ticker = fakeTicker(), query = () => ({ pag
         api,
         ticker,
         query,
+        dirty,
         onState: (value) => states.push(value),
         onEstimate: (value) => estimates.push(value),
         onFailures: (value) => failures.push(value),
@@ -262,5 +276,95 @@ describe('follow', () => {
 
         expect(failures.at(-1)).toEqual([{ error: { status: 0, code: null, message: 'onState threw' } }]);
         expect(follow.active).toBe(false);
+    });
+});
+
+// Leaving the run page pauses a run it drives, also for a visit inside the CP, which unmounts the page without a
+// `beforeunload`: the page names itself in core's dirty state, which asks before a visit, Back or closing the tab.
+describe('leaving the page', () => {
+    let names;
+
+    beforeEach(() => {
+        names = new Set();
+        vi.stubGlobal('Statamic', { $dirty: { add: (name) => names.add(name), remove: (name) => names.delete(name), has: (name) => names.has(name) } });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('marks the page dirty while it drives a running browser run, until the lanes and the apply loop are done', async () => {
+        const { follow, ticker } = follower({ dirty: 'tolk-run' });
+
+        follow.follow(state());
+
+        expect([...names]).toEqual(['tolk-run']);
+        expect(follow.driving).toBe(true);
+
+        ticker.handle.end();
+
+        expect([...names]).toEqual(['tolk-run']);
+
+        ticker.settle.apply.resolve({ state: null, error: null });
+        await flush();
+
+        expect([...names]).toEqual([]);
+        expect(follow.driving).toBe(false);
+    });
+
+    it('stops asking once the run is cancelled or complete, while its loops still end', async () => {
+        const cancelled = state({ status: 'cancelled', second: 2 });
+        const { follow, ticker } = follower({ dirty: 'tolk-run', api: fakeApi({ cancel: cancelled, resume: state({ second: 3 }) }) });
+
+        follow.follow(state({ second: 1 }));
+        await follow.cancel();
+
+        expect(follow.active).toBe(true);
+        expect(follow.driving).toBe(false);
+        expect([...names]).toEqual([]);
+
+        await follow.resume();
+
+        expect([...names]).toEqual(['tolk-run']);
+
+        ticker.last('lanes').onState(state({ status: 'completed', second: 4 }));
+
+        expect(follow.active).toBe(true);
+        expect([...names]).toEqual([]);
+    });
+
+    it('stops asking when the page stops, and when the lanes end after the apply loop gave up', async () => {
+        const { follow, ticker } = follower({ dirty: 'tolk-run' });
+
+        follow.follow(state());
+        follow.stop();
+
+        expect([...names]).toEqual([]);
+
+        follow.follow(state({ second: 1 }));
+        ticker.settle.apply.resolve({ state: null, error: { message: 'Down' } });
+        await flush();
+
+        expect([...names]).toEqual(['tolk-run']);
+
+        ticker.handle.end();
+
+        expect([...names]).toEqual([]);
+    });
+
+    it('asks nothing for a run it does not drive, or without a name: the push follows its run on after a visit', () => {
+        for (const run of [state({ status: 'pending' }), state({ driver: 'queue' }), state({ driver: 'cli' }), state({ status: 'completed' })]) {
+            const { follow } = follower({ dirty: 'tolk-run' });
+
+            follow.follow(run);
+
+            expect(follow.driving).toBe(false);
+        }
+
+        const { follow } = follower();
+        follow.follow(state());
+
+        expect(follow.driving).toBe(true);
+        expect([...names]).toEqual([]);
     });
 });

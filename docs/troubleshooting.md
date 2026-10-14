@@ -48,7 +48,7 @@ A single piece of text that times out alone (a very long paragraph) is retried a
 
 ### Queue or browser?
 
-Runs started in the CP run on the queue when the queue connection has a worker, and are driven by their open run page otherwise (`runs.execution`, default `auto`). On Statamic's default `sync` queue, the run page drives the run: keep it open until the run ends. If it closes, the run pauses and continues the next time its page is opened. See [Bulk translations and runs](bulk-and-runs.md#drivers).
+Runs started in the CP run on the queue when the queue connection has a worker, and are driven by their open run page otherwise (`runs.execution`, default `auto`). On Statamic's default `sync` queue, the run page drives the run: keep it open until the run ends. If you leave it or close the tab, the run pauses and continues the next time its page is opened. See [Bulk translations and runs](bulk-and-runs.md#drivers).
 
 To force one way, set `runs.execution` to `queue` or `browser`. `tolk:doctor` reports which applies, and an error when a queue run could not work.
 

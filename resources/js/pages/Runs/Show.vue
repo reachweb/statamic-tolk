@@ -64,9 +64,15 @@ const perPage = props.state.pagination?.per_page ?? 50;
 const filter = ref('all');
 const siteName = siteNames(Statamic.$config.get('sites'));
 
+// A push from the entry editor that follows this run in the same page load drives it again once a visit inside the CP
+// leaves the page (`pushes.lend()`), so only closing the tab pauses it.
+const pushed = pushes.following(props.state.run?.id);
+
 const follower = createFollower({
     urls: props.urls,
     lanes: props.lanes,
+    // Leaving the page pauses a run it drives: the CP asks first, as it does for unsaved changes.
+    dirty: pushed ? null : 'tolk-run',
     onState: (state) => {
         current.value = state;
         estimate.value = state.run?.estimate ?? estimate.value;
@@ -77,8 +83,10 @@ const follower = createFollower({
     query: () => ({ page: page.value, per_page: perPage, ...(filter.value === 'all' ? {} : { status: filter.value }) }),
 });
 
+// Closing or reloading the tab stops a push too, so the page asks itself, whatever the CP's Confirm Dirty Navigation
+// preference says.
 function warn(event) {
-    if (follower.active) {
+    if (follower.driving) {
         event.preventDefault();
         event.returnValue = '';
     }
@@ -237,7 +245,11 @@ function filterBy(value) {
         </Card>
 
         <Alert v-if="driving" variant="default" icon="info" data-tolk-keep-open>
-            {{ __('Keep this tab open while the run is in progress. Closing it pauses the run until you open it again.') }}
+            {{
+                pushed
+                    ? __('Keep this tab open while the run is in progress. Closing it pauses the run until you open it again.')
+                    : __('Keep this page open while the run is in progress. Leaving it pauses the run until you open it again.')
+            }}
         </Alert>
 
         <Alert v-if="stalled" variant="warning" :heading="__('This run is not moving')" data-tolk-stalled>

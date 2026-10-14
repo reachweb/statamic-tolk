@@ -211,6 +211,20 @@ describe('the estimate of a run', () => {
     });
 });
 
+describe('a run this page drives', () => {
+    it('asks to keep the page open, as leaving it inside the CP pauses the run too', async () => {
+        expect(text(await render('data-tolk-keep-open', { driving: true, pushed: false }))).toBe(
+            'Keep this page open while the run is in progress. Leaving it pauses the run until you open it again.',
+        );
+    });
+
+    it('asks to keep the tab open for a run the editor pushed in this page load, which goes on after a visit inside the CP', async () => {
+        expect(text(await render('data-tolk-keep-open', { driving: true, pushed: true }))).toBe(
+            'Keep this tab open while the run is in progress. Closing it pauses the run until you open it again.',
+        );
+    });
+});
+
 describe('a run that stopped moving', () => {
     const stalled = (driver, automatic) =>
         render('data-tolk-stalled', { stalled: true, run: { driver }, scope: { automatic }, actions: { takeOver: false }, busy: null, follower: {}, act: () => {} });
