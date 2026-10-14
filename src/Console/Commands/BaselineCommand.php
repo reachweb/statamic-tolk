@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Reach\StatamicTolk\Console\Concerns\SelectsContainers;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusScanner;
 use Reach\StatamicTolk\Support\GitListeners;
@@ -14,8 +15,8 @@ use Statamic\Console\RunsInPlease;
 /**
  * Records the origin of the fields translated by hand in existing localizations (StateWriter::baseline()), so a later
  * change to the origin shows as needing attention: the adoption path for a site translated before Tolk was installed.
- * It walks the targets tolk:status counts. --protect is the editor's Protect for every target of the containers it names,
- * and the only Protect global sets and navigations have.
+ * It walks the targets tolk:status counts, and skips one whose state cannot be read with its message. --protect is the
+ * editor's Protect for every target of the containers it names, and the only Protect global sets and navigations have.
  */
 class BaselineCommand extends Command
 {
@@ -56,12 +57,18 @@ class BaselineCommand extends Command
         $includeCopies = (bool) $this->option('include-copies');
         $rows = [];
         $total = 0;
+        $unreadable = 0;
 
         foreach ($cells as $cell) {
             $count = 0;
 
             foreach ($scanner->targets($cell['type'], $cell['container'], $cell['site']) as $target) {
-                $count += $writer->baseline($target(), includeMachine: $protect, includeCopies: $includeCopies, dryRun: $dryRun);
+                try {
+                    $count += $writer->baseline($target(), includeMachine: $protect, includeCopies: $includeCopies, dryRun: $dryRun);
+                } catch (UnreadableState $exception) {
+                    $this->components->warn($exception->getMessage());
+                    $unreadable++;
+                }
             }
 
             $total += $count;
@@ -71,10 +78,12 @@ class BaselineCommand extends Command
             }
         }
 
+        $exitCode = $unreadable > 0 ? self::FAILURE : self::SUCCESS;
+
         if ($total === 0) {
             $this->components->info('Nothing to record: every field translated by hand already has a record of its origin.');
 
-            return self::SUCCESS;
+            return $exitCode;
         }
 
         $this->table(['Type', 'Handle', 'Site', $dryRun ? 'Fields to record' : 'Fields recorded'], $rows);
@@ -84,13 +93,13 @@ class BaselineCommand extends Command
         if ($dryRun) {
             $this->components->info("Would record the origin of {$fields}. Nothing was written (--dry-run).");
 
-            return self::SUCCESS;
+            return $exitCode;
         }
 
         GitListeners::commit(StateWriter::COMMIT_MESSAGE);
 
         $this->components->info("Recorded the origin of {$fields}. A change to the origin now shows as needing attention.");
 
-        return self::SUCCESS;
+        return $exitCode;
     }
 }

@@ -40,7 +40,7 @@ const ROWS = [
 
 const counts = (values = {}) => ({ missing: 0, untranslated: 0, outdated: 0, attention: 0, current: 0, ...values });
 
-const done = (values = {}, extra = {}) => ({ status: 'done', counts: counts(values), untracked: 0, scanned: 1, cursor: null, ...extra });
+const done = (values = {}, extra = {}) => ({ status: 'done', counts: counts(values), untracked: 0, unreadable: 0, scanned: 1, cursor: null, ...extra });
 
 describe('the matrix', () => {
     it('has a column for each site a row has a cell in, in the order of the sites', () => {
@@ -79,16 +79,17 @@ describe('the matrix', () => {
 
 describe('a cell', () => {
     it('counts missing and untranslated targets as missing work, and outdated ones as updates', () => {
-        const work = cellWork(done({ missing: 2, untranslated: 3, outdated: 4, attention: 5, current: 6 }, { untracked: 7, scanned: 20 }));
+        const work = cellWork(done({ missing: 2, untranslated: 3, outdated: 4, attention: 5, current: 6 }, { untracked: 7, unreadable: 1, scanned: 21 }));
 
         expect(work).toEqual({
             counts: counts({ missing: 2, untranslated: 3, outdated: 4, attention: 5, current: 6 }),
             untracked: 7,
-            scanned: 20,
+            unreadable: 1,
+            scanned: 21,
             missing: 5,
             outdated: 4,
         });
-        expect(cellWork(undefined)).toEqual({ counts: counts(), untracked: 0, scanned: 0, missing: 0, outdated: 0 });
+        expect(cellWork(undefined)).toEqual({ counts: counts(), untracked: 0, unreadable: 0, scanned: 0, missing: 0, outdated: 0 });
         expect(cellWork({ counts: [] }).missing).toBe(0);
     });
 

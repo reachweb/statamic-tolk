@@ -104,8 +104,8 @@ describe('status', function () {
 
         expect($response->json('localization'))->toBeNull()
             ->and($response->json('origin.localizations'))->toBe([
-                ['site' => 'el', 'name' => 'Greek', 'exists' => true, 'status' => 'untranslated', 'counts' => $response->json('origin.localizations.0.counts'), 'edit_url' => $greek->editUrl()],
-                ['site' => 'de', 'name' => 'German', 'exists' => true, 'status' => 'untranslated', 'counts' => $response->json('origin.localizations.1.counts'), 'edit_url' => Term::find('topics::food')->in('de')->editUrl()],
+                ['site' => 'el', 'name' => 'Greek', 'exists' => true, 'status' => 'untranslated', 'counts' => $response->json('origin.localizations.0.counts'), 'edit_url' => $greek->editUrl(), 'error' => null],
+                ['site' => 'de', 'name' => 'German', 'exists' => true, 'status' => 'untranslated', 'counts' => $response->json('origin.localizations.1.counts'), 'edit_url' => Term::find('topics::food')->in('de')->editUrl(), 'error' => null],
             ])
             ->and($response->json('origin.localizations.0.counts.untranslated'))->toBe(2);
     });

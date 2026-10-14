@@ -210,5 +210,5 @@ Event::listen(function (RunFinished $event) {
 
 ## What not to touch
 
-- The files under `content/tolk/` are Tolk's record of what it translated. Commit them with the content, but do not edit them by hand: a wrong value makes a field read untranslated, outdated or edited by hand. `tolk:prune` cleans up the records of deleted content.
+- The files under `content/tolk/` are Tolk's record of what it translated. Commit them with the content, but do not edit them by hand: a wrong value makes a field read untranslated, outdated or edited by hand. `tolk:prune` cleans up the records of deleted content. A file a git merge left unreadable is the exception ([Troubleshooting](troubleshooting.md#a-state-file-cannot-be-read)).
 - Classes under `src/` other than `Tolk`, the `FieldHandler` contract, the `Leaf`, `WalkContext` and `ContentWalker` classes, the `MakesLeaves` trait and the events are internal and may change in any release.

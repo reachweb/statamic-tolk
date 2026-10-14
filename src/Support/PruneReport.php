@@ -25,6 +25,7 @@ final readonly class PruneReport
      * @param  int  $deletedRuns  the runs deleted for having had no activity for `runs.retention_days`
      * @param  int  $located  entries' state records given the entry's collection and site, which those written by
      *                        1.0.0-beta.1 lack (§A5)
+     * @param  list<string>  $unreadable  the paths of the state files that cannot be read, kept for a person to fix
      */
     public function __construct(
         public bool $dryRun = false,
@@ -34,6 +35,7 @@ final readonly class PruneReport
         public array $stoppedRuns = [],
         public int $deletedRuns = 0,
         public int $located = 0,
+        public array $unreadable = [],
     ) {}
 
     public function changesState(): bool
@@ -43,7 +45,7 @@ final readonly class PruneReport
 
     public function isEmpty(): bool
     {
-        return ! $this->changesState() && $this->stoppedRuns === [] && $this->deletedRuns === 0;
+        return ! $this->changesState() && $this->stoppedRuns === [] && $this->deletedRuns === 0 && $this->unreadable === [];
     }
 
     /**

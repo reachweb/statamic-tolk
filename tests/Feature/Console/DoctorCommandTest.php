@@ -1,8 +1,13 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Support\Audit;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CliRun;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Fieldset;
 
@@ -56,6 +61,19 @@ it('exits with 1 when a check fails', function () {
 
     expect($exitCode)->toBe(1)
         ->and(Artisan::output())->toMatch('/Cache \.+ ERROR/');
+});
+
+it('lists the state files that do not parse, and exits 1', function () {
+    $ref = TargetRef::parse('entry::0b5f');
+    app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: 's1')));
+    $path = StateFixtures::conflict($ref);
+
+    $exitCode = Artisan::call('tolk:doctor');
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(1)
+        ->and($output)->toMatch('/Translation state \.+ ERROR/')
+        ->and($output)->toContain("✗ The translation state file {$path} cannot be read: Mapping values are not allowed in multi-line blocks at line 1");
 });
 
 it('prints the checks as JSON', function () {

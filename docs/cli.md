@@ -31,7 +31,7 @@ php please tolk:doctor
 php please tolk:doctor --fix-localizable
 ```
 
-The checks: the sites; the providers, their keys (with the config each comes from, `tolk.providers.*.key` for Tolk's own or `ai.providers.*.key` for the AI SDK's) and the models the settings choose; the queue and how runs are driven; the cache store and its locks; where the state is kept, and whether Statamic's git integration tracks it and, once `tolk:lang` or `tolk:forms` has run, `lang/` ([Where Tolk keeps things](installation.md#where-tolk-keeps-things)); the text fields that are not localizable; nested fields whose handles suggest data rather than text (`anchor`, `url`, `class` and the like), which you may want to switch off; collections, taxonomies and global sets not enabled for some sites, and global sets without an origin for a site; whether the PHP of the command line has the pcntl extension, with `pcntl_signal` enabled, which Ctrl-C needs to cancel a run of `tolk:translate` cleanly, and the posix extension, which the workers of a killed `tolk:translate` need to cancel its run (the Audit page leaves this check out, since the Control Panel's PHP may be another); and notes on revisions, git, static caching and the PHP workers a browser-driven run keeps busy.
+The checks: the sites; the providers, their keys (with the config each comes from, `tolk.providers.*.key` for Tolk's own or `ai.providers.*.key` for the AI SDK's) and the models the settings choose; the queue and how runs are driven; the cache store and its locks; where the state is kept, and whether Statamic's git integration tracks it and, once `tolk:lang` or `tolk:forms` has run, `lang/` ([Where Tolk keeps things](installation.md#where-tolk-keeps-things)); every state file that cannot be read, such as after a git merge conflict ([Troubleshooting](troubleshooting.md#a-state-file-cannot-be-read)); the text fields that are not localizable; nested fields whose handles suggest data rather than text (`anchor`, `url`, `class` and the like), which you may want to switch off; collections, taxonomies and global sets not enabled for some sites, and global sets without an origin for a site; whether the PHP of the command line has the pcntl extension, with `pcntl_signal` enabled, which Ctrl-C needs to cancel a run of `tolk:translate` cleanly, and the posix extension, which the workers of a killed `tolk:translate` need to cancel its run (the Audit page leaves this check out, since the Control Panel's PHP may be another); and notes on revisions, git, static caching and the PHP workers a browser-driven run keeps busy.
 
 With `--fix-localizable` it asks per blueprint whether to make the listed fields localizable (default no) and saves the blueprint. Fields imported from a fieldset are listed with the fieldset to change, not changed. The Audit page in the CP does the same.
 
@@ -202,7 +202,7 @@ php please tolk:status --collection=articles --site=el --json
 +------------+---------------+------+---------+--------------+----------+-----------------+---------+------------------+
 ```
 
-Without options it shows everything with more than one site. Collections and taxonomies excluded in the settings are left out unless you name them. Each item counts once, by its worst status; [Statuses](statuses.md) explains them.
+Without options it shows everything with more than one site. Collections and taxonomies excluded in the settings are left out unless you name them. Each item counts once, by its worst status; [Statuses](statuses.md) explains them. An item whose state file cannot be read has no status: it is counted apart (`unreadable` in the JSON), and a warning points to `tolk:doctor`, which lists the files ([Troubleshooting](troubleshooting.md#a-state-file-cannot-be-read)).
 
 ## `tolk:baseline`
 
@@ -233,7 +233,7 @@ A field whose text equals its origin's (a copy nobody translated) reads untransl
 
 `--protect` is the editor's **Protect this entry from updates** for every item of the containers you name: their machine translations, up to date or outdated, become fields edited by hand with a record of the current origin, so Translate and Update leave them alone and a later change to the origin shows as needing attention ([Statuses](statuses.md#protecting-translations)). It is the only way to protect a global set or a navigation, which have no editor; a navigation whose pages were added, removed or moved by hand needs it, because only text changes keep a tree from being rebuilt ([Navigation](content-types.md#navigation)). It refuses to run without a container option, so it never protects every translation of a site at once.
 
-The command prints a table of the fields recorded per container and site, and makes one commit with Statamic's git integration.
+The command prints a table of the fields recorded per container and site, and makes one commit with Statamic's git integration. An item whose state file cannot be read is skipped with a message naming the file, and the command then exits with 1.
 
 ## `tolk:prune`
 
@@ -258,7 +258,8 @@ It:
 - records the collection and site in an entry's state written by Tolk 1.0.0-beta.1, which lacks them: until it has, that state is kept for a site taken out of its collection only while the Stache still knows the entry, so after upgrading from 1.0.0-beta.1 run `tolk:prune` once before you take a site out of a collection;
 - resolves translations delivered to the editor that were saved, and drops those never saved after 30 days;
 - stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes by default): it commits what they saved and marks them aborted, so their page offers **Resume**;
-- deletes runs without activity for `runs.retention_days` days (30 by default).
+- deletes runs without activity for `runs.retention_days` days (30 by default);
+- lists the state files that cannot be read, such as after a git merge conflict, and leaves them for you to fix or delete ([Troubleshooting](troubleshooting.md#a-state-file-cannot-be-read)).
 
 With `-v` or `--dry-run` it lists the references of the state it deletes; stopped runs are listed with their CP address.
 

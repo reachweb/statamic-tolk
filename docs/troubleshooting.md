@@ -87,6 +87,22 @@ Content is saved by one process at a time, under a lock ([Why one writer](bulk-a
 
 Everything that reads the Tolk settings (the banner, the Overview, runs, the commands) fails with this error, which the commands print and the CP writes to the log, when Statamic cannot read the settings file: after it was edited by hand or by a merge. The rest of the message says why: YAML that does not parse, or a text with `{{` that Statamic cannot read as Antlers, because it reads every addon setting as Antlers. Fix the file: put such a text between `{{ noparse }}` and `{{ /noparse }}` ([What the settings page refuses](configuration.md#what-the-settings-page-refuses)). The settings page cannot open the file either until it is fixed.
 
+## A state file cannot be read
+
+Tolk keeps what it knows about each item's translations in a YAML file under `content/tolk/` (see [How Tolk decides](statuses.md#how-tolk-decides)). When git merges two branches that both translated the same item, the file can be left with conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) or with the same field twice, and Tolk can no longer read it. It never writes over such a file, which would lose what both branches recorded, so until the file is fixed:
+
+- the item's banner says "The translation status could not be loaded" and names the file, and so does a translation started there; the banner of its origin shows that site as *Unreadable*;
+- the Overview counts the item as *with unreadable state*, and `tolk:status` apart from the statuses (`unreadable` in its JSON);
+- a run or an automatic update fails that item with the same message and translates the others, and `tolk:baseline` skips it;
+- `tolk:doctor` and `tolk:prune` list every state file that cannot be read. The Audit page does not, because reading every state file takes a while on a large site.
+
+To fix a file, either:
+
+- **Resolve the conflict** as in any other file: keep the record of each field from the side whose text the item's content kept (usually the side you chose in the content file), keep the fields only one side has, and remove the markers. A record that does not match the text makes the field read outdated or edited by hand; it never changes content.
+- **Or delete the file.** The item's translations then read "edited by hand" and untracked. Run `tolk:baseline` for its collection and site to record them, or translate them again with **Overwrite manual edits**.
+
+Deleting the item deletes its state file as well, readable or not.
+
 ## The interface is in English
 
 The CP texts are translatable: add them to `lang/{locale}.json` ([Installation](installation.md#the-interface-language)). Command output stays in English.

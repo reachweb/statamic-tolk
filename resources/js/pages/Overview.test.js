@@ -44,3 +44,16 @@ describe('the usage of the month', () => {
         expect(text(await render('data-tolk-usage-total', month(3, null)))).toBe('3 calls this month. The cost is unknown: a model without a price was called.');
     });
 });
+
+describe('a cell with items whose state cannot be read', () => {
+    it('counts them in the singular and the plural', async () => {
+        expect(text(await render('data-tolk-unreadable', { view: { unreadable: 1 } }))).toBe('1 item with unreadable state');
+        expect(text(await render('data-tolk-unreadable', { view: { unreadable: 3 } }))).toBe('3 items with unreadable state');
+    });
+
+    it('says how to find the files under the table', async () => {
+        expect(text(await render('data-tolk-unreadable-hint', { unreadable: true }))).toBe(
+            'The translation state of some items cannot be read, so their status is unknown and translating them fails. Run php please tolk:doctor to list the files.',
+        );
+    });
+});

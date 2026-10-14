@@ -9,6 +9,7 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\GlobalsTarget;
@@ -92,9 +93,10 @@ final readonly class StatusScanner
     }
 
     /**
-     * Resolves the container's targets in $site from $cursor on until the budget is used, at least one. A site the
-     * container has no targets in gives an empty, finished result. The cursor is the position of the next target, so
-     * content that changes between two calls may shift a target into or out of the totals.
+     * Resolves the container's targets in $site from $cursor on until the budget is used, at least one. A target whose
+     * stored state cannot be read is counted apart. A site the container has no targets in gives an empty, finished
+     * result. The cursor is the position of the next target, so content that changes between two calls may shift a
+     * target into or out of the totals.
      */
     public function scan(ContentType $type, string $container, string $site, ?string $cursor, int $budgetMs): ScanResult
     {
@@ -108,7 +110,12 @@ final readonly class StatusScanner
         $result = ScanResult::empty();
 
         while ($index < count($targets)) {
-            $result = $result->withTarget($this->resolver->resolve($targets[$index++]()));
+            try {
+                $result = $result->withTarget($this->resolver->resolve($targets[$index++]()));
+            } catch (UnreadableState) {
+                // tolk:doctor lists the file, and the target's own banner and runs say what is wrong with it.
+                $result = $result->withUnreadable();
+            }
 
             if (hrtime(true) >= $deadline) {
                 break;

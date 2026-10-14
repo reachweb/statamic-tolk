@@ -12,6 +12,7 @@ use Reach\StatamicTolk\Exceptions\NotALocalization;
 use Reach\StatamicTolk\Exceptions\RunNotFound;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\State\ItemState;
@@ -27,7 +28,8 @@ use Statamic\Facades\Term;
  * no event reports when an origin's deletion detaches its localizations, and confirms the pending entries of the
  * others (§A5), dropping those older than FieldState::PENDING_DAYS, and records an entry's collection and site in a
  * state that lacks them. It stops the runs that made no progress for `runs.claim_ttl`, which commits what they saved,
- * and deletes the runs without activity for `runs.retention_days`. State changes are committed once.
+ * and deletes the runs without activity for `runs.retention_days`. State changes are committed once. It lists the state
+ * files that cannot be read and leaves them alone.
  */
 final readonly class Pruner
 {
@@ -50,7 +52,8 @@ final readonly class Pruner
             ? count(array_filter($this->runs->inactive($days), fn (Run $run) => ! in_array($run->id, $stopped, true)))
             : $this->runs->prune($days);
 
-        $report = new PruneReport($dryRun, $orphans, $resolved, $expired, $stopped, $deleted, $located);
+        $unreadable = array_map(fn (UnreadableState $exception) => $exception->path, iterator_to_array($this->state->unreadable(), false));
+        $report = new PruneReport($dryRun, $orphans, $resolved, $expired, $stopped, $deleted, $located, $unreadable);
 
         if (! $dryRun && $report->changesState()) {
             GitListeners::commit(StateWriter::COMMIT_MESSAGE);

@@ -2,10 +2,12 @@
 
 use Illuminate\Testing\TestResponse;
 use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Http\EditorStatus;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
@@ -107,6 +109,17 @@ describe('a localization', function () {
             ->assertJsonPath('localization.fields.intro.source_changed', true)
             ->assertJsonPath('localization.fields.title.status', 'current');
     });
+
+    it('answers with a message naming its state file when that file does not parse', function () {
+        $this->signInAdmin();
+        translateForStatus($this->origin, 'el');
+        $path = StateFixtures::conflict($this->origin->in('el'));
+
+        editorStatus($this->origin->in('el'))
+            ->assertStatus(500)
+            ->assertJsonPath('code', UnreadableState::CODE)
+            ->assertJsonPath('message', fn (string $message) => str_starts_with($message, "The translation state file {$path} cannot be read: Mapping values are not allowed in multi-line blocks at line 1"));
+    });
 });
 
 describe('an origin', function () {
@@ -127,6 +140,7 @@ describe('an origin', function () {
                     'status' => 'current',
                     'counts' => statusCounts(['current' => 2]),
                     'edit_url' => $greek->editUrl(),
+                    'error' => null,
                 ],
                 [
                     'site' => 'de',
@@ -135,10 +149,29 @@ describe('an origin', function () {
                     'status' => 'missing',
                     'counts' => statusCounts(['untranslated' => 2]),
                     'edit_url' => null,
+                    'error' => null,
                 ],
             ])
             ->assertJsonPath('origin.auto_update', null)
             ->assertJsonPath('origin.auto_update_sites', []);
+    });
+
+    it('lists a site whose state file does not parse with the message, and the other sites as they are', function () {
+        $this->signInAdmin();
+        translateForStatus($this->origin, 'el');
+        translateForStatus($this->origin, 'de');
+        $path = StateFixtures::conflict($this->origin->in('el'));
+
+        editorStatus($this->origin)
+            ->assertOk()
+            ->assertJsonPath('origin.localizations.0.site', 'el')
+            ->assertJsonPath('origin.localizations.0.exists', true)
+            ->assertJsonPath('origin.localizations.0.status', null)
+            ->assertJsonPath('origin.localizations.0.counts', null)
+            ->assertJsonPath('origin.localizations.0.error', fn (string $error) => str_starts_with($error, "The translation state file {$path} cannot be read"))
+            ->assertJsonPath('origin.localizations.1.site', 'de')
+            ->assertJsonPath('origin.localizations.1.status', 'current')
+            ->assertJsonPath('origin.localizations.1.error', null);
     });
 
     it('lists only the sites the user may access', function () {

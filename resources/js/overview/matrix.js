@@ -61,7 +61,8 @@ export function matrixCells(rows) {
     return (Array.isArray(rows) ? rows : []).flatMap((row) => (row.sites ?? []).map((site) => scanCell(row, site)));
 }
 
-// What a cell's scan found so far: the counts per status, the untracked fields and what can be done.
+// What a cell's scan found so far: the counts per status, the untracked fields, the items whose state cannot be read
+// and what can be done.
 export function cellWork(cell) {
     const counts = asMap(cell?.counts);
     const count = (status) => Number(counts[status]) || 0;
@@ -69,6 +70,7 @@ export function cellWork(cell) {
     return {
         counts: Object.fromEntries(STATUSES.map((status) => [status, count(status)])),
         untracked: Number(cell?.untracked) || 0,
+        unreadable: Number(cell?.unreadable) || 0,
         scanned: Number(cell?.scanned) || 0,
         // Mode `missing` creates what is missing and translates every untranslated field (§A7).
         missing: count('missing') + count('untranslated'),

@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\Support\Pruner;
 use Reach\StatamicTolk\Support\PruneReport;
@@ -51,6 +52,14 @@ class PruneCommand extends Command
         $this->detail('Runs stopped for making no progress', count($report->stoppedRuns), 'run');
         $this->lines(array_map(fn (string $id) => cp_route('tolk.runs.show', $id), $report->stoppedRuns));
         $this->detail("Runs deleted after {$days} days without activity", $report->deletedRuns, 'run');
+
+        if ($report->unreadable !== []) {
+            $this->detail('State files that cannot be read', count($report->unreadable), 'file');
+            $this->lines(array_map(UnreadableState::relativePath(...), $report->unreadable));
+            $this->newLine();
+            $this->components->warn('Fix each of these files, for example by resolving a git merge conflict in it, or delete it. Until then, the status of its item is unknown and translating the item fails.');
+        }
+
         $this->newLine();
 
         if ($report->dryRun) {

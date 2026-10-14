@@ -30,6 +30,7 @@ beforeEach(function () {
 
     $outdated = $this->localize($this->makeEntry('articles', 'en', ['title' => 'Outdated'], 'outdated'), 'el', ['title' => 'Παλιό']);
     StateFixtures::store($outdated, ['title' => StateFixtures::machine('Old', 'Παλιό')]);
+    $this->outdated = $outdated;
 
     $attention = $this->localize($this->makeEntry('articles', 'en', ['title' => 'Attention'], 'attention'), 'el', ['title' => 'Χειρόγραφο']);
     StateFixtures::store($attention, ['title' => new FieldState(sourceHash: Fingerprint::of('Before'))]);
@@ -72,6 +73,19 @@ describe('entries', function () {
         expect($result->toArray())->toBe([
             'counts' => ['missing' => 1, 'untranslated' => 1, 'outdated' => 1, 'attention' => 1, 'current' => 1],
             'untracked' => 1,
+            'unreadable' => 0,
+            'scanned' => 5,
+            'cursor' => null,
+        ]);
+    });
+
+    it('counts a target whose state file does not parse as unreadable, and goes on with the others', function () {
+        StateFixtures::conflict($this->outdated);
+
+        expect(scanAll(ContentType::Entry, 'articles', 'el', 0)->toArray())->toBe([
+            'counts' => ['missing' => 1, 'untranslated' => 1, 'outdated' => 0, 'attention' => 1, 'current' => 1],
+            'untracked' => 1,
+            'unreadable' => 1,
             'scanned' => 5,
             'cursor' => null,
         ]);
@@ -79,7 +93,7 @@ describe('entries', function () {
 
     it('reads every family without a localization in the site as missing', function () {
         expect(statusScanner()->scan(ContentType::Entry, 'articles', 'de', null, 10_000)->toArray())
-            ->toBe(['counts' => itemCounts(['missing' => 5]), 'untracked' => 0, 'scanned' => 5, 'cursor' => null]);
+            ->toBe(['counts' => itemCounts(['missing' => 5]), 'untracked' => 0, 'unreadable' => 0, 'scanned' => 5, 'cursor' => null]);
     });
 
     it('returns a cursor when the budget runs out, and resuming from it gives the same totals', function () {
@@ -116,6 +130,7 @@ describe('entries', function () {
             ->and($sliced->toArray())->toBe([
                 'counts' => ['missing' => StatusScanner::CHUNK + 6, 'untranslated' => 1, 'outdated' => 1, 'attention' => 1, 'current' => 1],
                 'untracked' => 1,
+                'unreadable' => 0,
                 'scanned' => StatusScanner::CHUNK + 10,
                 'cursor' => null,
             ]);
@@ -129,7 +144,7 @@ describe('entries', function () {
 
         expect(statusScanner()->sites(ContentType::Entry, 'articles'))->toBe(['en', 'el', 'de'])
             ->and(scanAll(ContentType::Entry, 'articles', 'en')->toArray())
-            ->toBe(['counts' => itemCounts(['missing' => 1]), 'untracked' => 0, 'scanned' => 1, 'cursor' => null])
+            ->toBe(['counts' => itemCounts(['missing' => 1]), 'untracked' => 0, 'unreadable' => 0, 'scanned' => 1, 'cursor' => null])
             ->and(scanAll(ContentType::Entry, 'articles', 'el')->scanned)->toBe(5)
             ->and(scanAll(ContentType::Entry, 'articles', 'de')->scanned)->toBe(6);
     });
@@ -156,7 +171,7 @@ describe('other content types', function () {
 
         expect(statusScanner()->sites(ContentType::Term, 'topics'))->toBe(['el', 'de'])
             ->and(scanAll(ContentType::Term, 'topics', 'el')->toArray())
-            ->toBe(['counts' => itemCounts(['untranslated' => 1, 'current' => 1]), 'untracked' => 0, 'scanned' => 2, 'cursor' => null])
+            ->toBe(['counts' => itemCounts(['untranslated' => 1, 'current' => 1]), 'untracked' => 0, 'unreadable' => 0, 'scanned' => 2, 'cursor' => null])
             ->and(scanAll(ContentType::Term, 'topics', 'de')->counts)->toBe(itemCounts(['untranslated' => 2]))
             ->and(scanAll(ContentType::Term, 'topics', 'en'))->toEqual(ScanResult::empty())
             ->and(statusScanner()->sites(ContentType::Term, 'tags'))->toBe([]);
@@ -255,7 +270,7 @@ describe('ScanResult', function () {
         $result = statusScanner()->scan(ContentType::Entry, 'articles', 'el', null, 0);
 
         expect(ScanResult::fromArray($result->toArray()))->toEqual($result)
-            ->and(ScanResult::fromArray(['counts' => ['missing' => 'x', 'current' => -2, 'other' => 4], 'untracked' => '3', 'cursor' => 5]))
-            ->toEqual(new ScanResult(itemCounts(['missing' => 0]), untracked: 3));
+            ->and(ScanResult::fromArray(['counts' => ['missing' => 'x', 'current' => -2, 'other' => 4], 'untracked' => '3', 'unreadable' => '2', 'cursor' => 5]))
+            ->toEqual(new ScanResult(itemCounts(['missing' => 0]), untracked: 3, unreadable: 2));
     });
 });

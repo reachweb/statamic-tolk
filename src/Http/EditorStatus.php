@@ -13,9 +13,11 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\Support\Sanitizer;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
 use Reach\StatamicTolk\Targets\TargetFactory;
@@ -181,7 +183,8 @@ final readonly class EditorStatus
     /**
      * The sites the item is the origin of, among those the user may access: an entry's direct localizations and, for
      * the root of the family, the sites it has no localization in yet (§A11 "Entries"); every other site of a term's
-     * taxonomy for the term in its default site (§A11 "Terms").
+     * taxonomy for the term in its default site (§A11 "Terms"). A localization whose stored state cannot be read has
+     * no status, and its `error` says why.
      */
     private function origin(EntryContract|TermContract $item, User $user): ?array
     {
@@ -193,14 +196,22 @@ final readonly class EditorStatus
             }
 
             $target = $this->target($item, $site);
-            $status = $this->resolver->resolve($target);
+
+            try {
+                $status = $this->resolver->resolve($target);
+                $error = null;
+            } catch (UnreadableState $exception) {
+                $status = null;
+                $error = Sanitizer::message($exception->getMessage());
+            }
 
             $localizations[] = [
                 ...$this->site($site),
                 'exists' => $target->exists(),
-                'status' => $status->itemStatus->value,
-                'counts' => $status->counts,
+                'status' => $status?->itemStatus->value,
+                'counts' => $status?->counts,
                 'edit_url' => $target->editUrl(),
+                'error' => $error,
             ];
         }
 

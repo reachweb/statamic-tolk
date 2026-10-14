@@ -239,6 +239,22 @@ describe('tolk:baseline', function () {
             ->and(app(StatusScanner::class)->scan(ContentType::Nav, 'main', 'el', null, 10_000)->counts['attention'])->toBe(1);
     });
 
+    it('skips an item whose state file cannot be read with its message, records the others and exits 1', function () {
+        $greek = $this->localize($this->hello, 'el', ['title' => 'Γεια σου']);
+        StateFixtures::store($greek, ['intro' => StateFixtures::machine('A short intro.', 'Μια σύντομη εισαγωγή.')]);
+        $path = StateFixtures::conflict($greek);
+        $this->localize($this->world, 'el', ['title' => 'Κόσμε']);
+        $commits = RunFixtures::commits();
+
+        [$exitCode, $output] = maintenanceCommand('tolk:baseline');
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain("The translation state file {$path} cannot be read")
+            ->and($output)->toContain('Recorded the origin of 1 field.')
+            ->and(maintenanceStatus($this->world)->counts['untracked'])->toBe(0)
+            ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
+    });
+
     it('refuses a site or container that does not exist', function (array $options, string $error) {
         [$exitCode, $output] = maintenanceCommand('tolk:baseline', $options);
 
@@ -296,6 +312,21 @@ describe('tolk:prune', function () {
 
         $this->artisan('tolk:prune')->expectsOutputToContain('Nothing to clean up.')->assertExitCode(0);
         expect($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
+    });
+
+    it('lists the state files that cannot be read on every run, and keeps them', function () {
+        $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        $path = StateFixtures::conflict($localization);
+
+        [$exitCode, $output] = maintenanceCommand('tolk:prune');
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toMatch('/State files that cannot be read\W+1 file/')
+            ->and($output)->toContain($path)
+            ->and($output)->toContain('Fix each of these files, for example by resolving a git merge conflict in it, or delete it.')
+            ->and($output)->not->toContain('Nothing to clean up.')
+            ->and($path)->toBeFile();
     });
 
     it('lists what it deleted with -v', function () {

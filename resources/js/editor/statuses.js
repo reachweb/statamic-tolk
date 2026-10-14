@@ -177,19 +177,21 @@ function describeOrigin(block, setup) {
         const missing = !localization.exists;
         const counts = localization.counts ?? {};
         const parts = missing ? [] : countParts(counts);
+        // Its state file cannot be read, so it has no status, and translating it would fail: the error says why.
+        const unreadable = typeof localization.error === 'string' && localization.error !== '';
 
         return {
             site: localization.site,
             name: localization.name,
             exists: localization.exists,
             status: localization.status,
-            label: itemStatusLabel(localization.status),
-            color: statusColor(localization.status),
+            label: unreadable ? __('Unreadable') : itemStatusLabel(localization.status),
+            color: unreadable ? 'red' : statusColor(localization.status),
             parts,
-            summary: originSummary(localization, parts),
+            summary: unreadable ? localization.error : originSummary(localization, parts),
             editUrl: localization.edit_url ?? null,
-            translate: missing || (counts.untranslated ?? 0) > 0,
-            update: !missing && (counts.outdated ?? 0) > 0,
+            translate: !unreadable && (missing || (counts.untranslated ?? 0) > 0),
+            update: !unreadable && !missing && (counts.outdated ?? 0) > 0,
         };
     });
 

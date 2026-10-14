@@ -12,6 +12,7 @@ use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Commands\WorkCommand;
 use Reach\StatamicTolk\Content\TranslatableFields;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\AuditLevel;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -57,21 +58,24 @@ final class Audit
         private readonly Settings $settings,
         private readonly TranslatableFields $translatableFields,
         private readonly StatusScanner $scanner,
+        private readonly StateRepository $state,
     ) {}
 
     /**
      * @param  bool  $commandLine  also check the PHP of this process as the one the commands run on (tolk:doctor); the
      *                             Control Panel's PHP may be another
+     * @param  bool  $stateFiles  whether to read every state file and list those that cannot be read, which takes a
+     *                            while on a large site, so tolk:doctor does and the Audit page does not
      * @return list<array{id: string, level: string, title: string, detail: string, items: list<array>}>
      */
-    public function run(bool $commandLine = false): array
+    public function run(bool $commandLine = false, bool $stateFiles = false): array
     {
         return array_values(array_filter([
             $this->check('sites', __('Sites'), __('Tolk translates content from one site into its localizations in the others, so it needs multi-site with at least two sites.'), $this->siteItems()),
             $this->check('providers', __('Providers and models'), __('Translating needs an API key for at least one provider, and every model chosen in the settings must use a provider that has one.'), $this->providerItems()),
             $this->check('queue', __('Queue'), __('Runs started in the Control Panel run as queue jobs when the queue connection has a worker, and are driven by the open run page otherwise. Each queue job must end before the connection hands it to another worker (retry_after).'), $this->queueItems()),
             $this->check('cache', __('Cache'), __('Plans, locks and progress live in one cache store, which must support locks and be shared by web requests, queue workers and the command line.'), $this->cacheItems()),
-            $this->check('state', __('Translation state'), __('Tolk keeps what it knows about each translated field in files, which it must be able to write and which must stay with the content: in version control with content in files, in a folder that every deploy keeps with content in a database.'), $this->stateItems()),
+            $this->check('state', __('Translation state'), __('Tolk keeps what it knows about each translated field in files, which it must be able to write and which must stay with the content: in version control with content in files, in a folder that every deploy keeps with content in a database.'), [...$this->stateItems(), ...($stateFiles ? $this->unreadableStateItems() : [])]),
             $this->check(self::LOCALIZABLE, __('Localizable fields'), __('A text field that is not localizable is shared by every site, so Tolk does not translate it. Run php please tolk:doctor --fix-localizable to make these fields localizable, blueprint by blueprint.'), $this->notLocalizable()),
             $this->check(self::TECHNICAL_FIELDS, __('Nested fields that look like data'), __('These nested fields are translated, but their handles suggest identifiers, links or code. If one holds data rather than text, switch off "Translate automatically" in its field settings.'), $this->technicalFields()),
             $this->check('content_sites', __('Sites of collections, taxonomies and global sets'), __('Content is translated only into the sites its collection, taxonomy or global set is enabled for, and a global set translates each site from the origin it names for it.'), $this->contentSiteItems()),
@@ -471,6 +475,21 @@ final class Audit
         $within = fn (string $root) => str_starts_with($resolve($folder), $resolve($root));
 
         return $within(base_path()) && ! $within(storage_path());
+    }
+
+    /**
+     * The state files that cannot be read, such as after a git merge conflict: the status of their translations is
+     * unknown and translating them fails until each is fixed or deleted.
+     */
+    private function unreadableStateItems(): array
+    {
+        $items = [];
+
+        foreach ($this->state->unreadable() as $exception) {
+            $items[] = $this->item(AuditLevel::Error, $exception->getMessage());
+        }
+
+        return $items;
     }
 
     private function contentSiteItems(): array

@@ -12,6 +12,7 @@ use Statamic\Events\NavDeleted;
 use Statamic\Events\NavTreeDeleted;
 use Statamic\Events\TermDeleted;
 use Statamic\Facades\Site;
+use Throwable;
 
 final readonly class ForgetStateOfDeletedContent
 {
@@ -60,6 +61,9 @@ final readonly class ForgetStateOfDeletedContent
     }
 
     /**
+     * The content is gone by now, so a state that cannot be forgotten is reported and the deletion goes on: a deletion
+     * with localizations deletes them one by one.
+     *
      * @param  list<TargetRef>  $refs
      */
     private function forget(array $refs): void
@@ -67,7 +71,11 @@ final readonly class ForgetStateOfDeletedContent
         $forgotten = false;
 
         foreach ($refs as $ref) {
-            $forgotten = $this->writer->forget($ref) || $forgotten;
+            try {
+                $forgotten = $this->writer->forget($ref) || $forgotten;
+            } catch (Throwable $exception) {
+                report($exception);
+            }
         }
 
         // Statamic's commit for the deletion may have run already: on a sync queue it runs inside its own listener.

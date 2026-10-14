@@ -22,6 +22,7 @@ beforeEach(function () {
 
     $outdated = $this->localize($this->makeEntry('articles', 'en', ['title' => 'Outdated'], 'outdated'), 'el', ['title' => 'Παλιό']);
     StateFixtures::store($outdated, ['title' => StateFixtures::machine('Old', 'Παλιό')]);
+    $this->outdated = $outdated;
 
     $attention = $this->localize($this->makeEntry('articles', 'en', ['title' => 'Attention'], 'attention'), 'el', ['title' => 'Χειρόγραφο']);
     StateFixtures::store($attention, ['title' => new FieldState(sourceHash: Fingerprint::of('Before'))]);
@@ -79,6 +80,19 @@ describe('table', function () {
             ->and($output)->not->toContain('to record it.');
     });
 
+    it('counts the items whose state file does not parse apart, and points to tolk:doctor', function () {
+        StateFixtures::conflict($this->outdated);
+
+        $this->artisan('tolk:status', ['--site' => ['el'], '--collection' => ['articles']])
+            ->expectsTable(STATUS_HEADERS, [
+                ['Collection', 'articles', 'el', '1', '1', '0', '1', '1', '1'],
+            ])
+            ->expectsOutputToContain('The translation state of 1 item cannot be read, so its status is unknown. Run php please tolk:doctor to list the files that cannot be read.')
+            ->assertExitCode(0);
+
+        expect(statusJson(['--site' => ['el'], '--collection' => ['articles']])[0]['unreadable'])->toBe(1);
+    });
+
     it('shows only the sites and containers named', function () {
         $this->artisan('tolk:status', ['--site' => ['de'], '--collection' => ['articles'], '--nav' => ['main']])
             ->expectsTable(STATUS_HEADERS, [
@@ -126,6 +140,7 @@ describe('--json', function () {
                 'site' => 'el',
                 'counts' => ['missing' => 1, 'untranslated' => 1, 'outdated' => 1, 'attention' => 1, 'current' => 1],
                 'untracked' => 1,
+                'unreadable' => 0,
                 'scanned' => 5,
             ],
             [
@@ -134,6 +149,7 @@ describe('--json', function () {
                 'site' => 'el',
                 'counts' => ['missing' => 0, 'untranslated' => 1, 'outdated' => 0, 'attention' => 0, 'current' => 0],
                 'untracked' => 0,
+                'unreadable' => 0,
                 'scanned' => 1,
             ],
         ]);

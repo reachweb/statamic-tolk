@@ -1216,6 +1216,26 @@ describe('the run engine', function () {
             ->and(app(RunRepository::class)->recent(1)[0]->status)->toBe(RunStatus::CompletedWithErrors);
     });
 
+    it('translates the other targets when the state file of one does not parse, and fails that one at once with a message naming the file', function () {
+        $this->fakeTranslations();
+        $greek = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        $path = StateFixtures::conflict($greek);
+        $damaged = File::get($path);
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
+        $item = collect(app(RunRepository::class)->items(app(RunRepository::class)->recent(1)[0]))->firstWhere('sourceId', $this->hello->id());
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('World → Greek: done, created, 2 fields')
+            ->and($output)->toContain("Hello → Greek: failed, The translation state file {$path} cannot be read")
+            ->and($item->attempts)->toBe(0)
+            ->and($this->world->fresh()->in('el')->get('title'))->toBe('[T] World')
+            ->and($greek->fresh()->get('title'))->toBe('Γεια')
+            ->and(File::get($path))->toBe($damaged)
+            ->and($this->modelCalls())->toBe(1);
+    });
+
     it('cancels the run on Ctrl-C after the current step, commits what was saved and reports the rest', function () {
         if (! function_exists('pcntl_signal') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');

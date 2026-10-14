@@ -39,4 +39,9 @@ final class CountingStateRepository implements StateRepository
     {
         return $this->inner->references();
     }
+
+    public function unreadable(): iterable
+    {
+        return $this->inner->unreadable();
+    }
 }

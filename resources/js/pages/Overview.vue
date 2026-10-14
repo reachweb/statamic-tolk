@@ -77,6 +77,7 @@ const groups = computed(() =>
 const allCells = computed(() => matrixCells(props.rows));
 const month = computed(() => describeMonth(usage.value));
 const untracked = computed(() => Object.values(cells).some((cell) => Number(cell?.untracked) > 0));
+const unreadable = computed(() => Object.values(cells).some((cell) => Number(cell?.unreadable) > 0));
 const siteRuns = computed(() => Object.fromEntries(columns.value.map((site) => [site.handle, siteRun(props.rows, cells, site.handle)])));
 
 const loader = createCellLoader({
@@ -207,6 +208,9 @@ async function resetUsage() {
                                         <Description v-if="view.untracked > 0" data-tolk-untracked>
                                             {{ __n(':count untracked field|:count untracked fields', view.untracked) }}
                                         </Description>
+                                        <Description v-if="view.unreadable > 0" data-tolk-unreadable>
+                                            {{ __n(':count item with unreadable state|:count items with unreadable state', view.unreadable) }}
+                                        </Description>
                                         <div v-if="view.failed" class="space-y-1">
                                             <Text size="sm" variant="danger" data-tolk-cell-error>{{ view.error }}</Text>
                                             <Button size="xs" :text="__('Try again')" data-tolk-cell-retry @click="loader.retry(cell)" />
@@ -242,6 +246,9 @@ async function resetUsage() {
             </div>
             <Description v-if="untracked" data-tolk-baseline-hint>
                 {{ __('Untracked fields were translated by hand without a record of their origin, so a change to the origin goes unnoticed. Run php please tolk:baseline to record the origin of each.') }}
+            </Description>
+            <Description v-if="unreadable" data-tolk-unreadable-hint>
+                {{ __('The translation state of some items cannot be read, so their status is unknown and translating them fails. Run php please tolk:doctor to list the files.') }}
             </Description>
         </Card>
 

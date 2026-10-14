@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use LogicException;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Exceptions\InvalidTargetRef;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Support\Concerns\StoresFiles;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Facades\YAML;
@@ -25,12 +26,19 @@ final class FileStateRepository implements StateRepository
 
     public function __construct(private readonly Filesystem $files) {}
 
+    /**
+     * @throws UnreadableState for a file that does not parse
+     */
     public function get(TargetRef $ref): ItemState
     {
+        $path = $this->path($ref);
+
         try {
-            $data = $this->parse($this->path($ref));
+            $data = $this->parse($path);
         } catch (FileNotFoundException) {
             return ItemState::empty($ref);
+        } catch (ParseException $exception) {
+            throw UnreadableState::file($path, $exception);
         }
 
         return ($data['reference'] ?? null) === (string) $ref ? ItemState::fromArray($data) : ItemState::empty($ref);
@@ -63,13 +71,9 @@ final class FileStateRepository implements StateRepository
 
     public function references(): iterable
     {
-        if (! $this->files->isDirectory($this->root())) {
-            return;
-        }
-
-        foreach (Finder::create()->files()->in($this->root())->name('*.yaml') as $file) {
+        foreach ($this->files() as $path) {
             try {
-                $reference = $this->parse($file->getPathname())['reference'] ?? null;
+                $reference = $this->parse($path)['reference'] ?? null;
                 $ref = TargetRef::parse(is_string($reference) ? $reference : '');
             } catch (FileNotFoundException|InvalidTargetRef|ParseException) {
                 continue;
@@ -79,9 +83,35 @@ final class FileStateRepository implements StateRepository
         }
     }
 
+    public function unreadable(): iterable
+    {
+        foreach ($this->files() as $path) {
+            try {
+                $this->parse($path);
+            } catch (FileNotFoundException) {
+            } catch (ParseException $exception) {
+                yield UnreadableState::file($path, $exception);
+            }
+        }
+    }
+
     public function path(TargetRef $ref): string
     {
         return $this->root().'/'.$ref->storageKey().'.yaml';
+    }
+
+    /**
+     * @return iterable<string> the path of every state file
+     */
+    private function files(): iterable
+    {
+        if (! $this->files->isDirectory($this->root())) {
+            return;
+        }
+
+        foreach (Finder::create()->files()->in($this->root())->name('*.yaml') as $file) {
+            yield $file->getPathname();
+        }
     }
 
     private function parse(string $path): array

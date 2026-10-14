@@ -29,7 +29,7 @@ An entry, a term, a global set or a navigation in one site counts once, by the w
 4. **Needs attention**: at least one field edited by hand has a changed origin.
 5. **Up to date** (*Current* on the Overview and in `tolk:status`): everything else.
 
-The Overview and `tolk:status` count items this way, and also report the untracked fields.
+The Overview and `tolk:status` count items this way, and also report the untracked fields. An item whose state file cannot be read, such as after a git merge conflict, has no status until the file is fixed ([Troubleshooting](troubleshooting.md#a-state-file-cannot-be-read)).
 
 ## How Tolk decides
 

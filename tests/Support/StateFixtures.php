@@ -3,6 +3,7 @@
 namespace Reach\StatamicTolk\Tests\Support;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\File;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -51,6 +52,18 @@ final class StateFixtures
 
             return $state;
         });
+    }
+
+    /**
+     * Leaves the markers of a git merge conflict in the state file of the localization or reference, which must exist,
+     * and returns its path.
+     */
+    public static function conflict(EntryContract|TargetRef $target): string
+    {
+        $path = app(StateRepository::class)->path($target instanceof TargetRef ? $target : self::ref($target));
+        File::put($path, "<<<<<<< HEAD\n".File::get($path)."=======\n>>>>>>> translations\n");
+
+        return $path;
     }
 
     public static function machine(mixed $source, string $translation, array $overrides = []): FieldState

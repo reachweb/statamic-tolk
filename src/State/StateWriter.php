@@ -8,6 +8,7 @@ use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Support\GitListeners;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Statamic\Fields\Field;
@@ -294,13 +295,27 @@ final readonly class StateWriter
     }
 
     /**
-     * Deletes the target's state, or only the state of the given fields. Returns whether there was any.
+     * Deletes the target's state, or only the state of the given fields. Returns whether there was any. Nothing of a
+     * record that is deleted whole is kept, so one that cannot be read is deleted too; single fields are not.
      *
      * @param  ?list<string>  $handles
+     *
+     * @throws UnreadableState for single fields of a record that cannot be read
      */
     public function forget(TargetRef $ref, ?array $handles = null, bool $commit = false): bool
     {
-        $stored = $this->repository->get($ref);
+        try {
+            $stored = $this->repository->get($ref);
+        } catch (UnreadableState $exception) {
+            if ($handles !== null) {
+                throw $exception;
+            }
+
+            $this->repository->delete($ref);
+            $this->commit($commit);
+
+            return true;
+        }
 
         if ($handles === null ? $stored->isEmpty() : array_intersect_key($stored->fields, array_flip($handles)) === []) {
             return false;

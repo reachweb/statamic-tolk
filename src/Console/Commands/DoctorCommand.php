@@ -10,8 +10,8 @@ use Statamic\Console\RunsInPlease;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
- * Prints the checks of Support\Audit and, with --fix-localizable, makes the fields of check `localizable` localizable,
- * asking per blueprint.
+ * Prints the checks of Support\Audit, with the state files that cannot be read, and, with --fix-localizable, makes the
+ * fields of check `localizable` localizable, asking per blueprint.
  */
 class DoctorCommand extends Command
 {
@@ -44,7 +44,7 @@ class DoctorCommand extends Command
             return self::FAILURE;
         }
 
-        $checks = $audit->run(commandLine: true);
+        $checks = $audit->run(commandLine: true, stateFiles: true);
         $exitCode = in_array(AuditLevel::Error->value, array_column($checks, 'level'), true) ? self::FAILURE : self::SUCCESS;
 
         if ($this->option('json')) {

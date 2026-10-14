@@ -33,6 +33,7 @@ use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\TransientProviderFailure;
 use Reach\StatamicTolk\Exceptions\UnitBusy;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Exceptions\WriterBusy;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\ContentWriter;
@@ -475,7 +476,7 @@ final readonly class RunProcessor
             return $this->translateItem($run, $item, $options, $mayStartUnit, $units, $items);
         } catch (ClaimLost|UnitBusy|RunNotFound $quiet) {
             throw $quiet;
-        } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing $exception) {
+        } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing|UnreadableState $exception) {
             $item->rootPage = $exception instanceof RootMissing ? $exception->rootPage() : null;
 
             return $this->fail($run, $item, $exception->getMessage(), self::reason($exception), $items);
@@ -643,7 +644,7 @@ final readonly class RunProcessor
             return $item->reason === TargetResult::SOURCE_CHANGED
                 ? $this->failItem($run, $item, $changed->getMessage(), TargetResult::SOURCE_CHANGED)
                 : $this->settle($run, $item, RunItemStatus::Pending, TargetResult::SOURCE_CHANGED);
-        } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing|ApplyFailed $exception) {
+        } catch (TargetNotFound|InvalidTarget|NotSupportedYet|UnknownSite|RootMissing|ApplyFailed|UnreadableState $exception) {
             $this->forget($plan);
             $item->rootPage = $exception instanceof RootMissing ? $exception->rootPage() : null;
 

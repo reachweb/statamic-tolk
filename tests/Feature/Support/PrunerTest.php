@@ -231,6 +231,22 @@ it('keeps the state of a translation file and of form texts whose file cannot be
         ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['lang::_json::de', 'forms::de']);
 });
 
+it('lists the state files that do not parse and keeps them, and prunes the rest', function () {
+    $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
+    StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+    $path = StateFixtures::conflict($localization);
+    prunerState(new TargetRef(ContentType::Nav, 'footer', 'el'));
+
+    $dryRun = pruned(dryRun: true);
+    $report = pruned();
+
+    expect($dryRun->unreadable)->toBe([$path])
+        ->and($report->unreadable)->toBe([$path])
+        ->and($report->orphaned(PruneReport::DELETED))->toBe(['nav::footer::el'])
+        ->and($path)->toBeFile()
+        ->and(pruned()->isEmpty())->toBeFalse();
+});
+
 it('keeps the state of the form texts of another language, and deletes that of the source language', function () {
     $this->app->useLangPath($this->temporaryPath('lang'));
     prunerState(new TargetRef(ContentType::Forms, 'de'));

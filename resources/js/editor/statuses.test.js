@@ -327,6 +327,31 @@ describe('an origin', () => {
             ['Needs attention', 'purple', '1 field edited by hand, 1 needs attention'],
         ]);
     });
+
+    it('shows a localization whose state cannot be read with the message, and offers nothing for it', () => {
+        const error = 'The translation state file content/tolk/entries/el-id.yaml cannot be read: Unable to parse at line 1.';
+        const banner = describeStatus(
+            payload({
+                origin: {
+                    localizations: [
+                        { site: 'el', name: 'Greek', exists: true, status: null, counts: null, edit_url: '/el', error },
+                        { site: 'de', name: 'German', exists: true, status: 'current', counts: { ...zero, current: 4 }, edit_url: '/de', error: null },
+                    ],
+                },
+            }),
+        );
+
+        expect(banner.origin.localizations[0]).toMatchObject({
+            status: null,
+            label: 'Unreadable',
+            color: 'red',
+            parts: [],
+            summary: error,
+            translate: false,
+            update: false,
+        });
+        expect(banner.origin).toMatchObject({ upToDate: false, translateInto: false, update: false });
+    });
 });
 
 describe('an origin whose translations', () => {

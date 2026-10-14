@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\FileStateRepository;
 use Reach\StatamicTolk\State\ItemState;
@@ -190,6 +191,60 @@ it('reads a record stored for another reference as empty', function () {
     $this->repository->update($ref, withTitle('s2'));
 
     expect(YAML::parse(File::get($path))['reference'])->toBe('entry::0b5f');
+});
+
+it('refuses to read or update a record that does not parse, naming its file, and leaves it as it is', function (Closure $damage, string $error) {
+    $ref = TargetRef::parse('entry::0b5f');
+    $this->repository->update($ref, withTitle('s1'));
+    $path = $this->repository->path($ref);
+    File::put($path, $damage(File::get($path)));
+    $damaged = File::get($path);
+
+    foreach ([fn () => $this->repository->get($ref), fn () => $this->repository->update($ref, withTitle('s2'))] as $call) {
+        try {
+            $call();
+            $thrown = null;
+        } catch (UnreadableState $exception) {
+            $thrown = $exception;
+        }
+
+        expect($thrown)->toBeInstanceOf(UnreadableState::class)
+            ->and($thrown->path)->toBe($path)
+            ->and($thrown->getMessage())->toContain("The translation state file {$path} cannot be read: {$error}. Fix it");
+    }
+
+    expect(File::get($path))->toBe($damaged);
+
+    $this->repository->delete($ref);
+
+    expect($path)->not->toBeFile();
+})->with([
+    'merge conflict markers' => [
+        fn (string $yaml) => str_replace("fields:\n", "fields:\n<<<<<<< HEAD\n", $yaml)."=======\n  title:\n    source_hash: s2\n>>>>>>> translations\n",
+        'Unable to parse at line 4 (near "<<<<<<< HEAD")',
+    ],
+    'a key both sides added' => [
+        fn (string $yaml) => $yaml."  title:\n    source_hash: s2\n",
+        'Duplicate key "title" detected at line 7',
+    ],
+]);
+
+it('lists the records that do not parse, which references() leaves out', function () {
+    $healthy = TargetRef::parse('entry::0b5f');
+    $broken = TargetRef::parse('term::topics::food::el');
+
+    $unreadable = fn () => array_map(fn (UnreadableState $exception) => $exception->path, iterator_to_array($this->repository->unreadable(), false));
+
+    expect($this->repository->unreadable())->toBeInstanceOf(Generator::class)
+        ->and($unreadable())->toBe([]);
+
+    $this->repository->update($healthy, withTitle('s1'));
+    $this->repository->update($broken, withTitle('s1'));
+    File::put($this->repository->path($broken), "<<<<<<< HEAD\nreference: 'term::topics::food::el'\n");
+    File::put($this->root.'/entries/no-reference.yaml', YAML::dump(['v' => 1]));
+
+    expect($unreadable())->toBe([$this->repository->path($broken)])
+        ->and(array_map('strval', iterator_to_array($this->repository->references(), false)))->toBe(['entry::0b5f']);
 });
 
 it('keeps the version a record was stored with', function () {

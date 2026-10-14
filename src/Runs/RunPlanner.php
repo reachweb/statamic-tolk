@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Exceptions\NotSupportedYet;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\Support\EntryMemo;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\EntryFamilies;
@@ -677,7 +678,12 @@ final readonly class RunPlanner
             return new Estimate;
         }
 
-        $plan = $options->mode === Mode::Review ? $this->planner->planReview($target, $options) : $this->planner->plan($target, $options);
+        try {
+            $plan = $options->mode === Mode::Review ? $this->planner->planReview($target, $options) : $this->planner->plan($target, $options);
+        } catch (UnreadableState) {
+            // Its state file cannot be read: translating fails the item and names the file.
+            return new Estimate;
+        }
 
         if ($planned !== null) {
             $planned($item, $plan);

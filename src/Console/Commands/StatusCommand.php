@@ -85,11 +85,21 @@ class StatusCommand extends Command
             ));
         }
 
+        $unreadable = array_sum(array_column($rows, 'unreadable'));
+
+        if ($unreadable > 0) {
+            $this->components->warn(sprintf(
+                'The translation state of %s cannot be read, so %s status is unknown. Run php please tolk:doctor to list the files that cannot be read.',
+                $unreadable === 1 ? '1 item' : number_format($unreadable).' items',
+                $unreadable === 1 ? 'its' : 'their',
+            ));
+        }
+
         return self::SUCCESS;
     }
 
     /**
-     * @return array{counts: array<string, int>, untracked: int, scanned: int}
+     * @return array{counts: array<string, int>, untracked: int, unreadable: int, scanned: int}
      */
     private function scan(StatusScanner $scanner, ContentType $type, string $container, string $site): array
     {

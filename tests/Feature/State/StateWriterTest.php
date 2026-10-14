@@ -1,6 +1,7 @@
 <?php
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
@@ -21,6 +22,7 @@ use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\TermSaved;
+use Statamic\Facades\Entry;
 use Statamic\Facades\Git;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
@@ -582,6 +584,11 @@ describe('baseline', function () {
             {
                 return $this->inner->references();
             }
+
+            public function unreadable(): iterable
+            {
+                return $this->inner->unreadable();
+            }
         });
 
         $count = writer()->baseline(writerTarget($this->origin));
@@ -769,6 +776,69 @@ describe('deleted content', function () {
         $this->origin->delete();
 
         expect(iterator_to_array(app(StateRepository::class)->references(), false))->toBe([]);
+    });
+
+    it('deletes every localization of a deleted origin when the state of one does not parse, and forgets that state too', function () {
+        $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        $german = $this->localize($this->origin, 'de', ['title' => 'Hallo']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        StateFixtures::store($german, ['title' => StateFixtures::machine('Hello', 'Hallo')]);
+        $path = StateFixtures::conflict($greek);
+
+        $this->origin->deleteDescendants();
+        $this->origin->delete();
+
+        expect(Entry::find($greek->id()))->toBeNull()
+            ->and(Entry::find($german->id()))->toBeNull()
+            ->and($path)->not->toBeFile()
+            ->and(iterator_to_array(app(StateRepository::class)->references(), false))->toBe([]);
+    });
+
+    it('reports a state it could not forget and goes on with the rest of the deletion', function () {
+        $greek = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        $german = $this->localize($this->origin, 'de', ['title' => 'Hallo']);
+        StateFixtures::store($greek, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        StateFixtures::store($german, ['title' => StateFixtures::machine('Hello', 'Hallo')]);
+        $failing = (string) StateFixtures::ref($greek);
+        app()->instance(StateRepository::class, new class(app(StateRepository::class), $failing) implements StateRepository
+        {
+            public function __construct(private readonly StateRepository $inner, private readonly string $failing) {}
+
+            public function get(TargetRef $ref): ItemState
+            {
+                return $this->inner->get($ref);
+            }
+
+            public function update(TargetRef $ref, Closure $callback): ItemState
+            {
+                return $this->inner->update($ref, $callback);
+            }
+
+            public function delete(TargetRef $ref): void
+            {
+                (string) $ref === $this->failing ? throw new RuntimeException('The disk is full.') : $this->inner->delete($ref);
+            }
+
+            public function references(): iterable
+            {
+                return $this->inner->references();
+            }
+
+            public function unreadable(): iterable
+            {
+                return $this->inner->unreadable();
+            }
+        });
+        Exceptions::fake();
+
+        $this->origin->deleteDescendants();
+
+        expect(Entry::find($greek->id()))->toBeNull()
+            ->and(Entry::find($german->id()))->toBeNull()
+            ->and(storedState($greek)->isEmpty())->toBeFalse()
+            ->and(storedState($german)->isEmpty())->toBeTrue();
+
+        Exceptions::assertReported(fn (RuntimeException $exception) => $exception->getMessage() === 'The disk is full.');
     });
 
     it('forgets the state of a deleted term in every site', function () {

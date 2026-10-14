@@ -3,12 +3,17 @@
 use Illuminate\Console\Signals;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunRequest;
+use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Support\Audit;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\FormFixtures;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Fieldset;
@@ -293,6 +298,19 @@ describe('translation state', function () {
             chmod($readOnly, 0755);
         }
     })->skip(fn () => function_exists('posix_getuid') && posix_getuid() === 0, 'root writes everywhere');
+
+    it('lists the state files that do not parse only when asked to read every file, as tolk:doctor does', function () {
+        $ref = TargetRef::parse('entry::0b5f');
+        app(StateRepository::class)->update($ref, fn (ItemState $state) => $state->withField('title', new FieldState(sourceHash: 's1')));
+        $path = StateFixtures::conflict($ref);
+        $state = fn (bool $stateFiles) => collect(app(Audit::class)->run($stateFiles))->firstWhere('id', 'state');
+
+        expect($state(false)['level'])->toBe('ok')
+            ->and($state(false)['items'])->toHaveCount(1)
+            ->and($state(true)['level'])->toBe('error')
+            ->and($state(true)['items'][1]['level'])->toBe('error')
+            ->and($state(true)['items'][1]['text'])->toStartWith("The translation state file {$path} cannot be read: Mapping values are not allowed in multi-line blocks at line 1 (near \"<<<<<<< HEAD\"). Fix it");
+    });
 
     it('checks that Statamic\'s git integration tracks the folder', function () {
         config([
