@@ -554,6 +554,32 @@ describe('failures', function () {
     });
 });
 
+it('leaves a code block that Tiptap 1 stored as code_block untouched, as the page renders it', function () {
+    $this->makeCollection('stories', ['en', 'el'], [
+        'content' => ['type' => 'bard', 'localizable' => true, 'display' => 'Content'],
+    ]);
+    $sent = [];
+    $this->fakeTranslations(function (string $text) use (&$sent) {
+        $sent[] = $text;
+
+        return '[T] '.$text;
+    });
+    $story = $this->makeEntry('stories', 'en', ['content' => [
+        ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Print the value:']]],
+        ['type' => 'code_block', 'content' => [['type' => 'text', 'text' => 'echo $foo;']]],
+    ]], 'tiptap-one');
+
+    $result = translateTarget($story);
+
+    expect($result->status)->toBe(TargetResultStatus::Done)
+        ->and($sent)->toBe(['Print the value:'])
+        ->and($story->fresh()->in('el')->get('content'))->toBe([
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => '[T] Print the value:']]],
+            ['type' => 'codeBlock', 'content' => [['type' => 'text', 'text' => 'echo $foo;']]],
+        ])
+        ->and(StateFixtures::statuses($story))->toBe(['content' => FieldStatus::Current]);
+});
+
 it('reports what the handlers noticed about a field they leave untouched, with and without other work', function () {
     $this->makeCollection('stories', ['en', 'el'], [
         'title' => ['type' => 'text', 'localizable' => true],

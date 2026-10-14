@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Contracts\FieldHandler;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Statamic\Fields\Field;
 use Statamic\Fields\Fieldtype;
+use Statamic\Support\Str;
 
 /**
  * Walks Bard's ProseMirror nodes block by block (D25): the inline content of each block is one `inline` leaf, link
@@ -49,7 +50,24 @@ final class BardHandler implements FieldHandler
             return $value;
         }
 
-        return $this->mapNodes($value, $fieldtype, $hint, $translate, $context);
+        return $this->mapNodes(self::camelTypes($value), $fieldtype, $hint, $translate, $context);
+    }
+
+    /**
+     * Tiptap 1 stored snake-case types (`code_block`, `hard_break`). Bard camel-cases every type outside `attrs` when it
+     * reads a value (Bard::convertLegacyTiptap()), and so does the walk: it sees what the page renders and what a save writes.
+     */
+    private static function camelTypes(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            if (is_array($item) && $key !== 'attrs') {
+                $value[$key] = self::camelTypes($item);
+            } elseif ($key === 'type' && is_string($item)) {
+                $value[$key] = Str::camel($item);
+            }
+        }
+
+        return $value;
     }
 
     private function mapHtml(string $value, ?string $hint, Closure $translate, WalkContext $context): string

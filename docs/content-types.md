@@ -65,7 +65,7 @@ Bard content is translated paragraph by paragraph, never through HTML. Bold, ita
 
 A Bard field stored as HTML (`save_html: true`) is translated block by block too. As in text fields, `alt` and `title` attributes inside its HTML are not translated.
 
-Bard data still stored in the format of Statamic 2 is left as it is and reported with the result, on the run page and in the editor; saving the entry once in the Control Panel converts it.
+Bard data still stored in the format of Statamic 2 is left as it is and reported with the result, on the run page and in the editor; saving the entry once in the Control Panel converts it. Bard data whose node types are still in the snake case of Tiptap 1 (`code_block`, `hard_break`) is read as Statamic reads it, so its code blocks are left alone too, and its translation is saved in the current format.
 
 ## Entries
 

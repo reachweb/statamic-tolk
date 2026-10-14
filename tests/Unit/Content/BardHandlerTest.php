@@ -383,6 +383,36 @@ it('does not read inline content or a value without sets as legacy data', functi
         ->and(bardLeaves(bardField(), $text))->toBe([['inline', 'Welcome', 'Content', null]]);
 });
 
+it('reads the snake-case types of Tiptap 1 as Bard does, so a code_block stays untouched and a hard_break is a break', function () {
+    $field = bardField(['sets' => ['call_to_action' => ['display' => 'Call to action', 'fields' => [
+        ['handle' => 'label', 'field' => ['type' => 'text', 'display' => 'Label']],
+    ]]]]);
+    $nodes = fn (Closure $type) => [
+        ['type' => 'paragraph', 'content' => [
+            ['type' => 'text', 'marks' => [['type' => 'bold']], 'text' => 'Check-in'],
+            ['type' => $type('hard_break')],
+            ['type' => 'text', 'text' => 'from 15:00'],
+        ]],
+        ['type' => $type('code_block'), 'attrs' => ['language' => 'php'], 'content' => [['type' => 'text', 'text' => 'echo $foo;']]],
+        ['type' => $type('bullet_list'), 'content' => [['type' => $type('list_item'), 'content' => [
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Pool']]],
+        ]]]],
+        ['type' => $type('horizontal_rule')],
+        ['type' => 'set', 'attrs' => ['id' => 'a1', 'values' => ['type' => 'call_to_action', 'label' => 'Book now']]],
+    ];
+    $legacy = $nodes(fn (string $type) => $type);
+    $current = $nodes(fn (string $type) => lcfirst(str_replace('_', '', ucwords($type, '_'))));
+    $translate = fn (Leaf $leaf) => "[el] {$leaf->text}";
+
+    expect(bardLeaves($field, $legacy))->toBe([
+        ['inline', '<1>Check-in</1><br/>from 15:00', 'Content', null],
+        ['inline', 'Pool', 'Content', null],
+        ['plain', 'Book now', 'Content › Call to action › Label', null],
+    ])->and(bardLeaves($field, $legacy))->toBe(bardLeaves($field, $current))
+        ->and(bardWalker()->mapField($field, $legacy, $translate))->toBe(bardWalker()->mapField($field, $current, $translate))
+        ->and(bardWalker()->mapField($field, $legacy, $translate)[1])->toBe($current[1]);
+});
+
 it('makes one html leaf per block of a value saved as HTML, of the content of a block element', function () {
     $field = ContentFixtures::field('bard-html-string');
     $leaves = bardWalker()->leaves($field, ContentFixtures::value('bard-html-string'));
