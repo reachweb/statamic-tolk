@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
@@ -18,12 +19,17 @@ use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
+use Reach\StatamicTolk\State\StatusScanner;
 use Reach\StatamicTolk\State\TargetStatus;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Reach\StatamicTolk\Translation\PlanOptions;
+use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
 
@@ -213,6 +219,24 @@ describe('tolk:baseline', function () {
             'nav::main::el',
             'entry::'.$this->world->in('de')->id(),
         ])->and(maintenanceStatus($this->hello)->counts['untracked'])->toBe(1);
+    });
+
+    it('records a navigation translated from another site against the tree of that site, which stays its source', function () {
+        $this->fakeTranslations();
+        $book = fn (string $title) => [['id' => 'book', 'title' => $title, 'url' => 'https://booking.example']];
+        $nav = $this->makeNav('main', ['en' => $book('Book your stay'), 'de' => $book('Aufenthalt buchen')]);
+        app(TargetTranslator::class)->translate(app(TargetFactory::class)->forNav('main', 'el', 'de'), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+        $nav->in('el')->tree($book('Κλείστε τη διαμονή σας'))->save();
+
+        $this->artisan('tolk:baseline', ['--nav' => ['main'], '--site' => ['el']])
+            ->expectsTable(BASELINE_HEADERS, [['Navigation', 'main', 'el', '1']])
+            ->assertExitCode(0);
+
+        $recorded = app(StateRepository::class)->get(new TargetRef(ContentType::Nav, 'main', 'el'))->sourceSite;
+        $nav->in('de')->tree($book('Aufenthalt jetzt buchen'))->save();
+
+        expect($recorded)->toBe('de')
+            ->and(app(StatusScanner::class)->scan(ContentType::Nav, 'main', 'el', null, 10_000)->counts['attention'])->toBe(1);
     });
 
     it('refuses a site or container that does not exist', function (array $options, string $error) {

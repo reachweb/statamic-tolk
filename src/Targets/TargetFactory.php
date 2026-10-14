@@ -69,6 +69,17 @@ final class TargetFactory
     }
 
     /**
+     * The site whose tree the tree of $nav in $site is translated from when no run names one, as the status and a run
+     * without `--from` read it: its recordedSourceSite(), or the default site once that site has no tree of $nav.
+     */
+    public function navSourceSite(NavContract $nav, string $site): string
+    {
+        $recorded = $this->recordedSourceSite(new TargetRef(ContentType::Nav, $nav->handle(), $site));
+
+        return $nav->existsIn($recorded) ? $recorded : Site::default()->handle();
+    }
+
+    /**
      * $source is the entry to translate from when the localization does not exist yet: the root of the
      * family, or another localization of it. An existing localization is always translated from its origin.
      *

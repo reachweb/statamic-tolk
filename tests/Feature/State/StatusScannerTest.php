@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Facades\Nav;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -189,6 +190,26 @@ describe('other content types', function () {
             ->and(scanAll(ContentType::Nav, 'main', 'en'))->toEqual(ScanResult::empty())
             ->and(statusScanner()->sites(ContentType::Nav, 'footer'))->toBe([])
             ->and(scanAll(ContentType::Nav, 'footer', 'de'))->toEqual(ScanResult::empty());
+    });
+
+    it('scans a navigation translated from another site against the tree of the site its state records, the default site\'s once that site has none', function () {
+        $this->makeNav('main', [
+            'en' => [['id' => 'book', 'title' => 'Book your stay', 'url' => 'https://booking.example']],
+            'de' => [['id' => 'book', 'title' => 'Aufenthalt buchen', 'url' => 'https://booking.example']],
+        ]);
+        $this->makeNav('footer', ['de' => [['id' => 'legal', 'title' => 'Impressum']]]);
+        translateFully(app(TargetFactory::class)->forNav('main', 'el', 'de'));
+        translateFully(app(TargetFactory::class)->forNav('footer', 'el', 'de'));
+
+        $fromGerman = [scanAll(ContentType::Nav, 'main', 'el')->counts, statusScanner()->sites(ContentType::Nav, 'footer'), scanAll(ContentType::Nav, 'footer', 'el')->counts];
+        Nav::findByHandle('main')->in('de')->delete();
+        Nav::findByHandle('footer')->in('de')->delete();
+
+        expect($fromGerman)->toBe([itemCounts(['current' => 1]), ['el'], itemCounts(['current' => 1])])
+            ->and(statusScanner()->sites(ContentType::Nav, 'main'))->toBe(['el', 'de'])
+            ->and(scanAll(ContentType::Nav, 'main', 'el')->counts)->toBe(itemCounts(['outdated' => 1]))
+            ->and(statusScanner()->sites(ContentType::Nav, 'footer'))->toBe([])
+            ->and(scanAll(ContentType::Nav, 'footer', 'el'))->toEqual(ScanResult::empty());
     });
 });
 

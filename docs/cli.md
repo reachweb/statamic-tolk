@@ -50,7 +50,7 @@ Translates entries, terms, global sets and navigation into other sites, and save
 | `--nav=` | Translate this navigation. Repeatable. |
 | `--all` | Every collection, taxonomy and global set that has more than one site, and every navigation. Not with the five options above. |
 | `--site=` | The site to translate into. Required; repeatable. |
-| `--from=` | The site to translate a missing localization from, where the entry has one there, and a navigation from, where it has a tree there. By default a localization is translated from its origin and a navigation from the default site's tree. Terms are always translated from their taxonomy's first site, and a global set from the origin it names for each site. It cannot be the only `--site`; next to other sites, its own navigation is the source and is left out. |
+| `--from=` | The site to translate a missing localization from, where the entry has one there, and a navigation from, where it has a tree there. By default a localization is translated from its origin, and a navigation from the tree it was last translated from, or the default site's tree when it was translated from no other site or that site has no tree now. Terms are always translated from their taxonomy's first site, and a global set from the origin it names for each site. It cannot be the only `--site`; next to other sites, its own navigation is the source and is left out. |
 | `--mode=` | `missing` (the default: only what is not translated yet), `update` (also outdated translations), `all` (everything again) or `review` (review the existing machine translations and save the corrections; see [Review](review.md#reviewing-existing-translations)). |
 | `--force` | Overwrite fields edited by hand. In mode `review`: review them too; they stay edited by hand. |
 | `--publish` | Publish a new localization when its origin is published, instead of saving it as a draft. Without it, the `new_localization_status` setting decides. |
@@ -129,7 +129,7 @@ Translates the whole website into one site: every entry, term, global set and na
 | Argument or option | Meaning |
 | --- | --- |
 | `site` | The site to translate the website into. |
-| `--from=` | The site to translate a missing localization from, where the entry has one there, and a navigation from, where it has a tree there. Also the origin of the global sets this command enables for the site. Default: the origin, and the default site. |
+| `--from=` | The site to translate a missing localization from, where the entry has one there, and a navigation from, where it has a tree there. Also the origin of the global sets this command enables for the site. Default: the origin, and for a navigation the tree it was last translated from, else the default site's. |
 | `--publish` | Publish a new localization when its origin is published, instead of saving it as a draft. |
 | `--translator=` | The model to translate with, as `provider:model`. |
 | `--review` | Review the translations with a second model. Default: the settings. |

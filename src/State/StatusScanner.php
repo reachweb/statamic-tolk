@@ -75,7 +75,8 @@ final readonly class StatusScanner
     /**
      * The sites the container has targets in, in its own order of sites: of a collection, each site that some
      * family's root is not in; of a taxonomy with terms, every site but its first; of a global set, each site that
-     * GlobalsTarget can translate; of a navigation with a tree in the default site, every other site.
+     * GlobalsTarget can translate; of a navigation, each site whose source site, the one its state records or else
+     * the default site (TargetFactory::navSourceSite()), is another site with a tree.
      *
      * @return list<string>
      */
@@ -182,7 +183,9 @@ final readonly class StatusScanner
      */
     private function navTargets(NavContract $nav, string $site): array
     {
-        return in_array($site, $this->navSites($nav), true) ? [fn () => $this->factory->forNav($nav, $site)] : [];
+        $sourceSite = $this->navSourceSite($nav, $site);
+
+        return $sourceSite === null ? [] : [fn () => $this->factory->forNav($nav, $site, $sourceSite)];
     }
 
     /**
@@ -226,9 +229,16 @@ final readonly class StatusScanner
      */
     private function navSites(NavContract $nav): array
     {
-        $default = Site::default()->handle();
+        return Site::all()->keys()->filter(fn (string $site) => $this->navSourceSite($nav, $site) !== null)->values()->all();
+    }
 
-        return $nav->existsIn($default) ? Site::all()->keys()->reject(fn (string $site) => $site === $default)->values()->all() : [];
+    // The site whose tree the tree in $site is translated from (TargetFactory::navSourceSite()); null when that site has
+    // no tree or is $site itself, the source of the others.
+    private function navSourceSite(NavContract $nav, string $site): ?string
+    {
+        $sourceSite = $this->factory->navSourceSite($nav, $site);
+
+        return $sourceSite !== $site && $nav->existsIn($sourceSite) ? $sourceSite : null;
     }
 
     // A taxonomy's terms are its first site's, as RunPlanner reads them.

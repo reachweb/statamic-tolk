@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -18,10 +19,14 @@ use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\RunRequest;
+use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\EntryFamilies;
+use Reach\StatamicTolk\Targets\NavTarget;
 use Reach\StatamicTolk\Targets\TargetFactory;
+use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\PlanOptions;
@@ -506,6 +511,22 @@ describe('navigation', function () {
             ->and($intoGerman->skipped)->toBe(['from_site' => 1])
             ->and(array_map($label, $all->items))->toEqualCanonicalizing(['main::en→el'])
             ->and($all->skipped)->toBe(['no_source_tree' => 1]);
+    });
+
+    it('translates a tree without a source site named from the site its state records, after that site\'s item, and from the default site\'s once that site has no tree', function () {
+        Nav::findByHandle('main')->makeTree('de', [['id' => 'book', 'title' => 'Aufenthalt buchen', 'url' => 'https://booking.example']])->save();
+        app(StateRepository::class)->update(new TargetRef(ContentType::Nav, 'main', 'el'), fn (ItemState $state) => $state->withField(NavTarget::TREE, new FieldState(sourceHash: 'a1b2c3d4e5f60718'))->withSourceSite('de'));
+        $label = fn (RunItem $item) => $item->sourceId.'→'.$item->targetSite;
+
+        $recorded = planRun(['sites' => ['el', 'de'], 'navs' => ['main']]);
+        $named = planRun(['sites' => ['el'], 'sourceSite' => 'en', 'navs' => ['main']]);
+        Nav::findByHandle('main')->in('de')->deleteQuietly();
+        $withoutTree = planRun(['sites' => ['el'], 'navs' => ['main']]);
+
+        expect(array_map($label, $recorded->items))->toBe(['main::en→de', 'main::de→el'])
+            ->and(array_map(fn (RunItem $item) => $item->dependsOn, $recorded->items))->toBe([[], [0]])
+            ->and(array_map($label, $named->items))->toBe(['main::en→el'])
+            ->and(array_map($label, $withoutTree->items))->toBe(['main::en→el']);
     });
 
     it('drops the trees a user may not edit, or in a site the user may not access, and counts them', function () {

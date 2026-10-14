@@ -309,9 +309,11 @@ final readonly class RunPlanner
 
     /**
      * One item per navigation × site the user may edit, from index $offset on, nav by nav (§A11 "Navigation"). The
-     * source is the nav's tree in the request's source site when it has one there, else the default site's tree; the
-     * source site is not a target, and a nav without a source tree is counted in the notes, as is a requested site
-     * whose tree is the source because the request names it as the source site. Nav items are of stage 1,
+     * source is the nav's tree in the request's source site when it has one there, else the tree of the site that the
+     * target's state records, or the default site's (TargetFactory::navSourceSite()); a site that is its own source is
+     * not a target, and a nav without a source tree is counted in the notes, as is a requested site whose tree is the
+     * source because the request names it as the source site. Within a nav, a site comes after the site it is
+     * translated from and its item waits for that site's item (chains: de_CH waits for de). Nav items are of stage 1,
      * so each is translated only once no entry, term or global set item of its site is unfinished: the localizations
      * the run creates are then there for its entry branches (§A12).
      *
@@ -323,21 +325,32 @@ final readonly class RunPlanner
         $items = [];
 
         foreach ($this->navs($request->navs) as $nav) {
-            $sourceSite = $request->sourceSite !== null && $nav->existsIn($request->sourceSite) ? $request->sourceSite : Site::default()->handle();
-            $hasSourceTree = $nav->existsIn($sourceSite);
-            $sites = $this->sitesFor($request, $notes, fn (string $site) => match (true) {
-                $site === $sourceSite && $site === $request->sourceSite => NavTarget::FROM_SITE,
-                $site === $sourceSite => self::SOURCE,
-                ! $hasSourceTree => NavTarget::NO_SOURCE_TREE,
-                default => null,
+            $named = $request->sourceSite !== null && $nav->existsIn($request->sourceSite) ? $request->sourceSite : null;
+            $sources = $targets = $indexes = [];
+            $sites = $this->sitesFor($request, $notes, function (string $site) use ($nav, $named, $request, &$sources) {
+                $sourceSite = $sources[$site] = $named ?? $this->factory->navSourceSite($nav, $site);
+
+                return match (true) {
+                    $site === $sourceSite && $site === $request->sourceSite => NavTarget::FROM_SITE,
+                    $site === $sourceSite => self::SOURCE,
+                    ! $nav->existsIn($sourceSite) => NavTarget::NO_SOURCE_TREE,
+                    default => null,
+                };
             });
 
             foreach ($sites as $site) {
-                $target = $this->factory->forNav($nav, $site, $sourceSite);
+                $target = $this->factory->forNav($nav, $site, $sources[$site]);
 
                 if ($this->admits($request, $target, $nav->handle(), $notes)) {
-                    $items[] = new RunItem($offset + count($items), ContentType::Nav, $target->describe()['source_id'], $site, $target->title(), stage: 1);
+                    $targets[$site] = $target;
                 }
+            }
+
+            foreach (self::chainOrder($targets, fn (NavTarget $target) => $target->sourceSite()) as $target) {
+                $item = new RunItem($offset + count($items), ContentType::Nav, $target->describe()['source_id'], $target->targetSite(), $target->title(), stage: 1);
+                $item->dependsOn = isset($indexes[$target->sourceSite()]) ? [$indexes[$target->sourceSite()]] : [];
+                $indexes[$target->targetSite()] = $item->index;
+                $items[] = $item;
             }
         }
 
