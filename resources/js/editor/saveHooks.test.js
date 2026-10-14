@@ -126,6 +126,40 @@ describe('entry.saving', () => {
         expect(toasts).toEqual([['error', 'A translation is in progress. Wait for it to finish, or cancel it.', undefined]]);
     });
 
+    it('says so once per translation while autosave tries every few seconds', async () => {
+        mount();
+        store.setPhase('base', 'working');
+        const translation = {};
+        const save = hooks({ running: () => translation });
+        const outcomes = [];
+
+        // Core's autosave (experimental, opt-in per collection) saves a dirty form every 5 s by default, and the fills
+        // keep the form dirty.
+        const autosave = setInterval(() => outcomes.push(run(save.saving, { collection: 'pages', values: {} })), 5_000);
+        await vi.advanceTimersByTimeAsync(30_000);
+        clearInterval(autosave);
+
+        const settled = await Promise.all(outcomes);
+
+        expect(settled).toHaveLength(6);
+        expect(settled.every((outcome) => !outcome.resolved && outcome.reason instanceof PipelineStopped)).toBe(true);
+        expect(toasts).toEqual([['error', 'A translation is in progress. Wait for it to finish, or cancel it.', undefined]]);
+    });
+
+    it('says so again for the next translation', async () => {
+        mount();
+        store.setPhase('base', 'working');
+        let translation = {};
+        const save = hooks({ running: () => translation });
+
+        await run(save.saving, {});
+        await run(save.saving, {});
+        translation = {};
+        await run(save.saving, {});
+
+        expect(toasts.map(([type]) => type)).toEqual(['error', 'error']);
+    });
+
     it('lets a save through when the phase says busy but no translation runs any more', async () => {
         mount();
         store.setPhase('base', 'working');

@@ -503,7 +503,7 @@ describe('leaving a form while it translates', () => {
 
         translations = createTranslations({ store: () => store, registry, api, concurrency: () => 2 });
         createBanners({ abort: (name) => translations.abort(name) }).listen(events);
-        saving = createSaveHooks({ PipelineStopped, store: () => store, registry, running: (name) => translations.running(name) }).saving;
+        saving = createSaveHooks({ PipelineStopped, store: () => store, registry, running: (name) => translations.current(name) }).saving;
     });
 
     // The German page of an entry with its banner attached, translating with two units in flight.

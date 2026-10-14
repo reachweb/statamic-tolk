@@ -445,6 +445,8 @@ export function createTranslations({
         abort,
         undo,
         running: (name) => runs.has(name),
+        // The translation running in a container, the same object for as long as it runs, or null.
+        current: (name) => runs.get(name)?.token ?? null,
         saving: (name) => saving(name),
     };
 }

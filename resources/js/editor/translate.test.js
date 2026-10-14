@@ -579,6 +579,34 @@ describe('translate', () => {
         expect(base().phase).toBe('done');
     });
 
+    it('names the running translation: the same while it runs, another for the next one', async () => {
+        mount();
+        const finish = deferred();
+        const t = translations({ run: () => finish.promise });
+
+        expect(t.current('base')).toBeNull();
+
+        const first = t.translate('base');
+        const running = t.current('base');
+        await flush();
+
+        expect(base().phase).toBe('working');
+        expect(running).toBeTruthy();
+        expect(t.current('base')).toBe(running);
+
+        finish.resolve(summary());
+        await first;
+
+        expect(t.current('base')).toBeNull();
+
+        const second = t.translate('base');
+
+        expect(t.current('base')).toBeTruthy();
+        expect(t.current('base')).not.toBe(running);
+
+        await second;
+    });
+
     it('does not start twice', async () => {
         mount();
         const plan = deferred();

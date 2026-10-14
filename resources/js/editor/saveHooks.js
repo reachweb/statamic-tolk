@@ -27,10 +27,15 @@ export function createSaveHooks({
     registry = sharedRegistry,
     api = defaultApi,
     now = Date.now,
-    running = (name) => translations.running(name),
+    // The translation running in a container, the same object for as long as it runs, or null.
+    running = (name) => translations.current(name),
     onConfirmed = (name, status) => pushes.afterSave(name, status),
 }) {
     let listening = false;
+    // The translation the refusal's toast was last shown for. Core's autosave (experimental, opt-in per collection)
+    // tries to save a dirty form every few seconds, the fills keep the form dirty, and the hook's payload does not tell
+    // an autosave from a Save the editor pressed: each translation shows the toast once.
+    let refusedFor = null;
 
     function listen(hooks = Statamic.$hooks) {
         if (listening) {
@@ -50,9 +55,14 @@ export function createSaveHooks({
     // Cancel to end it, and nothing left to fill the form.
     function saving(resolve, reject) {
         const editor = store();
+        const translation = running(BASE);
 
-        if (BUSY.includes(editor.phaseOf(BASE)) && running(BASE)) {
-            Statamic.$toast.error(__('A translation is in progress. Wait for it to finish, or cancel it.'));
+        if (BUSY.includes(editor.phaseOf(BASE)) && translation) {
+            if (refusedFor !== translation) {
+                refusedFor = translation;
+                Statamic.$toast.error(__('A translation is in progress. Wait for it to finish, or cancel it.'));
+            }
+
             reject(new PipelineStopped());
 
             return;
