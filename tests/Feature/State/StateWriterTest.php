@@ -4,10 +4,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Listeners\MoveStateOfRenamedTerms;
 use Reach\StatamicTolk\State\ConfirmReport;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\ItemState;
+use Reach\StatamicTolk\State\OverviewCache;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\State\TargetStatus;
@@ -17,9 +20,11 @@ use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\CountingStateRepository;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Events\TermSaved;
 use Statamic\Facades\Git;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Term;
 use Statamic\Git\CommitJob;
 
 beforeEach(function () {
@@ -57,6 +62,11 @@ function writerStatus(EntryContract $origin, string $site = 'el'): TargetStatus
 function storedState(EntryContract $localization): ItemState
 {
     return app(StateRepository::class)->get(StateFixtures::ref($localization));
+}
+
+function stateReferences(): array
+{
+    return array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false));
 }
 
 function switchGitOn(): void
@@ -756,5 +766,83 @@ describe('deleted content', function () {
 
         expect($withoutState)->toBe(['Entry deleted'])
             ->and($messages)->toBe(['Entry deleted', StateWriter::COMMIT_MESSAGE]);
+    });
+});
+
+describe('renamed terms', function () {
+    beforeEach(function () {
+        $this->makeTaxonomy('topics', ['en', 'el', 'de'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food'], 'el' => ['title' => 'Φαγητό']]);
+        $this->termState = fn (string $reference) => app(StateRepository::class)->get(TargetRef::parse($reference));
+        $this->storeTermState = fn (string $reference, string $text) => app(StateRepository::class)->update(
+            TargetRef::parse($reference),
+            fn (ItemState $state) => $state->withSourceSite('en')->withField('title', StateFixtures::machine('Food', $text)),
+        );
+    });
+
+    it('moves the state of every site to the new default slug, with its source site and pending entries', function () {
+        ($this->storeTermState)('term::topics::food::el', 'Φαγητό');
+        ($this->storeTermState)('term::topics::food::de', 'Essen');
+        app(StateRepository::class)->update(TargetRef::parse('term::topics::food::el'), fn (ItemState $state) => $state->withField('title', $state->field('title')->withPending(StateFixtures::pending('Food', 'Τρόφιμα'))));
+        $greek = ($this->termState)('term::topics::food::el');
+        $this->makeTerm('topics', 'drinks', ['en' => ['title' => 'Drinks']]);
+        ($this->storeTermState)('term::topics::drinks::el', 'Ποτά');
+
+        Term::find('topics::food')->slug('cuisine')->save();
+
+        expect(stateReferences())->toEqualCanonicalizing(['term::topics::cuisine::el', 'term::topics::cuisine::de', 'term::topics::drinks::el'])
+            ->and(($this->termState)('term::topics::cuisine::el')->toArray())->toBe([...$greek->toArray(), 'reference' => 'term::topics::cuisine::el'])
+            ->and(($this->termState)('term::topics::cuisine::de')->field('title')->toArray())->toBe(StateFixtures::machine('Food', 'Essen')->toArray());
+    });
+
+    it('keeps the state stored under the new slug, and moves nothing for a slug of another site or a new term', function () {
+        ($this->storeTermState)('term::topics::food::el', 'Φαγητό');
+        ($this->storeTermState)('term::topics::food::de', 'Essen');
+        ($this->storeTermState)('term::topics::cuisine::el', 'Κουζίνα');
+
+        Term::find('topics::food')->slug('cuisine')->save();
+
+        expect(stateReferences())->toEqualCanonicalizing(['term::topics::food::el', 'term::topics::cuisine::el', 'term::topics::cuisine::de'])
+            ->and(($this->termState)('term::topics::cuisine::el')->field('title')->toArray())->toBe(StateFixtures::machine('Food', 'Κουζίνα')->toArray());
+
+        Term::find('topics::cuisine')->in('el')->slug('kouzina')->save();
+        $this->makeTerm('topics', 'drinks', ['en' => ['title' => 'Drinks']]);
+
+        expect(stateReferences())->toEqualCanonicalizing(['term::topics::food::el', 'term::topics::cuisine::el', 'term::topics::cuisine::de']);
+    });
+
+    it('makes the Overview count the taxonomy again once the state moved, which can be after the term\'s save bumped it', function () {
+        ($this->storeTermState)('term::topics::food::el', 'Φαγητό');
+        $term = Term::find('topics::food')->term()->slug('cuisine');
+        $slot = fn () => app(OverviewCache::class)->slot(ContentType::Term, 'topics', 'el');
+        $before = $slot();
+
+        app(MoveStateOfRenamedTerms::class)->handle(new TermSaved($term));
+        $moved = $slot();
+        app(MoveStateOfRenamedTerms::class)->handle(new TermSaved($term));
+
+        expect($moved)->not->toBe($before)
+            ->and($slot())->toBe($moved)
+            ->and(stateReferences())->toBe(['term::topics::cuisine::el']);
+    });
+
+    it('commits the moved state once, and nothing for a renamed term without state', function () {
+        $this->makeTerm('topics', 'drinks', ['en' => ['title' => 'Drinks']]);
+        ($this->storeTermState)('term::topics::food::el', 'Φαγητό');
+        ($this->storeTermState)('term::topics::food::de', 'Essen');
+        switchGitOn();
+        $messages = [];
+        Git::shouldReceive('as')->andReturnSelf();
+        Git::shouldReceive('dispatchCommit')->andReturnUsing(function (?string $message = null) use (&$messages) {
+            $messages[] = $message;
+        });
+
+        Term::find('topics::drinks')->slug('beverages')->save();
+        $withoutState = $messages;
+        $messages = [];
+        Term::find('topics::food')->slug('cuisine')->save();
+
+        expect($withoutState)->not->toContain(StateWriter::COMMIT_MESSAGE)
+            ->and(array_values(array_filter($messages, fn (?string $message) => $message === StateWriter::COMMIT_MESSAGE)))->toBe([StateWriter::COMMIT_MESSAGE]);
     });
 });

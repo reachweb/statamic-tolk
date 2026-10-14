@@ -17,6 +17,7 @@ use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Support\Pruner;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\ApplyResult;
@@ -319,6 +320,37 @@ describe('applying', function () {
         Event::listen(TermSaving::class, fn () => false);
 
         expect(fn () => applyTerm($fields))->toThrow(ApplyFailed::class, 'term::topics::food::el');
+    });
+});
+
+describe('a renamed default slug', function () {
+    it('keeps the translations tracked under the new slug, so a later edit of the origin still makes them outdated', function () {
+        translateTerm();
+        translateTerm('de');
+        $this->signInAdmin();
+        $statuses = fn (string $site) => array_map(fn (FieldStatusInfo $field) => $field->status, app(StatusResolver::class)->resolve(termTarget($site, 'topics::cuisine'))->fields);
+
+        $this->patchJson(cp_route('taxonomies.terms.update', ['topics', 'food', 'en']), [
+            'title' => 'Food',
+            'description' => 'Eat well.',
+            'icon' => 'Fork',
+            'slug' => 'cuisine',
+            'published' => true,
+        ])->assertOk();
+
+        expect(Term::find('topics::food'))->toBeNull()
+            ->and($statuses('el'))->toBe(['title' => FieldStatus::Current, 'description' => FieldStatus::Current])
+            ->and($statuses('de'))->toBe(['title' => FieldStatus::Current, 'description' => FieldStatus::Current])
+            ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Term, 'topics::food', 'el'))->isEmpty())->toBeTrue()
+            ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Term, 'topics::cuisine', 'el'))->sourceSite)->toBe('en');
+
+        Term::find('topics::cuisine')->in('en')->merge(['description' => 'Eat very well.'])->save();
+
+        $update = app(Planner::class)->plan(termTarget('el', 'topics::cuisine'), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class), ['mode' => Mode::Update]));
+
+        expect($statuses('el'))->toBe(['title' => FieldStatus::Current, 'description' => FieldStatus::Outdated])
+            ->and($update->fieldHandles())->toBe(['description'])
+            ->and(app(Pruner::class)->prune(dryRun: true)->orphans)->toBe([]);
     });
 });
 

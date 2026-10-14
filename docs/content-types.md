@@ -87,6 +87,8 @@ A taxonomy's terms exist in every site of the taxonomy, so a term never needs cr
 
 Term slugs are never localized.
 
+Tolk files a term's translation records under the term's slug in the taxonomy's first site. Changing that slug in the CP (or through Statamic's API) makes it a new term to Statamic, so Tolk moves the records to the new slug as the term is saved, and its translations stay tracked. A slug changed in the term's file name, outside Statamic, is not noticed: the term's translations then read edited by hand and untracked, and `tolk:prune` deletes the records left under the old slug.
+
 ## Global sets
 
 A global set is translated, for each site, from the origin the set names for that site (Statamic's **Origin** in the set's site settings), never from another site. A site translated from a localization waits for it: Swiss German from German is translated after German. `--from` does not apply to global sets.

@@ -8,7 +8,7 @@ namespace Reach\StatamicTolk\Support;
 final readonly class PruneReport
 {
     /**
-     * The target no longer exists: the content was deleted, or a term's default slug was renamed.
+     * The target no longer exists: the content was deleted, or a term's default slug was renamed without Statamic's events.
      */
     public const string DELETED = 'deleted';
 

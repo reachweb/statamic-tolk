@@ -234,6 +234,37 @@ final readonly class StateWriter
     }
 
     /**
+     * Moves the state of $from to $to, a reference of the same content under its new identity, unless $to has state of
+     * its own. Both records are locked while it moves. Returns whether anything moved.
+     */
+    public function move(TargetRef $from, TargetRef $to, bool $commit = false): bool
+    {
+        if ($this->repository->get($from)->isEmpty()) {
+            return false;
+        }
+
+        $moved = false;
+
+        $this->repository->update($from, function (ItemState $stored) use ($to, &$moved) {
+            if ($stored->isEmpty()) {
+                return $stored;
+            }
+
+            $this->repository->update($to, function (ItemState $state) use ($stored, $to, &$moved) {
+                $moved = $state->isEmpty();
+
+                return $moved ? $stored->withReference($to) : $state;
+            });
+
+            return $moved ? ItemState::empty($stored->reference) : $stored;
+        });
+
+        $this->commit($commit && $moved);
+
+        return $moved;
+    }
+
+    /**
      * Deletes the target's state, or only the state of the given fields. Returns whether there was any.
      *
      * @param  ?list<string>  $handles

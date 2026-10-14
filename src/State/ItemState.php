@@ -79,6 +79,11 @@ final readonly class ItemState
         return new self($this->reference, $this->sourceSite, $this->version, $fields, $this->collection, $this->site);
     }
 
+    public function withReference(TargetRef $reference): self
+    {
+        return new self($reference, $this->sourceSite, $this->version, $this->fields, $this->collection, $this->site);
+    }
+
     public function withSourceSite(string $sourceSite): self
     {
         return new self($this->reference, $sourceSite, $this->version, $this->fields, $this->collection, $this->site);

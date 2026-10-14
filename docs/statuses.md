@@ -40,6 +40,8 @@ Nothing is decided from a stored status. Tolk keeps a small record per translate
 
 Because the records live next to the content and are compared, not trusted, Tolk notices changes made anywhere: in the CP, in a file, by a git pull, by another addon.
 
+A term's records are filed under its slug in the taxonomy's first site. When that slug changes in Statamic, they move with it; when it changes in the term's file name, they are left behind, and the term's translations read edited by hand and untracked ([Terms](content-types.md#terms)).
+
 ### Only text makes a field manual
 
 A field counts as machine-translated as long as its text is exactly what Tolk produced. In a Bard field, where formatting starts and ends and a link's title count as text: linking a word, making it bold or changing a link's title is an edit. Changes that are not text are not tracked:

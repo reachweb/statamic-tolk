@@ -248,6 +248,7 @@ php please tolk:prune
 It:
 
 - deletes the translation state of content that was deleted, and of entries that are no longer localizations;
+- deletes the state left under a term's old slug when the slug was changed in the term's file name, outside Statamic (a slug changed in the CP takes the term's state with it);
 - checks a navigation, a translation file and the form texts against the site they were translated from, which need not be the default site, so their state is kept also when they were translated from another site into the default site's language or tree;
 - keeps the state of content in a site the configuration leaves out, and of translations made from such a site, in case the site comes back;
 - keeps the state of entries and terms in a site their collection or taxonomy no longer has, for the same reason, also after the Stache is cleared or warmed; an entry deleted meanwhile has its state deleted once the site is back in its collection;
