@@ -587,6 +587,29 @@ describe('recordRemoved', function () {
     });
 });
 
+describe('locate', function () {
+    it('records the collection and site in an entry\'s state that lacks them, once, and creates no state', function () {
+        $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια']);
+        // As 1.0.0-beta.1 wrote an entry's state.
+        StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+        $ref = StateFixtures::ref($localization);
+        $stored = storedState($localization)->toArray();
+
+        $dryRun = writer()->locate($ref, 'articles', 'el', dryRun: true);
+        $untouched = storedState($localization)->toArray();
+        $located = writer()->locate($ref, 'articles', 'el');
+        $again = writer()->locate($ref, 'articles', 'el', dryRun: true) || writer()->locate($ref, 'articles', 'el');
+        $none = writer()->locate(TargetRef::parse('entry::without-state'), 'articles', 'el');
+
+        expect([$dryRun, $located, $again, $none])->toBe([true, true, false, false])
+            ->and($untouched)->toBe($stored)
+            ->and(storedState($localization)->collection)->toBe('articles')
+            ->and(storedState($localization)->site)->toBe('el')
+            ->and(storedState($localization)->fields)->toEqual(ItemState::fromArray($stored)->fields)
+            ->and(stateReferences())->toBe([(string) $ref]);
+    });
+});
+
 describe('adopt', function () {
     it('moves the records of fields the target has a value for but no record of', function () {
         $localization = $this->localize($this->origin, 'el', ['title' => 'Γεια', 'intro' => 'Εισαγωγή.']);

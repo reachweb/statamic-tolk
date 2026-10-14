@@ -274,18 +274,24 @@ describe('tolk:prune', function () {
             ->expectsOutputToContain('entry::a-deleted-entry')
             ->expectsOutputToContain('term::topics::food::el')
             ->expectsOutputToContain('entry::'.$detached->id())
+            ->expectsOutputToContain('Entry state given its collection and site')
             ->expectsOutputToContain('Nothing was changed (--dry-run).')
             ->assertExitCode(0);
 
         expect(storedReferences())->toEqualCanonicalizing($everything)
             ->and($everything)->toHaveCount(4)
+            ->and(StateFixtures::stored($kept)->collection)->toBeNull()
             ->and($commits->getArrayCopy())->toBe([]);
 
-        $this->artisan('tolk:prune')
-            ->doesntExpectOutputToContain('entry::a-deleted-entry')
-            ->assertExitCode(0);
+        [$exitCode, $output] = maintenanceCommand('tolk:prune');
 
-        expect(storedReferences())->toBe(['entry::'.$kept->id()])
+        expect($exitCode)->toBe(0)
+            ->and($output)->not->toContain('entry::a-deleted-entry')
+            // $kept's state was stored as 1.0.0-beta.1 wrote an entry's state, without its collection and site.
+            ->and($output)->toMatch('/Entry state given its collection and site\W+1 record/')
+            ->and(storedReferences())->toBe(['entry::'.$kept->id()])
+            ->and(StateFixtures::stored($kept)->collection)->toBe('articles')
+            ->and(StateFixtures::stored($kept)->site)->toBe('el')
             ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
 
         $this->artisan('tolk:prune')->expectsOutputToContain('Nothing to clean up.')->assertExitCode(0);

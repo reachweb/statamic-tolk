@@ -23,6 +23,8 @@ final readonly class PruneReport
      * @param  int  $expired  fields whose pending entries older than FieldState::PENDING_DAYS were dropped
      * @param  list<string>  $stoppedRuns  the ids of the runs stopped for making no progress
      * @param  int  $deletedRuns  the runs deleted for having had no activity for `runs.retention_days`
+     * @param  int  $located  entries' state records given the entry's collection and site, which those written by
+     *                        1.0.0-beta.1 lack (§A5)
      */
     public function __construct(
         public bool $dryRun = false,
@@ -31,11 +33,12 @@ final readonly class PruneReport
         public int $expired = 0,
         public array $stoppedRuns = [],
         public int $deletedRuns = 0,
+        public int $located = 0,
     ) {}
 
     public function changesState(): bool
     {
-        return $this->orphans !== [] || $this->resolved > 0 || $this->expired > 0;
+        return $this->orphans !== [] || $this->resolved > 0 || $this->expired > 0 || $this->located > 0;
     }
 
     public function isEmpty(): bool

@@ -252,6 +252,7 @@ It:
 - checks a navigation, a translation file and the form texts against the site they were translated from, which need not be the default site, so their state is kept also when they were translated from another site into the default site's language or tree;
 - keeps the state of content in a site the configuration leaves out, and of translations made from such a site, in case the site comes back;
 - keeps the state of entries and terms in a site their collection or taxonomy no longer has, for the same reason, also after the Stache is cleared or warmed; an entry deleted meanwhile has its state deleted once the site is back in its collection;
+- records the collection and site in an entry's state written by Tolk 1.0.0-beta.1, which lacks them: until it has, that state is kept for a site taken out of its collection only while the Stache still knows the entry, so after upgrading from 1.0.0-beta.1 run `tolk:prune` once before you take a site out of a collection;
 - resolves translations delivered to the editor that were saved, and drops those never saved after 30 days;
 - stops runs that made no progress for `runs.claim_ttl` seconds (5 minutes by default): it commits what they saved and marks them aborted, so their page offers **Resume**;
 - deletes runs without activity for `runs.retention_days` days (30 by default).

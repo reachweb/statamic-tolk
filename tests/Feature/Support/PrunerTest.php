@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Queue;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
@@ -10,6 +11,7 @@ use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\ItemState;
+use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\Pruner;
 use Reach\StatamicTolk\Support\PruneReport;
 use Reach\StatamicTolk\Support\Settings;
@@ -88,9 +90,43 @@ it('keeps the state of content in a site its collection or taxonomy no longer ha
     expect(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current]);
 });
 
-it('keeps the state of an entry in a site its collection no longer has while core still finds it, also one that records no collection', function () {
+it('records the collection and site in an entry\'s state that lacks them, as 1.0.0-beta.1 wrote it, so the state is kept once its site leaves the collection and the Stache is rebuilt', function () {
     $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
-    // As a state written before entries' states recorded their collection and site.
+    // As 1.0.0-beta.1 wrote an entry's state, before entries' states recorded their collection and site.
+    StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+    $stored = StateFixtures::stored($localization)->toArray();
+    $commits = RunFixtures::commits();
+
+    $dryRun = pruned(dryRun: true);
+    $untouched = StateFixtures::stored($localization)->toArray();
+    $report = pruned();
+    $located = StateFixtures::stored($localization)->toArray();
+
+    expect($stored)->not->toHaveKey('collection')
+        ->and($dryRun->located)->toBe(1)
+        ->and($untouched)->toBe($stored)
+        ->and($report->located)->toBe(1)
+        ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE])
+        ->and($located)->toMatchArray(['collection' => 'articles', 'site' => 'el'])
+        ->and(Arr::except($located, ['collection', 'site']))->toBe($stored)
+        ->and(pruned()->isEmpty())->toBeTrue()
+        ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
+
+    Collection::find('articles')->sites(['en', 'de'])->save();
+    Stache::clear();
+
+    expect(pruned()->isEmpty())->toBeTrue()
+        ->and(StateFixtures::stored($localization)->toArray())->toBe($located);
+
+    Collection::find('articles')->sites(['en', 'el', 'de'])->save();
+    Stache::clear();
+
+    expect(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current]);
+});
+
+it('keeps the state of an entry in a site its collection no longer has while core still finds it, and records the collection and site in one that lacks them for the time it no longer does', function () {
+    $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
+    // As 1.0.0-beta.1 wrote an entry's state, before entries' states recorded their collection and site.
     StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
     $stored = StateFixtures::stored($localization)->toArray();
 
@@ -98,8 +134,14 @@ it('keeps the state of an entry in a site its collection no longer has while cor
 
     expect(Entry::find($localization->id()))->not->toBeNull()
         ->and($stored)->not->toHaveKey('collection')
+        ->and(pruned()->located)->toBe(1)
+        ->and(StateFixtures::stored($localization)->toArray())->toMatchArray(['collection' => 'articles', 'site' => 'el', 'fields' => $stored['fields']]);
+
+    Stache::clear();
+
+    expect(Entry::find($localization->id()))->toBeNull()
         ->and(pruned()->isEmpty())->toBeTrue()
-        ->and(StateFixtures::stored($localization)->toArray())->toBe($stored);
+        ->and(StateFixtures::stored($localization)->fields)->toHaveKey('title');
 });
 
 it('deletes the state of an entry deleted from a site its collection has, and of one whose collection is gone', function () {

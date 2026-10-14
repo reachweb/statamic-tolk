@@ -42,6 +42,12 @@ class PruneCommand extends Command
         $this->lines($listed ? $report->orphaned(PruneReport::NOT_A_LOCALIZATION) : []);
         $this->detail('Pending translations confirmed', $report->resolved, 'field');
         $this->detail('Pending translations older than '.FieldState::PENDING_DAYS.' days dropped', $report->expired, 'field');
+
+        // Only state written by 1.0.0-beta.1 lacks them, so the line would read 0 on every later run.
+        if ($report->located > 0) {
+            $this->detail('Entry state given its collection and site', $report->located, 'record');
+        }
+
         $this->detail('Runs stopped for making no progress', count($report->stoppedRuns), 'run');
         $this->lines(array_map(fn (string $id) => cp_route('tolk.runs.show', $id), $report->stoppedRuns));
         $this->detail("Runs deleted after {$days} days without activity", $report->deletedRuns, 'run');

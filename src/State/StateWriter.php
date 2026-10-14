@@ -158,6 +158,34 @@ final readonly class StateWriter
     }
 
     /**
+     * Records the collection and site of an entry in its state when the state names others or none, as one written by
+     * 1.0.0-beta.1 does, so tolk:prune keeps it once its site leaves the collection (§A5). Returns whether the state
+     * changed; a dry run tells whether it would and writes nothing.
+     */
+    public function locate(TargetRef $ref, string $collection, string $site, bool $dryRun = false): bool
+    {
+        $unlocated = fn (ItemState $state) => ! $state->isEmpty() && ($state->collection !== $collection || $state->site !== $site);
+
+        if (! $unlocated($this->repository->get($ref))) {
+            return false;
+        }
+
+        if ($dryRun) {
+            return true;
+        }
+
+        $changed = false;
+
+        $this->repository->update($ref, function (ItemState $state) use ($unlocated, $collection, $site, &$changed) {
+            $changed = $unlocated($state);
+
+            return $changed ? $state->withCollection($collection, $site) : $state;
+        });
+
+        return $changed;
+    }
+
+    /**
      * Moves to the target's state the records that the state of $from holds for fields the target has a value for but
      * no record of its own. A key of `lang/{lang}.json` that moves between the source language's JSON file and the forms
      * changes the target it belongs to (§A16), and without its record its translation would read as edited by hand.
