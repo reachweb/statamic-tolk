@@ -26,6 +26,7 @@ use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Statamic\Actions\DuplicateEntry;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\TermSaved;
+use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Git;
@@ -526,6 +527,17 @@ describe('Bard copies saved', function () {
             ->and($orphaned)->toBeTrue();
         Exceptions::assertReported(UnreadableState::class);
         Exceptions::assertReportedCount(1);
+    });
+
+    it('leaves nothing memoized of the entries it reads, so a process that saves many localizations does not keep them all', function () {
+        $origin = $this->makeEntry('stories', 'en', ['title' => 'Story', 'content' => $this->rule], 'story');
+        $greek = $this->localize($origin, 'el', ['title' => 'Ιστορία']);
+
+        // Core forgets the origin's memoized localizations when one is saved; reading the target memoizes them again.
+        Entry::find($greek->id())->set('content', $this->rule)->save();
+
+        expect(storedState($greek)->field('content')->isEmpty())->toBeFalse()
+            ->and(Blink::store()->has('entry-descendants-'.$origin->id()))->toBeFalse();
     });
 });
 

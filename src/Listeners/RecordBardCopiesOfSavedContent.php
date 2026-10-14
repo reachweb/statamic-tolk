@@ -11,6 +11,7 @@ use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Support\ContentWriter;
+use Reach\StatamicTolk\Support\EntryMemo;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Events\EntrySaved;
@@ -25,7 +26,8 @@ use Throwable;
  * it (StateWriter::recordCopies(), §A5): the CP saves one when an inherited Bard field desyncs itself on load, also for
  * a user without the editor's banner, and once the source has text the copy can no longer be told apart from a field
  * emptied by hand. Saves made through ContentWriter confirm their target themselves. Statamic's commit for the save may
- * have run already, so a recorded copy is committed on its own. Nothing it does can fail the save.
+ * have run already, so a recorded copy is committed on its own. Nothing it does can fail the save, and it forgets what
+ * core memoized for the entries it read (EntryMemo).
  */
 final readonly class RecordBardCopiesOfSavedContent
 {
@@ -95,9 +97,17 @@ final readonly class RecordBardCopiesOfSavedContent
             return;
         }
 
-        // One site's failure leaves the other sites of a term recorded.
-        foreach ($this->attempt($targets) ?? [] as $target) {
-            $this->attempt(fn () => $this->writer->recordCopies($target, commit: true));
+        // Core keeps what it memoizes for the entries read here, such as the origin's localizations, for the rest of the
+        // process, which in one that saves many localizations would hold every one of them.
+        $memo = EntryMemo::mark();
+
+        try {
+            // One site's failure leaves the other sites of a term recorded.
+            foreach ($this->attempt($targets) ?? [] as $target) {
+                $this->attempt(fn () => $this->writer->recordCopies($target, commit: true));
+            }
+        } finally {
+            $memo->forget();
         }
     }
 
