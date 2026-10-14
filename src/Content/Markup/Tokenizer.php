@@ -71,21 +71,31 @@ final class Tokenizer
     // Whitespace inside an attribute list, which ends at a blank line with its paragraph.
     private const string ATTRIBUTE_SPACE = '(?:[ \t\r\f\x0B]|\n(?![ \t\r]*+\n))';
 
-    private const string QUOTED = '"(?:[^"\n]++|\n(?![ \t\r]*+\n))*+"|\'(?:[^\'\n]++|\n(?![ \t\r]*+\n))*+\'';
+    private const string QUOTED = '"[^"\n]*+(?:\n(?![ \t\r]*+\n)[^"\n]*+)*+"|\'[^\'\n]*+(?:\n(?![ \t\r]*+\n)[^\'\n]*+)*+\'';
 
     // An unquoted value, which CommonMark lets hold a "}" when another one closes the list (`{title=a}b}`).
-    private const string UNQUOTED = '(?:'.self::ANTLERS_TAG.'|[^"\'=<>`\x00-\x20{}]++|\{(?!'.self::ATTRIBUTES_START.')|\}(?=[^"\'=<>`\x00-\x20}]*+\}))++';
+    private const string UNQUOTED = '(?:[^"\'=<>`\x00-\x20{}]++|'.self::ANTLERS_TAG.'|\{++(?!'.self::ATTRIBUTES_START.')|\}(?=[^"\'=<>`\x00-\x20}]*+\}))++';
 
     // An attribute list's names, ids, classes and whitespace, as CommonMark reads them but wider: an id or a class may
-    // hold any character but whitespace and "}", and whitespace is followed by an attribute, "=" or the end. A "{" that
-    // would open another list ends the list, so one that never closes costs one pass.
-    private const string ATTRIBUTE_TEXT = '[^\s={}]++|\{(?!'.self::ATTRIBUTES_START.')|'.self::ATTRIBUTE_SPACE.'++(?=[.#a-z_:=}]|\{\{)';
+    // hold any character but whitespace and "}", and whitespace is followed by an attribute, "=" or the end. A word takes
+    // the whitespace after it.
+    private const string ATTRIBUTE_TEXT = '[^\s={}]++(?:'.self::ATTRIBUTE_SPACE.'++(?=[.#a-z_:=}]|\{\{))?|'.self::ATTRIBUTE_SPACE.'++(?=[.#a-z_:=}]|\{\{)';
+
+    // An "=" and the whitespace up to its value, a run of "=" without values included (`{a====`).
+    private const string ATTRIBUTE_EQUALS = '=(?:[= \t\r\f\x0B]++|\n(?![ \t\r]*+\n))*+';
+
+    // A run of "{" that opens no other list. A "{" that would open another list ends the list, so one that never closes
+    // costs one pass.
+    private const string ATTRIBUTE_BRACES = '\{++(?!'.self::ATTRIBUTES_START.')';
 
     // An attribute list, from its "{" to its "}", at least as long as CommonMark reads it, also over several lines: Antlers
-    // tags and values are taken whole. When that finds no "}" (`{.a="b}`: a quote in a class), quotes are read as text.
+    // tags and values are taken whole. When that finds no "}" (`{.a="b}`: a quote in a class), quotes are read as text,
+    // which reads the list otherwise only when a quote stands before its first "}". Each repetition takes a word or a run:
+    // without the JIT, PCRE counts every one against pcre.backtrack_limit (`07-spike-findings.md` "Markdown attribute
+    // lists").
     private const string ATTRIBUTE_LIST = '\{(?='.self::ATTRIBUTES_START.')(?:'
-        .'(?:'.self::ANTLERS_TAG.'|='.self::ATTRIBUTE_SPACE.'*+(?:'.self::QUOTED.'|'.self::UNQUOTED.')?|'.self::ATTRIBUTE_TEXT.')*+\}'
-        .'|(?:'.self::ANTLERS_TAG.'|='.self::ATTRIBUTE_SPACE.'*+(?:'.self::UNQUOTED.')?|'.self::ATTRIBUTE_TEXT.')*+\})';
+        .'(?:'.self::ATTRIBUTE_TEXT.'|'.self::ATTRIBUTE_EQUALS.'(?:'.self::QUOTED.'|'.self::UNQUOTED.')?|'.self::ANTLERS_TAG.'|'.self::ATTRIBUTE_BRACES.')*+\}'
+        .'|(?=[^}"\']*+["\'])(?:'.self::ATTRIBUTE_TEXT.'|'.self::ATTRIBUTE_EQUALS.'(?:'.self::UNQUOTED.')?|'.self::ANTLERS_TAG.'|'.self::ATTRIBUTE_BRACES.')*+\})';
 
     // Atoms, in this order at each position: Antlers, fences, reference definitions, hard breaks (two spaces or a backslash
     // before a line break), code spans, then (as text) backslash escapes and unmatched backticks, footnote references,

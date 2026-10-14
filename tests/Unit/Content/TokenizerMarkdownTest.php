@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Content\Markup\Tokenizer;
 use Reach\StatamicTolk\Enums\SegmentKind;
 use Reach\StatamicTolk\Tests\Support\ContentFixtures;
 use Statamic\Facades\Markdown;
+use Symfony\Component\Process\Process;
 
 function tokenizeMarkdown(string $text): Tokenized
 {
@@ -341,11 +342,45 @@ it('takes a construct that never closes in one pass, within PHP\'s default PCRE 
     'an Antlers tag in a link destination' => ['[a]({{ ', SegmentKind::Markdown],
     'an Antlers tag in a definition' => ['[a]: {{ ', SegmentKind::Markdown],
     'a code span' => ['`` ', SegmentKind::Markdown],
+    'an attribute list of "="' => ['{a'.str_repeat('=', 60_000), SegmentKind::Markdown],
+    'an attribute list whose quote never closes over many lines' => ['{a="'.str_repeat("x\n", 40_000), SegmentKind::Markdown],
     'a comment in HTML' => ["<!--\n", SegmentKind::Html],
     'a pre element in HTML' => ["<pre>\n", SegmentKind::Html],
     'an Antlers tag in HTML' => ['{{ ', SegmentKind::Html],
     'an Antlers comment in plain text' => ['{{# ', SegmentKind::Plain],
 ]);
+
+// pcre.jit applies to a pattern when PHP compiles it, and this process compiled the tokenizer's long ago: a process
+// without the JIT tokenizes these. Without it, PCRE counts each repetition of the list's scan against the limit.
+it('takes an attribute list of runs, lines or words that never closes within PHP\'s default PCRE limits, also without the JIT', function () {
+    $texts = [
+        'a run of "="' => '{a'.str_repeat('=', 60_000),
+        'a quote that never closes over many lines' => '{a="'.str_repeat("x\n", 40_000),
+        'Antlers openings that never close' => '{a=b '.str_repeat('{{ ', 20_000),
+        'many lines' => '{a=b '.str_repeat("x\n", 100_000),
+        'many words' => '{.a '.str_repeat('b c ', 50_000),
+    ];
+    $script = <<<'PHP'
+        require $argv[1];
+
+        $results = [];
+
+        foreach (json_decode(stream_get_contents(STDIN), true) as $name => $text) {
+            try {
+                $tokenized = Reach\StatamicTolk\Content\Markup\Tokenizer::markdown($text);
+                $results[$name] = Reach\StatamicTolk\Content\Markup\Tokenizer::restore($tokenized->text, $tokenized) === $text;
+            } catch (RuntimeException $exception) {
+                $results[$name] = $exception->getMessage();
+            }
+        }
+
+        echo json_encode($results);
+        PHP;
+    $process = new Process([PHP_BINARY, '-d', 'pcre.jit=0', '-d', 'pcre.backtrack_limit=1000000', '-r', $script, dirname(__DIR__, 3).'/vendor/autoload.php'], timeout: 60);
+    $process->setInput(json_encode($texts, JSON_THROW_ON_ERROR))->mustRun();
+
+    expect(json_decode($process->getOutput(), true))->toBe(array_fill_keys(array_keys($texts), true));
+});
 
 it('takes a link destination of Antlers openings that never close in one pass, within PHP\'s default PCRE limits', function () {
     $text = 'See [a]('.str_repeat('{', 200_000).' here';
