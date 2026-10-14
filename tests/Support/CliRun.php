@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Tests\Support;
 
+use Illuminate\Console\Signals;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
@@ -9,23 +10,26 @@ use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Tests\TestCase;
 use RuntimeException;
 use Statamic\Facades\Site;
+use Symfony\Component\Process\Process;
 
 use function Orchestra\Testbench\default_skeleton_path;
 
 /**
- * A tolk:translate of tests/Feature/Console/TranslateCommandTest.php in a process of its own, with its tolk:work workers,
- * so a test can end the command as a crash or `kill -9` does. Each process boots the suite's application on the test's
- * directory (Stache stores, blueprints, state, runs) and file cache, with the job the test wrote to `cli-run.json`. The
- * command writes the site's `please` file into its application, which starts each worker through `cli-run.php`. Every
- * process writes its process id to `pids/{role}` and, once its command returned, the exit code to `ended/{role}`; every
- * model call appends the role to `calls.log`.
+ * A tolk:translate of a test in a process of its own, with its tolk:work workers, so a test can end the command as a
+ * crash or `kill -9` does, or another command (the job's `artisan`), or one worker, on PHP with the job's `ini` settings
+ * (start()). Each process boots the suite's application on the test's directory (Stache stores, blueprints, state, runs)
+ * and file cache, with the job start() wrote to `cli-run.json`; with the job's `signals`, Laravel traps signals as
+ * outside tests. The command writes the site's `please` file into its application, which starts each worker through
+ * `cli-run.php`, without the `ini` settings. Every process writes its process id to `pids/{role}` and, once its command
+ * returned, the exit code to `ended/{role}` and the command's output to `output/{role}`; every model call appends the
+ * role to `calls.log`.
  */
 final class CliRun extends TestCase
 {
     public const string SCRIPT = __DIR__.'/cli-run.php';
 
     /**
-     * @var array{directory: string, cache: string, sites: array, options: array<string, mixed>, delay_ms: int, fatal: bool}
+     * @var array{directory: string, cache: string, sites: array, options: array<string, mixed>, artisan: ?array{0: string, 1: array<string, mixed>}, ini: list<string>, signals: bool, delay_ms: int, fatal: bool}
      */
     private static array $job;
 
@@ -33,6 +37,38 @@ final class CliRun extends TestCase
      * `command`, or `worker-{lane}`.
      */
     private static string $role;
+
+    /**
+     * Starts the job's command in a process of its own: tolk:translate with the job's `options`, or the job's `artisan`
+     * command and parameters; as `worker`, the tolk:work that $arguments name, as the command's `please` starts it.
+     *
+     * @param  array{options?: array<string, mixed>, artisan?: array{0: string, 1: array<string, mixed>}, ini?: list<string>, signals?: bool, delay_ms?: int, fatal?: bool}  $job
+     * @param  'command'|'worker'  $role
+     * @param  list<string>  $arguments  a worker's: `tolk:work`, the run's id and the options
+     */
+    public static function start(string $directory, array $job, string $role = 'command', array $arguments = []): Process
+    {
+        $files = new Filesystem;
+        $files->ensureDirectoryExists($directory);
+        $files->put("{$directory}/cli-run.json", json_encode([
+            'directory' => $directory,
+            'cache' => config('cache.stores.tolk-test-file.path'),
+            'sites' => Site::config(),
+            'options' => [],
+            'artisan' => null,
+            'ini' => [],
+            'signals' => false,
+            'delay_ms' => 0,
+            'fatal' => false,
+            ...$job,
+        ], JSON_THROW_ON_ERROR));
+
+        $ini = collect([...$job['ini'] ?? [], 'display_errors=stderr'])->flatMap(fn (string $setting) => ['-d', $setting])->all();
+        $process = new Process([PHP_BINARY, ...$ini, self::SCRIPT, $directory, $role, ...$arguments], env: ['TEST_TOKEN' => false], timeout: 120);
+        $process->start();
+
+        return $process;
+    }
 
     /**
      * @param  'command'|'worker'  $role
@@ -51,9 +87,19 @@ final class CliRun extends TestCase
         Site::setSites(self::$job['sites']);
         $process->fakeModel();
 
-        // No tearDown(): Testbench's needs PHPUnit's runner, and the test deletes this process's files with its own.
-        $exitCode = $role === 'worker' ? $process->work($arguments) : $process->translate();
+        if (self::$job['signals']) {
+            Signals::resolveAvailabilityUsing(fn () => true);
+        }
 
+        // No tearDown(): Testbench's needs PHPUnit's runner, and the test deletes this process's files with its own.
+        $exitCode = match (true) {
+            $role === 'worker' => $process->work($arguments),
+            self::$job['artisan'] !== null => Artisan::call(...self::$job['artisan']),
+            default => $process->translate(),
+        };
+
+        $files->ensureDirectoryExists("{$directory}/output");
+        $files->put("{$directory}/output/".self::$role, Artisan::output());
         $files->ensureDirectoryExists("{$directory}/ended");
         $files->put("{$directory}/ended/".self::$role, (string) $exitCode);
 

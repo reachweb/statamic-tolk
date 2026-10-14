@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\ModelRef;
 use Reach\StatamicTolk\Ai\Providers;
+use Reach\StatamicTolk\Console\Commands\WorkCommand;
 use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Enums\AuditLevel;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -73,7 +74,7 @@ final class Audit
             $this->check(self::LOCALIZABLE, __('Localizable fields'), __('A text field that is not localizable is shared by every site, so Tolk does not translate it. Run php please tolk:doctor --fix-localizable to make these fields localizable, blueprint by blueprint.'), $this->notLocalizable()),
             $this->check(self::TECHNICAL_FIELDS, __('Nested fields that look like data'), __('These nested fields are translated, but their handles suggest identifiers, links or code. If one holds data rather than text, switch off "Translate automatically" in its field settings.'), $this->technicalFields()),
             $this->check('content_sites', __('Sites of collections, taxonomies and global sets'), __('Content is translated only into the sites its collection, taxonomy or global set is enabled for, and a global set translates each site from the origin it names for it.'), $this->contentSiteItems()),
-            $commandLine ? $this->check('command_line', __('Command line'), __('tolk:translate translates in worker processes and saves in its own. With PHP\'s pcntl extension, Ctrl-C cancels its run after the current requests and keeps what was saved.'), $this->commandLineItems()) : null,
+            $commandLine ? $this->check('command_line', __('Command line'), __('tolk:translate translates in worker processes and saves in its own. With PHP\'s pcntl extension, Ctrl-C cancels its run after the current requests and keeps what was saved; with its posix extension, the workers of a command that was killed cancel its run.'), $this->commandLineItems()) : null,
             $this->check('information', __('How Tolk works on this site'), __('Information only.'), $this->informationItems()),
         ]));
     }
@@ -528,7 +529,8 @@ final class Audit
     }
 
     /**
-     * Whether tolk:translate can trap Ctrl-C, by the rule Laravel's trap() follows: pcntl, on the command line.
+     * Whether tolk:translate can trap Ctrl-C, by the rule Laravel's trap() follows: pcntl, on the command line; and
+     * whether its workers can tell that it was killed (WorkCommand::watchesCommand(): posix).
      */
     private function commandLineItems(): array
     {
@@ -537,9 +539,14 @@ final class Audit
             $signals = true;
         });
 
-        return [$signals
-            ? $this->item(AuditLevel::Ok, __('PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.'))
-            : $this->item(AuditLevel::Warning, __('PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.'))];
+        return [
+            $signals
+                ? $this->item(AuditLevel::Ok, __('PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.'))
+                : $this->item(AuditLevel::Warning, __('PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.')),
+            WorkCommand::watchesCommand()
+                ? $this->item(AuditLevel::Ok, __('PHP on the command line has the posix extension, so the workers of a tolk:translate that was killed (kill -9, the out-of-memory killer) cancel its run before their next request.'))
+                : $this->item(AuditLevel::Warning, __('PHP on the command line has no posix extension (Windows never has it), so the workers of a tolk:translate that was killed (kill -9, the out-of-memory killer) go on translating every item left, which the provider charges for and nothing saves. Press Cancel on the run page then, and Resume to save what they translated; or add posix to PHP.')),
+        ];
     }
 
     private function informationItems(): array

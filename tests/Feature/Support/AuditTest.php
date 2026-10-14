@@ -558,13 +558,20 @@ describe('command line', function () {
             ->and(array_column(auditChecks(), 'id'))->not->toContain('command_line');
     });
 
-    it('says that Ctrl-C cancels a run of tolk:translate when PHP has pcntl', function () {
+    it('says that Ctrl-C cancels a run of tolk:translate when PHP has pcntl, and its workers when it was killed when PHP has posix', function () {
+        if (! function_exists('posix_kill')) {
+            $this->markTestSkipped('Needs the posix extension.');
+        }
+
         Signals::resolveAvailabilityUsing(fn () => true);
 
         $check = collect(app(Audit::class)->run(commandLine: true))->firstWhere('id', 'command_line');
 
         expect($check['level'])->toBe('ok')
-            ->and($check['items'])->toBe([['level' => 'ok', 'text' => 'PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.']]);
+            ->and($check['items'])->toBe([
+                ['level' => 'ok', 'text' => 'PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.'],
+                ['level' => 'ok', 'text' => 'PHP on the command line has the posix extension, so the workers of a tolk:translate that was killed (kill -9, the out-of-memory killer) cancel its run before their next request.'],
+            ]);
     });
 
     it('warns that without pcntl Ctrl-C ends tolk:translate and its workers at once', function () {
@@ -574,7 +581,7 @@ describe('command line', function () {
 
         expect($check['level'])->toBe('warning')
             ->and($check['title'])->toBe('Command line')
-            ->and($check['items'])->toBe([['level' => 'warning', 'text' => 'PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.']]);
+            ->and($check['items'][0])->toBe(['level' => 'warning', 'text' => 'PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.']);
     });
 });
 

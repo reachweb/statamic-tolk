@@ -8,7 +8,7 @@
 - The Laravel AI SDK (`laravel/ai` 1.0.1 or later). Composer installs it with Tolk.
 - An API key for at least one of Anthropic, OpenAI or Google Gemini.
 - A cache store that supports locks: `file`, `redis`, `database`, `memcached` or `dynamodb`. A flat-file site on Statamic's defaults (the `file` cache and the `sync` queue, no database) needs nothing more.
-- Recommended for `tolk:translate`: PHP's pcntl extension on the command line, which Windows lacks and some Docker images leave out. Without it, Ctrl-C ends a run at once instead of cancelling it after the current requests ([details](cli.md#how-the-command-runs)). `tolk:doctor` says whether PHP has it.
+- Recommended for `tolk:translate`: PHP's pcntl and posix extensions on the command line, which Windows lacks and some Docker images leave out. Without pcntl, Ctrl-C ends a run at once instead of cancelling it after the current requests; without posix, the workers of a command that was killed go on translating until the run is cancelled ([details](cli.md#how-the-command-runs)). `tolk:doctor` says whether PHP has them.
 
 Tolk is a commercial addon. A production site needs a license from the Statamic Marketplace; Tolk itself checks nothing.
 

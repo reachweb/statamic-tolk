@@ -1404,7 +1404,7 @@ describe('the run engine', function () {
         }
 
         $directory = $this->temporaryPath();
-        $command = startCliRun($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 1], 'fatal' => true]);
+        $command = CliRun::start($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 1], 'fatal' => true]);
         $command->wait();
 
         $run = app(RunRepository::class)->recent(1)[0];
@@ -1426,7 +1426,7 @@ describe('the run engine', function () {
         }
 
         $directory = $this->temporaryPath();
-        $command = startCliRun($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 2], 'delay_ms' => 500]);
+        $command = CliRun::start($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 2], 'delay_ms' => 500]);
 
         try {
             // kill -9 once a worker calls the model, as the out-of-memory killer ends the command.
@@ -1457,29 +1457,6 @@ describe('the run engine', function () {
             ->and(array_count_values(RunFixtures::statuses($run))['pending'] ?? 0)->toBeGreaterThan(4);
     })->group('slow');
 });
-
-/**
- * Starts tolk:translate in a process of its own (CliRun) with the job's options, model delay and fatal error.
- *
- * @param  array{options: array<string, mixed>, delay_ms?: int, fatal?: bool}  $job
- */
-function startCliRun(string $directory, array $job): SymfonyProcess
-{
-    File::ensureDirectoryExists($directory);
-    File::put("{$directory}/cli-run.json", json_encode([
-        'directory' => $directory,
-        'cache' => config('cache.stores.tolk-test-file.path'),
-        'sites' => Site::config(),
-        'delay_ms' => 0,
-        'fatal' => false,
-        ...$job,
-    ], JSON_THROW_ON_ERROR));
-
-    $command = new SymfonyProcess([PHP_BINARY, '-d', 'display_errors=stderr', CliRun::SCRIPT, $directory, 'command'], env: ['TEST_TOKEN' => false], timeout: 120);
-    $command->start();
-
-    return $command;
-}
 
 /**
  * The model calls CliRun's processes made, by role.

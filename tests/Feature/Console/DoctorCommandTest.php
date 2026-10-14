@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Artisan;
 use Reach\StatamicTolk\Support\Audit;
+use Reach\StatamicTolk\Tests\Support\CliRun;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Fieldset;
 
@@ -69,6 +70,24 @@ it('prints the checks as JSON', function () {
 
     expect(Artisan::call('tolk:doctor', ['--json' => true]))->toBe(1);
 });
+
+it('warns when the PHP of the command line has no posix extension, which the workers of a killed tolk:translate need to cancel its run', function () {
+    $directory = $this->temporaryPath();
+
+    // As on Windows, which has neither pcntl nor posix; the signals are on, as outside tests, so pcntl reads as there.
+    $doctor = CliRun::start($directory, ['artisan' => ['tolk:doctor', ['--json' => true]], 'ini' => ['disable_functions=posix_getppid,posix_kill'], 'signals' => true]);
+    $doctor->wait();
+
+    $checks = json_decode((string) @file_get_contents("{$directory}/output/command"), true) ?? [];
+    $check = collect($checks)->firstWhere('id', 'command_line');
+
+    expect($check, $doctor->getOutput().$doctor->getErrorOutput())->not->toBeNull()
+        ->and($check['level'])->toBe('warning')
+        ->and($check['items'])->toBe([
+            ['level' => 'ok', 'text' => 'PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.'],
+            ['level' => 'warning', 'text' => 'PHP on the command line has no posix extension (Windows never has it), so the workers of a tolk:translate that was killed (kill -9, the out-of-memory killer) go on translating every item left, which the provider charges for and nothing saves. Press Cancel on the run page then, and Resume to save what they translated; or add posix to PHP.'],
+        ]);
+})->group('slow');
 
 it('refuses --json with --fix-localizable', function () {
     $this->artisan('tolk:doctor', ['--json' => true, '--fix-localizable' => true])

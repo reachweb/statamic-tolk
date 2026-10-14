@@ -97,6 +97,15 @@ class WorkCommand extends Command
     }
 
     /**
+     * Whether a worker can tell that its command has ended: with the posix extension, which Windows lacks. Without it,
+     * the workers of a command that was killed translate every item left (`tolk:doctor` warns).
+     */
+    public static function watchesCommand(): bool
+    {
+        return function_exists('posix_getppid') && function_exists('posix_kill');
+    }
+
+    /**
      * Whether the command that started this worker has ended. It waits for its workers, so one that ends first was killed
      * or died of a fatal error. A worker the command started directly is its child until it ends; one started through a
      * shell (Symfony's Process on PHP built with `--enable-sigchild`) checks that the process exists. Without `--parent`,
@@ -106,7 +115,7 @@ class WorkCommand extends Command
      */
     private function commandEnded(?int $parent): Closure
     {
-        if ($parent === null || ! function_exists('posix_getppid') || ! function_exists('posix_kill')) {
+        if ($parent === null || ! self::watchesCommand()) {
             return fn () => false;
         }
 
