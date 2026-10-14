@@ -396,6 +396,23 @@ it('says that with revisions the published origin is translated and a translatio
         ->and($section('statuses.md', '### Collections with revisions'))->toContain('the origin **as it is published**')->toContain('reads **up to date**');
 });
 
+// RunDispatcherTest holds a queue lane that cannot see its run to the warning it logs.
+it('says what several servers must share, and how a run looks on a server that cannot see it', function () {
+    $section = Str::of(docsFile('installation.md'))->after("\n### Several servers\n")->before("\n## ")->toString();
+    $rows = collect(explode("\n", docsFile('configuration.md')))->filter(fn (string $line) => preg_match('/^\| `(state|runs|usage)\.path` /', $line) === 1);
+
+    foreach (['`cache_store`', '`runs.path`', '`usage.path`', '`state.path`', 'logs a warning naming `runs.path`', 'sticky sessions'] as $needle) {
+        expect($section)->toContain($needle);
+    }
+
+    expect(File::get(DOCS_ROOT.'/resources/js/pages/Runs/Show.vue'))->toContain("__('This run is not moving')")->toContain("__('Following the run stopped: :message'")
+        ->and(File::get(DOCS_ROOT.'/src/Http/Controllers/Cp/RunsController.php'))->toContain("__('This run no longer exists.')")
+        ->and($section)->toContain('"This run is not moving"')->toContain('"Following the run stopped: This run no longer exists."')
+        ->and($rows)->toHaveCount(3)
+        ->and($rows->reject(fn (string $row) => str_contains($row, 'On several servers'))->all())->toBe([])
+        ->and(File::get(DOCS_ROOT.'/resources/boost/guidelines/core.blade.php'))->toContain('the cache store, `runs.path` and `usage.path` must be shared');
+});
+
 it('reads the per-field options of the configuration sample as documented', function () {
     $yaml = collect(docsCodeBlocks('configuration.md'))->first(fn (array $block) => $block['language'] === 'yaml')['code'];
     $blueprint = $this->makeBlueprint('collections.pages', 'page', YAML::parse($yaml));

@@ -124,7 +124,9 @@ return [
     | it next to the content, so it travels with the content in git. With
     | content in a database (Statamic's Eloquent driver), set `path` to a
     | folder every deploy keeps, such as storage_path('statamic/tolk/state'),
-    | and back it up with the database. Do not edit these files by hand.
+    | and back it up with the database. On several servers that do not share
+    | the content folder, point `path` at a folder they all share. Do not
+    | edit these files by hand.
     |
     */
 
@@ -151,7 +153,9 @@ return [
     | seconds and deletes those without activity for `retention_days` days.
     | Monthly usage logs are kept under `usage.path`. The `file` driver
     | rewrites a run's index on every step, so it suits runs of up to a few
-    | thousand items.
+    | thousand items. On several servers, `runs.path` and `usage.path` must
+    | be folders that every server and queue worker shares: a worker that
+    | cannot see a run logs a warning and leaves it (docs/installation.md).
     |
     */
 

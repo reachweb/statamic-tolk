@@ -7,7 +7,7 @@
 - Laravel 12.62 or later, or Laravel 13.15 or later.
 - The Laravel AI SDK (`laravel/ai` 1.0.1 or later). Composer installs it with Tolk.
 - An API key for at least one of Anthropic, OpenAI or Google Gemini.
-- A cache store that supports locks: `file`, `redis`, `database`, `memcached` or `dynamodb`. A flat-file site on Statamic's defaults (the `file` cache and the `sync` queue, no database) needs nothing more.
+- A cache store that supports locks: `file`, `redis`, `database`, `memcached` or `dynamodb`. A flat-file site on Statamic's defaults (the `file` cache and the `sync` queue, no database) needs nothing more. A site on more than one server needs a cache store and folders they share ([Several servers](#several-servers)).
 - Recommended for `tolk:translate`: PHP's pcntl and posix extensions on the command line, which Windows lacks and some Docker images leave out, with `pcntl_signal` not in php.ini's `disable_functions`. Without pcntl, Ctrl-C ends a run at once instead of cancelling it after the current requests; without posix, the workers of a command that was killed go on translating until the run is cancelled ([details](cli.md#how-the-command-runs)). `tolk:doctor` says whether PHP has them.
 
 Tolk is a commercial addon. A production site needs a license from the Statamic Marketplace; Tolk itself checks nothing. The terms are in [LICENSE.md](../LICENSE.md).
@@ -89,6 +89,17 @@ Commit `content/tolk/` together with the content it describes, and do not edit i
 Statamic's commits hold only the paths in `statamic.git.paths`. Their defaults include `content/`, and with it the state, but not `lang/`, where `tolk:lang` and `tolk:forms` write the translation files. If you run these commands where git commits for you, as on a production server, add `lang_path()` to `statamic.git.paths` in `config/statamic/git.php`, or commit `lang/` yourself. Otherwise the commit holds the state without the files: a deploy that replaces the site's files loses them, and the texts show in the source language until the command runs, and is paid for, again. Both commands warn after they write while git is on and `lang/` is not tracked, and `tolk:doctor` and the Audit page warn once either command has kept state.
 
 With content in a database (Statamic's Eloquent driver), the state cannot travel with the content in git. Set `state.path` to a folder that every deploy keeps, such as `storage_path('statamic/tolk/state')`, and back it up with the database ([Configuration](configuration.md#translation-state)). Left in `content/tolk/`, it is lost by any deploy that replaces the site's folder, as zero-downtime deploys to a new release folder do: every translation then reads as edited by hand and is no longer updated. `tolk:doctor` and the Audit page warn about it.
+
+### Several servers
+
+On a site served by more than one server, behind a load balancer or with queue workers on servers of their own, every server that serves the Control Panel or runs a queue worker must see the same data:
+
+- **The cache store** (`cache_store`, or the app's default) must be one they share, such as `redis` or `database`; a `file` cache is local to one server. Plans, provider pauses and the locks that let one process save at a time are kept there.
+- **Runs** (`runs.path`) and **monthly usage** (`usage.path`) are folders on the server's own disk. Point both at a folder every server shares, such as a network mount, in a published `config/tolk.php`. Otherwise a run exists only on the server that created it: a queue worker on another server cannot find it, logs a warning naming `runs.path` and ends, so the run's page says "This run is not moving" although a worker is running; a run driven by its page shows "Following the run stopped: This run no longer exists." as soon as a request reaches another server; each server lists only its own runs; and the Overview shows only the usage of the server that answered.
+- **Translation state** (`state.path`) is kept next to the content, so servers that share the content folder share it too. When they do not (each server has its own copy of `content/`, or the entries are stored in a database), point `state.path` at a folder they all share and that a deploy keeps. A server that does not see a field's record reads its translation as edited by hand (untracked), and Update leaves it alone.
+- **The settings** are a file Statamic writes on the server where they were saved (`resources/addons/statamic-tolk.yaml`); share it or deploy it as you do the content.
+
+If the runs folder cannot be shared, set `runs.execution` to `browser`, keep each user's requests on one server (sticky sessions) and schedule `tolk:prune` on every server: a run then lives on the server that created it, its page drives it there, and only that server lists it and counts its usage.
 
 ## In the Control Panel
 

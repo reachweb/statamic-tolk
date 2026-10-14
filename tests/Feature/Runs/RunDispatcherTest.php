@@ -2,6 +2,7 @@
 
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Ai\EngineCall;
@@ -273,6 +274,36 @@ describe('WorkRun', function () {
             ->and(max(array_column(array_slice($engine->calls, 1), 'timeout')))->toBeLessThan(pushedLanes()[0]->timeout)
             ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Completed)
             ->and($this->hello->fresh()->in('el')->get('intro'))->toBe('[T] A short intro.');
+    });
+
+    it('logs one warning naming runs.path when its worker cannot see the run, as on a server with its own runs folder', function () {
+        Queue::fake();
+        Log::spy();
+        $this->fakeTranslations();
+        $run = queueRun();
+        $this->dispatcher->start($run);
+        config(['tolk.runs.path' => $this->temporaryPath('other-server/runs')]);
+
+        workLane(new WorkRun($run->id, 2, 1));
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $message, array $context) => str_contains($message, 'runs.path')
+            && $context === ['run' => $run->id, 'lane' => 2, 'path' => $this->temporaryPath('other-server/runs')]);
+        expect(pushedLanes())->toHaveCount(4);
+        $this->assertNoModelCalls();
+    });
+
+    it('logs nothing when its run no longer runs', function () {
+        Queue::fake();
+        Log::spy();
+        $this->fakeTranslations();
+        $run = queueRun();
+        $this->dispatcher->start($run);
+        $run->status = RunStatus::Cancelled;
+        $this->runs->save($run);
+
+        workLane(new WorkRun($run->id, 1, 1));
+
+        Log::shouldNotHaveReceived('warning');
     });
 
     it('ends quietly when the run is deleted while it works', function () {

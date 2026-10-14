@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunStatus;
@@ -83,6 +84,17 @@ final class WorkRun implements ShouldQueue
     public function handle(RunRepository $runs, RunProcessor $processor): void
     {
         $run = $runs->find($this->runId);
+
+        if ($run === null) {
+            // Rarely a deleted run: usually a worker on a server that does not share the runs folder, whose lane ends here.
+            Log::warning('Tolk: a queue lane found no run. Unless the run was deleted, this worker cannot see the runs folder: on several servers, runs.path must be a folder they all share.', [
+                'run' => $this->runId,
+                'lane' => $this->lane,
+                'path' => config('tolk.runs.path'),
+            ]);
+
+            return;
+        }
 
         if (! $this->isCurrent($run)) {
             return;

@@ -222,21 +222,21 @@ A rate limit or an overloaded provider pauses every request to that provider for
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `state.driver` | `file` | Where the state is stored. `file` is the only driver in this version. |
-| `state.path` | `base_path('content/tolk')` | The state's folder. With content in files, keep it under `content/`, so it is committed with the content. With content in a database (Statamic's Eloquent driver), set it to a folder that every deploy keeps, such as `storage_path('statamic/tolk/state')`, and back it up with the database: a deploy that replaces the site's folder would take `content/tolk/` with it, and every translation would then read as edited by hand. `tolk:doctor` warns about it. |
+| `state.path` | `base_path('content/tolk')` | The state's folder. With content in files, keep it under `content/`, so it is committed with the content. With content in a database (Statamic's Eloquent driver), set it to a folder that every deploy keeps, such as `storage_path('statamic/tolk/state')`, and back it up with the database: a deploy that replaces the site's folder would take `content/tolk/` with it, and every translation would then read as edited by hand. On several servers that do not share the content folder, a folder they all share ([Several servers](installation.md#several-servers)). `tolk:doctor` warns about it. |
 
 ### Runs and usage
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `runs.driver` | `file` | Where runs are stored. `file` is the only driver in this version; it rewrites a run's index on every step, so it suits runs of up to a few thousand items. |
-| `runs.path` | `storage_path('statamic/tolk/runs')` | The runs' folder. |
+| `runs.path` | `storage_path('statamic/tolk/runs')` | The runs' folder. On several servers, a folder every server and queue worker shares ([Several servers](installation.md#several-servers)). |
 | `runs.retention_days` | `30` | `tolk:prune` deletes runs without activity for this many days. |
 | `runs.tick_seconds` | `5` | How long one request of a browser-driven run may keep working on items. It starts at most one provider call, so a request lasts at most about this plus `http.timeout.web`. |
 | `runs.claim_ttl` | `300` | Seconds a queue or command-line worker holds an item before another may take it over. `tolk:prune` stops runs that made no progress for this long. |
 | `runs.execution` | `auto` | How runs started in the CP are driven: `auto` (on the queue when the queue connection has a worker, so not `sync`, `deferred`, `background` or `null`; otherwise by the run page), `queue` or `browser`. |
 | `runs.queue.connection` | `null` | The queue connection for runs; `null` is the app's default. |
 | `runs.queue.name` | `null` | The queue name for runs; `null` is the connection's default. |
-| `usage.path` | `storage_path('statamic/tolk/usage')` | The monthly usage files the Overview reads. |
+| `usage.path` | `storage_path('statamic/tolk/usage')` | The monthly usage files the Overview reads. On several servers, a folder they all share, like `runs.path`. |
 
 How runs work, and what the queue connection's `retry_after` must be, is in [Bulk translations and runs](bulk-and-runs.md).
 
@@ -246,7 +246,7 @@ How runs work, and what the queue connection's `retry_after` must be, is in [Bul
 | --- | --- | --- |
 | `write.lock_seconds` | `120` | Content is saved by one process at a time, under a global lock held for at most this long. |
 | `write.wait_seconds` | `60` | How long a save waits for that lock. |
-| `cache_store` | `null` | The cache store for plans, locks, pauses and the Overview's counts; `null` is the app's default store. It must support locks. On several servers use one they share (`redis`, `database`): a `file` cache is local to one server. Clearing it loses the plans of the translations in progress: a run pays again for the items it had translated, wholly or in part, but not saved yet, and an editor starts a half-done translation again. `php artisan cache:clear`, which many deploy scripts run, and the application cache of Statamic's **Cache Manager** clear the default store. Where a deploy may come while a run is in progress, give Tolk a store of its own that they do not clear (a `file` store with its own `path`, or a Redis store whose connection uses a database of its own), or deploy between runs. |
+| `cache_store` | `null` | The cache store for plans, locks, pauses and the Overview's counts; `null` is the app's default store. It must support locks. On several servers use one they share (`redis`, `database`): a `file` cache is local to one server ([Several servers](installation.md#several-servers)). Clearing it loses the plans of the translations in progress: a run pays again for the items it had translated, wholly or in part, but not saved yet, and an editor starts a half-done translation again. `php artisan cache:clear`, which many deploy scripts run, and the application cache of Statamic's **Cache Manager** clear the default store. Where a deploy may come while a run is in progress, give Tolk a store of its own that they do not clear (a `file` store with its own `path`, or a Redis store whose connection uses a database of its own), or deploy between runs. |
 | `plan_ttl` | `7200` | Seconds a translation plan and its results stay in the cache, unless the translation is saved first, which deletes them. An editor who leaves a translation half done for longer starts it again, and a run resumed later pays again for the items it had translated but not saved. Clearing the cache store loses them at once (`cache_store`). A `file` or `database` cache keeps an expired plan's text until the cache is cleared ([Privacy and data](privacy.md#what-tolk-keeps-on-your-server)). |
 | `fieldtypes` | `[]` | Handlers for more fieldtypes, as `'fieldtype handle' => HandlerClass::class` (see [Extending](extending.md)). |
 | `tokens.chars_per_token` | `3` | Characters per token, for the estimates. |
