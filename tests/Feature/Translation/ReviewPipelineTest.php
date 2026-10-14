@@ -551,7 +551,7 @@ describe('reviewing and saving', function () {
             ->and($result->fields)->toBe(['title' => TargetResult::NO_CORRECTIONS, 'intro' => TargetResult::NO_CORRECTIONS, 'body' => TargetResult::PARTLY_REVIEWED])
             ->and($result->appliedFields())->toBe(['body'])
             ->and(array_column($result->corrections['body'], 'id'))->toBe(['s4'])
-            ->and($result->warnings)->toBe(['Body: review skipped (refused).'])
+            ->and($result->warnings)->toBe(['Body: review skipped (the model refused it).'])
             ->and(reviewExistingLocalization($this->origin)->get('body')[1])->toBe(reviewExistingParagraph('Το πρωινό σερβίρεται έως τις δέκα.'));
         Event::assertDispatched(TargetTranslated::class, fn (TargetTranslated $event) => $event->handles === ['body']);
     });

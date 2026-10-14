@@ -551,7 +551,7 @@ it('fails a file in mode review whose review could not be made, and exits 1', fu
 
     expect($exitCode)->toBe(1)
         ->and($output)->toContain('lang/de.json: failed, Part of the text could not be reviewed and was kept as it was.; not reviewed: ')
-        ->and($output)->toContain('review skipped (refused).')
+        ->and($output)->toContain('review skipped (the model refused it).')
         ->and($output)->not->toContain('nothing to correct')
         ->and(readLang('de.json'))->toBe($before);
 });

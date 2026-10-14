@@ -728,7 +728,7 @@ describe('review', function () {
             ->and($run->status)->toBe(RunStatus::CompletedWithErrors)
             ->and(array_column(RunFixtures::items($run), 'reason'))->toBe([TargetResult::REVIEW_SKIPPED, TargetResult::REVIEW_SKIPPED])
             ->and($output)->toContain('Hello → Greek: failed, Part of the text could not be reviewed and was kept as it was.; not reviewed: title, intro')
-            ->and($output)->toContain('Title: review skipped (unavailable).')
+            ->and($output)->toContain('Title: review skipped (the provider was unavailable).')
             ->and($output)->not->toContain('nothing to correct')
             ->and($output)->toMatch('/\| 0 +\| 0 +\| 2 +\| 0 +\| 0 +\|/')
             ->and($this->hello->fresh()->in('el')->data()->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.'])
@@ -757,7 +757,7 @@ describe('review', function () {
 
         expect($exitCode)->toBe(0)
             ->and($output)->toContain('Beach → Greek: done, 1 field, 1 correction; not reviewed: points')
-            ->and($output)->toContain('Points: review skipped (refused).')
+            ->and($output)->toContain('Points: review skipped (the model refused it).')
             ->and($note->fresh()->in('el')->get('points'))->toBe(['[T] sea', 'ήλιος']);
     });
 

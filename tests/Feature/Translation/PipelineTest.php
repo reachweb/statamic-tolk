@@ -577,7 +577,7 @@ describe('finish reasons and request failures', function () {
 
         expect($field->value[12])->toBe(['question' => '[T] Question 13?', 'answer' => 'Answer 13.'])
             ->and($field->value[11])->toBe(['question' => '[T] Question 12?', 'answer' => '[T] Answer 12.'])
-            ->and($field->warnings)->toBe(['FAQ › Answer: "Answer 13." was left untranslated (refused).']);
+            ->and($field->warnings)->toBe(['FAQ › Answer: "Answer 13." was left untranslated (the model refused it).']);
     });
 
     it('reviews each translated half of a refused unit on its own, so with review on a halving costs three calls', function () {
