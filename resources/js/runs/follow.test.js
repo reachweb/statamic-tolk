@@ -236,7 +236,7 @@ describe('follow', () => {
     });
 
     it('reads another page of items, and passes nothing on once it was stopped', async () => {
-        const page = { ...state({ second: 1 }), pagination: { page: 2 } };
+        const page = { ...state({ status: 'completed', second: 1 }), pagination: { page: 2 } };
         const { follow, states } = follower({ api: fakeApi({ state: page }) });
 
         follow.follow(state({ status: 'completed' }));
@@ -248,6 +248,110 @@ describe('follow', () => {
         await follow.refresh();
 
         expect(states).toHaveLength(2);
+    });
+
+    it('drives a pending run that another tab started, once the state read after the estimate shows it running', async () => {
+        const started = state({ second: 1 });
+        const { follow, api, ticker, states } = follower({ api: fakeApi({ state: started }) });
+
+        follow.follow(state({ status: 'pending' }));
+        ticker.settle.estimate.resolve({ estimate: { next: null }, error: null });
+        await flush();
+
+        expect(api.requests.map(({ url }) => url)).toEqual([urls.state]);
+        expect(ticker.names()).toEqual(['estimate', 'lanes', 'apply']);
+        expect(ticker.last('lanes').onState).toBe(ticker.last('apply').onState);
+        expect(follow.active).toBe(true);
+        expect(states).toEqual([state({ status: 'pending' }), started]);
+    });
+
+    it('follows a run that was started, resumed or taken over elsewhere when another page of items shows it', async () => {
+        const cases = [
+            { from: state({ status: 'pending' }), to: state({ driver: 'queue', second: 1 }), loops: ['estimate', 'poll'] },
+            { from: state({ status: 'cancelled' }), to: state({ second: 1 }), loops: ['lanes', 'apply'] },
+            { from: state({ status: 'completed_with_errors' }), to: state({ driver: 'queue', second: 1 }), loops: ['poll'] },
+            { from: state({ driver: 'queue' }), to: state({ second: 1 }), loops: ['poll', 'lanes', 'apply'] },
+        ];
+
+        for (const { from, to, loops } of cases) {
+            const { follow, ticker, states } = follower({ api: fakeApi({ state: to }) });
+
+            follow.follow(from);
+            const before = ticker.started.map(({ options }) => options.signal);
+            await follow.refresh();
+
+            expect(ticker.names()).toEqual(loops);
+            expect(before.every((signal) => signal.aborted)).toBe(true);
+            expect(states).toEqual([from, to]);
+        }
+    });
+
+    it('drives a run again that was cancelled while it drove it and resumed elsewhere', async () => {
+        const resumed = state({ second: 3 });
+        const { follow, ticker, states } = follower({ api: fakeApi({ state: resumed }) });
+
+        follow.follow(state({ second: 1 }));
+        ticker.last('lanes').onState(state({ status: 'cancelled', second: 2 }));
+        ticker.handle.end();
+        ticker.settle.apply.resolve({ state: null, error: null });
+        await flush();
+
+        expect(follow.active).toBe(false);
+
+        await follow.refresh();
+
+        expect(ticker.names()).toEqual(['lanes', 'apply', 'lanes', 'apply']);
+        expect(follow.active).toBe(true);
+        expect(states.at(-1)).toBe(resumed);
+    });
+
+    it('drives a queue run it polls once another tab took it over', () => {
+        const { follow, ticker, states } = follower();
+
+        follow.follow(state({ driver: 'queue' }));
+        const polling = ticker.last('poll').signal;
+        ticker.last('poll').onState(state({ second: 1 }));
+
+        expect(polling.aborted).toBe(true);
+        expect(ticker.names()).toEqual(['poll', 'lanes', 'apply']);
+        expect(states).toHaveLength(2);
+    });
+
+    it('keeps its loops while the state needs the same ones, and lets them end on a final state', async () => {
+        const answers = [state({ second: 1 }), state({ status: 'completed', second: 2 })];
+        const { follow, ticker, states } = follower({ api: fakeApi({ state: () => answers.shift() }) });
+
+        follow.follow(state());
+        ticker.last('lanes').onFailure({ lane: 1, error: { message: 'Gone' } });
+        await follow.refresh();
+
+        expect(ticker.names()).toEqual(['lanes', 'apply']);
+        expect(follow.failures).toHaveLength(1);
+
+        await follow.refresh();
+
+        expect(ticker.names()).toEqual(['lanes', 'apply']);
+        expect(ticker.last('lanes').signal.aborted).toBe(false);
+        expect(states.at(-1).run.status).toBe('completed');
+
+        const pending = follower({ api: fakeApi({ state: state({ status: 'pending', second: 1 }) }) });
+
+        pending.follow.follow(state({ status: 'pending' }));
+        await pending.follow.refresh();
+
+        expect(pending.ticker.names()).toEqual(['estimate']);
+        expect(pending.ticker.last('estimate').signal.aborted).toBe(false);
+    });
+
+    it('starts nothing for a running state older than the final one it shows', async () => {
+        const { follow, ticker, states } = follower({ api: fakeApi({ state: state({ second: 2 }) }) });
+
+        follow.follow(state({ second: 1 }));
+        ticker.last('lanes').onState(state({ status: 'completed', second: 3 }));
+        await follow.refresh();
+
+        expect(ticker.names()).toEqual(['lanes', 'apply']);
+        expect(states.at(-1).run.status).toBe('completed');
     });
 
     it('stops the loops it started when it follows another state, and forgets their failures', () => {

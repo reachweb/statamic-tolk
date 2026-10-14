@@ -1,11 +1,14 @@
 import * as defaultApi from '../api.js';
 import { describeError } from '../editor/unitRunner.js';
 import * as defaultTicker from './ticker.js';
+import { isFinal } from './ticker.js';
 
 // Drives and follows one run for the run page (§A13): the estimate while it is pending, the browser driver's lanes and
 // apply loop, or polling for a run something else drives, and the page's buttons. Each call of follow() aborts the
 // loops it started before and starts those the state needs, with a new `latest()` guard: the aborted loops pass on
 // nothing more, and an answer to Resume or Retry may carry the same `progressed_at` as the cancelled state before it.
+// A state passed on later that needs other loops, of a run that was started, resumed or taken over elsewhere meanwhile,
+// is followed in the same way, keeping the guard.
 // `dirty` is the run page's name in core's dirty state, held while the follower drives the run: leaving the page pauses
 // the run, so the CP asks first, before a visit inside the CP, Back or closing the tab, as for unsaved changes.
 export function createFollower({
@@ -26,6 +29,8 @@ export function createFollower({
     let failures = [];
     let shown = null;
     let marked = false;
+    // The loops the followed state needs (loopsFor()); null once a final state was passed on, as they end on it.
+    let needed = null;
 
     function fail(failure) {
         failures = [...failures, failure];
@@ -70,24 +75,44 @@ export function createFollower({
 
     function follow(state) {
         stop();
+        deliver = ticker.latest(show);
+        begin(state, true);
+    }
 
+    // A state that needs other loops than the followed one is followed from here: the page drives or polls a run that
+    // was started, resumed or taken over elsewhere as it does on load. On a final state the loops end on their own,
+    // with the counts of what they finished meanwhile.
+    function show(next) {
+        shown = next;
+        onState(next);
+        mark();
+
+        if (isFinal(next)) {
+            needed = null;
+        } else if (loopsFor(next) !== needed) {
+            stop();
+            begin(next, false);
+        }
+    }
+
+    // Starts the loops the state needs, after passing it on unless it already was.
+    function begin(state, pass) {
         const own = new AbortController();
         controller = own;
-        deliver = ticker.latest((next) => {
-            shown = next;
-            onState(next);
-            mark();
-        });
         failures = [];
         onFailures(failures);
-        deliver(state);
+        needed = loopsFor(state);
+
+        if (pass) {
+            deliver(state);
+        }
 
         const run = state?.run ?? {};
         const options = { onState: deliver, onFailure: fail, signal: own.signal, query };
 
-        if (run.status === 'pending') {
+        if (needed === 'estimate') {
             estimate(run.estimate ?? null, own.signal);
-        } else if (run.status === 'running' && run.driver === 'browser') {
+        } else if (needed === 'drive') {
             laneHandle = ticker.startLanes({ api, urls, lanes, ...options });
             laneHandle.subscribe((event) => event.ended && mark());
 
@@ -103,7 +128,7 @@ export function createFollower({
 
             applying = settled;
             mark();
-        } else if (run.status === 'running') {
+        } else if (needed === 'poll') {
             ticker.pollState({ api, url: urls.state, ...options }).catch((error) => fail({ error: describeError(error) }));
         }
     }
@@ -124,7 +149,8 @@ export function createFollower({
     }
 
     // Reads the state again, for another page of items or a filter, or after the estimate. Nothing is passed on once
-    // the loops it belongs to were stopped or replaced.
+    // the loops it belongs to were stopped or replaced; a run that started, resumed or changed hands meanwhile is
+    // followed from the answer.
     async function refresh() {
         const signal = controller?.signal;
         const answer = await api.get(urls.state, query());
@@ -171,4 +197,20 @@ export function createFollower({
             return failures;
         },
     };
+}
+
+// The loops a state needs: the estimate while the run is pending, the lanes and the apply loop while it runs on the
+// browser driver, polling while something else drives it, and none once it is final.
+function loopsFor(state) {
+    const run = state?.run ?? {};
+
+    if (run.status === 'pending') {
+        return 'estimate';
+    }
+
+    if (run.status !== 'running') {
+        return null;
+    }
+
+    return run.driver === 'browser' ? 'drive' : 'poll';
 }
