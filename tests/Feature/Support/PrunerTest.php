@@ -231,6 +231,16 @@ it('keeps the state of a translation file and of form texts whose file cannot be
         ->and(array_map('strval', iterator_to_array(app(StateRepository::class)->references(), false)))->toEqualCanonicalizing(['lang::_json::de', 'forms::de']);
 });
 
+it('records no Bard copy of a source without text, which it would not report', function () {
+    $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true], 'content' => ['type' => 'bard', 'localizable' => true]]);
+    $home = $this->makeEntry('pages', 'en', ['title' => 'Home', 'content' => [['type' => 'horizontalRule']]], 'home');
+    $localization = $this->localize($home, 'el', ['title' => 'Αρχική', 'content' => [['type' => 'horizontalRule']]]);
+    StateFixtures::store($localization, ['title' => StateFixtures::machine('Home', 'Αρχική')]);
+
+    expect(pruned()->isEmpty())->toBeTrue()
+        ->and(StateFixtures::stored($localization)->field('content')->isEmpty())->toBeTrue();
+});
+
 it('lists the state files that do not parse and keeps them, and prunes the rest', function () {
     $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
     StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);

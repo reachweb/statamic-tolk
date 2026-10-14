@@ -85,6 +85,8 @@ A taxonomy's terms exist in every site of the taxonomy, so a term never needs cr
 - In a taxonomy's term listing, **Translate…** starts a run.
 - From the command line: `tolk:translate --taxonomy=topics --site=el`.
 
+A term created in Statamic's form with another site selected is stored in the first site too. The fields left empty keep inheriting in the selected site, so Translate fills them in once the first site has text ([Statuses](statuses.md#empty-fields)).
+
 Term slugs are never localized.
 
 Tolk files a term's translation records under the term's slug in the taxonomy's first site. Changing that slug in the CP (or through Statamic's API) makes it a new term to Statamic, so Tolk moves the records to the new slug as the term is saved, and its translations stay tracked. A slug changed in the term's file name, outside Statamic, is not noticed: the term's translations then read edited by hand and untracked, and `tolk:prune` deletes the records left under the old slug.

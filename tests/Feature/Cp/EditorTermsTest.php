@@ -64,6 +64,19 @@ function saveGreekTermInCp(array $values, array $localized): void
     ])->assertOk();
 }
 
+/**
+ * Creates the term "drinks" through core's store endpoint with that site selected, as the create form does.
+ */
+function createTermInCp(string $site, array $values): void
+{
+    test()->postJson(cp_route('taxonomies.terms.store', ['topics', $site]), [
+        '_blueprint' => 'topic',
+        'slug' => 'drinks',
+        'published' => true,
+        ...$values,
+    ])->assertSuccessful();
+}
+
 function termEditor(array $sites = ['en', 'el', 'de']): void
 {
     test()->signInWithPermissions(['access cp', 'translate content', ...array_map(fn (string $site) => "access {$site} site", $sites), 'view topics terms', 'edit topics terms']);
@@ -249,6 +262,55 @@ describe('translating in the term form', function () {
             ->assertJsonPath('message', 'The term this translation was made for no longer exists.');
         expect(greekTermState('title')->pending)->toBe([])
             ->and(greekTermState('description')->pending)->toBe([]);
+    });
+});
+
+describe('a term created in the CP', function () {
+    it('lets the fields left empty in a term created in another site inherit, so they are translated once the default site has text', function () {
+        $this->fakeTranslations();
+        $this->signInAdmin();
+
+        createTermInCp('el', ['title' => 'Ποτά', 'description' => null, 'internal' => null]);
+        $greek = Term::find('topics::drinks')->in('el');
+
+        expect($greek->data()->only(['title', 'description', 'internal'])->all())->toBe(['title' => 'Ποτά'])
+            ->and(Term::find('topics::drinks')->in('en')->get('title'))->toBe('Ποτά');
+
+        Term::find('topics::drinks')->in('en')->merge(['title' => 'Drinks', 'description' => 'Drink well.'])->save();
+        $status = termStatus('term::topics::drinks::el')->assertOk();
+        $plan = $this->postJson(cp_route('tolk.editor.plan'), ['reference' => 'term::topics::drinks::el', 'mode' => 'update'])->assertOk();
+
+        expect($status->json('localization.fields.description.status'))->toBe('untranslated')
+            ->and($status->json('localization.status'))->toBe('untranslated')
+            ->and($plan->json('fields'))->toBe(['description'])
+            ->and($plan->json('skipped'))->toBe(['title' => 'manual']);
+    });
+
+    it('drops the empty list of a Replicator field and the empty value of a Bard field too', function () {
+        $this->makeTaxonomy('places', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'about' => ['type' => 'bard', 'localizable' => true],
+            'stops' => ['type' => 'replicator', 'localizable' => true, 'sets' => ['main' => ['sets' => ['stop' => ['fields' => [['handle' => 'name', 'field' => ['type' => 'text']]]]]]]],
+        ]);
+        $this->signInAdmin();
+
+        $this->postJson(cp_route('taxonomies.terms.store', ['places', 'el']), ['_blueprint' => 'place', 'slug' => 'athens', 'title' => 'Αθήνα', 'published' => true])->assertSuccessful();
+
+        expect(Term::find('places::athens')->in('el')->data()->only(['title', 'about', 'stops'])->all())->toBe(['title' => 'Αθήνα']);
+    });
+
+    it('keeps the values of a term created in the default site or with values of its own in another site, and a value an editor empties later', function () {
+        $this->signInAdmin();
+
+        createTermInCp('en', ['title' => 'Drinks', 'description' => null]);
+        $this->makeTerm('topics', 'tea', ['en' => ['title' => 'Tea'], 'el' => ['title' => 'Τσάι', 'description' => null]]);
+        saveGreekTermInCp(['description' => null], ['title', 'description']);
+        Term::find('topics::food')->in('en')->merge(['description' => 'Eat very well.'])->save();
+
+        expect(Term::find('topics::drinks')->in('el')->data()->all())->toBe([])
+            ->and(Term::find('topics::tea')->in('el')->data()->all())->toBe(['title' => 'Τσάι', 'description' => null])
+            ->and(Term::find('topics::food')->in('el')->data()->only(['title', 'description'])->all())->toBe(['title' => 'Food', 'description' => null])
+            ->and(termStatus(FOOD_EL)->json('localization.fields.description.status'))->toBe('manual');
     });
 });
 

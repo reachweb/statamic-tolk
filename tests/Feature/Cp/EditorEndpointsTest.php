@@ -803,6 +803,25 @@ describe('confirm', function () {
         expect(app(PlanStore::class)->get($plan))->not->toBeNull();
     });
 
+    it('records the Bard copy the form saved of an origin without text, so Update translates the field once the origin has text', function () {
+        $this->fakeTranslations();
+        $this->makeCollection('stories', ['en', 'el'], ['content' => ['type' => 'bard', 'localizable' => true, 'display' => 'Content']]);
+        $origin = $this->makeEntry('stories', 'en', ['content' => [['type' => 'horizontalRule']]], 'story');
+        $greek = $this->localize($origin, 'el');
+        $this->signInAdmin();
+
+        // The save of a form whose inherited Bard field desynced itself when it loaded.
+        Entry::find($greek->id())->set('content', [['type' => 'horizontalRule']])->save();
+        $confirmed = $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $greek->reference(), 'delivered' => []])->assertOk();
+        Entry::find($origin->id())->set('content', [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Once upon a time.']]], ['type' => 'horizontalRule']])->save();
+
+        $fields = editorTranslate($greek, ['mode' => 'update']);
+
+        expect($confirmed->json('localization.fields.content.status'))->toBe('current')
+            ->and(array_keys($fields))->toBe(['content'])
+            ->and(json_encode($fields['content']['value'], JSON_UNESCAPED_UNICODE))->toContain('[T] Once upon a time.');
+    });
+
     it('commits the state it wrote, and only then', function () {
         $this->fakeTranslations();
         greekEditor();

@@ -377,6 +377,60 @@ describe('confirm', function () {
             ->and($missing)->toEqual(new ConfirmReport)
             ->and($repository->writes)->toBe(0);
     });
+
+    it('records the form\'s copy of a Bard value without text as one, so the field reads outdated once its origin has text', function () {
+        $this->makeCollection('pages', ['en', 'el'], ['content' => ['type' => 'bard', 'localizable' => true, 'buttons' => ['image']]]);
+        $origin = $this->makeEntry('pages', 'en', ['content' => [['type' => 'image', 'attrs' => ['src' => 'asset::assets::pool.jpg']], ['type' => 'horizontalRule']]], 'home');
+        // Bard's own JSON of that value, as the CP saves an inherited Bard field that desynced itself when the form loaded.
+        $localization = $this->localize($origin, 'el', ['content' => [
+            ['type' => 'paragraph', 'attrs' => ['textAlign' => null], 'content' => [['type' => 'image', 'attrs' => ['src' => 'asset::assets::pool.jpg', 'alt' => null]]]],
+            ['type' => 'horizontalRule'],
+        ]]);
+        $before = writerStatus($origin)->fields['content'];
+
+        $dryRun = writer()->confirm(writerTarget($origin), dryRun: true);
+        $unchanged = storedState($localization)->isEmpty();
+        $report = writer()->confirm(writerTarget($origin));
+        $recorded = writerStatus($origin)->fields['content']->status;
+        $origin->set('content', [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome']]], ['type' => 'horizontalRule']])->save();
+
+        expect($before->status)->toBe(FieldStatus::Manual)
+            ->and($dryRun)->toEqual(new ConfirmReport(copies: ['content']))
+            ->and($unchanged)->toBeTrue()
+            ->and($report)->toEqual($dryRun)
+            ->and(storedState($localization)->field('content'))->toEqual(new FieldState(sourceHash: $before->sourceHash, targetHash: Fingerprint::ofLeaves([])))
+            ->and(storedState($localization)->sourceSite)->toBe('en')
+            ->and($recorded)->toBe(FieldStatus::Current)
+            ->and(writerStatus($origin)->fields['content']->status)->toBe(FieldStatus::Outdated)
+            ->and(writer()->confirm(writerTarget($origin)))->toEqual(new ConfirmReport);
+    });
+
+    it('records no other override without a record as a copy', function () {
+        $bard = ['type' => 'bard', 'localizable' => true, 'buttons' => ['image']];
+        $this->makeCollection('pages', ['en', 'el'], ['content' => $bard, 'aside' => $bard, 'notes' => $bard, 'link' => ['type' => 'text', 'localizable' => true]]);
+        $rule = [['type' => 'horizontalRule']];
+        $origin = $this->makeEntry('pages', 'en', [
+            'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Welcome']]]],
+            'aside' => $rule,
+            'notes' => $rule,
+            'link' => 'https://example.com/en/book',
+        ], 'home');
+        // Emptied on purpose while the origin has text; text of its own; a baseline; another address without text.
+        $localization = $this->localize($origin, 'el', [
+            'content' => [],
+            'aside' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Δική μου σημείωση.']]]],
+            'notes' => $rule,
+            'link' => 'https://example.com/el/book',
+        ]);
+        StateFixtures::store($localization, ['notes' => new FieldState(sourceHash: Fingerprint::of($rule))]);
+        $before = storedState($localization)->toArray();
+
+        $report = writer()->confirm(writerTarget($origin));
+
+        expect($report)->toEqual(new ConfirmReport)
+            ->and(storedState($localization)->toArray())->toBe($before)
+            ->and(StateFixtures::statuses($origin))->toBe(['content' => FieldStatus::Manual, 'aside' => FieldStatus::Manual, 'notes' => FieldStatus::Manual, 'link' => FieldStatus::Manual]);
+    });
 });
 
 describe('baseline', function () {

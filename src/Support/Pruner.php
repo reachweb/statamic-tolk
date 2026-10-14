@@ -84,7 +84,8 @@ final readonly class Pruner
 
             try {
                 $target = $this->factory->fromReference($ref);
-                $confirmed = $this->writer->confirm($target, dryRun: $dryRun);
+                // Pending entries only: a Bard copy is recorded when its target is saved in the CP or translated (§A6).
+                $confirmed = $this->writer->confirm($target, dryRun: $dryRun, recordCopies: false);
                 $resolved += count($confirmed->promoted) + count($confirmed->baselined);
                 $expired += count($confirmed->expired);
 

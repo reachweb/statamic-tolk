@@ -4,6 +4,8 @@ namespace Reach\StatamicTolk\State;
 
 use Carbon\CarbonImmutable;
 use Closure;
+use Reach\StatamicTolk\Content\ContentWalker;
+use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\ContentType;
@@ -26,6 +28,7 @@ final readonly class StateWriter
         private StateRepository $repository,
         private StatusResolver $resolver,
         private OverviewCache $overview,
+        private ContentWalker $walker,
     ) {}
 
     /**
@@ -60,29 +63,31 @@ final readonly class StateWriter
     }
 
     /**
-     * Persists the reconcile of §A5 for every in-scope field that has pending entries. A dry run reports what it would
-     * change and writes nothing.
+     * Persists the reconcile of §A5 for every in-scope field that has pending entries, and with $recordCopies records the
+     * Bard copies of a source without text that no record describes (§A6). A dry run reports what it would change and
+     * writes nothing.
      */
-    public function confirm(Target $target, bool $commit = false, bool $dryRun = false): ConfirmReport
+    public function confirm(Target $target, bool $commit = false, bool $dryRun = false, bool $recordCopies = true): ConfirmReport
     {
         $ref = $target->ref();
         $stored = $ref === null ? null : $this->repository->get($ref);
+        $copies = $stored === null || ! $recordCopies ? [] : $this->textlessCopies($target, $stored);
 
-        if ($stored === null || ! $stored->hasPending()) {
+        if ($stored === null || (! $stored->hasPending() && $copies === [])) {
             return new ConfirmReport;
         }
 
-        $statuses = $this->resolver->resolve($target)->fields;
+        $statuses = $stored->hasPending() ? $this->resolver->resolve($target)->fields : [];
         $now = CarbonImmutable::now();
 
         if ($dryRun) {
-            return $this->reconciled($stored, $statuses, $now)[1];
+            return $this->reconciled($stored, $statuses, $now, $target, $copies)[1];
         }
 
         $report = new ConfirmReport;
 
-        $this->repository->update($ref, function (ItemState $state) use ($statuses, $now, &$report) {
-            [$state, $report] = $this->reconciled($state, $statuses, $now);
+        $this->repository->update($ref, function (ItemState $state) use ($statuses, $now, $target, $copies, &$report) {
+            [$state, $report] = $this->reconciled($state, $statuses, $now, $target, $copies);
 
             return $state;
         });
@@ -389,14 +394,28 @@ final readonly class StateWriter
     }
 
     /**
-     * The reconcile of confirm() applied to a stored state.
+     * The reconcile of confirm() applied to a stored state, with the records of $copies given to the target's fields
+     * that still have none.
      *
      * @param  array<string, FieldStatusInfo>  $statuses
+     * @param  array<string, FieldState>  $copies
      * @return array{0: ItemState, 1: ConfirmReport}
      */
-    private function reconciled(ItemState $state, array $statuses, CarbonImmutable $now): array
+    private function reconciled(ItemState $state, array $statuses, CarbonImmutable $now, Target $target, array $copies): array
     {
-        $promoted = $baselined = $unresolved = $expired = $plans = [];
+        $promoted = $baselined = $unresolved = $expired = $plans = $copied = [];
+
+        // State written since it was read belongs to the field.
+        foreach ($copies as $handle => $record) {
+            if ($state->field((string) $handle)->isEmpty()) {
+                $state = $state->withField((string) $handle, $record);
+                $copied[] = (string) $handle;
+            }
+        }
+
+        if ($copied !== []) {
+            $state = $this->located($state, $target);
+        }
 
         foreach ($statuses as $handle => $status) {
             $field = $state->field($handle);
@@ -425,7 +444,38 @@ final readonly class StateWriter
             }
         }
 
-        return [$state, new ConfirmReport($promoted, $baselined, $unresolved, $expired, array_values(array_unique($plans)))];
+        return [$state, new ConfirmReport($promoted, $baselined, $unresolved, $expired, array_values(array_unique($plans)), $copied)];
+    }
+
+    /**
+     * The records for the Bard fields without a record whose own value has no text, like their source: the CP saves
+     * such a copy when an inherited Bard field desyncs itself while the form loads (T6.11). Recorded as output made
+     * from that source, the field reads current, and outdated once the source changes, so Update translates it; without
+     * a record it would read as emptied by hand once the source has text, and never be translated (D5). A Bard field
+     * only: what it holds besides text (an image, a rule) is not tracked (D27), and the copy cannot be told apart by
+     * value, since Bard rewrites its JSON. A field of another type without text, such as an address, can differ by
+     * site on purpose.
+     *
+     * @return array<string, FieldState> by handle
+     */
+    private function textlessCopies(Target $target, ItemState $stored): array
+    {
+        $copies = [];
+        $none = Fingerprint::ofLeaves([]);
+
+        foreach ($target->fields() as $handle => $field) {
+            if ($field->type() !== 'bard' || ! $stored->field((string) $handle)->isEmpty() || $this->resolver->currentTargetHash($target, $field) !== $none) {
+                continue;
+            }
+
+            $source = $target->sourceValue((string) $handle);
+
+            if ($this->walker->leaves($field, $source) === []) {
+                $copies[(string) $handle] = new FieldState(sourceHash: Fingerprint::of($source), targetHash: $none);
+            }
+        }
+
+        return $copies;
     }
 
     /**

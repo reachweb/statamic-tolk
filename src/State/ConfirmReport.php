@@ -10,6 +10,7 @@ final readonly class ConfirmReport
      * @param  list<string>  $unresolved  handles that still have pending entries (rule 3)
      * @param  list<string>  $expired  handles whose pending entries older than FieldState::PENDING_DAYS were dropped
      * @param  list<string>  $plans  the plans of the pending entries of the promoted and baselined handles
+     * @param  list<string>  $copies  handles whose Bard copy of a source without text was recorded (§A6)
      */
     public function __construct(
         public array $promoted = [],
@@ -17,10 +18,11 @@ final readonly class ConfirmReport
         public array $unresolved = [],
         public array $expired = [],
         public array $plans = [],
+        public array $copies = [],
     ) {}
 
     public function changed(): bool
     {
-        return $this->promoted !== [] || $this->baselined !== [] || $this->expired !== [];
+        return $this->promoted !== [] || $this->baselined !== [] || $this->expired !== [] || $this->copies !== [];
     }
 }

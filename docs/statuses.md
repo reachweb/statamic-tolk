@@ -59,6 +59,15 @@ A field whose text is exactly its origin's, with no record of a translation, rea
 
 A field that is meant to read the same in both languages (a product name) and was written by hand reads untranslated for the same reason. **Protect this entry from updates** (offered while the entry also has a machine-translated field) or `tolk:baseline --include-copies` keeps such a field: once recorded, it is edited by hand. (**Mark manual fields as up to date** does not: it records only fields that already read as edited by hand.)
 
+### Empty fields
+
+A field a localization holds empty of its own, while its origin has no text either, could be a field someone emptied on purpose or a copy nobody looked at. Tolk keeps it edited by hand, except in two cases where Statamic stores one by itself:
+
+- **A Bard copy without text.** When the origin's Bard field has no text yet (only an image, say), the copy the form saves ([above](#a-copy-of-the-origin-is-untranslated)) has none either. Tolk records it as a copy after you save the form, or before it translates the localization: it reads up to date, and outdated once the origin changes, so Update translates the text the origin gets. Only text is tracked ([above](#only-text-makes-a-field-manual)), so this holds for any Bard field without text in both sites, also one whose image was changed by hand: protect it ([below](#protecting-translations)) if it should keep its own content.
+- **A new term's empty fields.** Statamic's create form, with a site selected other than the taxonomy's first site, stores the new term in both sites, with an empty value for each field left empty. In the other site, that value would stop the field from inheriting. Tolk drops it when the term is created, so the field inherits, and Translate fills it in once the first site has text.
+
+Any other empty value of a localization's own reads **edited by hand** once the origin has text, and Translate and Update leave it alone: a field someone emptied, an empty value saved by code or an import, or one left by a term created that way before Tolk was installed. Translate such a field with **Overwrite manual edits**, or with the field action **Translate from origin**.
+
 ### Content written outside the CP
 
 The first time an editor saves origin content in the CP that was written another way (imported, seeded, saved by code), Statamic adds row ids and `enabled` flags to its Replicator, Grid and Bard values. That changes the origin's fingerprint, so its machine translations read **outdated once**, although no text changed. **Update** fixes it without calling a model: every paragraph is reused from the earlier translation, and only the new structure is written.
