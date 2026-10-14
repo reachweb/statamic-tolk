@@ -98,6 +98,7 @@ it('switches off OpenAI\'s implicit prompt caching from GPT-5.6 on, which writes
     'GPT-5.5' => ['openai:gpt-5.5', null],
     'GPT-4.1' => ['openai:gpt-4.1', null],
     'an id without a version' => ['openai:o4-mini', null],
+    'a fine-tune of GPT-6 Luna, not checked live' => ['openai:ft:gpt-6-luna:acme::abc123', null],
     'Claude' => ['anthropic:claude-sonnet-5-5', null],
     'Gemini' => ['gemini:gemini-3.8-flash', null],
 ]);
@@ -122,6 +123,24 @@ it('lets a catalog entry\'s options choose OpenAI\'s cache mode', function () {
 
     expect($body['prompt_cache_options'])->toBe(['mode' => 'implicit'])
         ->and($body['reasoning'])->toBe(['effort' => 'low']);
+});
+
+it('sends OpenAI\'s cache mode to a fine-tuned model only from its catalog entry\'s options', function () {
+    config(['tolk.models.openai' => [[
+        'id' => 'ft:gpt-6-luna:acme::abc123',
+        'tier' => 'fast',
+        'options' => ['reasoning' => ['effort' => 'none'], 'prompt_cache_options' => ['mode' => 'explicit']],
+    ]]]);
+    $model = ModelRef::fromString('openai:ft:gpt-6-luna:acme::abc123');
+    ProviderFixtures::fake('openai', ProviderFixtures::response('openai'));
+
+    (new TranslationAgent($model, 'Translate every segment into Greek.', app(ModelCatalog::class)->options($model)))->prompt('{"segments":[]}');
+
+    $body = ProviderFixtures::sentRequest()->data();
+
+    expect($body['model'])->toBe('ft:gpt-6-luna:acme::abc123')
+        ->and($body['prompt_cache_options'])->toBe(['mode' => 'explicit'])
+        ->and($body['reasoning'])->toBe(['effort' => 'none']);
 });
 
 it('sends the instructions as the system prompt on OpenAI and Gemini', function (string $provider, string $path) {

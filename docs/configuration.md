@@ -149,7 +149,7 @@ Each entry has these keys:
 | `id` | The provider's model id. The only key that a change to one of Tolk's models needs. |
 | `label` | The name shown in the CP and the commands. |
 | `tier` | `quality` or `fast`. The first model of a tier is the provider's default for it; Automatic uses the quality one. To make a model you add the default, choose it in the settings, or give Tolk's model another tier. |
-| `options` | Provider options merged into every request, such as reasoning settings. Never put `output_config` (Anthropic), `text` (OpenAI) or `response_format` (Gemini) here: each would replace the structured output format Tolk relies on. Never add `temperature`, `top_p` or `top_k`. OpenAI's models from GPT-5.6 on also get `prompt_cache_options: {mode: explicit}` (see [How much context costs](context-and-glossary.md#how-much-context-costs)), unless their options hold a `prompt_cache_options` of their own. |
+| `options` | Provider options merged into every request, such as reasoning settings. Never put `output_config` (Anthropic), `text` (OpenAI) or `response_format` (Gemini) here: each would replace the structured output format Tolk relies on. Never add `temperature`, `top_p` or `top_k`. OpenAI's models from GPT-5.6 on whose id starts with `gpt-` also get `prompt_cache_options: {mode: explicit}` (see [How much context costs](context-and-glossary.md#how-much-context-costs)), unless their options hold a `prompt_cache_options` of their own. A fine-tuned model gets it only from its own options (see the example below). |
 | `max_output_tokens` | The model's output limit. |
 | `reasoning_headroom` | Output tokens reserved for the model's thinking with these options; `0` when it does not think. |
 | `price.input`, `price.output` | USD per million tokens, for the estimates and the usage figures. Without a price the cost reads "unknown". |
@@ -171,7 +171,7 @@ For example, to pay a negotiated price for Claude Sonnet 5.5 and offer a fine-tu
             'id' => 'ft:gpt-6-luna:acme::abc123',
             'label' => 'Acme Luna',
             'tier' => 'fast',
-            'options' => ['reasoning' => ['effort' => 'none']],
+            'options' => ['reasoning' => ['effort' => 'none'], 'prompt_cache_options' => ['mode' => 'explicit']],
             'max_output_tokens' => 128000,
             'reasoning_headroom' => 0,
             'price' => ['input' => 0.2, 'output' => 0.8],
@@ -180,6 +180,8 @@ For example, to pay a negotiated price for Claude Sonnet 5.5 and offer a fine-tu
     'gemini' => [],
 ],
 ```
+
+Tolk adds `prompt_cache_options` on its own only to ids that start with `gpt-`, not to a fine-tuned model's `ft:` id, because it has not been checked whether OpenAI accepts the option for fine-tuned models. Without it, OpenAI may write every request to the fine-tune to the cache at 1.25 times the input price. The example adds it, because its base model, GPT-6 Luna, accepts it. Leave it out for a fine-tune of a model before GPT-5.6, which refuses it, and remove it if a translation with the fine-tune fails with "prompt_cache_options is not supported on this model".
 
 A config published from Tolk 1.0.0-beta.1 holds a copy of that version's whole catalog, and each entry of the copy keeps replacing Tolk's model with the same id. Delete the entries, or keep only the keys you changed. The copy's Claude Haiku 5.5 sends a thinking option that Anthropic refuses.
 

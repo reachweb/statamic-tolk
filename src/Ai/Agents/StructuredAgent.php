@@ -60,7 +60,8 @@ abstract class StructuredAgent implements Agent, HasProviderOptions, HasStructur
     /**
      * From GPT-5.6 on, OpenAI's default implicit mode writes the whole request to the cache at 1.25 times the input
      * price, and no later request reads it back, because each ends in a different user message. Explicit mode without
-     * a breakpoint writes nothing (§A9). Earlier models refuse the key with a 400.
+     * a breakpoint writes nothing (§A9). Earlier models refuse the key with a 400. A fine-tuned id (`ft:gpt-…`) gets
+     * nothing, because no live check showed that fine-tunes accept the key; its catalog entry's options can add it.
      */
     private function cacheOptions(): array
     {
