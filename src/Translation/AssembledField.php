@@ -24,6 +24,8 @@ final readonly class AssembledField
      * @param  ?string  $reviewer  the model that reviewed the field's translations; null when none did
      * @param  bool  $baseline  a reviewed manual field, whose pending entry a save confirms as a baseline (T7.4)
      * @param  bool  $unchanged  a reviewed field without corrections, which is neither delivered nor saved (T7.4)
+     * @param  bool  $fromTarget  a reviewed field, whose value is the target's text when the plan was made with the
+     *                            corrections: a target edited since is kept, overwrite_manual or not (§A11 step 2)
      */
     public function __construct(
         public string $handle,
@@ -42,6 +44,7 @@ final readonly class AssembledField
         public ?string $reviewer = null,
         public bool $baseline = false,
         public bool $unchanged = false,
+        public bool $fromTarget = false,
     ) {}
 
     /**

@@ -400,6 +400,33 @@ describe('reviewing and saving', function () {
             ->and(app(StatusResolver::class)->resolve(reviewExistingTarget($this->origin))->fields['body']->sourceChanged)->toBeTrue();
     });
 
+    it('keeps a field a human edited while the reviewer worked, with overwrite_manual too, because the review corrects the text it planned from', function () {
+        reviewExistingTranslate($this->origin, options: ['fields' => ['title']]);
+        reviewExistingLocalization($this->origin)->set('intro', 'Μια σύντομη εισαγωγή')->save();
+        $edited = false;
+        $this->fakeReview(function (string $source) use (&$edited) {
+            if (! $edited) {
+                $edited = true;
+                reviewExistingLocalization($this->origin)->set('title', 'Γεια σας')->set('intro', 'Μια εισαγωγή από το χέρι.')->save();
+            }
+
+            return $source === 'Hello' ? 'Γεια' : 'Μια σύντομη εισαγωγή.';
+        });
+
+        $result = reviewExistingReview($this->origin, ['fields' => ['title', 'intro'], 'overwriteManual' => true], new ApplyOptions(overwriteManual: true));
+        $localization = reviewExistingLocalization($this->origin);
+
+        expect($edited)->toBeTrue()
+            ->and($result->status)->toBe(TargetResultStatus::Skipped)
+            ->and($result->reason)->toBe(TargetResult::TARGET_CHANGED)
+            ->and($result->fields)->toBe(['title' => TargetResult::TARGET_CHANGED, 'intro' => TargetResult::TARGET_CHANGED, 'body' => 'not_requested'])
+            ->and($result->corrections)->toBe([])
+            ->and($localization->get('title'))->toBe('Γεια σας')
+            ->and($localization->get('intro'))->toBe('Μια εισαγωγή από το χέρι.')
+            ->and(StateFixtures::statuses($this->origin))->toMatchArray(['title' => FieldStatus::Manual, 'intro' => FieldStatus::Manual])
+            ->and(StateFixtures::stored($localization)->field('title')->pending)->toBe([]);
+    });
+
     it('discards a correction that does not keep the placeholders of the translation it corrects', function () {
         $this->localize($this->origin, 'el', ['body' => [
             reviewExistingParagraph('Κλείστε μια ', ['σουίτα με θέα', REVIEW_EXISTING_LINK], '.'),

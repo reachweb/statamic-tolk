@@ -626,6 +626,7 @@ final readonly class Pipeline
             reviewer: $this->mostFrequent($resolved['reviewers'], $segments),
             baseline: $manual,
             unchanged: $corrections === [],
+            fromTarget: true,
         );
     }
 

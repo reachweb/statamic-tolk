@@ -50,7 +50,7 @@ Translations made earlier, or with review off, can be reviewed later in bulk:
 - the listing action's **What to translate** › *Review existing translations*;
 - `php please tolk:translate … --mode=review` (or `tolk:lang` and `tolk:forms` with `--mode=review`).
 
-These review the machine translations that are up to date and save only the corrected fields. With **Overwrite manual edits** (`--force`) they review the fields edited by hand too, which stay edited by hand. A field whose structure no longer matches its source (sets added in the localization alone, for example) is skipped. An item without corrections ends as "Reviewed, nothing to correct."
+These review the machine translations that are up to date and save only the corrected fields. With **Overwrite manual edits** (`--force`) they review the fields edited by hand too, which stay edited by hand. A field someone edits while the review runs keeps that edit, with **Overwrite manual edits** too: the review corrects the text it read before, so saving it would undo the edit. A field whose structure no longer matches its source (sets added in the localization alone, for example) is skipped. An item without corrections ends as "Reviewed, nothing to correct."
 
 On the run's page, an item the reviewer corrected says how many corrections it has, and **View changes** shows them as the editor does: for each, the field's handle, the text before and after, and the reviewer's reason. This holds for runs with **Review after translating** too.
 

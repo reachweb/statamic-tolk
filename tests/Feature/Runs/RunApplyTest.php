@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ItemStatus;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
@@ -20,6 +21,7 @@ use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Events\EntrySaved;
 use Statamic\Events\EntrySaving;
@@ -277,6 +279,25 @@ describe('applyReady', function () {
 
         expect(RunFixtures::items($run)[0]->fields)->toBe(['title' => 'applied', 'intro' => 'current'])
             ->and($this->hello->fresh()->in('el')->get('title'))->toBe('[T] Hello there');
+    });
+
+    it('keeps a field a human edited meanwhile in a review run that overwrites manual edits', function () {
+        $this->fakeTranslations();
+        RunFixtures::finish(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
+        $this->fakeReview(fn (string $source) => $source === 'Hello' ? 'Γεια' : 'Μια σύντομη εισαγωγή.');
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'review', 'overwrite_manual' => true]]);
+        RunFixtures::translate($run);
+        $this->hello->fresh()->in('el')->set('title', 'Γεια σας')->save();
+
+        applyRun($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Done)
+            ->and($item->fields)->toBe(['title' => 'target_changed', 'intro' => 'applied'])
+            ->and($greek->get('title'))->toBe('Γεια σας')
+            ->and($greek->get('intro'))->toBe('Μια σύντομη εισαγωγή.')
+            ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Manual, 'intro' => FieldStatus::Current]);
     });
 
     it('skips an item whose every field a human edited meanwhile', function () {
