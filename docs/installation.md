@@ -40,9 +40,9 @@ OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
 ```
 
-One provider is enough. To give Tolk a key of its own, separate from the one the rest of the app uses, set `TOLK_ANTHROPIC_API_KEY`, `TOLK_OPENAI_API_KEY` or `TOLK_GEMINI_API_KEY`; Tolk uses those first.
+One provider is enough. To give Tolk a key of its own, separate from the one the rest of the app uses, set `TOLK_ANTHROPIC_API_KEY`, `TOLK_OPENAI_API_KEY` or `TOLK_GEMINI_API_KEY`; Tolk uses those first, and the SDK's variable only for a provider without one. So while a `TOLK_` variable is set, changing the SDK's variable changes the key of the rest of the app, not Tolk's.
 
-Keys are never stored in the settings, in the translation state, in runs or in queued jobs, and provider error messages are cleaned of them before they are shown or stored. The settings page (**Tools › Addons › Tolk**, tab **Providers**) shows which providers have a key and where it comes from, and **Test connection** makes one small request to check it.
+Keys are never stored in the settings, in the translation state, in runs or in queued jobs, and provider error messages are cleaned of them before they are shown or stored. The settings page (**Tools › Addons › Tolk**, tab **Providers**) shows which providers have a key and where it comes from, and **Test connection** makes one small request to check it. `tolk:doctor` names the config each key comes from: `tolk.providers.*.key` for Tolk's own, `ai.providers.*.key` for the SDK's.
 
 Then check the setup:
 

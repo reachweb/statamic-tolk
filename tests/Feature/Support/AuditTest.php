@@ -92,10 +92,20 @@ describe('sites', function () {
 describe('providers and models', function () {
     it('lists the keys and the models that are used', function () {
         expect(auditItems('providers'))->toBe([
-            'ok: API keys: anthropic, openai, gemini.',
+            'ok: API keys: anthropic (ai.providers.anthropic.key), openai (ai.providers.openai.key), gemini (ai.providers.gemini.key).',
             'ok: Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5), the default, because no translator model is chosen.',
             'ok: Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol). Review is off by default.',
         ]);
+    });
+
+    it('names the config each key comes from, Tolk\'s own first', function () {
+        $this->withProviderKeys([
+            'tolk.providers.anthropic.key' => 'tolk-key',
+            'ai.providers.anthropic.key' => 'shared-key',
+            'ai.providers.gemini.key' => 'shared-key',
+        ]);
+
+        expect(auditItems('providers')[0])->toBe('ok: API keys: anthropic (tolk.providers.anthropic.key), gemini (ai.providers.gemini.key).');
     });
 
     it('fails when no provider has a key', function () {
@@ -134,7 +144,7 @@ describe('providers and models', function () {
         $this->withSettings(['translator_model' => 'claude', 'fallback_model' => 'mistral:large']);
 
         expect(auditItems('providers'))->toBe([
-            'ok: API keys: anthropic, openai, gemini.',
+            'ok: API keys: anthropic (ai.providers.anthropic.key), openai (ai.providers.openai.key), gemini (ai.providers.gemini.key).',
             'error: The setting "Translator model" is not a model: Invalid model reference [claude]. Use provider:model, where the provider is anthropic, openai or gemini. Choose a model in Tolk\'s settings.',
             'error: The setting "Fallback model" is not a model: Invalid model reference [mistral:large]. Use provider:model, where the provider is anthropic, openai or gemini. Choose a model in Tolk\'s settings.',
         ]);
@@ -150,7 +160,7 @@ describe('providers and models', function () {
         ]);
 
         expect(auditItems('providers'))->toBe([
-            'ok: API keys: openai.',
+            'ok: API keys: openai (ai.providers.openai.key).',
             'error: The translator model anthropic:claude-sonnet-5-5 uses anthropic, which has no API key, so every translation fails.',
             'ok: Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5).',
             'error: The reviewer model gemini:gemini-3.8-flash uses gemini, which has no API key, so every review fails.',

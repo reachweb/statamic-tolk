@@ -9,8 +9,8 @@
 ### Requirements and API keys
 
 - Statamic Pro with at least two sites (`resources/sites.yaml`), PHP 8.3 or later, Laravel 12 or 13.
-- API keys come from `.env` only, through the AI SDK's variables `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `GEMINI_API_KEY`; one provider is enough. Never put a key in Tolk's settings, in `config/tolk.php` or in content. The settings page only shows whether a provider has a key.
-- `php please tolk:doctor` checks the setup: the keys, the sites, how runs are driven, the cache store, and the text fields that are not localizable.
+- API keys come from `.env` only; one provider is enough. Tolk reads its own variables first, `TOLK_ANTHROPIC_API_KEY`, `TOLK_OPENAI_API_KEY` and `TOLK_GEMINI_API_KEY` (`tolk.providers.*.key`), and only for a provider without one the AI SDK's `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `GEMINI_API_KEY` (`ai.providers.*.key`), which the rest of the application shares. To change the key Tolk uses, change the variable it reads: while a `TOLK_` variable is set, changing the SDK's variable does not reach Tolk but does change the key of the application's other AI features. Never put a key in Tolk's settings, in `config/tolk.php` or in content. The settings page only shows whether a provider has a key and where it comes from.
+- `php please tolk:doctor` checks the setup: the keys (naming the config each one comes from), the sites, how runs are driven, the cache store, and the text fields that are not localizable.
 
 ### Where Tolk keeps things
 

@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\File;
+use Reach\StatamicTolk\Ai\ModelRef;
+use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Finder\SplFileInfo;
@@ -83,6 +85,19 @@ it('names the events with their properties, the permissions, the per-field optio
     }
 
     expect($guideline)
-        ->toContain('`translate content`', '`run bulk translations`', 'Statamic::booted(fn () => Tolk::registerFieldtype(', 'Do not edit the files under `content/tolk/` by hand')
-        ->toContain('`ANTHROPIC_API_KEY`', '`OPENAI_API_KEY`', '`GEMINI_API_KEY`');
+        ->toContain('`translate content`', '`run bulk translations`', 'Statamic::booted(fn () => Tolk::registerFieldtype(', 'Do not edit the files under `content/tolk/` by hand');
+});
+
+it('names Tolk\'s own key variables before the SDK\'s, which Tolk reads only without them', function () {
+    $guideline = boostGuideline();
+
+    foreach (ModelRef::PROVIDERS as $provider) {
+        $own = '`'.Providers::variable($provider, addon: true).'`';
+        $shared = '`'.Providers::variable($provider).'`';
+
+        expect($guideline)->toContain($own, $shared)
+            ->and(strpos($guideline, $own))->toBeLessThan(strpos($guideline, $shared));
+    }
+
+    expect($guideline)->toContain('`tolk.providers.*.key`', '`ai.providers.*.key`');
 });

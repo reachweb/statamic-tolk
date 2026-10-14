@@ -205,7 +205,7 @@ final class Audit
             ? $this->item($missingKey, $fake
                 ? __('No provider has an API key, so only the fake engine can translate.')
                 : __('No provider has an API key. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY in .env.'))
-            : $this->item(AuditLevel::Ok, __('API keys: :providers.', ['providers' => implode(', ', $configured)]));
+            : $this->item(AuditLevel::Ok, __('API keys: :providers.', ['providers' => implode(', ', array_map($this->keyName(...), $configured))]));
 
         foreach (ModelRef::PROVIDERS as $provider) {
             $name = $this->providers->name($provider);
@@ -709,6 +709,14 @@ final class Audit
     private function named(string $name, string $driver): string
     {
         return $name === $driver ? $name : "{$name} ({$driver})";
+    }
+
+    // A provider with the config its key comes from: Tolk's own (TOLK_*_API_KEY), which wins, or config/ai.php.
+    private function keyName(string $provider): string
+    {
+        $config = $this->providers->status($provider)['source'] === 'addon' ? 'tolk' : 'ai';
+
+        return "{$provider} ({$config}.providers.{$provider}.key)";
     }
 
     private function modelName(ModelRef $model): string
