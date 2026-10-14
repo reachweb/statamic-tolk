@@ -151,9 +151,11 @@ final class LangFiles
 
         $this->writeAtomically($path, $contents, "the translation file {$name}");
 
-        // A long-lived process with OPcache for the CLI would otherwise include the old file for a while.
+        // A long-lived process with OPcache for the CLI would otherwise include the old file for a while. Silenced: where
+        // opcache.restrict_api leaves this script out, the call warns, OPcache on or off, which Laravel throws although
+        // the file is written.
         if (function_exists('opcache_invalidate')) {
-            opcache_invalidate($path, true);
+            @opcache_invalidate($path, true);
         }
 
         return $dropped;

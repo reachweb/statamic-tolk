@@ -3,6 +3,7 @@
 use Illuminate\Filesystem\Filesystem;
 use Reach\StatamicTolk\Exceptions\InvalidLangFile;
 use Reach\StatamicTolk\Support\LangFiles;
+use Symfony\Component\Process\Process;
 
 beforeEach(function () {
     $this->app->useLangPath($this->temporaryPath('lang'));
@@ -253,6 +254,24 @@ it('leaves the old file in place when a write fails', function () {
     expect(fn () => $failing->write('de', 'messages', ['a' => 'Neu'], [], $failing->contents('en', 'messages')))->toThrow(RuntimeException::class, 'Unable to write the translation file lang/de/messages.php')
         ->and(includeLangFile('de/messages.php'))->toBe(['a' => 'Ah'])
         ->and($this->files->files(lang_path('de')))->toHaveCount(1);
+});
+
+it('writes a PHP file without failing where the host restricts the OPcache API', function () {
+    if (! function_exists('opcache_invalidate')) {
+        $this->markTestSkipped('Needs OPcache.');
+    }
+
+    putLangFile('en/messages.php', "<?php return ['a' => 'A', 'b' => 'B'];");
+    putLangFile('de/messages.php', "<?php return ['a' => 'Ah'];");
+
+    // opcache.restrict_api can only be set when PHP starts, so the write runs in a process started with it, where OPcache's
+    // functions warn for any script outside the path it names, whether OPcache is on or off.
+    $child = new Process([PHP_BINARY, '-d', 'opcache.restrict_api='.$this->temporaryPath('elsewhere'), dirname(__DIR__, 2).'/Support/lang-write.php'], timeout: 30);
+    $child->setInput(json_encode(['directory' => $this->temporaryPath(), 'lang' => 'de', 'from' => 'en', 'group' => 'messages', 'set' => ['b' => 'Be']]))->run();
+
+    expect($child->getExitCode())->toBe(0, $child->getErrorOutput())
+        ->and(json_decode($child->getOutput(), true))->toBe([])
+        ->and(includeLangFile('de/messages.php'))->toBe(['a' => 'Ah', 'b' => 'Be']);
 });
 
 it('refuses to read a file that is not a JSON object or does not return an array', function (string $path, string $contents, string $lang, string $group) {
