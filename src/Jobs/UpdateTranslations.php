@@ -13,9 +13,11 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunDispatcher;
+use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
@@ -27,8 +29,10 @@ use Throwable;
  * Updates the translations of an entry that was saved published in its origin (T11.1), as the user who saved it.
  * With a queue worker it waits a few seconds on the queue, so quick saves of the entry make one job, and only starts the
  * run; without one it runs after the save's response and drives the run itself. A save while an earlier run from the
- * entry is still moving waits for that run, so the same fields are not translated twice. It never throws: a failure is
- * reported, and the localizations stay outdated, as their banner shows.
+ * entry is still moving waits for that run, so the same fields are not translated twice. Without a worker only one
+ * process per entry and user waits: a later save's job hands its update to that process and ends at once, so a few quick
+ * saves do not hold as many PHP processes. It never throws: a failure is reported, and the localizations stay outdated,
+ * as their banner shows.
  */
 final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
@@ -58,6 +62,12 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
      * Seconds the lock that keeps two jobs of the entry from starting a run at once is held at most.
      */
     public const int LOCK_SECONDS = 60;
+
+    /**
+     * Seconds the mark of the process that waits for an earlier run from the entry lasts after it last looked, so the
+     * saves after a process that died while waiting are updated again once it has expired.
+     */
+    public const int WAITER_SECONDS = 60;
 
     /**
      * Seconds the unique lock of a job still on the queue is held at most.
@@ -132,20 +142,14 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         }
 
         $inProcess = $this->job === null || $this->job instanceof SyncJob;
-        $deadline = CarbonImmutable::now()->addMinutes(self::WAIT_MINUTES);
+        $waiter = ['token' => Str::random(20), 'except' => $this->except, 'until' => CarbonImmutable::now()->addMinutes(self::WAIT_MINUTES)->getTimestamp()];
 
         if ($inProcess) {
             self::keepRunning();
         }
 
         while (true) {
-            $entry = Entry::find($this->entryId);
-
-            if ($entry === null || ! $updater->applies($entry, $user, $this->except)) {
-                return;
-            }
-
-            $run = $this->attempt($updater, $entry, $user, $inProcess);
+            $run = $this->attempt($updater, $user, $inProcess, $waiter);
 
             if ($run !== false) {
                 break;
@@ -157,11 +161,13 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
                 return;
             }
 
-            if (CarbonImmutable::now()->greaterThanOrEqualTo($deadline)) {
+            if (CarbonImmutable::now()->getTimestamp() >= $waiter['until']) {
                 return;
             }
 
             Sleep::for(self::POLL_SECONDS)->seconds();
+            // Plans from what other processes saved meanwhile, the earlier run's localizations among them.
+            ContentWriter::refreshStache();
         }
 
         if ($run !== null && $inProcess) {
@@ -170,23 +176,84 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
     }
 
     /**
-     * Starts the entry's run unless another job is starting one or an earlier run from the entry is still moving.
+     * Under the entry's lock, starts the entry's run, unless the job has to wait for another job starting one or for an
+     * earlier run from the entry that is still moving. In the saving process only one job per entry and user waits,
+     * marked in the cache: a later job leaves its update to it and ends, and the one that waits then also translates
+     * the sites the later job's save left to no run (the intersection of their $except) and waits as long as it would.
      *
-     * @return Run|false|null the run, null when there is nothing to translate, false when it has to wait
+     * @param  array{token: string, except: list<string>, until: int}  $waiter  this job's mark: the sites it leaves to a
+     *                                                                          run, and when it stops waiting
+     * @return Run|false|null the run, null when there is nothing to translate or another job waits to translate it, false
+     *                        when it has to wait
      */
-    private function attempt(AutoUpdater $updater, EntryContract $entry, ?UserContract $user, bool $drive): Run|false|null
+    private function attempt(AutoUpdater $updater, ?UserContract $user, bool $inProcess, array &$waiter): Run|false|null
     {
-        $lock = Cache::store(config('tolk.cache_store'))->lock('tolk:auto-update:'.$this->entryId, self::LOCK_SECONDS);
+        $cache = Cache::store(config('tolk.cache_store'));
+        $lock = $cache->lock('tolk:auto-update:'.$this->entryId, self::LOCK_SECONDS);
 
         if (! $lock->get()) {
             return false;
         }
 
         try {
-            return $updater->busy($entry) ? false : $updater->start($entry, $user, $drive, $this->except);
+            $key = 'tolk:auto-update:waiting:'.$this->entryId.':'.$this->userId;
+            $waiting = $inProcess ? $cache->get($key) : null;
+            $waiting = is_array($waiting) ? $waiting : null;
+            $mine = $waiting !== null && $waiting['token'] === $waiter['token'];
+
+            if ($mine) {
+                $waiter = $waiting;
+            }
+
+            $entry = Entry::find($this->entryId);
+
+            if ($entry === null || ! $updater->applies($entry, $user, $waiter['except'])) {
+                return $this->stopWaiting($key, $mine);
+            }
+
+            // The job that waits plans after the earlier run from what is saved then, this save included.
+            if ($waiting !== null && ! $mine) {
+                $cache->put($key, [
+                    'token' => $waiting['token'],
+                    'except' => array_values(array_intersect($waiting['except'], $waiter['except'])),
+                    'until' => max($waiting['until'], $waiter['until']),
+                ], self::WAITER_SECONDS);
+
+                return null;
+            }
+
+            if ($updater->busy($entry)) {
+                if (! $inProcess) {
+                    return false;
+                }
+
+                if (CarbonImmutable::now()->getTimestamp() >= $waiter['until']) {
+                    return $this->stopWaiting($key, $mine);
+                }
+
+                $cache->put($key, $waiter, self::WAITER_SECONDS);
+
+                return false;
+            }
+
+            $this->stopWaiting($key, $mine);
+
+            return $updater->start($entry, $user, $inProcess, $waiter['except']);
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * Removes the mark of the job that waits for the entry, when it is this job's.
+     */
+    private function stopWaiting(string $key, bool $mine): null
+    {
+        if ($mine) {
+            Cache::store(config('tolk.cache_store'))->forget($key);
+        }
+
+        return null;
     }
 
     /**

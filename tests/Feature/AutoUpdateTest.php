@@ -353,6 +353,123 @@ describe('without a queue worker', function () {
             ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.');
     });
 
+    it('lets one process of the user wait for an earlier run from the entry, and its update covers the saves made meanwhile', function () {
+        Sleep::fake(syncWithCarbon: true);
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        $earlier = RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $calls = $this->modelCalls();
+        $sleeps = 0;
+
+        // While the first job waits, the entry is saved again, and that save's job runs in its own process; then the
+        // earlier run ends.
+        Sleep::whenFakingSleep(function () use (&$sleeps, $admin, $earlier) {
+            if ($sleeps++ > 0) {
+                return;
+            }
+
+            $this->hello->set('intro', 'The longest intro.')->saveQuietly();
+            app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
+
+            expect($sleeps)->toBe(1);
+
+            app(RunProcessor::class)->cancel($earlier);
+        });
+
+        app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
+
+        Sleep::assertSleptTimes(1);
+        expect(autoRuns())->toHaveCount(1)
+            ->and(RunFixtures::statuses(autoRuns()[0]))->toBe(['done'])
+            ->and($this->modelCalls() - $calls)->toBe(1)
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] The longest intro.');
+    });
+
+    it('lets the saves of the user meanwhile widen the update that waits, while another user waits in a process of their own', function () {
+        Sleep::fake(syncWithCarbon: true);
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el', 'de']);
+        $editor = $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
+        $earlier = RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $sleeps = 0;
+
+        // The job that waits comes from a run's save, with German left to that run. The admin saves the entry too, and so
+        // does an editor, each job in a process of its own; the earlier run ends while the editor's waits.
+        Sleep::whenFakingSleep(function () use (&$sleeps, $admin, $editor, $earlier) {
+            if (++$sleeps === 2) {
+                app(RunProcessor::class)->cancel($earlier);
+            }
+
+            if ($sleeps === 1) {
+                app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
+                app()->call([new UpdateTranslations($this->hello->id(), (string) $editor->id()), 'handle']);
+            }
+        });
+
+        app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id(), ['de']), 'handle']);
+
+        $done = fn (Run $run) => array_values(array_map(fn ($item) => $item->targetSite, array_filter(RunFixtures::items($run), fn ($item) => $item->status === RunItemStatus::Done)));
+
+        Sleep::assertSleptTimes(2);
+        expect(array_map(fn (Run $run) => [$run->createdBy['id'], $done($run)], autoRuns()))->toBe([[(string) $admin->id(), ['de']], [(string) $editor->id(), ['el']]])
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[T] A longer intro.');
+    });
+
+    it('lets a later save wait again a minute after the process that waited stopped', function () {
+        Sleep::fake();
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        $earlier = RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $job = fn () => app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
+        $stop = true;
+
+        // The web server stops the first process while it waits; the next one waits until the earlier run ends.
+        Sleep::whenFakingSleep(function () use (&$stop, $earlier) {
+            $stop ? throw new RuntimeException('Stopped by the web server.') : app(RunProcessor::class)->cancel($earlier);
+        });
+        $job();
+        $stop = false;
+        $job();
+
+        Sleep::assertSleptTimes(1);
+        expect(autoRuns())->toBe([]);
+
+        $this->travel(UpdateTranslations::WAITER_SECONDS + 1)->seconds();
+        $job();
+
+        Sleep::assertSleptTimes(2);
+        expect(autoRuns())->toHaveCount(1)
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.');
+    });
+
+    it('plans from what other processes saved while it waited, so it keeps no run with nothing to do', function () {
+        Sleep::fake();
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        $earlier = RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        autoOn(['auto_update_create' => true]);
+        $calls = $this->modelCalls();
+
+        // While it waits, an editor writes the German localization by hand in another request.
+        Sleep::whenFakingSleep(function () use ($earlier) {
+            $this->localizeEntryElsewhere($this->hello->id(), 'de', ['title' => 'Hallo', 'intro' => 'Eine Einleitung.']);
+            app(RunProcessor::class)->cancel($earlier);
+        });
+
+        app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
+        ContentWriter::refreshStache();
+
+        expect(autoRuns())->toBe([])
+            ->and($this->modelCalls())->toBe($calls)
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('Eine Einleitung.');
+    });
+
     it('leaves to a run the localizations it is still to translate from a localization it saved', function () {
         $admin = $this->signInAdmin();
         autoTranslated($this->hello, ['el']);
