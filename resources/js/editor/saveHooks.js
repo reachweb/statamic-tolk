@@ -19,8 +19,8 @@ export function notSavedMessage(handles, status) {
 // localized and be stored in the origin's language on the next save (T2.2 check 12); in either form it would be left
 // out of the save. Otherwise they leave a filled field that a condition hides out of `_localized` (`leaveOutHidden()`):
 // core's request step reads that array afterwards. `entry.saved` and `term.saved` tell the server which fields were
-// saved (`editor/confirm`). `PipelineStopped` comes from `@statamic/cms/save-pipeline`; core stays silent for a save
-// stopped with it.
+// saved (`editor/confirm`). `entry.published` reads the status again after Publish, which neither saving hook sees
+// (below). `PipelineStopped` comes from `@statamic/cms/save-pipeline`; core stays silent for a save stopped with it.
 export function createSaveHooks({
     PipelineStopped,
     store = useEditorStore,
@@ -29,7 +29,7 @@ export function createSaveHooks({
     now = Date.now,
     // The translation running in a container, the same object for as long as it runs, or null.
     running = (name) => translations.current(name),
-    onConfirmed = (name, status) => pushes.afterSave(name, status),
+    onConfirmed = (name, status, options) => pushes.afterSave(name, status, options),
 }) {
     let listening = false;
     // The translation the refusal's toast was last shown for. Core's autosave (experimental, opt-in per collection)
@@ -48,6 +48,8 @@ export function createSaveHooks({
             hooks.on(`${type}.saving`, saving);
             hooks.on(`${type}.saved`, saved);
         }
+
+        hooks.on('entry.published', published);
     }
 
     // Hook callbacks get `(resolve, reject, payload)`. A stacked editor saves through the same hook; it is refused too
@@ -138,7 +140,42 @@ export function createSaveHooks({
         }
     }
 
-    return { listen, saving, saved };
+    // Publish, offered only in a collection with revisions, makes the working copy the entry without the save hooks:
+    // core's PublishActions runs `entry.published` after its request. The origin's localizations now read outdated
+    // against it, the publish starts an automatic update (T11.1), and a localization's update stops waiting in the
+    // working copy. Publish posts no form values (core offers it only for a clean form), so there is nothing to confirm.
+    // Resolves at once: core finishes the publish, or leaves for the listing, only after these hooks, and a rejection
+    // would leave its form saving.
+    function published(resolve, reject, payload) {
+        afterPublish(payload).catch((error) => console.error(error));
+        resolve();
+    }
+
+    async function afterPublish(payload) {
+        const container = store().containers[BASE];
+        const reference = savedReference(payload, container);
+
+        // A form without a banner, or a stacked editor publishing another entry.
+        if (!container?.reference || reference !== container.reference) {
+            return;
+        }
+
+        try {
+            const status = await api.get('editor/status', { reference });
+            const latest = store().containers[BASE];
+
+            if (latest?.reference === reference) {
+                latest.status = status;
+                onConfirmed(BASE, status, { published: true });
+            }
+        } catch (error) {
+            if (error?.status !== 403) {
+                Statamic.$toast.error(__('The translation status could not be updated: :message', { message: error?.message ?? '' }));
+            }
+        }
+    }
+
+    return { listen, saving, saved, published };
 }
 
 // The response names the saved entry. A term's response has only its id, which is the same in every site, so the term

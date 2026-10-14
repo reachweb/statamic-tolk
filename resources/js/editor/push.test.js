@@ -709,6 +709,33 @@ describe('after a save', () => {
         expect(store.container('base').push).toMatchObject({ phase: 'running', run: '01OTHER' });
     });
 
+    it('expects the update a publish started, in a collection with revisions or for a draft', async () => {
+        const answers = [outdated({ auto_update: 'publish' }), running()];
+        const phases = [];
+        const { api, followers, pushes } = setup({
+            api: fakeApi({ get: (url) => (url === 'editor/status' ? answers.shift() : runState({ driver: 'cli' })) }),
+            wait: async () => phases.push(store.container('base').push?.phase),
+        });
+
+        await pushes.afterSave('base', outdated({ auto_update: 'publish' }), { published: true });
+
+        expect(phases).toEqual(['expecting', 'expecting']);
+        expect(statusLooks(api)).toHaveLength(2);
+        expect(store.container('base').push).toMatchObject({ phase: 'running', automatic: true });
+        expect(followers.made).toHaveLength(1);
+    });
+
+    it('expects nothing after a publish without automatic updates, or when no covered site awaits one', async () => {
+        const { api, pushes } = setup();
+
+        await pushes.afterSave('base', outdated({ auto_update: null }), { published: true });
+        await pushes.afterSave('base', outdated({ auto_update: 'publish', auto_update_sites: [] }), { published: true });
+        await pushes.afterSave('base', status([], { origin: origin([localization('el', 'Greek', true)], { auto_update: 'publish' }) }), { published: true });
+
+        expect(api.get).not.toHaveBeenCalled();
+        expect(store.container('base').push).toBeNull();
+    });
+
     it('stops when the form shows another item, and leaves a later save to the expectation already running', async () => {
         const switching = setup({ wait: async () => store.switched('base', 'entry::other') });
 

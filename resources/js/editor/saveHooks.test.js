@@ -110,6 +110,7 @@ describe('listen', () => {
             ['entry.saved', save.saved],
             ['term.saving', save.saving],
             ['term.saved', save.saved],
+            ['entry.published', save.published],
         ]);
     });
 });
@@ -473,5 +474,107 @@ describe('entry.saved', () => {
         await outcome;
 
         expect(store.container('base')).toMatchObject({ reference: 'entry::el', status: null, notSaved: [] });
+    });
+});
+
+describe('entry.published', () => {
+    // An origin in a collection with revisions, as `editor/status` reads it once Publish made its working copy the entry.
+    const publishedStatus = () => ({
+        translatable: true,
+        origin: { localizations: [{ site: 'el', exists: true, status: 'outdated' }], auto_update: 'publish', auto_update_sites: ['el'] },
+    });
+
+    // As core's PublishActions runs `entry.published`: with the reference the form was opened with, and the publish
+    // request's response, which holds no form values the editor posted (Publish posts none).
+    const publishedPayload = (reference = 'entry::en') => ({
+        collection: 'pages',
+        reference: 'entry::stale',
+        message: null,
+        response: { data: { data: { reference, values: {} }, saved: true } },
+    });
+
+    const statusApi = (get = async () => publishedStatus()) => ({ post: vi.fn(), get: vi.fn(get) });
+
+    it('reads the status again and hands it on as a publish\'s, so the outdated localizations and the update it started show', async () => {
+        mount('entry::en');
+        const api = statusApi();
+        const onConfirmed = vi.fn();
+        store.container('base').delivered = { intro: { plan: 'p1' } };
+
+        const outcome = await run(hooks({ api, onConfirmed }).published, publishedPayload());
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(outcome.resolved).toBe(true);
+        expect(api.get).toHaveBeenCalledExactlyOnceWith('editor/status', { reference: 'entry::en' });
+        expect(api.post).not.toHaveBeenCalled();
+        expect(store.container('base').status).toEqual(publishedStatus());
+        expect(store.container('base').delivered).toEqual({ intro: { plan: 'p1' } });
+        expect(onConfirmed).toHaveBeenCalledExactlyOnceWith('base', publishedStatus(), { published: true });
+        expect(toasts).toEqual([]);
+    });
+
+    it('resolves at once, so core finishes the publish, or leaves for the listing, without waiting for the status', async () => {
+        mount('entry::en');
+        const api = statusApi(() => new Promise(() => {}));
+
+        expect((await run(hooks({ api }).published, publishedPayload())).resolved).toBe(true);
+        expect(api.get).toHaveBeenCalledOnce();
+    });
+
+    it('takes the response\'s reference over the one the form was opened with', async () => {
+        mount('entry::el');
+        const api = statusApi();
+
+        await run(hooks({ api }).published, { ...publishedPayload('entry::el'), reference: 'entry::de' });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(api.get).toHaveBeenCalledExactlyOnceWith('editor/status', { reference: 'entry::el' });
+    });
+
+    it('ignores a stacked editor publishing another entry, and a form without a banner', async () => {
+        const api = statusApi();
+        const onConfirmed = vi.fn();
+
+        expect((await run(hooks({ api, onConfirmed }).published, publishedPayload())).resolved).toBe(true);
+
+        mount('entry::en');
+        expect((await run(hooks({ api, onConfirmed }).published, publishedPayload('entry::related'))).resolved).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(api.get).not.toHaveBeenCalled();
+        expect(onConfirmed).not.toHaveBeenCalled();
+    });
+
+    it('reports a status that could not be read, stays quiet about a 403, and still resolves', async () => {
+        mount('entry::en');
+        const failing = statusApi(async () => Promise.reject(new ApiError({ status: 500, code: null, message: 'Server error', data: null })));
+
+        expect((await run(hooks({ api: failing }).published, publishedPayload())).resolved).toBe(true);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(toasts).toEqual([['error', 'The translation status could not be updated: Server error', undefined]]);
+        expect(store.container('base').status).toEqual({ translatable: true, stale: true });
+
+        const forbidden = statusApi(async () => Promise.reject(new ApiError({ status: 403, code: null, message: 'Forbidden', data: null })));
+
+        await run(hooks({ api: forbidden }).published, publishedPayload());
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(toasts).toHaveLength(1);
+    });
+
+    it('does not put the status into a container that switched while it was read', async () => {
+        mount('entry::en');
+        let answer;
+        const api = statusApi(() => new Promise((resolve) => (answer = resolve)));
+        const onConfirmed = vi.fn();
+
+        await run(hooks({ api, onConfirmed }).published, publishedPayload());
+        store.switched('base', 'entry::el', 60_000);
+        answer(publishedStatus());
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(store.container('base')).toMatchObject({ reference: 'entry::el', status: null });
+        expect(onConfirmed).not.toHaveBeenCalled();
     });
 });

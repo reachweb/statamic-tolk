@@ -285,10 +285,12 @@ export function createPushes({
         }
     }
 
-    // After a save, `editor/confirm`'s status: a run the save started is followed. With automatic updates on each save
-    // (T11.1), the run may start a little later, so while a localization still needs it, the status is read again a few
-    // times until the run shows. Looking stops when the form shows another item or follows a run.
-    async function afterSave(name, status) {
+    // After a save, `editor/confirm`'s status, or after Publish (`published`), `editor/status`'s: a run the save started
+    // is followed. With automatic updates (T11.1), the run may start a little later, so while a localization still needs
+    // it, the status is read again a few times until the run shows. A save starts one when the status says each save
+    // does (`save`); a publish whenever the settings update the entry (`save` or `publish`), since it leaves the entry
+    // published. Looking stops when the form shows another item or follows a run.
+    async function afterSave(name, status, { published = false } = {}) {
         const container = store().containers[name];
         const reference = container?.reference;
 
@@ -299,8 +301,9 @@ export function createPushes({
         }
 
         const sites = awaitingSites(status);
+        const automatic = published ? Boolean(status?.origin?.auto_update) : status?.origin?.auto_update === 'save';
 
-        if (!container || status?.origin?.auto_update !== 'save' || sites.length === 0 || PUSHING.includes(container.push?.phase)) {
+        if (!container || !automatic || sites.length === 0 || PUSHING.includes(container.push?.phase)) {
             return;
         }
 
