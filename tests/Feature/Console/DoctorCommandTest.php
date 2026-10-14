@@ -89,6 +89,23 @@ it('warns when the PHP of the command line has no posix extension, which the wor
         ]);
 })->group('slow');
 
+it('warns when the PHP of the command line has pcntl but its signal functions are disabled, which tolk:translate needs to trap Ctrl-C', function () {
+    if (! extension_loaded('pcntl')) {
+        $this->markTestSkipped('Needs the pcntl extension.');
+    }
+
+    $directory = $this->temporaryPath();
+    $doctor = CliRun::start($directory, ['artisan' => ['tolk:doctor', ['--json' => true]], 'ini' => ['disable_functions=pcntl_signal'], 'signals' => true]);
+    $doctor->wait();
+
+    $checks = json_decode((string) @file_get_contents("{$directory}/output/command"), true) ?? [];
+    $check = collect($checks)->firstWhere('id', 'command_line');
+
+    expect($check, $doctor->getOutput().$doctor->getErrorOutput())->not->toBeNull()
+        ->and($check['level'])->toBe('warning')
+        ->and($check['items'][0])->toBe(['level' => 'warning', 'text' => 'PHP on the command line has the pcntl extension, but disable_functions in php.ini disables pcntl_signal, so Ctrl-C ends tolk:translate and its workers at once, as without pcntl: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or take pcntl_signal out of disable_functions.']);
+})->group('slow');
+
 it('refuses --json with --fix-localizable', function () {
     $this->artisan('tolk:doctor', ['--json' => true, '--fix-localizable' => true])
         ->expectsOutputToContain('--json and --fix-localizable cannot be combined.')

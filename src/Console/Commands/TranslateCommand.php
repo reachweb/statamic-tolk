@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Ai\Providers;
 use Reach\StatamicTolk\Console\Concerns\ReportsTranslations;
 use Reach\StatamicTolk\Console\Concerns\ResolvesTranslationOptions;
+use Reach\StatamicTolk\Console\Concerns\TrapsSignals;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -60,6 +61,7 @@ class TranslateCommand extends Command
     use ReportsTranslations;
     use ResolvesTranslationOptions;
     use RunsInPlease;
+    use TrapsSignals;
 
     /**
      * Seconds this process starts new units when it translates itself, before it applies what is ready.
@@ -458,8 +460,8 @@ class TranslateCommand extends Command
     }
 
     /**
-     * Ctrl-C cancels the run once the current step is done, instead of leaving it running. Without pcntl, or under
-     * tests, it ends the command at once.
+     * Ctrl-C cancels the run once the current step is done, instead of leaving it running. Without pcntl (or with
+     * pcntl_signal() disabled, TrapsSignals), or under tests, it ends the command at once.
      */
     private function trapInterrupts(): void
     {

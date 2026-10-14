@@ -11,6 +11,7 @@ use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Runs\RunDispatcher;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Tests\Support\CliRun;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Symfony\Component\Process\Process as SymfonyProcess;
@@ -171,6 +172,22 @@ it('stops without cancelling the run when the Control Panel resumed it after its
         ->and(RunFixtures::statuses($run))->toBe(['pending', 'pending'])
         ->and($engine->calls)->toHaveCount(1);
 });
+
+it('works as without pcntl when PHP has pcntl but its signal functions are disabled', function () {
+    if (! extension_loaded('pcntl')) {
+        $this->markTestSkipped('Needs the pcntl extension.');
+    }
+
+    $run = RunFixtures::started(['driver' => RunDriver::Cli]);
+    $directory = $this->temporaryPath();
+
+    // Laravel's trap() asks only for pcntl; Symfony refuses to trap without pcntl_signal().
+    $worker = CliRun::start($directory, ['ini' => ['disable_functions=pcntl_signal'], 'signals' => true], 'worker', ['tolk:work', $run->id, '--lane=1']);
+    $worker->wait();
+
+    expect($worker->getExitCode())->toBe(0, $worker->getOutput().$worker->getErrorOutput())
+        ->and(RunFixtures::statuses($run))->toBe(['translated', 'translated']);
+})->group('slow');
 
 it('keeps working while the command that started it runs', function (Closure $parent) {
     if (! function_exists('posix_getppid')) {

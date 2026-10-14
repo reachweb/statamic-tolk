@@ -33,6 +33,7 @@ use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Statamic\Fields\Blueprint;
 use Statamic\Fields\Fields;
+use Symfony\Component\Console\SignalRegistry\SignalRegistry;
 use Throwable;
 
 /**
@@ -529,8 +530,9 @@ final class Audit
     }
 
     /**
-     * Whether tolk:translate can trap Ctrl-C, by the rule Laravel's trap() follows: pcntl, on the command line; and
-     * whether its workers can tell that it was killed (WorkCommand::watchesCommand(): posix).
+     * Whether tolk:translate can trap Ctrl-C, by the rules its trap() follows: Laravel's (pcntl, on the command line) and
+     * Symfony's (pcntl_signal() not disabled, TrapsSignals); and whether its workers can tell that it was killed
+     * (WorkCommand::watchesCommand(): posix).
      */
     private function commandLineItems(): array
     {
@@ -540,9 +542,11 @@ final class Audit
         });
 
         return [
-            $signals
-                ? $this->item(AuditLevel::Ok, __('PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.'))
-                : $this->item(AuditLevel::Warning, __('PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.')),
+            match (true) {
+                $signals && SignalRegistry::isSupported() => $this->item(AuditLevel::Ok, __('PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.')),
+                $signals => $this->item(AuditLevel::Warning, __('PHP on the command line has the pcntl extension, but disable_functions in php.ini disables pcntl_signal, so Ctrl-C ends tolk:translate and its workers at once, as without pcntl: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or take pcntl_signal out of disable_functions.')),
+                default => $this->item(AuditLevel::Warning, __('PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.')),
+            },
             WorkCommand::watchesCommand()
                 ? $this->item(AuditLevel::Ok, __('PHP on the command line has the posix extension, so the workers of a tolk:translate that was killed (kill -9, the out-of-memory killer) cancel its run before their next request.'))
                 : $this->item(AuditLevel::Warning, __('PHP on the command line has no posix extension (Windows never has it), so the workers of a tolk:translate that was killed (kill -9, the out-of-memory killer) go on translating every item left, which the provider charges for and nothing saves. Press Cancel on the run page then, and Resume to save what they translated; or add posix to PHP.')),

@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Support\Sleep;
+use Reach\StatamicTolk\Console\Concerns\TrapsSignals;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Exceptions\RunNotFound;
@@ -22,6 +23,7 @@ use Statamic\Console\RunsInPlease;
 class WorkCommand extends Command
 {
     use RunsInPlease;
+    use TrapsSignals;
 
     /**
      * Seconds each RunProcessor::translate() call starts new units, so settings changes are read between calls.

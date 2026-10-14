@@ -1164,7 +1164,7 @@ describe('the run engine', function () {
     });
 
     it('cancels the run on Ctrl-C after the current step, commits what was saved and reports the rest', function () {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+        if (! function_exists('pcntl_signal') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
         }
 
@@ -1194,7 +1194,7 @@ describe('the run engine', function () {
     });
 
     it('deletes the run and stops when Ctrl-C comes during the scan', function () {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+        if (! function_exists('pcntl_signal') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
         }
 
@@ -1247,7 +1247,7 @@ describe('the run engine', function () {
     });
 
     it('traps Ctrl-C again after asking for confirmation', function () {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+        if (! function_exists('pcntl_signal') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
         }
 
@@ -1322,7 +1322,7 @@ describe('the run engine', function () {
     })->group('slow');
 
     it('waits for the workers after Ctrl-C, and stops them at once on a second one', function () {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+        if (! function_exists('pcntl_signal') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
         }
 
@@ -1360,7 +1360,7 @@ describe('the run engine', function () {
     });
 
     it('advises resuming the run, not running the command again, for a target translated but not saved at Ctrl-C', function () {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_kill')) {
+        if (! function_exists('pcntl_signal') || ! function_exists('posix_kill')) {
             $this->markTestSkipped('Needs the pcntl and posix extensions.');
         }
 
@@ -1395,6 +1395,28 @@ describe('the run engine', function () {
             ->and($output)->toContain("\n  ".cp_route('tolk.runs.show', $run->id)."\n")
             ->and($output)->not->toContain('Run the command again');
     });
+
+    it('runs as without pcntl when PHP has pcntl but its signal functions are disabled', function () {
+        if (! extension_loaded('pcntl')) {
+            $this->markTestSkipped('Needs the pcntl extension.');
+        }
+
+        $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+
+        foreach (range(1, 2) as $n) {
+            $this->makeEntry('pages', 'en', ['title' => "Page {$n}"], "page-{$n}");
+        }
+
+        // Laravel's trap() asks only for pcntl; Symfony refuses to trap without pcntl_signal().
+        $directory = $this->temporaryPath();
+        $command = CliRun::start($directory, ['options' => ['--collection' => ['pages'], '--site' => ['el'], '--concurrency' => 1], 'ini' => ['disable_functions=pcntl_signal'], 'signals' => true]);
+        $command->wait();
+
+        $run = app(RunRepository::class)->recent(1)[0];
+        expect($command->getExitCode())->toBe(0, $command->getOutput().$command->getErrorOutput())
+            ->and($run->status)->toBe(RunStatus::Completed)
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done']);
+    })->group('slow');
 
     it('cancels the run when this process ends with a fatal error, which skips its catch and finally blocks', function () {
         $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
