@@ -129,16 +129,17 @@ final readonly class RunProcessor
     /**
      * Cancels a pending or running run and finalizes it, which commits the content saved so far. The items being
      * translated go back to `pending` with their plans, so a resume does not repeat finished units; a worker still
-     * inside a unit stops at its next write.
+     * inside a unit stops at its next write. With $driver, only a run that driver still drives is cancelled: a
+     * `tolk:work` whose command has ended leaves alone a run the CP resumed meanwhile (RunDispatcher::start()).
      *
      * @return bool whether the run was cancelled now
      */
-    public function cancel(Run $run): bool
+    public function cancel(Run $run, ?RunDriver $driver = null): bool
     {
-        $cancelled = $this->locked($run, function () use ($run) {
+        $cancelled = $this->locked($run, function () use ($run, $driver) {
             $this->runs->save($run);
 
-            if ($run->status->isFinal()) {
+            if ($run->status->isFinal() || ($driver !== null && $run->driver !== $driver)) {
                 return false;
             }
 

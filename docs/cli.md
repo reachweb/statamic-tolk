@@ -387,4 +387,4 @@ A worker process that `tolk:translate` and `tolk:site` start, as many as their c
 | --- | --- |
 | `run` | The id of the run. |
 | `--lane=` | The lane of this worker, which gives its worker id (`cli-1`, `cli-2`, …). Default: 1. |
-| `--parent=` | The process id of the command that started the worker. When that process ends before the worker, the worker cancels the run before its next request and stops. Needs PHP's posix extension, which Windows lacks. |
+| `--parent=` | The process id of the command that started the worker. When that process ends before the worker, the worker cancels the run before its next request and stops; a run resumed on its run page meanwhile it leaves running. Needs PHP's posix extension, which Windows lacks. |

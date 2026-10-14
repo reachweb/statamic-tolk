@@ -8,6 +8,8 @@ use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Exceptions\ProviderPaused;
+use Reach\StatamicTolk\Runs\RunDispatcher;
+use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
@@ -131,6 +133,42 @@ it('cancels the run and stops before its next unit when the command that started
     expect($exitCode)->toBe(0)
         ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Cancelled)
         ->and(RunFixtures::statuses($run))->toBe(['translated', 'pending'])
+        ->and($engine->calls)->toHaveCount(1);
+});
+
+it('stops without cancelling the run when the Control Panel resumed it after its command ended', function () {
+    if (! function_exists('posix_kill')) {
+        $this->markTestSkipped('Needs the posix extension.');
+    }
+
+    config(['tolk.runs.execution' => 'browser']);
+    $command = new SymfonyProcess([PHP_BINARY, '-r', 'sleep(60);']);
+    $command->start();
+    $run = RunFixtures::started(['driver' => RunDriver::Cli]);
+    $engine = ScriptedEngine::bind(function (EngineCall $call) use ($command, $run) {
+        $command->signal(SIGKILL);
+        $command->wait();
+
+        // While this worker waits for the model, another one cancels the run, and the user resumes it on its run page,
+        // as RunsController@resume does, which hands it to the browser.
+        app(RunProcessor::class)->cancel(RunFixtures::stored($run));
+        $resumed = RunFixtures::stored($run);
+        app(RunProcessor::class)->resume($resumed);
+        app(RunDispatcher::class)->start($resumed);
+
+        return ScriptedEngine::translated($call);
+    });
+
+    try {
+        [$exitCode] = workCommand(['run' => $run->id, '--parent' => $command->getPid()]);
+    } finally {
+        $command->stop(0);
+    }
+
+    expect($exitCode)->toBe(0)
+        ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::Running)
+        ->and(RunFixtures::stored($run)->driver)->toBe(RunDriver::Browser)
+        ->and(RunFixtures::statuses($run))->toBe(['pending', 'pending'])
         ->and($engine->calls)->toHaveCount(1);
 });
 

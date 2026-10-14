@@ -7,6 +7,7 @@ use Closure;
 use Illuminate\Console\Command;
 use Illuminate\Support\Sleep;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Exceptions\RunNotFound;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Support\Settings;
@@ -15,7 +16,8 @@ use Statamic\Console\RunsInPlease;
 /**
  * A worker process of `tolk:translate` (§A12 "Drivers"): translates the run's items as worker `cli-{lane}` until none
  * is left to translate or the run stops running. It never applies; the command does. When the command ends without
- * cancelling the run (`kill -9`, the out-of-memory killer), the worker cancels it before its next unit and stops.
+ * cancelling the run (`kill -9`, the out-of-memory killer), the worker cancels it before its next unit and stops; a run
+ * the CP resumed meanwhile has another driver, and the worker only stops.
  */
 class WorkCommand extends Command
 {
@@ -75,9 +77,9 @@ class WorkCommand extends Command
                 $report = $processor->translate($run, 'cli-'.(int) $lane, CarbonImmutable::now()->addSeconds(self::DEADLINE_SECONDS), $ttl, proceed: fn () => ! $ended());
 
                 // Nobody saves what the workers translate any more: the run is cancelled, to be resumed, instead of paid
-                // for to its end.
+                // for to its end, unless the CP resumed it meanwhile, which hands it to another driver.
                 if ($ended()) {
-                    $processor->cancel($run);
+                    $processor->cancel($run, RunDriver::Cli);
 
                     break;
                 }
