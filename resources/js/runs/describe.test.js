@@ -214,27 +214,27 @@ describe('numbers', () => {
         expect(describeEstimate({ segments: 12, chars: 3400, input_tokens: 2000, output_tokens: 1500, cost: 0.0123, next: 4 }, 13)).toEqual({
             finished: false,
             progress: '4 of 13 items',
-            partial: null,
+            partial: 'Only 4 of 13 items were estimated before the run started.',
             segments: 12,
             chars: 3400,
             inputTokens: 2000,
             outputTokens: 1500,
             cost: 0.0123,
         });
-        expect(describeEstimate({ segments: 1, cost: null, next: null }, 13)).toMatchObject({ finished: true, progress: null, cost: null });
+        expect(describeEstimate({ segments: 1, cost: null, next: null }, 13)).toMatchObject({ finished: true, progress: null, partial: null, cost: null });
     });
 
-    it('says how many items a partial estimate covers once the run started, instead of estimating on', () => {
+    it('says how far an unfinished estimate got both ways, for a run that waits and for one that started without it', () => {
         const partial = { segments: 6, chars: 900, input_tokens: 500, output_tokens: 400, cost: 0.002, next: 3 };
 
-        expect(describeEstimate(partial, 10, false)).toMatchObject({
+        expect(describeEstimate(partial, 10)).toMatchObject({
             finished: false,
-            progress: null,
+            progress: '3 of 10 items',
             partial: 'Only 3 of 10 items were estimated before the run started.',
             segments: 6,
         });
-        expect(describeEstimate(partial, 10, true)).toMatchObject({ progress: '3 of 10 items', partial: null });
-        expect(describeEstimate({ ...partial, next: null }, 10, false)).toMatchObject({ finished: true, progress: null, partial: null });
+        expect(describeEstimate({ ...partial, next: 12 }, 10)).toMatchObject({ progress: '10 of 10 items', partial: 'Only 10 of 10 items were estimated before the run started.' });
+        expect(describeEstimate({ ...partial, next: null }, 10)).toMatchObject({ finished: true, progress: null, partial: null });
     });
 
     it('adds up the usage of every model and keeps the run\'s cost', () => {

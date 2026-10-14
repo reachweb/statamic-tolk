@@ -177,18 +177,37 @@ describe('the result of a run', () => {
 });
 
 describe('the estimate of a run', () => {
-    const card = (status, estimated) => render('data-tolk-estimate', { status, estimated, formatNumber: (value) => String(value), formatCost: (value) => `$${value}` });
+    // The card as the page renders it: the estimate described from the run's items alone, and the run's status.
+    const card = (status, estimate) =>
+        render('data-tolk-estimate', { status, estimated: describeEstimate(estimate, 10), formatNumber: (value) => String(value), formatCost: (value) => `$${value}` });
     const partial = { segments: 6, chars: 900, input_tokens: 500, output_tokens: 400, cost: 0.002, next: 3 };
 
     it('fills in while the run waits to start', async () => {
-        expect(text(await card('pending', describeEstimate(partial, 10, true)))).toContain('Estimate Estimating… 3 of 10 items Segments 6');
+        const html = await card('pending', partial);
+
+        expect(text(html)).toContain('Estimate Estimating… 3 of 10 items Segments 6');
+        expect(html).not.toContain('data-tolk-estimate-partial');
     });
 
-    it('stops estimating once the run started early, and says how many items the numbers cover', async () => {
-        const shown = text(await card('completed', describeEstimate(partial, 10, false)));
+    it.each(['running', 'completed', 'completed_with_errors', 'cancelled', 'aborted'])(
+        'stops estimating once the run started early, and says how many items the numbers cover (%s)',
+        async (status) => {
+            const html = await card(status, partial);
 
-        expect(shown).not.toContain('Estimating');
-        expect(shown).toContain('Estimate Only 3 of 10 items were estimated before the run started. Segments 6');
+            expect(text(html)).not.toContain('Estimating');
+            expect(text(html)).toContain('Estimate Only 3 of 10 items were estimated before the run started. Segments 6');
+            expect(html).toContain('data-tolk-estimate-partial');
+        },
+    );
+
+    it('says neither once the estimate finished', async () => {
+        for (const status of ['pending', 'completed']) {
+            const shown = text(await card(status, { ...partial, next: null }));
+
+            expect(shown).not.toContain('Estimating');
+            expect(shown).not.toContain('were estimated');
+            expect(shown).toContain('Estimate Segments 6');
+        }
     });
 });
 

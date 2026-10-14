@@ -287,9 +287,9 @@ export function describeOptions(options, models = {}) {
     return rows;
 }
 
-// The estimate as rows, `null` before the first answer. `total` is the number of items, for the progress line. Start
-// ends the estimate, so once the run is no longer `pending` an unfinished one says how many items it covers instead.
-export function describeEstimate(estimate, total = 0, pending = true) {
+// The estimate as rows, `null` before the first answer. `total` is the number of items. An unfinished estimate has two
+// lines: `progress` while the run waits to start, and `partial` once Start ended it; the page picks by the run's status.
+export function describeEstimate(estimate, total = 0) {
     if (!estimate) {
         return null;
     }
@@ -299,8 +299,8 @@ export function describeEstimate(estimate, total = 0, pending = true) {
 
     return {
         finished: next === null,
-        progress: next !== null && pending ? __(':done of :total items', counts) : null,
-        partial: next !== null && !pending ? __('Only :done of :total items were estimated before the run started.', counts) : null,
+        progress: next === null ? null : __(':done of :total items', counts),
+        partial: next === null ? null : __('Only :done of :total items were estimated before the run started.', counts),
         segments: Number(estimate.segments) || 0,
         chars: Number(estimate.chars) || 0,
         inputTokens: Number(estimate.input_tokens) || 0,
