@@ -123,6 +123,23 @@ it('pages the items and filters them by status', function () {
         ->and($indexes($this->runs->items($run, RunItemStatus::Done)))->toBe([]);
 });
 
+it('finds the items that depend on an item, in index order', function () {
+    $run = runRepoRun([
+        runRepoItem(0),
+        runRepoItem(1, ['dependsOn' => [0], 'targetSite' => 'de']),
+        runRepoItem(2, ['dependsOn' => [1, 0], 'status' => RunItemStatus::Done]),
+        runRepoItem(3, ['dependsOn' => [1]]),
+    ]);
+
+    $indexes = fn (array $items) => array_map(fn (RunItem $item) => $item->index, $items);
+
+    expect($indexes($this->runs->dependents($run, 0)))->toBe([1, 2])
+        ->and($this->runs->dependents($run, 0)[1]->status)->toBe(RunItemStatus::Done)
+        ->and($indexes($this->runs->dependents($run, 1)))->toBe([2, 3])
+        ->and($indexes($this->runs->dependents($run, 3)))->toBe([])
+        ->and($this->runs->dependents(Run::make(RunDriver::Cli), 0))->toBe([]);
+});
+
 it('counts the items per status for each content type and target site, in item order', function () {
     $run = runRepoRun([
         runRepoItem(0, ['targetSite' => 'de']),

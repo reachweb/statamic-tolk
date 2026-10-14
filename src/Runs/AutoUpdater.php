@@ -64,11 +64,13 @@ final readonly class AutoUpdater
 
     /**
      * Whether saving the entry now, as $user, updates its translations: the settings cover its collection, it is
-     * published, and it is the origin of a site to update.
+     * published, and it is the origin of a site to update other than $except.
+     *
+     * @param  list<string>  $except  sites left to a run that saved the entry (leftToRun())
      */
-    public function applies(EntryContract $entry, ?User $user = null): bool
+    public function applies(EntryContract $entry, ?User $user = null, array $except = []): bool
     {
-        return $this->covers($entry) && $entry->published() && $this->sites($entry, $user) !== [];
+        return $this->covers($entry) && $entry->published() && array_diff($this->sites($entry, $user), $except) !== [];
     }
 
     /**
@@ -113,6 +115,32 @@ final readonly class AutoUpdater
     }
 
     /**
+     * The sites that the run saving the entry now (RunSaves) is still to translate from it, so its update leaves them to
+     * that run: those of the run's unfinished items translated from the entry, when the run updates outdated fields too
+     * (mode `update` or `all`). None for a save no run makes, or of an entry the settings do not cover.
+     *
+     * @return list<string>
+     */
+    public function leftToRun(EntryContract $entry): array
+    {
+        $save = RunSaves::current();
+
+        if ($save === null || ! in_array($save['run']->options['mode'] ?? null, [Mode::Update->value, Mode::All->value], true) || ! $this->covers($entry)) {
+            return [];
+        }
+
+        $sites = [];
+
+        foreach ($this->runs->dependents($save['run'], $save['item']->index) as $item) {
+            if ($item->type === ContentType::Entry && $item->sourceId === (string) $entry->id() && ! $item->status->isFinal()) {
+                $sites[] = $item->targetSite;
+            }
+        }
+
+        return $sites;
+    }
+
+    /**
      * Whether a run from the entry has not finished and is still moving, an automatic one or one pushed from its banner:
      * a new run would translate the same fields again. A run that stopped moving no longer counts. Every run is searched,
      * because an import that saves many entries makes as many runs while an earlier one still works.
@@ -132,14 +160,16 @@ final readonly class AutoUpdater
     }
 
     /**
-     * Makes the entry's run, an update of its sites as $user, and plans it without calling a model. A run with nothing
-     * to translate is deleted. Otherwise it starts: for the caller to drive() when $drive, else with lanes on the queue.
+     * Makes the entry's run, an update of its sites as $user but $except, and plans it without calling a model. A run
+     * with nothing to translate is deleted. Otherwise it starts: for the caller to drive() when $drive, else with lanes
+     * on the queue.
      *
+     * @param  list<string>  $except  sites left to a run that saved the entry (leftToRun())
      * @return ?Run the started run, or null when there is nothing to translate
      */
-    public function start(EntryContract $entry, ?User $user, bool $drive): ?Run
+    public function start(EntryContract $entry, ?User $user, bool $drive, array $except = []): ?Run
     {
-        $sites = $this->sites($entry, $user);
+        $sites = array_values(array_diff($this->sites($entry, $user), $except));
 
         if ($sites === []) {
             return null;

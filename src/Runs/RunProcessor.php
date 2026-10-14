@@ -679,7 +679,7 @@ final readonly class RunProcessor
         $existed = $target->exists();
 
         try {
-            $result = RunSaves::as($user, fn () => $this->applier->apply($plan, $target, $options));
+            $result = RunSaves::as($user, $run, $item, fn () => $this->applier->apply($plan, $target, $options));
         } catch (Throwable $exception) {
             // Anything but a changed source may come after a save had begun, so finalize() commits it.
             if (! $exception instanceof SourceChanged) {

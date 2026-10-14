@@ -63,6 +63,11 @@ interface RunRepository
     public function items(Run $run, ?RunItemStatus $status = null, int $page = 1, int $perPage = 50): array;
 
     /**
+     * @return list<RunItem> the items that depend on the item at $index, in index order
+     */
+    public function dependents(Run $run, int $index): array;
+
+    /**
      * @return array<string, int> the number of items per status, every status included
      */
     public function counts(Run $run): array;

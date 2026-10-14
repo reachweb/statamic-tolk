@@ -158,6 +158,17 @@ final class FileRunRepository implements RunRepository
             ->all();
     }
 
+    public function dependents(Run $run, int $index): array
+    {
+        return collect($this->readIndex($run->id))
+            ->filter(fn (array $entry) => in_array($index, $entry['depends_on'], true))
+            ->keys()
+            ->map(fn (int $dependent) => $this->readItem($run->id, $dependent))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     public function counts(Run $run): array
     {
         $counts = self::noCounts();

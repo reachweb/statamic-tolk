@@ -64,20 +64,27 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
      */
     public int $uniqueFor = 600;
 
+    /**
+     * @param  list<string>  $except  sites left to the run that saved the entry (AutoUpdater::leftToRun())
+     */
     public function __construct(
         public readonly string $entryId,
         public readonly ?string $userId = null,
+        public readonly array $except = [],
     ) {
         $this->onConnection(RunDispatcher::connection());
         $this->onQueue(config('tolk.runs.queue.name'));
     }
 
     /**
-     * Dispatches the update of the entry as $user: on the queue after DELAY_SECONDS, or after the response.
+     * Dispatches the update of the entry as $user, but not into $except: on the queue after DELAY_SECONDS, or after the
+     * response.
+     *
+     * @param  list<string>  $except
      */
-    public static function dispatchFor(EntryContract $entry, ?UserContract $user): void
+    public static function dispatchFor(EntryContract $entry, ?UserContract $user, array $except = []): void
     {
-        $job = new self((string) $entry->id(), $user === null ? null : (string) $user->id());
+        $job = new self((string) $entry->id(), $user === null ? null : (string) $user->id(), $except);
 
         if (AutoUpdater::queued()) {
             dispatch($job->delay(self::DELAY_SECONDS));
@@ -134,7 +141,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         while (true) {
             $entry = Entry::find($this->entryId);
 
-            if ($entry === null || ! $updater->applies($entry, $user)) {
+            if ($entry === null || ! $updater->applies($entry, $user, $this->except)) {
                 return;
             }
 
@@ -176,7 +183,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         }
 
         try {
-            return $updater->busy($entry) ? false : $updater->start($entry, $user, $drive);
+            return $updater->busy($entry) ? false : $updater->start($entry, $user, $drive, $this->except);
         } finally {
             $lock->release();
         }

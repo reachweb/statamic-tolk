@@ -30,6 +30,7 @@ use Reach\StatamicTolk\Translation\TargetTranslator;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\Site;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -350,6 +351,83 @@ describe('without a queue worker', function () {
         Sleep::assertSleptTimes(1);
         expect(autoRuns())->toHaveCount(1)
             ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.');
+    });
+
+    it('leaves to a run the localizations it is still to translate from a localization it saved', function () {
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        // A chain: German is translated from Greek, so the Greek localization is an origin too.
+        $this->localize(autoEntry($this->hello, 'el'), 'de');
+        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $this->fakeTranslations(fn (string $text) => '[U] '.$text);
+        $calls = $this->modelCalls();
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update'], 'user' => $admin]);
+
+        // A tick translates and saves Greek; while its process ends its response, the next tick translates German.
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
+        RunFixtures::translate($run);
+        afterResponse();
+        RunFixtures::finish($run);
+
+        expect(autoRuns())->toBe([])
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and($this->modelCalls() - $calls)->toBe(2)
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[U] A longer intro.')
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[U] [U] A longer intro.');
+    });
+
+    it('updates only the other localizations of a localization a run saved', function () {
+        Site::setSites([...Site::config(), 'fr' => ['name' => 'French', 'url' => 'http://localhost/fr/', 'locale' => 'fr_FR', 'lang' => 'fr']]);
+        $this->makeCollection('notes', ['en', 'el', 'de', 'fr'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'intro' => ['type' => 'textarea', 'localizable' => true],
+        ]);
+        $note = $this->makeEntry('notes', 'en', ['title' => 'Note', 'intro' => 'A short note.'], 'note');
+        $admin = $this->signInAdmin();
+        autoTranslated($note, ['el']);
+        // German and French are translated from Greek; the run updates Greek and German only.
+        $this->localize(autoEntry($note, 'el'), 'de');
+        $this->localize(autoEntry($note, 'el'), 'fr');
+        autoEntry($note, 'el')->published(true)->saveQuietly();
+        autoOn();
+        $note->set('intro', 'A longer note.')->saveQuietly();
+        $this->fakeTranslations(fn (string $text) => '[U] '.$text);
+        $calls = $this->modelCalls();
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$note->id()], 'options' => ['mode' => 'all'], 'user' => $admin]);
+
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
+        RunFixtures::translate($run);
+        afterResponse();
+        RunFixtures::finish($run);
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and(autoRuns()[0]->scope['sites'])->toBe(['fr'])
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and($this->modelCalls() - $calls)->toBe(3)
+            ->and(autoEntry($note, 'de')->get('intro'))->toBe('[U] [U] A longer note.')
+            ->and(autoEntry($note, 'fr')->get('intro'))->toBe('[U] [U] A longer note.');
+    });
+
+    it('still updates the localizations of a localization saved by a run that leaves outdated fields alone', function () {
+        Bus::fake([UpdateTranslations::class]);
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        $this->localize(autoEntry($this->hello, 'el'), 'de');
+        // Greek has no introduction of its own, so a run of what is missing saves it.
+        autoEntry($this->hello, 'el')->remove('intro')->published(true)->saveQuietly();
+        autoOn();
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'missing'], 'user' => $admin]);
+
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
+        $greek = autoEntry($this->hello, 'el');
+
+        expect($greek->get('intro'))->toBe('[T] A short intro.');
+        Bus::assertDispatchedAfterResponse(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $greek->id() && $job->except === []);
     });
 
     it('does nothing for a user who no longer exists, or an entry that is gone', function () {
