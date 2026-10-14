@@ -134,7 +134,7 @@ describe('tolk:baseline', function () {
             ->and($with->fields['intro']->sourceChanged)->toBeFalse();
     });
 
-    it('also turns machine output, up to date or outdated, into fields edited by hand with --protect, in the containers named', function () {
+    it('also turns machine output, up to date or outdated, into fields edited by hand with --protect, in the containers named, an outdated one needing attention', function () {
         $hello = $this->localize($this->hello, 'el', ['title' => 'Γεια', 'intro' => 'Μια εισαγωγή.']);
         StateFixtures::store($hello, [
             'title' => StateFixtures::machine('Hello', 'Γεια'),
@@ -156,7 +156,7 @@ describe('tolk:baseline', function () {
         expect(array_map(fn ($field) => $field->status, $before->fields))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Outdated])
             ->and(array_map(fn ($field) => [$field->status, $field->sourceChanged], $after->fields))->toBe([
                 'title' => [FieldStatus::Manual, false],
-                'intro' => [FieldStatus::Manual, false],
+                'intro' => [FieldStatus::Manual, true],
             ])
             ->and(maintenanceStatus($page)->fields['title']->status)->toBe(FieldStatus::Current)
             ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
