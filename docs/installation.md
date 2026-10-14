@@ -83,6 +83,8 @@ A user with `translate content` but without `run bulk translations` can still fo
 
 Commit `content/tolk/` together with the content it describes, and do not edit its files by hand. With Statamic's git integration on, Tolk holds back Statamic's commits while it saves and makes one commit per run or command ("Content translated"), and one when it records state on its own, such as after an editor saves a translation ("Translation state saved").
 
+Statamic's commits hold only the paths in `statamic.git.paths`. Their defaults include `content/`, and with it the state, but not `lang/`, where `tolk:lang` and `tolk:forms` write the translation files. If you run these commands where git commits for you, as on a production server, add `lang_path()` to `statamic.git.paths` in `config/statamic/git.php`, or commit `lang/` yourself. Otherwise the commit holds the state without the files: a deploy that replaces the site's files loses them, and the texts show in the source language until the command runs, and is paid for, again. Both commands warn after they write while git is on and `lang/` is not tracked, and `tolk:doctor` and the Audit page warn once either command has kept state.
+
 ## In the Control Panel
 
 - **Tools › Translations** opens the **Overview** (`cp/tolk/overview`), with **Runs**, **Audit** and **Settings** below it. The nav item shows for users with `run bulk translations`, and its **Settings** for those of them who may edit the settings.

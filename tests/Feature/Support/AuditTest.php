@@ -1,10 +1,13 @@
 <?php
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Artisan;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\Audit;
+use Reach\StatamicTolk\Tests\Support\FormFixtures;
+use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Fieldset;
@@ -296,6 +299,32 @@ describe('translation state', function () {
 
         expect(auditItems('state')[1])->toBe("warning: Statamic's git integration does not track content/tolk, so the state is not committed with the content it describes. Add the folder to statamic.git.paths.");
     });
+
+    it('checks that Statamic\'s git integration tracks the translation files once tolk:lang or tolk:forms has written them', function (string $command) {
+        $this->app->useLangPath($this->temporaryPath('lang'));
+        (new Filesystem)->ensureDirectoryExists(lang_path());
+        file_put_contents(lang_path('en.json'), json_encode(['Book now' => 'Book now']));
+        FormFixtures::contact();
+        RunFixtures::commits();
+        config(['statamic.git.paths' => [config('tolk.state.path')]]);
+
+        expect(auditItems('state'))->toHaveCount(2);
+
+        $this->fakeTranslations();
+        Artisan::call($command, ['sites' => ['de']]);
+
+        expect(auditCheck('state')['level'])->toBe('warning')
+            ->and(auditItems('state')[2])->toBe('warning: Statamic\'s git integration does not track '.lang_path().', so the translation files that tolk:lang and tolk:forms wrote are not committed with their state, and a deploy that replaces the site\'s files loses them. Add the folder to statamic.git.paths.');
+
+        config(['statamic.git.paths' => [dirname(lang_path())]]);
+
+        expect(auditCheck('state')['level'])->toBe('ok')
+            ->and(auditItems('state')[2])->toBe('ok: Statamic\'s git integration tracks '.lang_path().', so the translation files of tolk:lang and tolk:forms are committed with their state.');
+
+        config(['statamic.git.enabled' => false]);
+
+        expect(auditItems('state'))->toHaveCount(1);
+    })->with(['tolk:lang', 'tolk:forms']);
 });
 
 describe('localizable fields', function () {

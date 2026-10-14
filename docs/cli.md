@@ -31,7 +31,7 @@ php please tolk:doctor
 php please tolk:doctor --fix-localizable
 ```
 
-The checks: the sites; the providers, their keys and the models the settings choose; the queue and how runs are driven; the cache store and its locks; where the state is kept; the text fields that are not localizable; nested fields whose handles suggest data rather than text (`anchor`, `url`, `class` and the like), which you may want to switch off; collections, taxonomies and global sets not enabled for some sites, and global sets without an origin for a site; and notes on revisions, git, static caching and the PHP workers a browser-driven run keeps busy.
+The checks: the sites; the providers, their keys and the models the settings choose; the queue and how runs are driven; the cache store and its locks; where the state is kept, and whether Statamic's git integration tracks it and, once `tolk:lang` or `tolk:forms` has run, `lang/` ([Where Tolk keeps things](installation.md#where-tolk-keeps-things)); the text fields that are not localizable; nested fields whose handles suggest data rather than text (`anchor`, `url`, `class` and the like), which you may want to switch off; collections, taxonomies and global sets not enabled for some sites, and global sets without an origin for a site; and notes on revisions, git, static caching and the PHP workers a browser-driven run keeps busy.
 
 With `--fix-localizable` it asks per blueprint whether to make the listed fields localizable (default no) and saves the blueprint. Fields imported from a fieldset are listed with the fieldset to change, not changed. The Audit page in the CP does the same.
 
@@ -305,6 +305,7 @@ php please tolk:lang --dry-run
 - **PHP files are written anew**, as a short-array file with the source's nesting. The comments and layout of a PHP file the command did not write are lost, so the command asks before it rewrites one ("Translate and rewrite them?", default no); `--yes` answers yes. A file it wrote itself is never asked about again. JSON files are written pretty-printed with four spaces.
 - **Keys only the target file has are kept**, and values that are not text (numbers, booleans, and strings with nothing to translate, such as URLs and email addresses) are copied from the source where the target file has none. They are copied whenever the command writes the file, so one added to the source later arrives with the next string translated into that file.
 - **The state** lives under `content/tolk/lang/`, like the content's, so a second run sends nothing, an edited source string is translated again with `--mode=update`, and a string edited by hand is kept.
+- **Git.** With Statamic's git integration on, the command makes one commit ("Content translated") of the paths in `statamic.git.paths`, whose defaults hold the state but not `lang/`. While `lang/` is not tracked, the command warns after it writes: add `lang_path()` to `statamic.git.paths`, or commit `lang/` yourself, or a deploy that replaces the site's files loses the translations ([Where Tolk keeps things](installation.md#where-tolk-keeps-things)).
 
 `--dry-run` lists per file the strings by status and what would be sent, with an estimate. Exit code 1 for invalid input, a file that cannot be read (nothing is sent then), a file that could not be written or a provider that rejects the key.
 
@@ -335,7 +336,7 @@ php please tolk:forms --form=contact --dry-run
 - **A text `lang/{source}.json` already has** as a key is left to `tolk:lang`, which translates that file. A text that moves between that file and a form keeps its record: the command that takes it over finds the translation as the other one left it, so a machine translation is not read as edited by hand.
 - **A text that is a translation key** is left out too, and named. Laravel looks in `lang/{lang}.json` before anything else, so an entry there would hide the key's own translation. A key of a PHP file of the source language, such as a label `forms.contact.name` with a line under `contact.name` in `lang/{source}/forms.php`, is left to `tolk:lang`, which translates that file; a package's key, such as `acme::forms.name`, is left to the package. When an earlier run translated such a text before it became a key (its line was added to the PHP file, or its package installed, later), the command lists the entry it wrote, which still hides the key's translation, and leaves it to you to delete.
 - **An email subject with Antlers** (`{{ name }} wrote to you`) is left out and named: Statamic renders the subject before it looks up its translation, so its key would never match.
-- **The state** lives under `content/tolk/forms/`.
+- **The state** lives under `content/tolk/forms/`. The command commits and warns about an untracked `lang/` as `tolk:lang` does.
 
 Statamic passes only the email subjects through the translator. For the other texts, add `| trans` in the site's form templates, as the command reminds you:
 

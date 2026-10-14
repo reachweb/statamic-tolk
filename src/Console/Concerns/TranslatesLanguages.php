@@ -31,8 +31,8 @@ use Statamic\Facades\Site;
 /**
  * The flow tolk:lang and tolk:forms share (§A16): site handles mapped to languages, a plan per target, the dry run with
  * the keys by status and the estimate, and the translation of one target after another in this process, committed
- * once. These targets are small, so the run engine is not used. The using class also uses ReportsTranslations and
- * ResolvesTranslationOptions.
+ * once, with a warning while Statamic's git integration does not track `lang/`. These targets are small, so the run
+ * engine is not used. The using class also uses ReportsTranslations and ResolvesTranslationOptions.
  */
 trait TranslatesLanguages
 {
@@ -149,10 +149,23 @@ trait TranslatesLanguages
         } finally {
             if ($saved) {
                 GitListeners::commit(ContentWriter::COMMIT_MESSAGE);
+                $this->untrackedLangPath();
             }
         }
 
         return $this->resultCounts()['failed'] > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Statamic's commits stage only `statamic.git.paths`, whose defaults hold the state under `content/` but not
+     * `lang/`, so a deploy that replaces the site's files would lose the files this command wrote.
+     */
+    private function untrackedLangPath(): void
+    {
+        if (config('statamic.git.enabled') && ! GitListeners::tracks(lang_path())) {
+            $this->newLine();
+            $this->components->warn("Statamic's git integration does not track lang/, so it does not commit the files this command wrote with their state. Add lang_path() to statamic.git.paths, or commit lang/ yourself.");
+        }
     }
 
     /**

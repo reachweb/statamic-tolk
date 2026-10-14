@@ -27,7 +27,6 @@ use Reach\StatamicTolk\Targets\GlobalsTarget;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\GlobalSet;
-use Statamic\Facades\Path;
 use Statamic\Facades\Site;
 use Statamic\Facades\Taxonomy;
 use Statamic\Fields\Blueprint;
@@ -399,17 +398,32 @@ final class Audit
             ? $this->item(AuditLevel::Ok, __('State files: :path.', ['path' => $this->relativePath($path)]))
             : $this->item(AuditLevel::Error, __('Tolk cannot write the state files to :path. Make the folder writable, or set another one (tolk.state.path).', ['path' => $this->relativePath($path)]));
 
-        if (config('statamic.git.enabled')) {
-            $tracked = collect(config('statamic.git.paths'))
-                ->filter(fn ($tracked) => is_string($tracked) && $tracked !== '')
-                ->contains(fn (string $tracked) => str_starts_with($path.'/', rtrim($this->absolutePath($tracked), '/\\').'/'));
+        if (! config('statamic.git.enabled')) {
+            return $items;
+        }
 
-            $items[] = $tracked
-                ? $this->item(AuditLevel::Ok, __('Statamic\'s git integration tracks the state files, so they are committed with the content.'))
-                : $this->item(AuditLevel::Warning, __('Statamic\'s git integration does not track :path, so the state is not committed with the content it describes. Add the folder to statamic.git.paths.', ['path' => $this->relativePath($path)]));
+        $items[] = GitListeners::tracks($path)
+            ? $this->item(AuditLevel::Ok, __('Statamic\'s git integration tracks the state files, so they are committed with the content.'))
+            : $this->item(AuditLevel::Warning, __('Statamic\'s git integration does not track :path, so the state is not committed with the content it describes. Add the folder to statamic.git.paths.', ['path' => $this->relativePath($path)]));
+
+        // Statamic's default git paths hold content/, where this state lives, but not lang/.
+        if ($this->hasLanguageState($path)) {
+            $lang = $this->relativePath(lang_path());
+            $items[] = GitListeners::tracks(lang_path())
+                ? $this->item(AuditLevel::Ok, __('Statamic\'s git integration tracks :path, so the translation files of tolk:lang and tolk:forms are committed with their state.', ['path' => $lang]))
+                : $this->item(AuditLevel::Warning, __('Statamic\'s git integration does not track :path, so the translation files that tolk:lang and tolk:forms wrote are not committed with their state, and a deploy that replaces the site\'s files loses them. Add the folder to statamic.git.paths.', ['path' => $lang]));
         }
 
         return $items;
+    }
+
+    /**
+     * Whether tolk:lang or tolk:forms has kept state: the folders of TargetRef::storageKey(), which the file driver
+     * removes once they are empty.
+     */
+    private function hasLanguageState(string $path): bool
+    {
+        return is_dir($path.'/lang') || is_dir($path.'/forms');
     }
 
     private function contentSiteItems(): array
@@ -638,13 +652,6 @@ final class Audit
     private function siteNames(array $handles): string
     {
         return implode(', ', array_map($this->siteName(...), $handles));
-    }
-
-    private function absolutePath(string $path): string
-    {
-        $path = Path::tidy($path);
-
-        return Path::isAbsolute($path) ? $path : base_path($path);
     }
 
     private function relativePath(string $path): string

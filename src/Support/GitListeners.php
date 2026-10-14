@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Support\Facades\Event;
 use Statamic\Events\EntrySaved;
 use Statamic\Facades\Git;
+use Statamic\Facades\Path;
 use Statamic\Git\Subscriber;
 
 /**
@@ -43,6 +44,25 @@ final class GitListeners
         if (config('statamic.git.enabled') && config('statamic.git.automatic')) {
             Git::dispatchCommit($message);
         }
+    }
+
+    /**
+     * Whether one of `statamic.git.paths`, the only paths Statamic's commits stage, is the path or a folder above it.
+     */
+    public static function tracks(string $path): bool
+    {
+        $path = rtrim(self::absolute($path), '/\\');
+
+        return collect(config('statamic.git.paths'))
+            ->filter(fn ($tracked) => is_string($tracked) && $tracked !== '')
+            ->contains(fn (string $tracked) => str_starts_with($path.'/', rtrim(self::absolute($tracked), '/\\').'/'));
+    }
+
+    private static function absolute(string $path): string
+    {
+        $path = Path::tidy($path);
+
+        return Path::isAbsolute($path) ? $path : base_path($path);
     }
 
     private static function listening(): bool

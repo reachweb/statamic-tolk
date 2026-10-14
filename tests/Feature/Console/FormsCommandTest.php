@@ -331,3 +331,18 @@ it('commits once when the file was saved, and not when nothing was', function ()
 
     expect($commits->getArrayCopy())->toBe([ContentWriter::COMMIT_MESSAGE]);
 });
+
+it('warns when Statamic\'s git integration does not track the folder of the file it wrote', function () {
+    $this->fakeTranslations();
+    RunFixtures::commits();
+    config(['statamic.git.paths' => [config('tolk.state.path')]]);
+
+    [, $untracked] = formsCommand(['sites' => ['de']]);
+
+    config(['statamic.git.paths' => [dirname(lang_path())]]);
+    [, $tracked] = formsCommand(['sites' => ['el']]);
+
+    expect(preg_replace('/\s+/', ' ', $untracked))->toContain("Statamic's git integration does not track lang/, so it does not commit the files this command wrote with their state.")
+        ->and($tracked)->toContain('lang/el.json: done')
+        ->and($tracked)->not->toContain('does not track');
+});
