@@ -6,13 +6,17 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
+use Reach\StatamicTolk\Ai\EngineCall;
+use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\ItemStatus;
+use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Enums\RunItemStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\Events\RunFinished;
 use Reach\StatamicTolk\Events\TargetTranslated;
+use Reach\StatamicTolk\Exceptions\RequestRejected;
 use Reach\StatamicTolk\Runs\ApplyReport;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
@@ -21,6 +25,7 @@ use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
+use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Events\EntrySaved;
@@ -381,6 +386,26 @@ describe('applyReady', function () {
             ->and($item->error)->toBe('No field could be translated completely.')
             ->and($item->fields)->toBe(['title' => 'missing', 'intro' => 'missing'])
             ->and($this->hello->fresh()->existsIn('el'))->toBeFalse()
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+    });
+
+    it('keeps the earlier translation of a field none of whose parts could be translated, also without strict mode', function () {
+        $this->fakeTranslations();
+        RunFixtures::finish(RunFixtures::started(['entryIds' => [$this->hello->id()]]));
+        $this->hello->set('title', 'Hello again')->save();
+        ScriptedEngine::bind(fn (EngineCall $call) => throw RequestRejected::from('anthropic', new ProviderError(ProviderErrorKind::RequestRejected, 'Unsupported option.', 400)));
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update']]);
+
+        RunFixtures::finish($run);
+        $item = RunFixtures::items($run)[0];
+        $greek = $this->hello->fresh()->in('el');
+
+        expect($item->status)->toBe(RunItemStatus::Failed)
+            ->and($item->reason)->toBe('fields_failed')
+            ->and($item->fields)->toBe(['title' => 'request_rejected', 'intro' => 'current'])
+            ->and($greek->get('title'))->toBe('[T] Hello')
+            ->and($greek->get('intro'))->toBe('[T] A short intro.')
+            ->and(greekStatus($this->hello))->toBe(ItemStatus::Outdated)
             ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
     });
 

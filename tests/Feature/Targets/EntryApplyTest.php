@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Mode;
 use Reach\StatamicTolk\Exceptions\ApplyFailed;
+use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\Exceptions\RootMissing;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\State\StateWriter;
@@ -82,8 +83,18 @@ function applyAssembled(EntryContract|string $source, string $site = 'el', array
     }
 
     $fresh = $target->fresh();
+    $assembled = [];
 
-    return array_map(fn (string $handle) => $pipeline->assemble($plan, $fresh, $handle), $plan->fieldHandles());
+    // As PlanApplier, without the fields that failed.
+    foreach ($plan->fieldHandles() as $handle) {
+        try {
+            $assembled[] = $pipeline->assemble($plan, $fresh, $handle);
+        } catch (FieldFailed) {
+            continue;
+        }
+    }
+
+    return $assembled;
 }
 
 function applyInWriter(EntryContract|string $source, array $fields, ApplyOptions $options = new ApplyOptions, string $site = 'el'): ApplyResult
@@ -154,16 +165,22 @@ describe('creating a localization', function () {
     });
 
     it('stays a draft with mirror when a field is incomplete', function () {
+        $this->makeCollection('notes', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'body' => ['type' => 'markdown', 'localizable' => true],
+        ]);
+        $origin = $this->makeEntry('notes', 'en', ['title' => 'Hello', 'body' => "A short intro.\n\nThe body."], 'note');
         $this->fakeTranslations(fn (string $text) => $text === 'A short intro.' ? null : '[T] '.$text);
 
-        $result = translateInto($this->origin, 'el', new ApplyOptions(newStatus: 'mirror'));
+        $result = translateInto($origin, 'el', new ApplyOptions(newStatus: 'mirror'));
 
-        $localization = $this->origin->fresh()->in('el');
+        $localization = $origin->fresh()->in('el');
 
-        expect($result->applied)->toBe(['title', 'intro', 'body'])
-            ->and($localization->get('intro'))->toBe('A short intro.')
+        expect($origin->published())->toBeTrue()
+            ->and($result->applied)->toBe(['title', 'body'])
+            ->and($localization->get('body'))->toBe("A short intro.\n\n[T] The body.")
             ->and($localization->published())->toBeFalse()
-            ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Outdated);
+            ->and(StateFixtures::statuses($origin)['body'])->toBe(FieldStatus::Outdated);
     });
 
     it('stays a draft with mirror when a field with source text was not delivered', function () {
@@ -278,14 +295,16 @@ describe('slugs', function () {
                 ->and($result->warnings)->toBe(['The slug "hello" is already used in Greek, so the new localization got "hello-2".']);
         });
 
-        it('keeps the origin\'s slug, with a warning, when the title was not translated completely', function () {
+        it('keeps the origin\'s slug when the title could not be translated', function () {
             $this->fakeTranslations(fn (string $text) => $text === 'Hello' ? null : '[T] '.$text);
 
             $result = translateInto($this->origin);
+            $localization = $this->origin->fresh()->in('el');
 
             expect($result->slug)->toBe('hello')
-                ->and($this->origin->fresh()->in('el')->get('title'))->toBe('Hello')
-                ->and($result->warnings)->toContain('The title was not translated completely, so the new localization kept the slug of its origin.');
+                ->and($result->applied)->toBe(['intro', 'body'])
+                ->and($localization->has('title'))->toBeFalse()
+                ->and($localization->slug())->toBe('hello');
         });
 
         it('makes the slug from the generated title in a collection that generates its titles', function () {

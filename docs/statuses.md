@@ -150,6 +150,8 @@ To find the part the model refuses, Tolk splits the refused request in halves an
 
 With the **Strict fields** setting on, such a field is not delivered at all and keeps its previous value. A run lists it as "Could not be translated" with the reason, such as "the model refused it".
 
+A field none of whose parts could be translated is never delivered, whatever the setting: saving it would only put the origin's text over the localization's own. It keeps the value it had, so an earlier translation stays and a field the localization inherits goes on inheriting, it still reads outdated or untranslated, and the next Update tries it again. The editor's banner names it among the fields that failed, a run lists it as "Could not be translated" with the reason, and the command line names it. A new localization none of whose fields could be translated is not created.
+
 ## When the origin is emptied
 
 When a field is emptied in the origin, its translation reads outdated, and Update removes it, so the localization inherits the empty field again. Tolk remembers the removed translation: if a form that was open before, or a restored revision, puts it back, it reads outdated again, and the next Update removes it again. A field edited by hand is kept and needs attention.

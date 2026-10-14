@@ -173,7 +173,7 @@ final readonly class Pipeline
      * under the write lock, where that save is seen.
      *
      * @throws SourceChanged when the field is out of scope or its source value is not the one that was planned
-     * @throws FieldFailed when a part failed for good and the plan is strict
+     * @throws FieldFailed when a part failed for good and the plan is strict, or when every part failed for good
      */
     public function assemble(Plan $plan, Target $target, string $handle): AssembledField
     {
@@ -238,7 +238,9 @@ final readonly class Pipeline
             $warnings[] = __(':label: ":text" was left untranslated (:reason).', ['label' => $segment['label'], 'text' => $this->excerpt($segment), 'reason' => UnitOutcome::reasonLabel(UnitOutcome::INVALID)]);
         }
 
-        if ($failed !== [] && $plan->options->strict) {
+        // A field none of whose parts was translated would only put the source's text over the target's own value: it fails
+        // as in a strict plan, so an earlier translation stays and the field is tried again (D28).
+        if ($failed !== [] && ($plan->options->strict || count($failed) === count($segments))) {
             throw FieldFailed::for($handle, $failed);
         }
 

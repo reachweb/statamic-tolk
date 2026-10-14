@@ -416,6 +416,22 @@ describe('missing and invalid translations', function () {
         }
     });
 
+    it('throws FieldFailed for a field none of whose parts was translated, also when the plan is not strict', function () {
+        $this->fakeTranslations(fn (string $text) => in_array($text, ['What is it?', 'Call <x1/> today.'], true) ? null : '[T] '.$text);
+        $plan = pipelinePlan($this->origin, ['fields' => ['title', 'faq']]);
+        pipelineRun($plan);
+
+        expect(tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'title')->value)->toBe('[T] Hello');
+
+        try {
+            tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'faq');
+            $this->fail('FieldFailed was not thrown.');
+        } catch (FieldFailed $exception) {
+            expect($exception->handle)->toBe('faq')
+                ->and($exception->reasons)->toBe(['s2' => UnitOutcome::MISSING, 's3' => UnitOutcome::MISSING]);
+        }
+    });
+
     it('leaves a Markdown block in the source language when its translation would turn the code after it into markup, and fails the field when the plan is strict', function () {
         $this->makeCollection('notes', ['en', 'el'], ['body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body']]);
         $origin = $this->makeEntry('notes', 'en', ['body' => "Paste this snippet:\n\n    <script>alert(1)</script>\n\nDone."], 'snippet');
@@ -572,15 +588,10 @@ describe('finish reasons and request failures', function () {
 
         expect(pipelineRun($plan))->toBe(['b1', 'b1.a', 'b1.b'])
             ->and(tolkPipeline()->translation($plan, 's1'))->toBe('[T] Hello')
-            ->and(tolkPipeline()->failure($plan, 's2'))->toBe(UnitOutcome::REFUSED);
-
-        $intro = tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro');
-
-        expect($intro->value)->toBe('A short intro.')
-            ->and($intro->incomplete)->toBeTrue()
-            ->and($intro->identical)->toBeTrue()
-            ->and($intro->translator)->toBeNull()
-            ->and($intro->warnings)->toBe(['Introduction: "A short intro." was left untranslated (the model refused it).']);
+            ->and(tolkPipeline()->failure($plan, 's2'))->toBe(UnitOutcome::REFUSED)
+            ->and(tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'title')->value)->toBe('[T] Hello')
+            ->and(fn () => tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro'))
+            ->toThrow(FieldFailed::class, 'The field [intro] could not be translated completely: s2 (the model refused it).');
     });
 
     it('halves a refused unit past the split depth until only the refused segment fails', function () {
@@ -668,8 +679,8 @@ describe('finish reasons and request failures', function () {
         expect(pipelineRun($plan))->toBe(['b1', 'b1.a', 'b1.b'])
             ->and(tolkPipeline()->failure($plan, 's1'))->toBe(UnitOutcome::REQUEST_REJECTED)
             ->and(tolkPipeline()->failure($plan, 's2'))->toBe(UnitOutcome::REQUEST_REJECTED)
-            ->and(tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro')->warnings)
-            ->toBe(['Introduction: "A short intro." was left untranslated (the provider rejected the request).']);
+            ->and(fn () => tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro'))
+            ->toThrow(FieldFailed::class, 'The field [intro] could not be translated completely: s2 (the provider rejected the request).');
     });
 });
 

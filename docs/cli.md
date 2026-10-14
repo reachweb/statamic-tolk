@@ -99,7 +99,7 @@ Targets: 6 (Greek). Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5).
  └──────────────────────────────────────────────────────────────┘
 ```
 
-Then it translates, with a progress bar, and ends with a line per target, a summary table, the failed targets with their errors, the fields left partly untranslated, and the text fields that were not translated, with the reason (not localizable, hidden, switched off, excluded, a generated title).
+Then it translates, with a progress bar, and ends with a line per target, a summary table, the failed targets with their errors, the fields left partly untranslated, the fields that could not be translated at all and were not saved, and the text fields that were not translated, with the reason (not localizable, hidden, switched off, excluded, a generated title).
 
 - `--dry-run` prints a line per target with the fields it would translate, and keeps nothing: no run, no state. A target that waits for others the run translates first, such as a German page translated from the Greek one, reads "nothing to do yet": the run plans it again once they are done.
 - `--no-estimate` skips the scan; useful on a large site when you already know what it costs.

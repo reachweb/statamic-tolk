@@ -341,8 +341,9 @@ const FIELD_REASONS = {
     review_skipped: () => __('could not be reviewed'),
 };
 
-// Why a part of a field could not be translated: with `strict_fields`, such a field is not saved and holds the first
-// part's reason. The words are those of `UnitOutcome::reasonLabel()`, so one translation covers the warnings too.
+// Why a part of a field could not be translated: with `strict_fields`, or when none of its parts was, such a field is
+// not saved and holds the first part's reason. The words are those of `UnitOutcome::reasonLabel()`, so one translation
+// covers the warnings too.
 const FAILED_REASONS = {
     invalid: () => __('the model kept breaking its formatting'),
     missing: () => __('the model left it out'),

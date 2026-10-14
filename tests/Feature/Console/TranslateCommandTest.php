@@ -885,6 +885,24 @@ describe('failures', function () {
     });
 
     it('counts fields left incomplete and names them', function () {
+        $this->makeCollection('notes', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'body' => ['type' => 'markdown', 'localizable' => true],
+        ]);
+        $this->makeEntry('notes', 'en', ['title' => 'Note', 'body' => "A short intro.\n\nThe body."], 'note');
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
+            ? ScriptedEngine::result($call, Finish::Refused)
+            : ScriptedEngine::translated($call));
+
+        [$exitCode, $output] = translateCommand(['--collection' => ['notes'], '--site' => ['el']]);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Note → Greek: done, created, 2 fields; left incomplete: body')
+            ->and($output)->toMatch('/\| 1 +\| 0 +\| 0 +\| 1 +\|/')
+            ->and($output)->toMatch('/\| Note → Greek +\| body +\|/');
+    });
+
+    it('names the fields it could not translate at all, which it does not save', function () {
         ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
             ? ScriptedEngine::result($call, Finish::Refused)
             : ScriptedEngine::translated($call));
@@ -892,9 +910,11 @@ describe('failures', function () {
         [$exitCode, $output] = translateCommand(['--collection' => ['articles'], '--site' => ['el']]);
 
         expect($exitCode)->toBe(0)
-            ->and($output)->toContain('Hello → Greek: done, created, 2 fields; left incomplete: intro')
-            ->and($output)->toMatch('/\| 2 +\| 0 +\| 0 +\| 1 +\|/')
-            ->and($output)->toMatch('/\| Hello → Greek +\| intro +\|/');
+            ->and($output)->toContain('Hello → Greek: done, created, 1 field; not translated: intro')
+            ->and($output)->toMatch('/\| 2 +\| 0 +\| 0 +\| 0 +\|/')
+            ->and($output)->toContain('These fields could not be translated and were not saved. The next update tries them again.')
+            ->and($output)->toMatch('/\| Hello → Greek +\| intro +\|/')
+            ->and($this->hello->fresh()->in('el')->has('intro'))->toBeFalse();
     });
 });
 

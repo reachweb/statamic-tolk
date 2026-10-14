@@ -22,6 +22,7 @@ All notable changes to Tolk are documented in this file.
 - A status has the same colour in the banner, the origin's list and the Overview.
 - The editor names models as the model selects do ("Gemini 3.8 Flash" rather than `gemini-3.8-flash`): in the banner's summary, the offer and the reviewer's changes.
 - The origin's banner is hidden while every localization is up to date.
+- A field none of whose parts could be translated is no longer saved in the origin's language. It keeps the value it had, so an earlier translation stays on the page, and the next Update tries it again; runs list it as "Could not be translated" with the reason, the command line names it, and the editor does not fill it. Before, a request the provider rejected, or a single text the model refused, saved the origin's text over the translation and the run said it was done.
 - A page skipped because its collection's home page is not translated into the site yet says why (the first page saved into the site's empty tree would become its home page) and links to the home page, in the push results and on the run's page.
 
 ### Fixed

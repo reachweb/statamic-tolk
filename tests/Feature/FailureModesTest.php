@@ -470,7 +470,9 @@ describe('an answer the content filter stops', function () {
 
         $result = failingTranslate($origin, ['translator' => 'openai:gpt-6.1-sol']);
 
-        expect($result->warnings)->toBe(['Title: "Hello" was left untranslated (the model refused it).'])
+        expect($result->fields)->toBe(['title' => 'refused', 'body' => 'not_applicable'])
+            ->and($result->warnings)->toBe(['The field [title] could not be translated completely: s1 (the model refused it).'])
+            ->and($origin->fresh()->existsIn('el'))->toBeFalse()
             ->and(Http::recorded())->toHaveCount(1);
     });
 });

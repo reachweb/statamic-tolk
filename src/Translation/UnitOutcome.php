@@ -20,6 +20,11 @@ final readonly class UnitOutcome
     public const string REQUEST_REJECTED = 'request_rejected';
 
     /**
+     * Why a segment failed for good, which a field that was not delivered for it holds as its outcome (D28).
+     */
+    public const array FAILURES = [self::INVALID, self::MISSING, self::TOO_LONG, self::REFUSED, self::REQUEST_REJECTED];
+
+    /**
      * Why a review was skipped after `retry.max_attempts` transient failures.
      */
     public const string UNAVAILABLE = 'unavailable';

@@ -477,6 +477,22 @@ describe('failures', function () {
     });
 
     it('saves a field with a part left in the source language as incomplete', function () {
+        $this->makeCollection('notes', ['en', 'el'], ['body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body']]);
+        $origin = $this->makeEntry('notes', 'en', ['body' => "A short intro.\n\nThe body."], 'note');
+        ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
+            ? ScriptedEngine::result($call, Finish::Refused)
+            : ScriptedEngine::translated($call));
+
+        $result = translateTarget($origin);
+
+        expect($result->status)->toBe(TargetResultStatus::Done)
+            ->and($result->fields)->toBe(['body' => 'incomplete'])
+            ->and($result->warnings)->toHaveCount(1)
+            ->and($result->warnings[0])->toContain('was left untranslated (the model refused it)')
+            ->and($origin->fresh()->in('el')->get('body'))->toBe("A short intro.\n\n[T] The body.");
+    });
+
+    it('saves the other fields and not a field none of whose parts was translated', function () {
         ScriptedEngine::bind(fn (EngineCall $call) => in_array('A short intro.', array_column($call->segments, 'text'), true)
             ? ScriptedEngine::result($call, Finish::Refused)
             : ScriptedEngine::translated($call));
@@ -484,10 +500,9 @@ describe('failures', function () {
         $result = translateTarget($this->origin);
 
         expect($result->status)->toBe(TargetResultStatus::Done)
-            ->and($result->fields)->toBe(['title' => 'applied', 'intro' => 'incomplete', 'body' => 'applied'])
-            ->and($result->warnings)->toHaveCount(1)
-            ->and($result->warnings[0])->toContain('was left untranslated (the model refused it)')
-            ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('A short intro.');
+            ->and($result->fields)->toBe(['title' => 'applied', 'intro' => 'refused', 'body' => 'applied'])
+            ->and($result->warnings)->toBe(['The field [intro] could not be translated completely: s2 (the model refused it).'])
+            ->and($this->origin->fresh()->in('el')->has('intro'))->toBeFalse();
     });
 
     it('fails a field with strict fields and saves the others', function () {

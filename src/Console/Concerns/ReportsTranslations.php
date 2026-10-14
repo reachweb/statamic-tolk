@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Runs\Estimate;
 use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Translation\Plan;
 use Reach\StatamicTolk\Translation\TargetResult;
+use Reach\StatamicTolk\Translation\UnitOutcome;
 use Statamic\Facades\Site;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
@@ -181,13 +182,17 @@ trait ReportsTranslations
 
     protected function summarize(): void
     {
-        $incomplete = $failed = [];
+        $incomplete = $untranslated = $failed = [];
         $incompleteFields = 0;
 
         foreach ($this->results as ['label' => $label, 'result' => $result]) {
             if ($fields = $this->fieldsWith($result, TargetResult::INCOMPLETE)) {
                 $incomplete[] = [$label, implode(', ', $fields)];
                 $incompleteFields += count($fields);
+            }
+
+            if ($result->status !== TargetResultStatus::Failed && $fields = $this->fieldsWith($result, ...UnitOutcome::FAILURES)) {
+                $untranslated[] = [$label, implode(', ', $fields)];
             }
 
             if ($result->status === TargetResultStatus::Failed) {
@@ -215,6 +220,11 @@ trait ReportsTranslations
         if ($incomplete !== []) {
             $this->line('Parts of these fields could not be translated and are still in the source language. The next update retries them.');
             $this->table(['Target', 'Fields'], $incomplete);
+        }
+
+        if ($untranslated !== []) {
+            $this->line('These fields could not be translated and were not saved. The next update tries them again.');
+            $this->table(['Target', 'Fields'], $untranslated);
         }
 
         $this->summarizeOutOfScope();
@@ -283,6 +293,7 @@ trait ReportsTranslations
 
         $details = array_filter([
             'left incomplete' => $this->fieldsWith($result, TargetResult::INCOMPLETE),
+            'not translated' => $this->fieldsWith($result, ...UnitOutcome::FAILURES),
             'not reviewed' => $this->fieldsWith($result, TargetResult::REVIEW_SKIPPED, TargetResult::PARTLY_REVIEWED),
             'manual edits kept' => $this->fieldsWith($result, FieldStatus::Manual->value),
             'edited meanwhile, kept' => $this->fieldsWith($result, TargetResult::TARGET_CHANGED),

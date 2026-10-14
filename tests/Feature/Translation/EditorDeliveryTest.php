@@ -5,6 +5,7 @@ use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Content\Fingerprint;
 use Reach\StatamicTolk\Contracts\Target;
 use Reach\StatamicTolk\Enums\FieldStatus;
+use Reach\StatamicTolk\Exceptions\FieldFailed;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\Settings;
@@ -216,15 +217,27 @@ it('delivers a copy of a source without text', function () {
 });
 
 it('flags a field with a part left untranslated', function () {
+    $this->makeCollection('notes', ['en', 'el'], ['body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body']]);
+    $origin = $this->makeEntry('notes', 'en', ['body' => "A short intro.\n\nThe body."], 'note');
+    $greek = $this->localize($origin, 'el', []);
+    $this->fakeTranslations(fn (string $text) => $text === 'A short intro.' ? "<b>{$text}" : "[T] {$text}");
+    $plan = runDeliveryPlan(app(TargetFactory::class)->forEntry($origin, 'el'));
+
+    $delivered = app(EditorDelivery::class)->deliver($plan, app(TargetFactory::class)->forEntry($origin, 'el'), ['body']);
+
+    expect($delivered['body']['value'])->toBe("A short intro.\n\n[T] The body.")
+        ->and($delivered['body']['incomplete'])->toBeTrue()
+        ->and($delivered['body']['warnings'])->toHaveCount(1)
+        ->and(StateFixtures::stored($greek)->field('body')->pending[0]->incomplete)->toBeTrue();
+});
+
+it('delivers no field none of whose parts was translated, and writes no pending entry for it', function () {
     $this->fakeTranslations(fn (string $text) => "<b>{$text}");
     $plan = runDeliveryPlan(greekDeliveryTarget(), ['fields' => ['intro']]);
 
-    $delivered = app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro']);
-
-    expect($delivered['intro']['value'])->toBe('A short intro.')
-        ->and($delivered['intro']['incomplete'])->toBeTrue()
-        ->and($delivered['intro']['warnings'])->toHaveCount(1)
-        ->and(StateFixtures::stored($this->greek)->field('intro')->pending[0]->incomplete)->toBeTrue();
+    expect(fn () => app(EditorDelivery::class)->deliver($plan, greekDeliveryTarget(), ['intro']))
+        ->toThrow(FieldFailed::class, 'The field [intro] could not be translated completely: s1 (the model kept breaking its formatting).')
+        ->and(StateFixtures::stored($this->greek)->field('intro')->pending)->toBe([]);
 });
 
 it('refuses a target that does not exist', function () {
