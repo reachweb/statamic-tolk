@@ -16,6 +16,12 @@ final class ApplyFailed extends RuntimeException
         return new self(__('Saving [:target] was cancelled by a listener.', ['target' => $target]));
     }
 
+    // Core's validateTree() rejected a navigation's tree, which it would otherwise have saved and then failed to read.
+    public static function invalidTree(string $target, Throwable $previous): self
+    {
+        return new self(__('The tree of [:target] was not saved: :reason', ['target' => $target, 'reason' => $previous->getMessage()]), previous: $previous);
+    }
+
     public static function notWritten(string $file, Throwable $previous): self
     {
         return new self("The translation file [{$file}] could not be written: {$previous->getMessage()}", previous: $previous);

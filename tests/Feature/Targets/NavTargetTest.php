@@ -29,6 +29,8 @@ use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Events\NavTreeSaving;
 use Statamic\Facades\Nav;
+use Statamic\Facades\Stache;
+use Statamic\Tags\Loader;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -95,6 +97,14 @@ function navAssembled(string $site = 'el', array $options = []): array
     $fresh = $target->fresh();
 
     return array_map(fn (string $handle) => $pipeline->assemble($plan, $fresh, $handle), $plan->fieldHandles());
+}
+
+// What `{{ nav:main include_home="true" }}` loops over in the site.
+function navTag(string $site): array
+{
+    $params = ['site' => $site, 'include_home' => true];
+
+    return app(Loader::class)->load('nav', ['parser' => null, 'params' => $params, 'content' => '', 'context' => [], 'tag' => 'nav:main', 'tag_method' => 'main'])->wildcard('main');
 }
 
 function applyNav(array $fields, ApplyOptions $options = new ApplyOptions, string $site = 'el'): ApplyResult
@@ -283,6 +293,57 @@ describe('applying', function () {
                 ['id' => 'suites', 'entry' => $this->suitesEl->id()],
                 ['id' => 'spa', 'title' => '[T] Spa', 'url' => '/spa'],
             ]]);
+    });
+
+    it('keeps the root page of a navigation that expects one as a text-only root when its entry has no localization, so the tree stays readable', function () {
+        $home = $this->makeEntry('pages', 'en', ['title' => 'Home'], 'home');
+        $nav = Nav::findByHandle('main');
+        $nav->expectsRoot(true)->save();
+        $nav->in('en')->tree([
+            ['id' => 'home', 'entry' => $home->id()],
+            ['id' => 'about', 'entry' => $this->about->id(), 'children' => [['id' => 'suites', 'entry' => $this->suites->id()]]],
+            ['id' => 'book', 'title' => 'Book your stay', 'url' => 'https://booking.example'],
+        ])->save();
+
+        $result = translateNav();
+        Stache::clear();
+
+        expect($result->warnings)->toBe(['The root page "Home" of the navigation has no link in Greek: its entry has no localization there, so only its title was kept.'])
+            ->and(navTree())->toBe([
+                ['id' => 'home', 'title' => '[T] Home'],
+                ['id' => 'about', 'entry' => $this->aboutEl->id(), 'children' => [['id' => 'suites', 'entry' => $this->suitesEl->id()]]],
+                ['id' => 'book', 'title' => '[T] Book your stay', 'url' => 'https://booking.example'],
+            ])
+            ->and(Nav::findByHandle('main')->in('el')->root())->toBe(['id' => 'home', 'title' => '[T] Home'])
+            ->and(collect(navTag('el'))->map(fn (array $page) => (string) $page['title'])->all())->toBe(['[T] Home', 'Σχετικά', '[T] Book your stay'])
+            ->and(navStatus())->toBe(FieldStatus::Current);
+
+        $this->signInAdmin();
+
+        expect($this->getJson(cp_route('navigation.tree.index', ['navigation' => 'main', 'site' => 'el']))->assertOk()->json('pages.0'))
+            ->toMatchArray(['id' => 'home', 'entry' => null, 'title' => '[T] Home', 'url' => null, 'children' => []]);
+
+        $homeEl = $this->localize($home, 'el', ['title' => 'Αρχική']);
+
+        expect(navStatus())->toBe(FieldStatus::Outdated);
+
+        $update = translateNav(plan: ['mode' => Mode::Update]);
+
+        expect($update->warnings)->toBe([])
+            ->and(navTree()[0])->toBe(['id' => 'home', 'entry' => $homeEl->id()])
+            ->and(navStatus())->toBe(FieldStatus::Current);
+    });
+
+    it('validates the tree as the navigation expects it before saving, and saves nothing Statamic would not read', function () {
+        $fields = navAssembled();
+        $field = $fields[0];
+        $invalid = [['id' => 'about', 'entry' => $this->aboutEl->id(), 'children' => [['id' => 'suites', 'entry' => $this->suitesEl->id()]]]];
+        Nav::findByHandle('main')->expectsRoot(true)->save();
+
+        expect(fn () => applyNav([new AssembledField($field->handle, $field->plan, $invalid, false, $field->sourceHash, $field->targetHash, $field->targetBefore, [], false, false, null)]))
+            ->toThrow(ApplyFailed::class, 'The tree of [nav::main::el] was not saved: Root page cannot have children')
+            ->and(navTree())->toBeNull()
+            ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Nav, 'main', 'el'))->hasPending())->toBeFalse();
     });
 
     it('reads outdated once a missing localization appears, and Update brings its branch back and sends only its title', function () {

@@ -101,7 +101,8 @@ Navigation trees are separate per site, with nothing inherited, so Tolk translat
 
 - The source is the default site's tree, or the tree of the `--from` site when the navigation has one there. Any other site can be translated into.
 - A navigation is translated after the entries of the same run, so its branches can point at the new localizations.
-- An **entry branch** links the target site's localization of its entry. A branch whose entry has no localization there is left out; when branches below it remain, it is kept as a text branch titled with its entry's title, translated with the tree. Either way the item gets a warning. The tree reads current until the entry is localized in that site; then it reads outdated, and Update adds the branch.
+- An **entry branch** links the target site's localization of its entry. A branch whose entry has no localization there is left out; when branches below it remain, it is kept as a text branch titled with its entry's title, translated with the tree. In a navigation set to **Expect a root page**, the root page is kept the same way, as a text-only root without a link, because Statamic would otherwise take the next item as the root, and a root cannot have items below it. Either way the item gets a warning. The tree reads current until the entry is localized in that site; then it reads outdated, and Update adds the link.
+- Tolk checks the tree as Statamic will read it before it saves it. A tree Statamic would not accept is not saved, and the navigation fails with Statamic's reason ("Root page cannot have children").
 - Branch ids are kept. Branch titles and the fields of the navigation's blueprint are translated; URLs are kept.
 - Translate navigation from the Overview's cells or with `tolk:translate --nav=main --site=el`. The navigation editor has no banner.
 

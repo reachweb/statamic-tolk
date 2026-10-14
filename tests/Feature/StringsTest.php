@@ -155,6 +155,7 @@ describe('PHP', function () {
 
         $messages = collect([
             ApplyFailed::vetoed('entry::1'),
+            ApplyFailed::invalidTree('nav::main::el', new Exception('Root page cannot have children')),
             FieldFailed::for('body', ['s1' => 'invalid']),
             InvalidModelRef::for('gpt'),
             InvalidTarget::sameSite('1', 'el'),

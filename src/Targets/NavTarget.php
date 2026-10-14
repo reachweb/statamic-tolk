@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Targets;
 
+use Exception;
 use Illuminate\Support\Collection;
 use LogicException;
 use Reach\StatamicTolk\Content\Handlers\NavTreeHandler;
@@ -45,6 +46,11 @@ final class NavTarget implements Target
     // The fieldtype of the synthetic field; its walk is NavTreeHandler's, which the field names as `tolk_handler`.
     private const string TREE_FIELDTYPE = 'yaml';
 
+    // How a branch whose entry has no localization in the target site was kept, without a link.
+    private const string KEPT_CHILDREN = 'children';
+
+    private const string KEPT_ROOT = 'root';
+
     private ?NavContract $nav = null;
 
     private ?NavTree $tree = null;
@@ -56,7 +62,7 @@ final class NavTarget implements Target
     private ?Collection $fields = null;
 
     /**
-     * @var ?array{tree: ?array, unmapped: list<array{name: string, kept: bool}>}
+     * @var ?array{tree: ?array, unmapped: list<array{name: string, kept: ?string}>}
      */
     private ?array $mapped = null;
 
@@ -229,6 +235,13 @@ final class NavTarget implements Target
             // A source that lost its tree empties the target's, which keeps the site's tree in place.
             $branches = $field->remove ? [] : $field->value;
 
+            // Core validates a tree only when it is read, so a tree it rejects would be saved and then break every read.
+            try {
+                $this->nav()->validateTree($branches, $this->site);
+            } catch (Exception $exception) {
+                throw ApplyFailed::invalidTree((string) $ref, $exception);
+            }
+
             if (! $field->remove) {
                 $this->stateWriter->recordPending($ref, $this->sourceSite, self::TREE, $this->pending($field, $branches));
             }
@@ -254,21 +267,24 @@ final class NavTarget implements Target
     {
         $site = Site::get($this->site)?->name() ?? $this->site;
 
-        return array_map(fn (array $branch) => $branch['kept']
-            ? __('The navigation item :item has no link in :site: its entry has no localization there, so only its title and the items below it were kept.', ['item' => $branch['name'], 'site' => $site])
-            : __('The navigation item :item was left out: its entry has no localization in :site.', ['item' => $branch['name'], 'site' => $site]),
-            $this->mapped()['unmapped']);
+        return array_map(fn (array $branch) => match ($branch['kept']) {
+            self::KEPT_ROOT => __('The root page :item of the navigation has no link in :site: its entry has no localization there, so only its title was kept.', ['item' => $branch['name'], 'site' => $site]),
+            self::KEPT_CHILDREN => __('The navigation item :item has no link in :site: its entry has no localization there, so only its title and the items below it were kept.', ['item' => $branch['name'], 'site' => $site]),
+            default => __('The navigation item :item was left out: its entry has no localization in :site.', ['item' => $branch['name'], 'site' => $site]),
+        }, $this->mapped()['unmapped']);
     }
 
     /**
      * The source tree as the target site needs it, null when the source site has no tree: each entry id mapped to the
      * entry's localization in the target site, because a branch must hold the entry of its own site (T2.3). A branch
      * whose entry has no localization there is left out, or, when branches below it remain, kept without a link and
-     * titled with the entry's title, which is then translated with the tree. Doing this here rather than when saving
-     * keeps the leaves of the saved tree in line with the plan's segments, and the fingerprint of the source changes
-     * when such a localization appears, so the tree reads outdated.
+     * titled with the entry's title, which is then translated with the tree. The root page of a navigation that
+     * expects one is kept the same way, without children as core requires: leaving it out would make the next branch
+     * the root, which core rejects when that branch has children. Doing this here rather than when saving keeps the
+     * leaves of the saved tree in line with the plan's segments, and the fingerprint of the source changes when such a
+     * localization appears, so the tree reads outdated.
      *
-     * @return array{tree: ?array, unmapped: list<array{name: string, kept: bool}>}
+     * @return array{tree: ?array, unmapped: list<array{name: string, kept: ?string}>}
      */
     private function mapped(): array
     {
@@ -279,13 +295,17 @@ final class NavTarget implements Target
         $unmapped = [];
         $branches = $this->source()?->tree();
 
-        return $this->mapped = ['tree' => $branches === null ? null : $this->mapBranches($branches, $unmapped), 'unmapped' => $unmapped];
+        return $this->mapped = [
+            'tree' => $branches === null ? null : $this->mapBranches($branches, $unmapped, $this->nav()->expectsRoot()),
+            'unmapped' => $unmapped,
+        ];
     }
 
     /**
-     * @param  list<array{name: string, kept: bool}>  $unmapped  the branches without a localized entry, in tree order
+     * @param  list<array{name: string, kept: ?string}>  $unmapped  the branches without a localized entry, in tree order
+     * @param  bool  $root  the first branch is the navigation's root page
      */
-    private function mapBranches(array $branches, array &$unmapped): array
+    private function mapBranches(array $branches, array &$unmapped, bool $root = false): array
     {
         $mapped = [];
 
@@ -294,6 +314,8 @@ final class NavTarget implements Target
                 continue;
             }
 
+            $isRoot = $root;
+            $root = false;
             $below = [];
 
             if (is_array($branch['children'] ?? null)) {
@@ -311,11 +333,15 @@ final class NavTarget implements Target
                 if ($localization === null) {
                     $title = $branch['title'] ?? $entry?->value('title');
                     $title = is_string($title) && $title !== '' ? $title : null;
-                    $kept = isset($branch['children']);
+                    $kept = match (true) {
+                        $isRoot => self::KEPT_ROOT,
+                        isset($branch['children']) => self::KEPT_CHILDREN,
+                        default => null,
+                    };
                     $unmapped[] = ['name' => $title === null ? "for the entry [{$branch['entry']}]" : "\"{$title}\"", 'kept' => $kept];
                     array_push($unmapped, ...$below);
 
-                    if ($kept) {
+                    if ($kept !== null) {
                         $mapped[] = self::withoutLink($branch, $title);
                     }
 
@@ -339,7 +365,7 @@ final class NavTarget implements Target
             'id' => $branch['id'] ?? null,
             'title' => $title,
             ...Arr::except($branch, ['id', 'entry', 'title', 'children']),
-            'children' => $branch['children'],
+            'children' => $branch['children'] ?? null,
         ], fn ($value) => $value !== null);
     }
 
