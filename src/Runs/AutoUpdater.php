@@ -65,13 +65,11 @@ final readonly class AutoUpdater
 
     /**
      * Whether saving the entry now, as $user, updates its translations: the settings cover its collection, it is
-     * published, and it is the origin of a site to update other than $except.
-     *
-     * @param  list<string>  $except  sites left to a run that saved the entry (leftToRun())
+     * published, and it is the origin of a site to update.
      */
-    public function applies(EntryContract $entry, ?User $user = null, array $except = []): bool
+    public function applies(EntryContract $entry, ?User $user = null): bool
     {
-        return $this->covers($entry) && $entry->published() && array_diff($this->sites($entry, $user), $except) !== [];
+        return $this->covers($entry) && $entry->published() && $this->sites($entry, $user) !== [];
     }
 
     /**
@@ -116,29 +114,52 @@ final readonly class AutoUpdater
     }
 
     /**
-     * The sites that the run saving the entry now (RunSaves) is still to translate from it, so its update leaves them to
-     * that run: those of the run's unfinished items translated from the entry, when the run updates outdated fields too
-     * (mode `update` or `all`). None for a save no run makes, or of an entry the settings do not cover.
+     * The run saving the entry now (RunSaves) and the item it applies, when that run is still to translate sites from the
+     * entry: the entry's update waits for them (left()), so it plans from what the run saves there and translates
+     * nothing twice, whatever the run's mode. None for a save no run makes, or of an entry the settings do not cover.
      *
-     * @return list<string>
+     * @return list<array{run: string, item: int}>
      */
-    public function leftToRun(EntryContract $entry): array
+    public function savingRun(EntryContract $entry): array
     {
         $save = RunSaves::current();
 
-        if ($save === null || ! in_array($save['run']->options['mode'] ?? null, [Mode::Update->value, Mode::All->value], true) || ! $this->covers($entry)) {
+        if ($save === null || ! $this->covers($entry)) {
             return [];
         }
 
+        $after = [['run' => $save['run']->id, 'item' => $save['item']->index]];
+
+        return $this->left($entry, $after) === [] ? [] : $after;
+    }
+
+    /**
+     * The sites that the runs in $after (savingRun()) are still to translate from the entry: those of the unfinished
+     * items translated from it that depend on the item that saved it, while the run has not finished and is still
+     * moving, as busy() counts runs.
+     *
+     * @param  list<array{run: string, item: int}>  $after
+     * @return list<string>
+     */
+    public function left(EntryContract $entry, array $after): array
+    {
         $sites = [];
 
-        foreach ($this->runs->dependents($save['run'], $save['item']->index) as $item) {
-            if ($item->type === ContentType::Entry && $item->sourceId === (string) $entry->id() && ! $item->status->isFinal()) {
-                $sites[] = $item->targetSite;
+        foreach ($after as ['run' => $id, 'item' => $index]) {
+            $run = $this->runs->find($id);
+
+            if ($run === null || ! $this->moving($run)) {
+                continue;
+            }
+
+            foreach ($this->runs->dependents($run, $index) as $item) {
+                if ($item->type === ContentType::Entry && $item->sourceId === (string) $entry->id() && ! $item->status->isFinal()) {
+                    $sites[] = $item->targetSite;
+                }
             }
         }
 
-        return $sites;
+        return array_values(array_unique($sites));
     }
 
     /**
@@ -149,10 +170,9 @@ final readonly class AutoUpdater
     public function busy(EntryContract $entry): bool
     {
         $reference = $entry->reference();
-        $cutoff = CarbonImmutable::now()->subSeconds(max(1, (int) config('tolk.runs.claim_ttl')));
 
         foreach ($this->runs->recent(PHP_INT_MAX) as $run) {
-            if (! $run->status->isFinal() && ($run->scope['reference'] ?? null) === $reference && ! $run->lastActivityAt()->lessThan($cutoff)) {
+            if (($run->scope['reference'] ?? null) === $reference && $this->moving($run)) {
                 return true;
             }
         }
@@ -165,7 +185,7 @@ final readonly class AutoUpdater
      * with nothing to translate is deleted. Otherwise it starts: for the caller to drive() when $drive, else with lanes
      * on the queue.
      *
-     * @param  list<string>  $except  sites left to a run that saved the entry (leftToRun())
+     * @param  list<string>  $except  sites left to a run that saved the entry, when the update cannot wait for it (left())
      * @return ?Run the started run, or null when there is nothing to translate
      */
     public function start(EntryContract $entry, ?User $user, bool $drive, array $except = []): ?Run
@@ -271,6 +291,15 @@ final readonly class AutoUpdater
         $since = ($update->startedAt ?? $update->createdAt)->getTimestamp();
 
         return $localization->revisions()->doesntContain(fn ($revision) => $revision->action() === 'publish' && $revision->date()->getTimestamp() >= $since);
+    }
+
+    /**
+     * Whether the run has not finished and moved within `runs.claim_ttl`: a run that stopped moving keeps nobody waiting.
+     */
+    private function moving(Run $run): bool
+    {
+        return ! $run->status->isFinal()
+            && ! $run->lastActivityAt()->lessThan(CarbonImmutable::now()->subSeconds(max(1, (int) config('tolk.runs.claim_ttl'))));
     }
 
     /**

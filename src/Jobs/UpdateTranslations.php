@@ -20,6 +20,7 @@ use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunDispatcher;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Support\WebServer;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
@@ -32,9 +33,10 @@ use Throwable;
  * run; without one it runs after the save's response and drives the run itself. A save inside a queue job whose
  * connection has a worker has no response to wait for, since the worker's process ends only when it stops: the job then
  * waits on that job's queue and drives the run in its worker, without the worker's time limit. A save while an earlier
- * run from the entry is still moving waits for that run, so the same fields are not translated twice. After a response
- * only one process per entry and user waits: a later save's job hands its update to that process and ends at once, so a
- * few quick saves do not hold as many PHP processes. It never throws: a failure is reported, and the localizations stay
+ * run from the entry is still moving waits for that run, and a save a run makes waits for that run to translate the
+ * sites it is still to translate from the entry, so the same fields are not translated twice. After a response only one
+ * process per entry and user waits: a later save's job hands its update to that process and ends at once, so a few
+ * quick saves do not hold as many PHP processes. It never throws: a failure is reported, and the localizations stay
  * outdated, as their banner shows.
  */
 final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQueue
@@ -83,26 +85,28 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
     public ?int $timeout = null;
 
     /**
-     * @param  list<string>  $except  sites left to the run that saved the entry (AutoUpdater::leftToRun())
+     * @param  list<array{run: string, item: int}>  $after  the run that saved the entry and the item it saved it with, when
+     *                                                      it is still to translate sites from it (AutoUpdater::savingRun())
      */
     public function __construct(
         public readonly string $entryId,
         public readonly ?string $userId = null,
-        public readonly array $except = [],
+        public readonly array $after = [],
     ) {
         $this->onConnection(RunDispatcher::connection());
         $this->onQueue(config('tolk.runs.queue.name'));
     }
 
     /**
-     * Dispatches the update of the entry as $user, but not into $except: after DELAY_SECONDS on the queue of Tolk's runs
-     * or, without a worker there, on the queue of the job that saved the entry in a worker; otherwise after the response.
+     * Dispatches the update of the entry as $user, once the runs in $after are done with it: after DELAY_SECONDS on the
+     * queue of Tolk's runs or, without a worker there, on the queue of the job that saved the entry in a worker; otherwise
+     * after the response.
      *
-     * @param  list<string>  $except
+     * @param  list<array{run: string, item: int}>  $after
      */
-    public static function dispatchFor(EntryContract $entry, ?UserContract $user, array $except = []): void
+    public static function dispatchFor(EntryContract $entry, ?UserContract $user, array $after = []): void
     {
-        $job = new self((string) $entry->id(), $user === null ? null : (string) $user->id(), $except);
+        $job = new self((string) $entry->id(), $user === null ? null : (string) $user->id(), $after);
 
         if (AutoUpdater::queued()) {
             dispatch($job->delay(self::DELAY_SECONDS));
@@ -155,14 +159,17 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         $inProcess = $this->job === null || $this->job instanceof SyncJob;
         // Lanes on the queue of Tolk's runs would have no worker: the job drives the run, also in a worker of the site.
         $drive = $inProcess || ! AutoUpdater::queued();
-        $waiter = ['token' => Str::random(20), 'except' => $this->except, 'until' => CarbonImmutable::now()->addMinutes(self::WAIT_MINUTES)->getTimestamp()];
+        // A browser saves a run's next items only once the response of this request has arrived, which this web server
+        // sends only when the job ends: waiting here for the run that saved the entry would hold that run.
+        $holdsResponse = $inProcess && app(WebServer::class)->endsResponsesEarly() === false;
+        $waiter = ['token' => Str::random(20), 'after' => $this->after, 'until' => CarbonImmutable::now()->addMinutes(self::WAIT_MINUTES)->getTimestamp()];
 
         if ($inProcess) {
             self::keepRunning();
         }
 
         while (true) {
-            $run = $this->attempt($updater, $user, $inProcess, $drive, $waiter);
+            $run = $this->attempt($updater, $user, $inProcess, $drive, $holdsResponse, $waiter);
 
             if ($run !== false) {
                 break;
@@ -189,18 +196,20 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
     }
 
     /**
-     * Under the entry's lock, starts the entry's run, unless the job has to wait for another job starting one or for an
-     * earlier run from the entry that is still moving. In the saving process only one job per entry and user waits,
-     * marked in the cache: a later job leaves its update to it and ends, and the one that waits then also translates
-     * the sites the later job's save left to no run (the intersection of their $except) and waits as long as it would.
+     * Under the entry's lock, starts the entry's run, unless the job has to wait for another job starting one, for an
+     * earlier run from the entry that is still moving, or for the sites a run that saved the entry is still to translate
+     * from it. In the saving process only one job per entry and user waits, marked in the cache with the runs it waits
+     * for and when it stops waiting: a later job leaves its update to it and ends, and the one that waits then also waits
+     * for the runs the later job waits for (the union of their $after) and as long as it would. A job that would hold
+     * the response its run waits for leaves that run's sites to it instead.
      *
      * @param  bool  $drive  whether this job drives the run it starts
-     * @param  array{token: string, except: list<string>, until: int}  $waiter  this job's mark: the sites it leaves to a
-     *                                                                          run, and when it stops waiting
+     * @param  bool  $holdsResponse  whether waiting holds the response of the request that saved the entry
+     * @param  array{token: string, after: list<array{run: string, item: int}>, until: int}  $waiter  this job's mark
      * @return Run|false|null the run, null when there is nothing to translate or another job waits to translate it, false
      *                        when it has to wait
      */
-    private function attempt(AutoUpdater $updater, ?UserContract $user, bool $inProcess, bool $drive, array &$waiter): Run|false|null
+    private function attempt(AutoUpdater $updater, ?UserContract $user, bool $inProcess, bool $drive, bool $holdsResponse, array &$waiter): Run|false|null
     {
         $cache = Cache::store(config('tolk.cache_store'));
         $lock = $cache->lock('tolk:auto-update:'.$this->entryId, self::LOCK_SECONDS);
@@ -221,7 +230,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
 
             $entry = Entry::find($this->entryId);
 
-            if ($entry === null || ! $updater->applies($entry, $user, $waiter['except'])) {
+            if ($entry === null || ! $updater->applies($entry, $user)) {
                 return $this->stopWaiting($key, $mine);
             }
 
@@ -229,14 +238,16 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
             if ($waiting !== null && ! $mine) {
                 $cache->put($key, [
                     'token' => $waiting['token'],
-                    'except' => array_values(array_intersect($waiting['except'], $waiter['except'])),
+                    'after' => array_values(array_unique([...$waiting['after'], ...$waiter['after']], SORT_REGULAR)),
                     'until' => max($waiting['until'], $waiter['until']),
                 ], self::WAITER_SECONDS);
 
                 return null;
             }
 
-            if ($updater->busy($entry)) {
+            $left = $updater->left($entry, $waiter['after']);
+
+            if ($updater->busy($entry) || ($left !== [] && ! $holdsResponse)) {
                 if (! $inProcess) {
                     return false;
                 }
@@ -252,7 +263,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
 
             $this->stopWaiting($key, $mine);
 
-            return $updater->start($entry, $user, $drive, $waiter['except']);
+            return $updater->start($entry, $user, $drive, $left);
         } finally {
             $lock->release();
         }

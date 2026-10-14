@@ -13,6 +13,7 @@ use Illuminate\Support\Sleep;
 use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Enums\RunItemStatus;
@@ -21,10 +22,12 @@ use Reach\StatamicTolk\Jobs\UpdateTranslations;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\Runs\Run;
+use Reach\StatamicTolk\Runs\RunItem;
 use Reach\StatamicTolk\Runs\RunProcessor;
 use Reach\StatamicTolk\Runs\UsageLog;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Support\WebServer;
 use Reach\StatamicTolk\Targets\ApplyOptions;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
@@ -457,34 +460,46 @@ describe('without a queue worker', function () {
             ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] The longest intro.');
     });
 
-    it('lets the saves of the user meanwhile widen the update that waits, while another user waits in a process of their own', function () {
+    it('lets the saves of the user meanwhile hand the update that waits the runs it waits for, while another user waits in a process of their own', function () {
         Sleep::fake(syncWithCarbon: true);
         $admin = $this->signInAdmin();
         autoTranslated($this->hello, ['el', 'de']);
         $editor = $this->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
         $earlier = RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        // A run that saved the entry with its first item and is still to translate German from it.
+        $bulk = $this->runs->create(Run::make(RunDriver::Browser), [
+            new RunItem(0, ContentType::Entry, $this->hello->id(), 'el', 'Hello', status: RunItemStatus::Done),
+            new RunItem(1, ContentType::Entry, $this->hello->id(), 'de', 'Hello', dependsOn: [0]),
+        ]);
         autoOn();
         $this->hello->set('intro', 'A longer intro.')->saveQuietly();
         $sleeps = 0;
 
-        // The job that waits comes from a run's save, with German left to that run. The admin saves the entry too, and so
-        // does an editor, each job in a process of its own; the earlier run ends while the editor's waits.
-        Sleep::whenFakingSleep(function () use (&$sleeps, $admin, $editor, $earlier) {
-            if (++$sleeps === 2) {
+        // The admin's job waits for the earlier run. The admin's next save is made by the run still to translate German,
+        // and an editor saves too, each job in a process of its own; the earlier run ends while the editor's job waits,
+        // and the run still to translate German once the admin's job waits for it alone.
+        Sleep::whenFakingSleep(function () use (&$sleeps, $admin, $editor, $earlier, $bulk) {
+            $sleeps++;
+
+            if ($sleeps === 1) {
+                app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id(), [['run' => $bulk->id, 'item' => 0]]), 'handle']);
+                app()->call([new UpdateTranslations($this->hello->id(), (string) $editor->id()), 'handle']);
+            }
+
+            if ($sleeps === 2) {
                 app(RunProcessor::class)->cancel($earlier);
             }
 
-            if ($sleeps === 1) {
-                app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
-                app()->call([new UpdateTranslations($this->hello->id(), (string) $editor->id()), 'handle']);
+            if ($sleeps === 3) {
+                app(RunProcessor::class)->cancel($bulk);
             }
         });
 
-        app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id(), ['de']), 'handle']);
+        app()->call([new UpdateTranslations($this->hello->id(), (string) $admin->id()), 'handle']);
 
         $done = fn (Run $run) => array_values(array_map(fn ($item) => $item->targetSite, array_filter(RunFixtures::items($run), fn ($item) => $item->status === RunItemStatus::Done)));
 
-        Sleep::assertSleptTimes(2);
+        Sleep::assertSleptTimes(3);
         expect(array_map(fn (Run $run) => [$run->createdBy['id'], $done($run)], autoRuns()))->toBe([[(string) $admin->id(), ['de']], [(string) $editor->id(), ['el']]])
             ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[T] A longer intro.');
     });
@@ -540,33 +555,38 @@ describe('without a queue worker', function () {
             ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('Eine Einleitung.');
     });
 
-    it('leaves to a run the localizations it is still to translate from a localization it saved', function () {
+    it('waits for a run to translate the localizations of a localization it saved, so they are translated once, whatever its mode', function (string $mode) {
+        Sleep::fake();
         $admin = $this->signInAdmin();
         autoTranslated($this->hello, ['el']);
-        // A chain: German is translated from Greek, so the Greek localization is an origin too.
+        // A chain: German is translated from Greek, so the Greek localization is an origin too. Greek has no introduction
+        // of its own, so a run in any mode saves it.
         $this->localize(autoEntry($this->hello, 'el'), 'de');
-        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
+        autoEntry($this->hello, 'el')->remove('intro')->published(true)->saveQuietly();
         autoOn();
-        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
         $this->fakeTranslations(fn (string $text) => '[U] '.$text);
         $calls = $this->modelCalls();
-        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update'], 'user' => $admin]);
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => $mode], 'user' => $admin]);
 
-        // A tick translates and saves Greek; while its process ends its response, the next tick translates German.
+        // A tick translates and saves Greek, and the next tick translates German; while the process that saved Greek waits
+        // after its response, the next apply saves German.
+        Sleep::whenFakingSleep(fn () => app(RunProcessor::class)->applyReady($run, 'apply-2', now()->addSeconds(30)));
         RunFixtures::translate($run);
         app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
         RunFixtures::translate($run);
         afterResponse();
         RunFixtures::finish($run);
 
-        expect(autoRuns())->toBe([])
-            ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
+        expect(RunFixtures::statuses($run))->toBe(['done', 'done'])
             ->and($this->modelCalls() - $calls)->toBe(2)
-            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[U] A longer intro.')
-            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[U] [U] A longer intro.');
-    });
+            ->and(autoRuns())->toBe([])
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[U] A short intro.')
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[U] [U] A short intro.');
+        Sleep::assertSleptTimes(1);
+    })->with(['missing', 'update', 'all']);
 
-    it('updates only the other localizations of a localization a run saved', function () {
+    it('updates the localizations of a localization a run saved once the run is done with them, so only the others are translated again', function () {
+        Sleep::fake();
         Site::setSites([...Site::config(), 'fr' => ['name' => 'French', 'url' => 'http://localhost/fr/', 'locale' => 'fr_FR', 'lang' => 'fr']]);
         $this->makeCollection('notes', ['en', 'el', 'de', 'fr'], [
             'title' => ['type' => 'text', 'localizable' => true],
@@ -585,36 +605,77 @@ describe('without a queue worker', function () {
         $calls = $this->modelCalls();
         $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$note->id()], 'options' => ['mode' => 'all'], 'user' => $admin]);
 
+        Sleep::whenFakingSleep(fn () => app(RunProcessor::class)->applyReady($run, 'apply-2', now()->addSeconds(30)));
         RunFixtures::translate($run);
         app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
         RunFixtures::translate($run);
         afterResponse();
         RunFixtures::finish($run);
 
+        $done = fn (Run $run) => array_values(array_map(fn ($item) => $item->targetSite, array_filter(RunFixtures::items($run), fn ($item) => $item->status === RunItemStatus::Done)));
+
         expect(autoRuns())->toHaveCount(1)
-            ->and(autoRuns()[0]->scope['sites'])->toBe(['fr'])
+            ->and($done(autoRuns()[0]))->toBe(['fr'])
             ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
             ->and($this->modelCalls() - $calls)->toBe(3)
             ->and(autoEntry($note, 'de')->get('intro'))->toBe('[U] [U] A longer note.')
             ->and(autoEntry($note, 'fr')->get('intro'))->toBe('[U] [U] A longer note.');
+        Sleep::assertSleptTimes(1);
     });
 
-    it('still updates the localizations of a localization saved by a run that leaves outdated fields alone', function () {
-        Bus::fake([UpdateTranslations::class]);
+    it('updates the localizations of a localization a run saved that the run then did not translate', function () {
+        Sleep::fake();
         $admin = $this->signInAdmin();
         autoTranslated($this->hello, ['el']);
         $this->localize(autoEntry($this->hello, 'el'), 'de');
-        // Greek has no introduction of its own, so a run of what is missing saves it.
-        autoEntry($this->hello, 'el')->remove('intro')->published(true)->saveQuietly();
+        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
         autoOn();
-        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'missing'], 'user' => $admin]);
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $this->fakeTranslations(fn (string $text) => '[U] '.$text);
+        $calls = $this->modelCalls();
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update'], 'user' => $admin]);
 
+        // The run saves Greek and is cancelled before it translates German.
+        Sleep::whenFakingSleep(fn () => app(RunProcessor::class)->cancel($run));
         RunFixtures::translate($run);
         app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
-        $greek = autoEntry($this->hello, 'el');
+        afterResponse();
 
-        expect($greek->get('intro'))->toBe('[T] A short intro.');
-        Bus::assertDispatchedAfterResponse(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $greek->id() && $job->except === []);
+        $done = fn (Run $run) => array_values(array_map(fn ($item) => $item->targetSite, array_filter(RunFixtures::items($run), fn ($item) => $item->status === RunItemStatus::Done)));
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and($done(autoRuns()[0]))->toBe(['de'])
+            ->and($done($run))->toBe(['el'])
+            ->and($this->modelCalls() - $calls)->toBe(2)
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[U] [U] A longer intro.');
+        Sleep::assertSleptTimes(1);
+    });
+
+    it('leaves to a run the localizations it is still to translate from a localization it saved, without waiting, where the response of the save waits for the update', function () {
+        Sleep::fake();
+        app()->instance(WebServer::class, new WebServer('apache2handler', false));
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        $this->localize(autoEntry($this->hello, 'el'), 'de');
+        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $this->fakeTranslations(fn (string $text) => '[U] '.$text);
+        $calls = $this->modelCalls();
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update'], 'user' => $admin]);
+
+        // The browser's next apply waits for the response of the one that saved Greek.
+        Sleep::whenFakingSleep(fn () => throw new RuntimeException('It waited for the run that waits for its response.'));
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
+        afterResponse();
+        RunFixtures::finish($run);
+
+        Sleep::assertNeverSlept();
+        expect(autoRuns())->toBe([])
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and($this->modelCalls() - $calls)->toBe(2)
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[U] [U] A longer intro.');
     });
 
     it('does nothing for a user who no longer exists, or an entry that is gone', function () {
@@ -774,6 +835,31 @@ describe('with a queue worker', function () {
 
         $job->assertNotReleased();
         expect(autoRuns())->toHaveCount(1);
+    });
+
+    it('is released while the run that saved the entry is still to translate localizations from it', function () {
+        $admin = $this->signInAdmin();
+        autoTranslated($this->hello, ['el']);
+        $this->localize(autoEntry($this->hello, 'el'), 'de');
+        autoEntry($this->hello, 'el')->published(true)->saveQuietly();
+        autoOn();
+        $this->hello->set('intro', 'A longer intro.')->saveQuietly();
+        $run = RunFixtures::started(['sites' => ['el', 'de'], 'entryIds' => [$this->hello->id()], 'options' => ['mode' => 'update'], 'user' => $admin]);
+        RunFixtures::translate($run);
+        app(RunProcessor::class)->applyReady($run, 'apply-1', now()->addSeconds(30));
+        $greek = autoEntry($this->hello, 'el');
+        $job = fn () => (new UpdateTranslations($greek->id(), (string) $admin->id(), [['run' => $run->id, 'item' => 0]]))->withFakeQueueInteractions();
+
+        Queue::assertPushed(UpdateTranslations::class, fn (UpdateTranslations $job) => $job->entryId === $greek->id() && $job->after === [['run' => $run->id, 'item' => 0]]);
+
+        app()->call([$released = $job(), 'handle']);
+        RunFixtures::finish($run);
+        app()->call([$updated = $job(), 'handle']);
+
+        $released->assertReleased(UpdateTranslations::RETRY_SECONDS);
+        $updated->assertNotReleased();
+        expect(autoRuns())->toBe([])
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done']);
     });
 });
 

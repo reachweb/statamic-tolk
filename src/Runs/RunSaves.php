@@ -9,7 +9,7 @@ use Statamic\Contracts\Auth\User;
  * Which run makes the saves made now, the item it applies, and whom they are for: its creator, or nobody for a run from
  * the command line. Their events cannot tell, because a queue worker has no signed-in user, so the automatic update such
  * a save starts (T11.1) asks here: a chain of localizations is updated with the rights of the user who saved its origin,
- * and not into the sites the run itself is still to translate from the saved localization.
+ * and only once the run is done with the sites it is still to translate from the saved localization.
  */
 final class RunSaves
 {
