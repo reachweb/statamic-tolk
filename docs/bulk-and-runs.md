@@ -151,7 +151,7 @@ With Statamic's git integration, a run makes one commit ("Content translated") w
 
 ## The Audit page
 
-**Tools › Translations › Audit** shows the checks of `tolk:doctor`: sites, providers and models, the queue, the cache, the state, and the content checks. Its most useful part lists the text fields that are not localizable, blueprint by blueprint: Tolk does not translate them, because they are shared by every site. Users who may edit Tolk's settings and have **Configure Fields** can tick fields and press **Make localizable**, after a confirmation that names the blueprint file. Fields imported from a fieldset are shown read-only, with a link to the fieldset to change.
+**Tools › Translations › Audit** shows the checks of `tolk:doctor`: sites, providers and models, the queue, the cache, the state, and the content checks; only `tolk:doctor` checks the PHP of the command line. Its most useful part lists the text fields that are not localizable, blueprint by blueprint: Tolk does not translate them, because they are shared by every site. Users who may edit Tolk's settings and have **Configure Fields** can tick fields and press **Make localizable**, after a confirmation that names the blueprint file. Fields imported from a fieldset are shown read-only, with a link to the fieldset to change.
 
 ## Usage and cost
 

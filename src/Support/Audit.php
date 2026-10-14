@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Support;
 
+use Illuminate\Console\Signals;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
@@ -57,11 +58,13 @@ final class Audit
     ) {}
 
     /**
+     * @param  bool  $commandLine  also check the PHP of this process as the one the commands run on (tolk:doctor); the
+     *                             Control Panel's PHP may be another
      * @return list<array{id: string, level: string, title: string, detail: string, items: list<array>}>
      */
-    public function run(): array
+    public function run(bool $commandLine = false): array
     {
-        return [
+        return array_values(array_filter([
             $this->check('sites', __('Sites'), __('Tolk translates content from one site into its localizations in the others, so it needs multi-site with at least two sites.'), $this->siteItems()),
             $this->check('providers', __('Providers and models'), __('Translating needs an API key for at least one provider, and every model chosen in the settings must use a provider that has one.'), $this->providerItems()),
             $this->check('queue', __('Queue'), __('Runs started in the Control Panel run as queue jobs when the queue connection has a worker, and are driven by the open run page otherwise. Each queue job must end before the connection hands it to another worker (retry_after).'), $this->queueItems()),
@@ -70,8 +73,9 @@ final class Audit
             $this->check(self::LOCALIZABLE, __('Localizable fields'), __('A text field that is not localizable is shared by every site, so Tolk does not translate it. Run php please tolk:doctor --fix-localizable to make these fields localizable, blueprint by blueprint.'), $this->notLocalizable()),
             $this->check(self::TECHNICAL_FIELDS, __('Nested fields that look like data'), __('These nested fields are translated, but their handles suggest identifiers, links or code. If one holds data rather than text, switch off "Translate automatically" in its field settings.'), $this->technicalFields()),
             $this->check('content_sites', __('Sites of collections, taxonomies and global sets'), __('Content is translated only into the sites its collection, taxonomy or global set is enabled for, and a global set translates each site from the origin it names for it.'), $this->contentSiteItems()),
+            $commandLine ? $this->check('command_line', __('Command line'), __('tolk:translate translates in worker processes and saves in its own. With PHP\'s pcntl extension, Ctrl-C cancels its run after the current requests and keeps what was saved.'), $this->commandLineItems()) : null,
             $this->check('information', __('How Tolk works on this site'), __('Information only.'), $this->informationItems()),
-        ];
+        ]));
     }
 
     /**
@@ -480,6 +484,21 @@ final class Audit
         return [$this->item(AuditLevel::Warning, count($orphans) === 1
             ? __('Global set :title names no origin for :sites, so Tolk does not translate it. Choose the site to translate from as the origin in the set\'s sites.', $replace)
             : __('Global set :title names no origin for :sites, so Tolk does not translate them. Choose the site to translate from as the origin in the set\'s sites.', $replace))];
+    }
+
+    /**
+     * Whether tolk:translate can trap Ctrl-C, by the rule Laravel's trap() follows: pcntl, on the command line.
+     */
+    private function commandLineItems(): array
+    {
+        $signals = false;
+        Signals::whenAvailable(function () use (&$signals) {
+            $signals = true;
+        });
+
+        return [$signals
+            ? $this->item(AuditLevel::Ok, __('PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.'))
+            : $this->item(AuditLevel::Warning, __('PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.'))];
     }
 
     private function informationItems(): array

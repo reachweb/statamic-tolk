@@ -44,7 +44,7 @@ class DoctorCommand extends Command
             return self::FAILURE;
         }
 
-        $checks = $audit->run();
+        $checks = $audit->run(commandLine: true);
         $exitCode = in_array(AuditLevel::Error->value, array_column($checks, 'level'), true) ? self::FAILURE : self::SUCCESS;
 
         if ($this->option('json')) {

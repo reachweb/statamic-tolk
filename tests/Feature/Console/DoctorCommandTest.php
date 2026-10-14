@@ -62,7 +62,7 @@ it('prints the checks as JSON', function () {
 
     $checks = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
 
-    expect(array_column($checks, 'id'))->toBe(['sites', 'providers', 'queue', 'cache', 'state', 'localizable', 'technical_fields', 'content_sites', 'information'])
+    expect(array_column($checks, 'id'))->toBe(['sites', 'providers', 'queue', 'cache', 'state', 'localizable', 'technical_fields', 'content_sites', 'command_line', 'information'])
         ->and($checks[5]['items'][0]['fields'][0])->toBe(['handle' => 'internal_note', 'label' => 'Internal note', 'type' => 'text', 'fieldset' => null]);
 
     config(['tolk.cache_store' => 'missing']);

@@ -143,7 +143,7 @@ describe('PHP', function () {
         $this->makeGlobalSet('footer', ['en' => null, 'el' => 'en'], null, []);
         $this->makeGlobalSet('header', ['en' => null, 'el' => null], ['tagline' => ['type' => 'text', 'localizable' => true]], []);
 
-        $texts = collect(app(Audit::class)->run())
+        $texts = collect(app(Audit::class)->run(commandLine: true))
             ->flatMap(fn (array $check) => [$check['title'], $check['detail'], ...array_column($check['items'], 'text')]);
 
         expect($texts->count())->toBeGreaterThan(25)

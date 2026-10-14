@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Console\Signals;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Reach\StatamicTolk\Enums\RunDriver;
@@ -482,6 +483,36 @@ describe('sites of collections, taxonomies and global sets', function () {
             "warning: Global set Site Settings names no origin for German (de), so Tolk does not translate it. Choose the site to translate from as the origin in the set's sites.",
         ])
             ->and(app(RunPlanner::class)->build(new RunRequest(['el', 'de'], RunDriver::Browser, globals: ['site_settings', 'footer']))->skipped)->toBe(['no_origin' => 1]);
+    });
+});
+
+describe('command line', function () {
+    // Laravel's rule for trap(), which tolk:translate's Ctrl-C needs: pcntl, on the command line, outside tests.
+    afterEach(fn () => Signals::resolveAvailabilityUsing(fn () => false));
+
+    it('is checked for tolk:doctor only, since the PHP of the Control Panel is not the one the commands run on', function () {
+        expect(array_column(app(Audit::class)->run(commandLine: true), 'id'))
+            ->toBe(['sites', 'providers', 'queue', 'cache', 'state', 'localizable', 'technical_fields', 'content_sites', 'command_line', 'information'])
+            ->and(array_column(auditChecks(), 'id'))->not->toContain('command_line');
+    });
+
+    it('says that Ctrl-C cancels a run of tolk:translate when PHP has pcntl', function () {
+        Signals::resolveAvailabilityUsing(fn () => true);
+
+        $check = collect(app(Audit::class)->run(commandLine: true))->firstWhere('id', 'command_line');
+
+        expect($check['level'])->toBe('ok')
+            ->and($check['items'])->toBe([['level' => 'ok', 'text' => 'PHP on the command line has the pcntl extension, so Ctrl-C cancels a run of tolk:translate after the current requests.']]);
+    });
+
+    it('warns that without pcntl Ctrl-C ends tolk:translate and its workers at once', function () {
+        Signals::resolveAvailabilityUsing(fn () => false);
+
+        $check = collect(app(Audit::class)->run(commandLine: true))->firstWhere('id', 'command_line');
+
+        expect($check['level'])->toBe('warning')
+            ->and($check['title'])->toBe('Command line')
+            ->and($check['items'])->toBe([['level' => 'warning', 'text' => 'PHP on the command line has no pcntl extension (Windows never has it), so Ctrl-C ends tolk:translate and its workers at once: the requests under way are lost, and the run stays running until you resume it on its run page or tolk:prune stops it. Stop a run with Cancel on its run page instead, or add pcntl to PHP.']]);
     });
 });
 
