@@ -627,6 +627,33 @@ describe('model output', function () {
         'closed by a placeholder' => ['Pick {1, 2} or *this*<x1/>.', 'Διαλέξτε {x-init=go();//<x1/> 1, 2 ή *αυτό*.'],
     ]);
 
+    // Text such as `\<x1/>` was left in the segment, where it read as the code span's own placeholder: a translation that
+    // kept only that one restored the code span behind the backslash, which turned its script into a raw tag.
+    it('keeps a Markdown code span whole when the source writes text shaped like a placeholder behind a backslash', function (Closure $model, string $saved) {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'body' => ['type' => 'markdown', 'localizable' => true, 'display' => 'Body'],
+        ]);
+        $body = 'Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.';
+        $origin = $this->makeEntry('pages', 'en', ['body' => $body], 'placeholders');
+        $this->fakeTranslations($model);
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->get('body'))->toBe($saved)
+            ->and((string) $german->augmentedValue('body'))->toContain('<code>&lt;script&gt;alert(1)&lt;/script&gt;</code>')->not->toContain('<script>');
+    })->with([
+        'a model that keeps every placeholder' => [
+            fn (string $text) => '[T] '.$text,
+            '[T] Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.',
+        ],
+        'a model that keeps only the one behind the backslash' => [
+            fn (string $text) => preg_replace('/(?<!\\\\)<x\d+\/>/', '', '[T] '.$text),
+            'Tolk sends a link as \\<x1/>, and `<script>alert(1)</script>` stays code.',
+        ],
+    ]);
+
     it('rejects a translation that rewrites, moves or drops the escaped markup of plain and inline segments, which are unescaped after', function (SegmentKind $kind, string $source, string $translation) {
         expect(app(SegmentValidator::class)->validate(['text' => $source, 'kind' => $kind->value], $translation))
             ->toMatch('/ is (missing|not in the source)\b/');

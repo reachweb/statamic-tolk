@@ -1,5 +1,7 @@
 <?php
 
+use Random\Engine\Mt19937;
+use Random\Randomizer;
 use Reach\StatamicTolk\Content\Leaf;
 use Reach\StatamicTolk\Content\Markup\Placeholders;
 use Reach\StatamicTolk\Content\Markup\Renumber;
@@ -33,7 +35,8 @@ it('restores every Markdown sample exactly', function (string $text) {
 it('restores edge cases exactly', function (string $text) {
     $tokenized = tokenizeMarkdown($text);
 
-    expect(Tokenizer::restore($tokenized->text, $tokenized))->toBe($text);
+    expect(Tokenizer::restore($tokenized->text, $tokenized))->toBe($text)
+        ->and(Placeholders::validate($tokenized->text, $tokenized->text, SegmentKind::Markdown))->toBeNull();
 })->with([
     'empty' => '',
     'text only' => 'Rooms by the sea',
@@ -52,7 +55,45 @@ it('restores edge cases exactly', function (string $text) {
     'windows line breaks' => "Line one  \r\nLine two\r\n\r\n```\r\ncode\r\n```\r\n\r\n[a]: /url\r\n",
     'antlers holding markdown' => 'Hi {{ name | replace("[a](b)", "`c`") }} there',
     'a heading with attributes' => '## Before you go {#before .wide}',
+    'text shaped like placeholders behind backslashes' => 'Type \\<x1/>, \\<1>, \\</1> or \\\\<x2/> next to `code` and <b>bold</b>',
 ]);
+
+// Behind a backslash, such text would stay in the segment and read as a placeholder: as one the tokenizer also made,
+// so the block could never validate, or a translation keeping only the escaped one would put a code span behind it.
+it('carries text that looks like a placeholder as an atom, also behind a backslash', function () {
+    $tokenized = tokenizeMarkdown('Type \\<x1/>, \\<1>bold\\</1> or \\\\<x2/> next to `code`');
+
+    expect($tokenized->text)->toBe('Type \\<x1/>, \\<x2/>bold\\<x3/> or \\\\<x4/> next to <x5/>')
+        ->and($tokenized->map)->toBe(['x1' => '<x1/>', 'x2' => '<1>', 'x3' => '</1>', 'x4' => '<x2/>', 'x5' => '`code`'])
+        ->and(Placeholders::validate($tokenized->text, $tokenized->text, SegmentKind::Markdown))->toBeNull()
+        ->and(Placeholders::validate($tokenized->text, 'Γράψτε \\<x1/>, \\<x2/>bold\\<x3/> ή \\\\<x4/>', SegmentKind::Markdown))->toBe('<x5/> is missing.')
+        ->and(Tokenizer::restore('Δίπλα στο <x5/>, γράψτε \\<x1/>, \\<x2/>bold\\<x3/> ή \\\\<x4/>', $tokenized))
+        ->toBe('Δίπλα στο `code`, γράψτε \\<x1/>, \\<1>bold\\</1> ή \\\\<x2/>');
+});
+
+// Markdown, its escapes and Tolk's own placeholders, joined at random: a segment holds only the placeholders the
+// tokenizer made, each once, so it validates against itself and restores exactly.
+it('never leaves text that reads as a placeholder in a segment', function () {
+    $fragments = ['\\', '\\\\', '<x1/>', '<x2/>', '<1>', '</1>', '<2>', '</2>', '<br/>', '<br>', '<b>', '</b>', '<!--', '-->', '`', '``', '[', ']', '](', ']:', '(', ')', '{', '}', '{.c}', '{{ a }}', '[a]: /u', '[^1]', '<https://a.b>', '*', '"', '=', '<', '>', '/', ' ', '  ', "\n", 'text'];
+    $random = new Randomizer(new Mt19937(37));
+    $failing = [];
+
+    for ($i = 0; $i < 4000; $i++) {
+        $text = implode('', array_map(fn () => $fragments[$random->getInt(0, count($fragments) - 1)], range(1, $random->getInt(1, 10))));
+        $tokenized = tokenizeMarkdown($text);
+        preg_match_all('/'.Placeholders::IDS.'/', $tokenized->text, $placeholders);
+        $ids = array_map(fn (string $slash, string $pair, string $atom) => $slash.$pair.$atom, ...array_slice($placeholders, 1));
+
+        if (Tokenizer::restore($tokenized->text, $tokenized) !== $text
+            || Placeholders::validate($tokenized->text, $tokenized->text, SegmentKind::Markdown) !== null
+            || count($ids) !== count(array_unique($ids))
+            || array_diff($ids, array_map('strval', array_keys($tokenized->map))) !== []) {
+            $failing[] = $text;
+        }
+    }
+
+    expect($failing)->toBe([]);
+});
 
 it('makes fences atoms, whatever they hold', function () {
     $tokenized = tokenizeMarkdown(ContentFixtures::markup('md')['code-fences.md']);

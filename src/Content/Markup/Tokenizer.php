@@ -90,13 +90,14 @@ final class Tokenizer
     // Atoms, in this order at each position: Antlers, fences, reference definitions, hard breaks (two spaces or a backslash
     // before a line break), code spans, then (as text) backslash escapes and unmatched backticks, footnote references,
     // link destinations, the label of a full or collapsed reference (`[text][label]`, `[text][]`), autolinks, attribute
-    // lists, and raw HTML as in the html kind.
+    // lists, and raw HTML as in the html kind. A backslash before text shaped like a placeholder (`\<x1/>`) is text on its
+    // own, so that text is an atom as in the html kind and never reads as a placeholder of the segment.
     private const string MARKDOWN_TOKENS = '/'.self::ANTLERS_TAG
         .'|'.self::FENCE
         .'|'.self::DEFINITION
         .'|(?<=\S) {2,}(?=\r?\n)|\\\\(?=\r?\n)'
         .'|(?<ticks>`++)(?:[^`\n]++|\n(?![ \t\r]*\n)|(?!\k<ticks>(?!`))`++)++\k<ticks>(?!`)'
-        .'|(?<literal>\\\\[^\w\s{]|`+)'
+        .'|(?<literal>\\\\(?!'.Placeholders::PAIR.'|'.Placeholders::ATOM.')[^\w\s{]|`+)'
         .'|\[\^[^\]\s]+\]'
         .'|'.self::DESTINATION
         .'|\]\K(?<reference>\[(?:'.self::LABEL.')?\])'
