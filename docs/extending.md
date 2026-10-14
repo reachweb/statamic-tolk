@@ -191,7 +191,7 @@ Tolk dispatches three events, all in `Reach\StatamicTolk\Events`:
 | Event | When | Properties |
 | --- | --- | --- |
 | `TargetTranslated` | Translations were saved into a target server-side: by a run, Translate into…, or the command line. | `ref` (a `TargetRef`: `type`, `id`, `site`; as a string `entry::{id}`, `term::{taxonomy}::{slug}::{site}`, `globals::{handle}::{site}`, `nav::{handle}::{site}`, `lang::{group}::{lang}` or `forms::{lang}`), `handles` (the fields saved), `models` (the models called, as `provider:model`), `usage` |
-| `RunStarted` | A run moved from pending to running. | `runId`, `driver` (`RunDriver`: `browser`, `queue` or `cli`; `cli` also for an automatic update driven by the process that saved the entry), `createdBy` (`['id' => …, 'name' => …]`, or `null` from the command line and for an automatic update of an entry saved without a signed-in user), `counts` (items per status) |
+| `RunStarted` | A run moved from pending to running. | `runId`, `driver` (`RunDriver`: `browser`, `queue` or `cli`; `cli` also for an automatic update driven by the process that saved the entry, or by its own job in the queue worker of a job that saved it), `createdBy` (`['id' => …, 'name' => …]`, or `null` from the command line and for an automatic update of an entry saved without a signed-in user), `counts` (items per status) |
 | `RunFinished` | A run ended: completed, completed with errors, cancelled or aborted. A run that is resumed and ends again fires it again. | `runId`, `status` (`RunStatus`), `counts` (items per status), `usage` |
 
 `usage` is a `UsageMap`; `$event->usage->toArray()` gives, per model, the `input`, `output`, `cache_read`, `cache_write` and `reasoning` tokens and the number of `calls`.

@@ -333,7 +333,7 @@ final class Audit
         if ($runDriver !== null && $this->settings->autoUpdate()) {
             $items[] = AutoUpdater::queued()
                 ? $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry starts a run of it on :connection after :seconds seconds.', ['connection' => $connection, 'seconds' => UpdateTranslations::DELAY_SECONDS]))
-                : $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response. A queue worker keeps that process free.'));
+                : $this->item(AuditLevel::Ok, __('Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response; a save inside a queue job runs it in a job of its own on that job\'s queue. A queue worker for Tolk\'s runs keeps those processes free.'));
         }
 
         if (RunDispatcher::hasWorker()) {

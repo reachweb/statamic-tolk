@@ -221,7 +221,7 @@ describe('queue', function () {
 
         $this->withSettings(['auto_update' => true]);
 
-        expect(auditItems('queue'))->toContain('ok: Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response. A queue worker keeps that process free.');
+        expect(auditItems('queue'))->toContain("ok: Automatic updates are on: saving a published entry runs its update in the PHP process that saved it, after the response; a save inside a queue job runs it in a job of its own on that job's queue. A queue worker for Tolk's runs keeps those processes free.");
 
         config(['queue.connections.jobs' => ['driver' => 'database', 'table' => 'jobs'], 'tolk.runs.queue.connection' => 'jobs']);
 

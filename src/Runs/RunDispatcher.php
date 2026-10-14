@@ -60,12 +60,12 @@ final readonly class RunDispatcher
     }
 
     /**
-     * The configuration of the lane jobs' connection; for a failover connection, that of the first connection it
-     * pushes to.
+     * The configuration of the lane jobs' connection, or of $connection; for a failover connection, that of the first
+     * connection it pushes to.
      */
-    public static function connectionConfig(): array
+    public static function connectionConfig(?string $connection = null): array
     {
-        $config = config('queue.connections.'.self::connection());
+        $config = config('queue.connections.'.($connection ?? self::connection()));
         $config = is_array($config) ? $config : [];
 
         if (($config['driver'] ?? null) === 'failover') {
@@ -132,11 +132,11 @@ final readonly class RunDispatcher
     }
 
     /**
-     * Whether a worker of its own runs the lane jobs' connection, which `auto` needs to choose the queue.
+     * Whether a worker of its own runs the lane jobs' connection, which `auto` needs to choose the queue, or $connection.
      */
-    public static function hasWorker(): bool
+    public static function hasWorker(?string $connection = null): bool
     {
-        $driver = self::connectionConfig()['driver'] ?? null;
+        $driver = self::connectionConfig($connection)['driver'] ?? null;
 
         return is_string($driver) && ! in_array($driver, self::WITHOUT_WORKER, true);
     }

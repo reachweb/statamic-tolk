@@ -14,6 +14,7 @@ use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
+use Reach\StatamicTolk\Listeners\TrackQueueJobs;
 use Reach\StatamicTolk\Runs\AutoUpdater;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunDispatcher;
@@ -28,11 +29,13 @@ use Throwable;
 /**
  * Updates the translations of an entry that was saved published in its origin (T11.1), as the user who saved it.
  * With a queue worker it waits a few seconds on the queue, so quick saves of the entry make one job, and only starts the
- * run; without one it runs after the save's response and drives the run itself. A save while an earlier run from the
- * entry is still moving waits for that run, so the same fields are not translated twice. Without a worker only one
- * process per entry and user waits: a later save's job hands its update to that process and ends at once, so a few quick
- * saves do not hold as many PHP processes. It never throws: a failure is reported, and the localizations stay outdated,
- * as their banner shows.
+ * run; without one it runs after the save's response and drives the run itself. A save inside a queue job whose
+ * connection has a worker has no response to wait for, since the worker's process ends only when it stops: the job then
+ * waits on that job's queue and drives the run in its worker, without the worker's time limit. A save while an earlier
+ * run from the entry is still moving waits for that run, so the same fields are not translated twice. After a response
+ * only one process per entry and user waits: a later save's job hands its update to that process and ends at once, so a
+ * few quick saves do not hold as many PHP processes. It never throws: a failure is reported, and the localizations stay
+ * outdated, as their banner shows.
  */
 final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
@@ -75,6 +78,11 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
     public int $uniqueFor = 600;
 
     /**
+     * Seconds a worker lets the job run, null for the worker's own limit; 0, no limit, for a job that drives its run.
+     */
+    public ?int $timeout = null;
+
+    /**
      * @param  list<string>  $except  sites left to the run that saved the entry (AutoUpdater::leftToRun())
      */
     public function __construct(
@@ -87,8 +95,8 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
     }
 
     /**
-     * Dispatches the update of the entry as $user, but not into $except: on the queue after DELAY_SECONDS, or after the
-     * response.
+     * Dispatches the update of the entry as $user, but not into $except: after DELAY_SECONDS on the queue of Tolk's runs
+     * or, without a worker there, on the queue of the job that saved the entry in a worker; otherwise after the response.
      *
      * @param  list<string>  $except
      */
@@ -98,6 +106,9 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
 
         if (AutoUpdater::queued()) {
             dispatch($job->delay(self::DELAY_SECONDS));
+        } elseif (($worker = app(TrackQueueJobs::class)->worker()) !== null) {
+            $job->timeout = 0;
+            dispatch($job->onConnection($worker['connection'])->onQueue($worker['queue'])->delay(self::DELAY_SECONDS));
         } else {
             dispatch($job)->afterResponse();
         }
@@ -142,6 +153,8 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         }
 
         $inProcess = $this->job === null || $this->job instanceof SyncJob;
+        // Lanes on the queue of Tolk's runs would have no worker: the job drives the run, also in a worker of the site.
+        $drive = $inProcess || ! AutoUpdater::queued();
         $waiter = ['token' => Str::random(20), 'except' => $this->except, 'until' => CarbonImmutable::now()->addMinutes(self::WAIT_MINUTES)->getTimestamp()];
 
         if ($inProcess) {
@@ -149,7 +162,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
         }
 
         while (true) {
-            $run = $this->attempt($updater, $user, $inProcess, $waiter);
+            $run = $this->attempt($updater, $user, $inProcess, $drive, $waiter);
 
             if ($run !== false) {
                 break;
@@ -170,7 +183,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
             ContentWriter::refreshStache();
         }
 
-        if ($run !== null && $inProcess) {
+        if ($run !== null && $drive) {
             $updater->drive($run);
         }
     }
@@ -181,12 +194,13 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
      * marked in the cache: a later job leaves its update to it and ends, and the one that waits then also translates
      * the sites the later job's save left to no run (the intersection of their $except) and waits as long as it would.
      *
+     * @param  bool  $drive  whether this job drives the run it starts
      * @param  array{token: string, except: list<string>, until: int}  $waiter  this job's mark: the sites it leaves to a
      *                                                                          run, and when it stops waiting
      * @return Run|false|null the run, null when there is nothing to translate or another job waits to translate it, false
      *                        when it has to wait
      */
-    private function attempt(AutoUpdater $updater, ?UserContract $user, bool $inProcess, array &$waiter): Run|false|null
+    private function attempt(AutoUpdater $updater, ?UserContract $user, bool $inProcess, bool $drive, array &$waiter): Run|false|null
     {
         $cache = Cache::store(config('tolk.cache_store'));
         $lock = $cache->lock('tolk:auto-update:'.$this->entryId, self::LOCK_SECONDS);
@@ -238,7 +252,7 @@ final class UpdateTranslations implements ShouldBeUniqueUntilProcessing, ShouldQ
 
             $this->stopWaiting($key, $mine);
 
-            return $updater->start($entry, $user, $inProcess, $waiter['except']);
+            return $updater->start($entry, $user, $drive, $waiter['except']);
         } finally {
             $lock->release();
         }

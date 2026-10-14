@@ -233,7 +233,7 @@ A rate limit or an overloaded provider pauses every request to that provider for
 | `runs.retention_days` | `30` | `tolk:prune` deletes runs without activity for this many days. |
 | `runs.tick_seconds` | `5` | How long one request of a browser-driven run may keep working on items. It starts at most one provider call, so a request lasts at most about this plus `http.timeout.web`. |
 | `runs.claim_ttl` | `300` | Seconds a queue or command-line worker holds an item before another may take it over. `tolk:prune` stops runs that made no progress for this long. |
-| `runs.execution` | `auto` | How runs started in the CP are driven: `auto` (on the queue when the queue connection has a worker, so not `sync`, `deferred`, `background` or `null`; otherwise by the run page), `queue` or `browser`. |
+| `runs.execution` | `auto` | How runs started in the CP are driven: `auto` (on the queue when the queue connection has a worker, so not `sync`, `deferred`, `background` or `null`; otherwise by the run page), `queue` or `browser`. Automatic updates go on that queue only when runs do; otherwise the process that saved the entry drives them after its response, or, for a save inside a queue job, a job of their own on that job's queue ([Automatic updates](bulk-and-runs.md#automatic-updates)). |
 | `runs.queue.connection` | `null` | The queue connection for runs; `null` is the app's default. |
 | `runs.queue.name` | `null` | The queue name for runs; `null` is the connection's default. |
 | `usage.path` | `storage_path('statamic/tolk/usage')` | The monthly usage files the Overview reads. On several servers, a folder they all share, like `runs.path`. |

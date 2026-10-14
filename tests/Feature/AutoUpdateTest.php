@@ -1,10 +1,14 @@
 <?php
 
 use Illuminate\Bus\UniqueLock;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Queue\WorkerOptions;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Sleep;
 use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Reach\StatamicTolk\Ai\ModelCatalog;
@@ -83,6 +87,27 @@ function afterResponse(): void
 function autoEntry(EntryContract $entry, string $site): ?EntryContract
 {
     return Entry::find($entry->id())->in($site);
+}
+
+/**
+ * Lets a queue worker work the next job of the `imports` queue, as `queue:work --once` would. Its process goes on, so
+ * nothing runs after a response.
+ */
+function workImport(): void
+{
+    app('queue.worker')->runNextJob('imports', 'imports', new WorkerOptions(sleep: 0));
+}
+
+/**
+ * @return list<array{queue: string, job: string, timeout: ?int, attempts: int}> the jobs waiting on the `imports` connection
+ */
+function importJobs(): array
+{
+    return DB::connection('tolk-test-jobs')->table('jobs')->orderBy('id')->get()->map(function (object $row) {
+        $payload = json_decode($row->payload, true);
+
+        return ['queue' => $row->queue, 'job' => $payload['displayName'], 'timeout' => $payload['timeout'], 'attempts' => $row->attempts];
+    })->all();
 }
 
 /**
@@ -704,6 +729,100 @@ describe('with a queue worker', function () {
 
         $job->assertNotReleased();
         expect(autoRuns())->toHaveCount(1);
+    });
+});
+
+describe('in a queue worker of the site', function () {
+    beforeEach(function () {
+        // Tolk's runs have no worker (`sync`), but the site's imports go on a connection of its own that has one.
+        config([
+            'database.connections.tolk-test-jobs' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+            'queue.connections.imports' => ['driver' => 'database', 'connection' => 'tolk-test-jobs', 'table' => 'jobs', 'queue' => 'default', 'retry_after' => 90],
+        ]);
+        Schema::connection('tolk-test-jobs')->create('jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+
+        autoTranslated($this->hello, ['el', 'de']);
+        autoOn();
+    });
+
+    it('queues the update of an entry a job saved on that job\'s queue, whose worker drives the run, as its process never ends a response', function (array $runs) {
+        config($runs);
+        $this->fakeTranslations(fn (string $text) => '[U] '.$text);
+        $id = $this->hello->id();
+
+        dispatch(static fn () => Entry::find($id)->set('intro', 'A longer intro.')->save())->onConnection('imports')->onQueue('imports');
+        workImport();
+
+        expect(autoRuns())->toBe([])
+            ->and(importJobs())->toBe([['queue' => 'imports', 'job' => UpdateTranslations::class, 'timeout' => 0, 'attempts' => 0]]);
+
+        $this->travel(UpdateTranslations::DELAY_SECONDS)->seconds();
+        workImport();
+        $run = autoRuns()[0] ?? null;
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and($run->status)->toBe(RunStatus::Completed)
+            ->and($run->driver)->toBe(RunDriver::Cli)
+            ->and($run->createdBy)->toBeNull()
+            ->and(RunFixtures::statuses($run))->toBe(['done', 'done'])
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[U] A longer intro.')
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[U] A longer intro.')
+            ->and(importJobs())->toBe([]);
+    })->with([
+        'runs on sync' => [[]],
+        'runs on deferred' => [['tolk.runs.queue.connection' => 'deferred']],
+        'runs in the browser' => [['tolk.runs.queue.connection' => 'imports', 'tolk.runs.execution' => 'browser']],
+    ]);
+
+    it('is released while an earlier run from the entry is still moving, so the worker goes on with other jobs', function () {
+        $earlier = RunFixtures::started(['entryIds' => [$this->hello->id()], 'reference' => $this->hello->reference()]);
+        $id = $this->hello->id();
+
+        dispatch(static fn () => Entry::find($id)->set('intro', 'A longer intro.')->save())->onConnection('imports')->onQueue('imports');
+        workImport();
+        $this->travel(UpdateTranslations::DELAY_SECONDS)->seconds();
+        workImport();
+
+        expect(autoRuns())->toBe([])
+            ->and(importJobs())->toBe([['queue' => 'imports', 'job' => UpdateTranslations::class, 'timeout' => 0, 'attempts' => 1]]);
+
+        app(RunProcessor::class)->cancel($earlier);
+        $this->travel(UpdateTranslations::RETRY_SECONDS)->seconds();
+        workImport();
+
+        expect(autoRuns())->toHaveCount(1)
+            ->and(RunFixtures::statuses(autoRuns()[0]))->toBe(['done', 'done'])
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] A longer intro.')
+            ->and(importJobs())->toBe([]);
+    });
+
+    it('queues the update on the worker\'s queue also when a job on a connection without a worker saves inside its job', function () {
+        $id = $this->hello->id();
+
+        dispatch(static function () use ($id) {
+            dispatch(static fn () => Entry::find($id)->set('intro', 'A longer intro.')->save())->onConnection('sync');
+        })->onConnection('imports')->onQueue('imports');
+        workImport();
+
+        expect(importJobs())->toBe([['queue' => 'imports', 'job' => UpdateTranslations::class, 'timeout' => 0, 'attempts' => 0]]);
+    });
+
+    it('still updates after the response an entry a job saved on a connection without a worker', function () {
+        Bus::fake([UpdateTranslations::class]);
+        $id = $this->hello->id();
+
+        dispatch(static fn () => Entry::find($id)->set('intro', 'A longer intro.')->save())->onConnection('sync');
+
+        Bus::assertDispatchedAfterResponseTimes(UpdateTranslations::class, 1);
+        expect(importJobs())->toBe([]);
     });
 });
 

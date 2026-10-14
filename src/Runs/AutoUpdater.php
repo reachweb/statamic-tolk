@@ -21,7 +21,8 @@ use Statamic\Facades\Site;
 /**
  * Automatic updates (T11.1): saving a published entry in its origin updates its translations with a run of that entry,
  * as the origin's Update translations does. The run's lanes go on the queue when Tolk's runs use a queue with a worker;
- * otherwise the process that saved the entry drives the run after its response (Jobs\UpdateTranslations).
+ * otherwise the process that saved the entry drives the run after its response, or, for a save inside a queue job on a
+ * connection with a worker, a job on that job's queue does (Jobs\UpdateTranslations).
  */
 final readonly class AutoUpdater
 {

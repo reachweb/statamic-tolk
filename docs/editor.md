@@ -125,7 +125,7 @@ With **Update translations automatically** on in the settings (the Automation ta
 - The run translates as you: the sites you may not access or edit are left out, also further along a chain of localizations translated from one another. It is listed on the Runs page as an automatic update, and its cost counts under **Automatic updates** on the Overview.
 - The localization's banner says when an automatic update last saved it, "Updated automatically from English on 9 Oct 2026, 10:42.", with "not published yet" while the update waits in the working copy of a published localization in a collection with revisions (unless **Publish updates** is on).
 - A new published entry of a collection with **Propagate** on, whose localizations Statamic creates as it saves the entry, is translated into them, also without **Create missing localizations**.
-- Saves from code (an import, a form handler) count too, when the entry is published.
+- Saves from code (an import, a form handler) count too, when the entry is published. A save inside a queue job is updated by a job on that job's queue ([Automatic updates](bulk-and-runs.md#automatic-updates)).
 - Entries only: terms, global sets and the navigation are updated with **Update translations**, bulk runs or the command line.
 
 How the run is driven, with and without a queue worker, is in [Bulk translations and runs](bulk-and-runs.md#automatic-updates).

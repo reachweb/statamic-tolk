@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Content\Handlers\TextHandler;
 use Reach\StatamicTolk\Contracts\Engine;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
+use Reach\StatamicTolk\Listeners\TrackQueueJobs;
 use Reach\StatamicTolk\Runs\FileRunRepository;
 use Reach\StatamicTolk\Runs\UsageRecorder;
 use Reach\StatamicTolk\State\FileStateRepository;
@@ -69,6 +70,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->app->singleton(RunRepository::class, FileRunRepository::class);
         $this->app->singleton(UsageRecorder::class);
         $this->app->singleton(ProviderCall::class);
+        $this->app->singleton(TrackQueueJobs::class);
         $this->app->bind(Engine::class, fn ($app) => $app->make(FakeEngine::enabled() ? FakeEngine::class : TranslationEngine::class));
     }
 

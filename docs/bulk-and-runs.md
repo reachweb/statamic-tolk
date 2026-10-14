@@ -68,7 +68,7 @@ A run started in the CP is driven in one of two ways, decided by `runs.execution
 
 Runs from the command line are driven by the command, with worker processes (see [The command line](cli.md#how-the-command-runs)). Their page shows their progress like any other.
 
-Automatic updates have no page to drive them, so they run on the queue or in the process that saved the entry ([Automatic updates](#automatic-updates)).
+Automatic updates have no page to drive them, so they run on the queue, in the process that saved the entry, or in the queue worker of the job that saved it ([Automatic updates](#automatic-updates)).
 
 ### "Keep this page open"
 
@@ -107,6 +107,7 @@ With `auto_update` on ([Configuration](configuration.md#automation)), saving a p
 
 - **With a queue worker** (`runs.execution` is `auto` or `queue`, and the connection has a worker), a job waits 10 seconds on the queue, so quick saves of the entry make one update, then starts the run with queue lanes, as above.
 - **Without one**, or with `runs.execution` set to `browser`, the PHP process that saved the entry runs it after it has sent its response, so the editor does not wait. That process stays busy until the run ends, without PHP's time limit, sleeping through the waits a provider asks for. No one waits for its requests, so they have the command line's timeout and size (`http.timeout.background`, `batch.max_chars.background`). A web server that stops a request after a fixed time (PHP-FPM's `request_terminate_timeout`) stops the run with it; the run then stalls, and **Resume** on its page finishes it in the browser. Run a queue worker on a site whose entries are long or have many sites.
+- **A save inside a queue job** (an import or another job of the site on a connection with a worker), when Tolk's runs have no worker of their own: a worker's process ends only when the worker stops, so there is no response to wait for. The update waits 10 seconds as a job of its own on that job's connection and queue, and the worker that takes it drives the run as the saving process above would, without the worker's time limit (`--timeout`), so that worker stays busy until the run ends. While an earlier run of the entry is still moving, the job goes back on the queue for 15 seconds, so the worker goes on with other jobs meanwhile.
 
 A save while an earlier run of the entry is still moving waits for that run (up to 15 minutes), so the same fields are not translated twice. A run started from the entry's banner counts too. Without a queue worker, one PHP process per entry and user does the waiting: a further save meanwhile hands its update to that process and frees its own at once, and the run that follows covers every save made while it waited. If the web server stops the waiting process, the saves made in the following minute update nothing; save the entry again, or press **Update translations**.
 
