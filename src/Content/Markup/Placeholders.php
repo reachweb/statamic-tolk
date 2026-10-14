@@ -25,6 +25,9 @@ final class Placeholders
         '/(?<!\\\\)(?:\\\\\\\\)*+\]:/',
     ];
 
+    // A "{" right before an atom, which restores to "{{{" when the atom is an Antlers tag: Antlers cannot parse that.
+    private const string BRACE_BEFORE_ATOM = '/\{(?='.self::ATOM.')/';
+
     // The "{" of a CommonMark attribute list, which Statamic's Markdown parser renders with every attribute but on*.
     private const string ATTRIBUTE_LIST = '/\{(?='.Tokenizer::ATTRIBUTES_START.')/i';
 
@@ -154,6 +157,10 @@ final class Placeholders
         // A "}}" in the text closes an Antlers tag that starts in an atom; without it, the tag runs on or never closes.
         if (substr_count($translated, '}}') < substr_count($source, '}}')) {
             $problems[] = 'it drops the end of an Antlers tag (}})';
+        }
+
+        if (preg_match_all(self::BRACE_BEFORE_ATOM, $translated) > preg_match_all(self::BRACE_BEFORE_ATOM, $source)) {
+            $problems[] = 'it puts a curly brace ({) right before a placeholder';
         }
 
         if ($kind->escapes() && self::addsEscapes($source, $translated)) {

@@ -44,7 +44,7 @@ Inside those fields, a string is not sent to the model, and stays as it is, when
 
 Formatting, links, set types, ids and every value that is not text are kept exactly as in the origin; only the text changes. Where the origin's Replicator or Grid rows or Bard sets have no ids (content imported or saved by code), each keeps the id the localization's row or set at the same place already has, so translating a field again does not rewrite its ids. Inside the text:
 
-- **Antlers tags** (`{{ site:name }}`, `{{ partial:cta }}`) are kept unchanged, their parameters included, and a translation may not add one or drop the `}}` that ends one.
+- **Antlers tags** (`{{ site:name }}`, `{{ partial:cta }}`) are kept unchanged, their parameters included, and a translation may not add one, drop the `}}` that ends one or put a `{` right before one, which Antlers could not parse.
 - **HTML tags** in text fields, table cells, list items, array values and navigation titles, and in translation strings and form texts, are kept: the model sees placeholders in their place and must return each one. The `alt` and `title` attributes inside HTML tags are not translated; Bard's own link titles and image alt texts are.
 - **Laravel parameters** (`:name`) are kept in translation files.
 - A translation may not introduce markup the source did not have: a `<script>` or any other new tag, an escaped tag, or new placeholders. Text that reaches the model with its `<` and `>` escaped (a `<b>` typed as text in Bard, `Kids <b` in a text field) must keep every part a browser would read as a tag exactly as it is, and may not put a letter after a `<`: once unescaped, a changed, added or dropped part would be markup. Tolk asks the model again, and keeps the source text if it does not comply.

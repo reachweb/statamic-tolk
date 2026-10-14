@@ -34,6 +34,7 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Reach\StatamicTolk\Translation\SegmentValidator;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
+use Statamic\Facades\Antlers;
 use Statamic\Facades\Entry;
 use Statamic\Facades\User;
 use Symfony\Component\Finder\SplFileInfo;
@@ -569,6 +570,33 @@ describe('model output', function () {
         'markdown' => [SegmentKind::Markdown, 'Read [our story](<x1/>).'],
         'html' => [SegmentKind::Html, '<1>Read</1> our story <x1/>'],
     ]);
+
+    // A "{" right before an atom that stands for an Antlers tag restores to "{{{", which Antlers cannot parse.
+    it('rejects a translation that puts a curly brace right before a placeholder in every kind of segment', function (SegmentKind $kind, string $source) {
+        expect(app(SegmentValidator::class)->validate(['text' => $source, 'kind' => $kind->value], str_replace('<x1/>', '{<x1/>', $source)))
+            ->toMatch('/\b[Ii]t puts a curly brace \(\{\) right before a placeholder\b/');
+    })->with([
+        'plain' => [SegmentKind::Plain, 'A short intro <x1/>'],
+        'inline' => [SegmentKind::Inline, 'Book <1>a room</1> <x1/>'],
+        'markdown' => [SegmentKind::Markdown, 'Read [our story](<x1/>).'],
+        'html' => [SegmentKind::Html, '<1>Read</1> our story <x1/>'],
+        'a curly brace of the source moved' => [SegmentKind::Plain, 'A { b <x1/>'],
+    ]);
+
+    it('saves the source of a text with Antlers whose translation puts a curly brace before a tag, which the page could not parse', function () {
+        $this->makeCollection('pages', ['en', 'el', 'de'], [
+            'headline' => ['type' => 'text', 'localizable' => true, 'display' => 'Headline', 'antlers' => true],
+        ]);
+        $origin = $this->makeEntry('pages', 'en', ['headline' => 'Welcome to {{ site:name }}'], 'welcome');
+        $this->fakeTranslations(fn (string $text) => str_replace('<x1/>', '{<x1/>', 'Willkommen bei '.$text));
+
+        $run = RunFixtures::started(['entryIds' => [$origin->id()], 'sites' => ['de']]);
+        RunFixtures::finish($run);
+        $german = Entry::find($origin->id())->in('de');
+
+        expect($german->get('headline'))->toBe('Welcome to {{ site:name }}')
+            ->and((string) Antlers::parse('<h1>{{ headline }}</h1>', $german->toAugmentedArray()))->toStartWith('<h1>Welcome to');
+    });
 
     it('keeps the Antlers tags of Markdown link targets and reference definitions whole, so a translation cannot turn one into another tag', function () {
         $this->makeCollection('pages', ['en', 'el', 'de'], [
