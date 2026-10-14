@@ -75,4 +75,4 @@ All notable changes to Tolk are documented in this file.
 - An optional review by a second model, with the corrections applied and listed with their reasons, and Review again with any model.
 - Cost estimates before bulk runs, usage per run and per month, and new localizations saved as drafts by default.
 - An Audit page and `tolk:doctor` for the setup, the provider keys and the fields that are not localizable.
-- Events for a translated target, a finished run and a changed field; a Laravel Boost guideline for host apps.
+- Events for a translated target, a started run and a finished run; a Laravel Boost guideline for host apps.
