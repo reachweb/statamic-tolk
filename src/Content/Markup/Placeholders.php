@@ -33,8 +33,9 @@ final class Placeholders
     // page is rendered. Bytewise, so text that is not valid UTF-8 cannot make the scan fail.
     private const string UNESCAPED_TAG = '/<[a-zA-Z\/!?\x01][^<>]*+>?/';
 
-    // A web or email address in the text, which a Markdown field with `automatic_links` turns into a link (T12.3).
-    private const string BARE_ADDRESS = '/(?:\b(?:https?|ftp):\/\/|\bwww\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
+    // A web or email address in the text, which a Markdown field with `automatic_links` turns into a link (T12.3). Every
+    // occurrence counts, without a word boundary: the autolink extension also links one after "_" (`_https://…_`).
+    private const string BARE_ADDRESS = '/(?:(?:https?|ftp):\/\/|www\.)[^\s<>]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/iu';
 
     // A placeholder of a Markdown segment and the backslashes before it.
     private const string ESCAPED_PLACEHOLDER = '/(\\\\*+)('.self::PAIR.'|'.self::ATOM.')/';
