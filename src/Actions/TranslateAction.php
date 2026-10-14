@@ -45,7 +45,7 @@ class TranslateAction extends Action
 
     public function authorize($user, $item)
     {
-        return $this->translatable($item) && $user->can('run bulk translations') && $user->can('edit', $item);
+        return $this->translatable($item) && $user->can('run bulk translations') && $this->editable($user, $item);
     }
 
     public function buttonText()
@@ -179,6 +179,22 @@ class TranslateAction extends Action
             $item instanceof Term => ! $settings->excludes(ContentType::Term, $item->taxonomyHandle()),
             default => false,
         };
+    }
+
+    /**
+     * Whether the user may edit the item. Core resolves a selected term to its localization in the taxonomy's first
+     * site, whatever site the listing shows, so a term counts when the user may edit it in any of the taxonomy's sites;
+     * the run still checks each target (§A14). Core's policy fails on a site the sites config no longer has.
+     */
+    private function editable(mixed $user, mixed $item): bool
+    {
+        if (! $item instanceof Term) {
+            return $user->can('edit', $item);
+        }
+
+        return $item->taxonomy()->sites()
+            ->filter(fn (string $site) => Site::get($site) !== null)
+            ->contains(fn (string $site) => $user->can('edit', $item->in($site)));
     }
 
     /**

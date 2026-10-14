@@ -424,4 +424,42 @@ describe('terms', function () {
 
         expect(app(RunRepository::class)->recent(10))->toBe([]);
     });
+
+    // Core resolves a selected term to its localization in the taxonomy's first site, whatever site the listing shows.
+    it('is offered to a translator without access to the taxonomy\'s first site, into the sites they may access only', function () {
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access el site', 'view topics terms']);
+
+        expect(listedTermActions([$this->food]))->not->toHaveKey(TRANSLATE_ACTION);
+        runTermAction([$this->food], ['sites' => ['el']])->assertForbidden();
+
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access el site', 'view topics terms', 'edit topics terms']);
+        $action = listedTermActions([$this->food, $this->wellness])[TRANSLATE_ACTION];
+
+        expect(collect($action['fields'])->firstWhere('handle', 'sites')['options'])->toBe(['el' => 'Greek'])
+            ->and($action['values']['sites'])->toBe(['el']);
+
+        runTermAction([$this->food], ['sites' => ['en']])->assertUnprocessable()->assertJsonValidationErrors('sites');
+        runTermAction([$this->food], ['sites' => ['de']])->assertUnprocessable()->assertJsonValidationErrors('sites');
+
+        expect(app(RunRepository::class)->recent(10))->toBe([]);
+
+        $response = runTermAction([$this->food, $this->wellness], ['sites' => ['el']])->assertOk();
+        $run = onlyRun();
+
+        expect($response->json('redirect'))->toBe(cp_route('tolk.runs.show', $run->id))
+            ->and(array_map(fn (RunItem $item) => [$item->sourceId, $item->targetSite], RunFixtures::items($run)))->toBe([
+                ['topics::food', 'el'],
+                ['topics::wellness', 'el'],
+            ])
+            ->and($run->scope['skipped'])->toBe([]);
+        $this->get($response->json('redirect'))->assertOk();
+    });
+
+    it('passes over a site the taxonomy still lists but the sites config no longer has', function () {
+        $this->makeTaxonomy('places', ['en', 'fr', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $beach = Term::find($this->makeTerm('places', 'beach', ['en' => ['title' => 'Beach']])->id());
+        $this->signInWithPermissions(['access cp', 'run bulk translations', 'access el site', 'edit places terms']);
+
+        expect(listedTermActions([$beach]))->toHaveKey(TRANSLATE_ACTION);
+    });
 });

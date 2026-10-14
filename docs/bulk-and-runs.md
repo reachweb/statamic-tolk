@@ -28,7 +28,7 @@ Select entries or terms in a listing (or open a page's dropdown in the tree view
 - **Review after translating**: review every translation with a second model before it is saved. The default comes from the settings.
 - **New localizations** (entries only): **Drafts**, or **Same as origin** to publish a new localization when its origin is published, the user who created the run may publish it, and every field was translated completely. The default comes from the settings.
 
-Selecting a localization translates its whole family: the origin into every chosen site. The action is not offered for single-site collections, for collections and taxonomies excluded in the settings, or in the entry form (the banner covers that). It creates the run without starting it and opens its page.
+Selecting a localization translates its whole family: the origin into every chosen site. The action needs `run bulk translations` and the right to edit the selected items; a term counts when you may edit it in any site of its taxonomy, so a translator without access to the taxonomy's first site still translates its terms into the sites they may access. The action is not offered for single-site collections, for collections and taxonomies excluded in the settings, or in the entry form (the banner covers that). It creates the run without starting it and opens its page.
 
 ## The run page
 
