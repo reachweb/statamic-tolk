@@ -203,6 +203,8 @@ A model may also be used without a catalog entry, typed as `provider:model` in t
 
 A request that times out with several pieces of text is split in two and sent again, so a timeout costs time but loses nothing. Lower the batch sizes when requests keep timing out (see [Troubleshooting](troubleshooting.md#requests-time-out)).
 
+A config published from Tolk 1.0.0-beta.1 still sends 6,000 characters per web request, the default then: with real providers, 6,000 characters into Greek took Claude Sonnet 5.5 43 seconds against the 45-second `http.timeout.web`, so one slow answer timed out and was sent again in two halves. Set `batch.max_chars.web` to `4000`, or remove the keys you did not change on purpose. Remove a whole top-level key, such as `batch`: Laravel fills in Tolk's defaults only for the top-level keys a published config leaves out, not for a key inside one.
+
 ### Retries and concurrency
 
 | Key | Default | Meaning |
