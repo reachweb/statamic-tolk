@@ -14,6 +14,7 @@ use Reach\StatamicTolk\Exceptions\NotALocalization;
 use Reach\StatamicTolk\Exceptions\SourceChanged;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
+use Reach\StatamicTolk\Exceptions\UnreadableState;
 use Reach\StatamicTolk\State\FieldStatusInfo;
 use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
@@ -24,11 +25,13 @@ use Reach\StatamicTolk\Targets\ApplyResult;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Targets\TermTarget;
+use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\AssembledField;
 use Reach\StatamicTolk\Translation\Pipeline;
 use Reach\StatamicTolk\Translation\Planner;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\PlanStore;
+use Statamic\Events\TermSaved;
 use Statamic\Events\TermSaving;
 use Statamic\Facades\Blueprint;
 use Statamic\Facades\Term;
@@ -351,6 +354,34 @@ describe('a renamed default slug', function () {
         expect($statuses('el'))->toBe(['title' => FieldStatus::Current, 'description' => FieldStatus::Outdated])
             ->and($update->fieldHandles())->toBe(['description'])
             ->and(app(Pruner::class)->prune(dryRun: true)->orphans)->toBe([]);
+    });
+
+    it('saves the rename and moves the state of the other sites when the state file of one does not parse, and the listeners after it still run', function () {
+        translateTerm();
+        translateTerm('de');
+        $this->signInAdmin();
+        $food = new TargetRef(ContentType::Term, 'topics::food', 'el');
+        $path = StateFixtures::conflict($food);
+        $later = [];
+        Event::listen(TermSaved::class, function (TermSaved $event) use (&$later) {
+            $later[] = $event->term->slug();
+        });
+
+        $this->patchJson(cp_route('taxonomies.terms.update', ['topics', 'food', 'en']), [
+            'title' => 'Food',
+            'description' => 'Eat well.',
+            'icon' => 'Fork',
+            'slug' => 'cuisine',
+            'published' => true,
+        ])->assertOk();
+
+        $statuses = array_map(fn (FieldStatusInfo $field) => $field->status, app(StatusResolver::class)->resolve(termTarget('de', 'topics::cuisine'))->fields);
+
+        expect(Term::find('topics::cuisine'))->not->toBeNull()
+            ->and($later)->toContain('cuisine')
+            ->and($statuses)->toBe(['title' => FieldStatus::Current, 'description' => FieldStatus::Current])
+            ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Term, 'topics::food', 'de'))->isEmpty())->toBeTrue()
+            ->and(fn () => app(StateRepository::class)->get($food))->toThrow(UnreadableState::class, $path);
     });
 });
 
