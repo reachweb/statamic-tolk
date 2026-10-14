@@ -4,7 +4,7 @@ import { isTermReference } from './banner.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { describeSummary, needsSetup } from './statuses.js';
 import { useEditorStore } from './store.js';
-import { BUSY, translations as sharedTranslations } from './translate.js';
+import { BUSY, savingMessage, translations as sharedTranslations } from './translate.js';
 
 // The confirmation the action opens (`components/TranslateFieldConfirm.vue`), registered under this name in `cp.js`.
 export const CONFIRM = 'tolk-translate-field-confirm';
@@ -93,6 +93,13 @@ export function createFieldActions({
 
         if (BUSY.includes(editor.phaseOf(BASE)) || translations.running(BASE)) {
             toast().error(__('A translation is already running. Try again when it has finished.'));
+
+            return;
+        }
+
+        // Before the translation refuses to start, which would leave an earlier translation's error to be reported below.
+        if (translations.saving(BASE)) {
+            toast().error(savingMessage());
 
             return;
         }

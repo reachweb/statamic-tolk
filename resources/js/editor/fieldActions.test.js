@@ -105,6 +105,7 @@ function fakeTranslations(result = null) {
             return result ?? { delivered: fields, incomplete: [], skipped: {}, failed: {}, cancelled: false, models: [] };
         }),
         running: vi.fn(() => false),
+        saving: vi.fn(() => false),
     };
 }
 
@@ -480,6 +481,21 @@ describe('run', () => {
         expect(toast.error).toHaveBeenCalledWith('A translation is already running. Try again when it has finished.');
     });
 
+    // Core's save response replaces the form's values. Without the check first, the action would also report the error
+    // an earlier translation ended with, which the refused start leaves in place.
+    it('reports a save on its way, and not the error an earlier translation ended with', async () => {
+        mount();
+        const post = vi.fn();
+        const translations = createTranslations({ store: () => store, registry, api: { post }, saving: (name) => name === 'base', toast: () => toast });
+        store.setPhase('base', 'error', { message: 'Rate limited' });
+
+        actions({ translations }).run(payload());
+        await flush();
+
+        expect(post).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('The form is being saved. Try again when the save has finished.');
+    });
+
     it('reports an error the translation ended with', async () => {
         mount();
         const translations = {
@@ -489,6 +505,7 @@ describe('run', () => {
                 return null;
             }),
             running: () => false,
+            saving: () => false,
         };
 
         actions({ translations }).run(payload());
@@ -529,6 +546,7 @@ describe('run', () => {
                 return { delivered: [], incomplete: [], skipped: { title: 'stale' }, failed: {}, cancelled: false, models: [] };
             }),
             running: () => false,
+            saving: () => false,
         };
 
         actions({ translations: cancelled }).run(payload());
@@ -541,7 +559,7 @@ describe('run', () => {
 
     it('reports a failure that throws', async () => {
         mount();
-        const translations = { translate: vi.fn(() => Promise.reject(new Error('Boom'))), running: () => false };
+        const translations = { translate: vi.fn(() => Promise.reject(new Error('Boom'))), running: () => false, saving: () => false };
 
         actions({ translations }).run(payload());
         await flush();

@@ -51,13 +51,14 @@ export function useEditorStore() {
                 this.containers[name] = { ...initialState(), reference, lastChangeAt: at };
             },
 
-            // Returns what was delivered since the previous save, by handle, for `editor/confirm`.
+            // Returns what was delivered since the previous save, by handle, for `editor/confirm`. The map is emptied in place,
+            // as a translation records its fills in the map it started with.
             saved(name, at = Date.now()) {
                 const container = this.container(name);
-                const delivered = container.delivered;
+                const delivered = { ...container.delivered };
 
                 container.lastChangeAt = Math.max(container.lastChangeAt, at);
-                container.delivered = {};
+                Object.keys(delivered).forEach((handle) => delete container.delivered[handle]);
 
                 return delivered;
             },

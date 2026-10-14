@@ -95,6 +95,20 @@ describe('saved', () => {
         expect(store.container('base').created).toBe(true);
     });
 
+    it('empties the delivered map in place, so a fill recorded after the save is confirmed with the next one', () => {
+        store.switched('base', 'entry::a', 1_000);
+        // The map a running translation records its fills in.
+        const delivered = store.container('base').delivered;
+        delivered.title = { value: 'Τίτλος' };
+
+        expect(store.saved('base', 2_000)).toEqual({ title: { value: 'Τίτλος' } });
+
+        delivered.intro = { value: 'Εισαγωγή' };
+
+        expect(store.container('base').delivered).toEqual({ intro: { value: 'Εισαγωγή' } });
+        expect(store.saved('base', 3_000)).toEqual({ intro: { value: 'Εισαγωγή' } });
+    });
+
     it('keeps a later switch as the last change', () => {
         store.switched('base', 'entry::a', 3_000);
 

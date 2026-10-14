@@ -14,6 +14,18 @@ export const RESTART = ['source_changed', 'plan_expired', 'target_missing'];
 
 const EDITED_IN_FORM = 'edited_in_form';
 
+// From the start of a save to its end (the request, the response's values put into the form, the `*.saved` hooks), core's
+// entry and term forms hold a progress task named after their container. The response's values replace what a fill or
+// Undo puts into the form in that time while the field stays localized, so the next save would store the text from
+// before as the field's own. Save is refused while a translation runs for the same reason.
+export function saveInProgress(name, progress = () => Statamic.$progress) {
+    return progress()?.names?.().includes(`${name}-entry-publish-form`) ?? false;
+}
+
+export function savingMessage() {
+    return __('The form is being saved. Try again when the save has finished.');
+}
+
 // A field this addon filled and the editor has not touched since is not an edit of theirs.
 function untouchedFill(ctx, record, handle) {
     return Boolean(record) && !record.pending && sameText(ctx.values.value[handle], record.value);
@@ -182,9 +194,22 @@ export function createTranslations({
     undoFill = restore,
     keepSlug = keepOriginSlug,
     recheckSlug = recheckOriginSlug,
+    saving = saveInProgress,
+    toast = () => Statamic.$toast,
 } = {}) {
     const runs = new Map();
     const undoing = new Set();
+
+    // Translate, Update, Review, Retry, the offer, the options and Undo all say why nothing happens.
+    function refusedWhileSaving(name) {
+        if (!saving(name)) {
+            return false;
+        }
+
+        toast().error(savingMessage());
+
+        return true;
+    }
 
     // A site or entry switch, or a container created or destroyed: fills still in flight are discarded, and a phase
     // left on `planning` or `working` goes back to idle, since it would refuse every Save.
@@ -222,6 +247,10 @@ export function createTranslations({
         const container = editor.container(name);
 
         if (!ctx || BUSY.includes(container.phase) || runs.has(name) || !ctx.reference.value) {
+            return null;
+        }
+
+        if (refusedWhileSaving(name)) {
             return null;
         }
 
@@ -389,6 +418,10 @@ export function createTranslations({
             return null;
         }
 
+        if (refusedWhileSaving(name)) {
+            return null;
+        }
+
         undoing.add(name);
 
         try {
@@ -412,6 +445,7 @@ export function createTranslations({
         abort,
         undo,
         running: (name) => runs.has(name),
+        saving: (name) => saving(name),
     };
 }
 

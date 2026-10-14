@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createPinia, defineStore, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
@@ -6,18 +8,36 @@ import { restore, SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { describeSummary } from './statuses.js';
 import { useEditorStore } from './store.js';
-import { createTranslations, keptMessage, remainingHandles, retryable, reviewable, reviewHandles, skipHandles, slugToKeep, undoable } from './translate.js';
+import {
+    createTranslations,
+    keptMessage,
+    remainingHandles,
+    retryable,
+    reviewable,
+    reviewHandles,
+    saveInProgress,
+    skipHandles,
+    slugToKeep,
+    undoable,
+} from './translate.js';
 
 let store;
 let registry;
 let dirty;
+// Core's progress tasks (`Statamic.$progress.names()`) and the error toasts shown.
+let progress;
+let toasts;
 
 beforeEach(() => {
     dirty = new Set();
+    progress = [];
+    toasts = [];
     vi.stubGlobal('Statamic', {
         $pinia: { defineStore },
         $config: { get: (key) => ({ 'tolk.concurrency': 3 })[key] },
         $dirty: { add: (name) => dirty.add(name), remove: (name) => dirty.delete(name), has: (name) => dirty.has(name) },
+        $progress: { names: () => progress },
+        $toast: { error: (message) => toasts.push(message) },
     });
     vi.stubGlobal('__', (key) => key);
     setActivePinia(createPinia());
@@ -1137,6 +1157,88 @@ describe('undo', () => {
     });
 });
 
+// From the start of a save to its end core's entry and term forms hold a progress task named after their container. The
+// save's response replaces the form's values, so nothing may fill the form in between.
+describe('while core saves the form', () => {
+    const SAVING = 'The form is being saved. Try again when the save has finished.';
+
+    it('reads the task of the container\'s own form', () => {
+        expect(saveInProgress('base')).toBe(false);
+
+        progress.push('relate-fieldtype-inline-1-entry-publish-form');
+
+        expect(saveInProgress('base')).toBe(false);
+        expect(saveInProgress('relate-fieldtype-inline-1')).toBe(true);
+    });
+
+    it('is false without core\'s progress service', () => {
+        vi.stubGlobal('Statamic', { $pinia: { defineStore } });
+
+        expect(saveInProgress('base')).toBe(false);
+    });
+
+    it('starts no translation, review or retry, and says why', async () => {
+        mount();
+        const api = fakeApi();
+        const t = translations({ api });
+        progress.push('base-entry-publish-form');
+
+        expect(await t.translate('base', { mode: 'update' })).toBeNull();
+        expect(await t.review('base')).toBeNull();
+        expect(base()).toMatchObject({ phase: 'idle', snapshot: null, request: null });
+
+        store.setPhase('base', 'error', { message: 'Rate limited' });
+        base().request = { kind: 'translate', mode: 'missing', fields: null };
+        expect(await t.retry('base')).toBeNull();
+        expect(base()).toMatchObject({ phase: 'error', error: { message: 'Rate limited' } });
+
+        expect(api.post).not.toHaveBeenCalled();
+        expect(toasts).toEqual([SAVING, SAVING, SAVING]);
+        expect(t.saving('base')).toBe(true);
+    });
+
+    it('starts while only another container saves, and once the save has finished', async () => {
+        mount();
+        const api = fakeApi();
+        const t = translations({ api });
+
+        progress.push('relate-fieldtype-inline-1-entry-publish-form', 'base-entry-publish-form');
+        expect(await t.translate('base')).toBeNull();
+
+        progress.pop();
+        await t.translate('base');
+
+        expect(api.post).toHaveBeenCalledOnce();
+        expect(base().phase).toBe('done');
+        expect(toasts).toEqual([SAVING]);
+    });
+
+    it('puts nothing back with Undo, which the save would undo again', async () => {
+        mount();
+        const undoFill = vi.fn(async () => ({ restored: ['intro'], kept: [] }));
+        const t = translations({ undoFill });
+
+        await t.translate('base');
+        progress.push('base-entry-publish-form');
+
+        expect(await t.undo('base')).toBeNull();
+        expect(undoFill).not.toHaveBeenCalled();
+        expect(base().snapshot).not.toBeNull();
+        expect(toasts).toEqual([SAVING]);
+    });
+
+    // The guard reads a task core names in its own code; a core update that renamed it would switch the guard off.
+    it('reads the task core\'s entry and term forms hold while they save', () => {
+        const assets = 'vendor/statamic/cms/resources/dist/build/assets';
+        const watcher = /saving\((\w+)\)\{this\.\$progress\.loading\(`\$\{this\.publishContainer\}-entry-publish-form`,\1\)\}.{0,600}?\.through\(\[new \w+\(`(entry|term)`/gs;
+        const forms = readdirSync(assets)
+            .filter((file) => file.endsWith('.js'))
+            .flatMap((file) => [...readFileSync(join(assets, file), 'utf8').matchAll(watcher)].map((match) => match[2]));
+
+        expect(forms.sort()).toEqual(['entry', 'term']);
+    });
+});
+
 describe('with the real runner and fill', () => {
     it('fills the form and records what it delivered', async () => {
         vi.useFakeTimers({ now: 100_000 });
@@ -1213,6 +1315,43 @@ describe('with the real runner and fill', () => {
 
         expect(plans).toHaveLength(2);
         expect(plans[1][1]).toMatchObject({ mode: 'update', fields: ['intro', 'seo_title'] });
+    });
+
+    it('fills nothing while core saves, whose response would put the stored text back into a field left localized', async () => {
+        vi.useFakeTimers({ now: 100_000 });
+        const ctx = mount();
+        const api = {
+            post: vi.fn(async (path) =>
+                path === 'editor/plan'
+                    ? planResponse()
+                    : {
+                          fields: {
+                              intro: { value: '[de] A family-run hotel.', meta: null, incomplete: false, warnings: [] },
+                              seo_title: { value: '[de] Kyma Bay Hotel', meta: null, incomplete: false, warnings: [] },
+                          },
+                          spawned: [],
+                          failed: [],
+                          warnings: [],
+                          usage: {},
+                          remaining: 0,
+                      },
+            ),
+        };
+        const t = createTranslations({ store: () => store, registry, api });
+
+        // Cmd+S, then Update while the save's request is on its way.
+        progress.push('base-entry-publish-form');
+        const promise = t.translate('base', { mode: 'update' });
+        await vi.advanceTimersByTimeAsync(SETTLE_MS + 1_000);
+        await promise;
+
+        // Core's request step puts the response's values into the form, and the save ends.
+        ctx.values.value = stored();
+        progress.length = 0;
+
+        expect(api.post).not.toHaveBeenCalled();
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(base()).toMatchObject({ phase: 'idle', delivered: {}, snapshot: null });
     });
 
     it('still reviews and fills the translation on its way when Cancel comes with review on', async () => {
