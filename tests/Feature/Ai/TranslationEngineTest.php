@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\TextUsage;
@@ -257,6 +258,27 @@ it('pauses the provider for the retry-after of a 429 and throws ProviderPaused w
     ['anthropic', 'rate_limit_error'],
     ['openai', 'rate_limit_exceeded'],
     ['gemini', 'RESOURCE_EXHAUSTED'],
+]);
+
+it('makes one request that never sleeps when the provider asks for a short wait, and pauses the provider for it', function (string $provider, int $status, string $retryAfter) {
+    $this->freezeTime();
+    Sleep::fake();
+    ProviderFixtures::fake($provider, ProviderFixtures::error($provider, $status, 'rate_limit_error', 'Slow down.'), $status, ['retry-after' => $retryAfter]);
+
+    $exception = engineFailure($provider);
+
+    expect($exception)->toBeInstanceOf(ProviderPaused::class)
+        ->and($exception->seconds)->toBe((int) $retryAfter)
+        ->and(app(Throttle::class)->pausedFor($provider))->toBe((int) $retryAfter)
+        ->and(Http::recorded())->toHaveCount(1);
+    Sleep::assertNeverSlept();
+})->with([
+    'anthropic 429' => ['anthropic', 429, '10'],
+    'openai 429' => ['openai', 429, '1'],
+    'gemini 429' => ['gemini', 429, '5'],
+    'anthropic 529' => ['anthropic', 529, '4'],
+    'openai 503' => ['openai', 503, '2'],
+    'gemini 503' => ['gemini', 503, '3'],
 ]);
 
 it('throws ProviderPaused without a request while the provider is paused', function () {

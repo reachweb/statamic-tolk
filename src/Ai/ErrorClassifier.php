@@ -211,7 +211,7 @@ class ErrorClassifier
 
     private function retryAfter(Response $response): ?int
     {
-        $value = trim($response->header('retry-after'));
+        $value = trim($response->header('retry-after') ?: $response->header(ProviderCall::RETRY_AFTER));
 
         if ($value === '') {
             return null;

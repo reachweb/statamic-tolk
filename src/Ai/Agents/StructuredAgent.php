@@ -9,7 +9,9 @@ use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Providers\Provider;
+use Laravel\Ai\Responses\AgentResponse;
 use Reach\StatamicTolk\Ai\ModelRef;
+use Reach\StatamicTolk\Ai\ProviderCall;
 use Reach\StatamicTolk\Ai\Providers;
 
 abstract class StructuredAgent implements Agent, HasProviderOptions, HasStructuredOutput
@@ -27,6 +29,14 @@ abstract class StructuredAgent implements Agent, HasProviderOptions, HasStructur
     public function instructions(): string
     {
         return $this->instructions;
+    }
+
+    /**
+     * The prompt as exactly one provider call, which the SDK does not repeat (ProviderCall).
+     */
+    public function promptOnce(string $prompt): AgentResponse
+    {
+        return app(ProviderCall::class)->run(fn () => $this->prompt($prompt));
     }
 
     /**

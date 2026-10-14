@@ -110,7 +110,7 @@ final readonly class SiteProfileGenerator
         );
 
         try {
-            $response = $agent->prompt($content);
+            $response = $agent->promptOnce($content);
         } catch (Throwable $exception) {
             $error = $this->classifier->classify($exception, $model->provider);
 

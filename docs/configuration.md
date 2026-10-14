@@ -128,6 +128,8 @@ In YAML the options look like this:
 
 Tolk never changes the app's `ai.*` config. It builds its own provider connections, named `tolk_anthropic`, `tolk_openai` and `tolk_gemini`, so do not define connections with those names in `config/ai.php`. OpenAI requests are sent with `store: false`.
 
+Tolk sends each request to a provider once and never waits inside it. From version 1.2.1 the Laravel AI SDK itself waits up to 10 seconds and sends a request again when the provider answers a rate limit or an overload with a short `Retry-After` header. So Tolk adds one middleware to Laravel's HTTP client: while one of Tolk's own provider requests runs, it renames that header to `Tolk-Retry-After`, and Tolk pauses the provider instead ([Retries and concurrency](#retries-and-concurrency)). The app's other HTTP requests pass through it unchanged.
+
 ### The model catalog
 
 Tolk comes with a catalog of models per provider, and each release of Tolk keeps it up to date, with new models, prices and request options. Its defaults:

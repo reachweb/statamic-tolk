@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Testing\TestResponse;
 use Reach\StatamicTolk\Ai\ConnectionTester;
 use Reach\StatamicTolk\Runs\UsageLog;
@@ -116,6 +117,16 @@ it('describes the other failures', function (string $provider, Closure $fake, st
     'no connection' => ['anthropic', fn (string $provider) => Http::fake([ProviderFixtures::HOSTS[$provider] => Http::failedConnection('cURL error 6: Could not resolve host: api.anthropic.com')]),
         'Anthropic could not be reached: cURL error 6: Could not resolve host: api.anthropic.com'],
 ]);
+
+it('answers a rate limit at once with one request when the provider asks for a short wait', function () {
+    Sleep::fake();
+    ProviderFixtures::fake('anthropic', ProviderFixtures::error('anthropic', 429, 'rate_limit_error', 'Slow down.'), 429, ['retry-after' => '5']);
+
+    testProvider('anthropic')->assertOk()->assertJsonPath('ok', false)->assertJsonPath('error', 'Anthropic is limiting requests (HTTP 429): Slow down.');
+
+    expect(Http::recorded())->toHaveCount(1);
+    Sleep::assertNeverSlept();
+});
 
 it('refuses a provider without a key with 422', function () {
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'test-key']);

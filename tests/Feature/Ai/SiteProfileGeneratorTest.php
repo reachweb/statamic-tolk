@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Reach\StatamicTolk\Ai\Agents\SiteProfileAgent;
@@ -207,6 +209,16 @@ it('fails with a safe message when the provider rejects the call', function () {
     expect(fn () => generateProfile('anthropic:claude-sonnet-5-5'))
         ->toThrow(ProfileFailed::class, 'The AI provider [anthropic] rejected the request (HTTP 401');
     expect(app(UsageLog::class)->month())->toBe([]);
+});
+
+it('fails at once with one request when the provider is overloaded and asks for a short wait', function () {
+    Sleep::fake();
+    ProviderFixtures::fake('anthropic', ProviderFixtures::error('anthropic', 529, 'overloaded_error', 'Overloaded.'), 529, ['retry-after' => '3']);
+
+    expect(fn () => generateProfile('anthropic:claude-sonnet-5-5'))
+        ->toThrow(ProfileFailed::class, 'The AI provider [anthropic] could not write the site profile (HTTP 529): Overloaded.');
+    expect(Http::recorded())->toHaveCount(1);
+    Sleep::assertNeverSlept();
 });
 
 it('fails when the answer was cut off', function () {

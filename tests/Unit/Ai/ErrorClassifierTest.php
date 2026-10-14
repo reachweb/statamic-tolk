@@ -13,6 +13,7 @@ use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
 use Laravel\Ai\Exceptions\RateLimitedException;
 use Reach\StatamicTolk\Ai\ErrorClassifier;
+use Reach\StatamicTolk\Ai\ProviderCall;
 use Reach\StatamicTolk\Ai\ProviderError;
 use Reach\StatamicTolk\Enums\ProviderErrorKind;
 use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
@@ -58,6 +59,13 @@ it('pauses on a rate limit with the retry-after the provider sent', function (st
     'empty, as the SDK reads a missing header' => ['', null],
     'garbage' => ['soon', null],
 ]);
+
+it('reads the retry-after that ProviderCall hid from the SDK', function () {
+    $error = classifyError(ProviderOverloadedException::forProvider('tolk_openai', 0, failedRequest(503, headers: [ProviderCall::RETRY_AFTER => '4'])));
+
+    expect($error->kind)->toBe(ProviderErrorKind::Paused)
+        ->and($error->retryAfter)->toBe(4);
+});
 
 it('reads a retry-after given as an HTTP date', function () {
     $this->freezeTime();

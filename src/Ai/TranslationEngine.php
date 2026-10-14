@@ -121,7 +121,7 @@ final readonly class TranslationEngine implements Engine
     private function send(StructuredAgent $agent, EngineCall $call, Closure $items): EngineResult
     {
         try {
-            $response = $agent->prompt($this->prompts->user($call->document, $call->segments));
+            $response = $agent->promptOnce($this->prompts->user($call->document, $call->segments));
         } catch (Throwable $exception) {
             throw $this->failure($exception, $call, $agent);
         }

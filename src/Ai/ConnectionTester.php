@@ -73,7 +73,7 @@ final readonly class ConnectionTester
             );
 
             try {
-                $usage = Usage::fromResponse($agent->prompt('Reply with ok.'));
+                $usage = Usage::fromResponse($agent->promptOnce('Reply with ok.'));
             } catch (Throwable $exception) {
                 return ['ok' => false, ...$result, 'error' => $this->error($exception, $model)];
             }

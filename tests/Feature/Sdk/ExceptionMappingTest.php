@@ -1,15 +1,33 @@
 <?php
 
+use Composer\InstalledVersions;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Laravel\Ai\Exceptions\AiException;
 use Laravel\Ai\Exceptions\FailoverableException;
 use Laravel\Ai\Exceptions\InsufficientCreditsException;
 use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
 use Laravel\Ai\Exceptions\RateLimitedException;
+use Reach\StatamicTolk\Ai\ProviderCall;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
+
+beforeEach(function () {
+    // From 1.2.1 the SDK sleeps before it repeats a call answered with a short retry-after.
+    Sleep::fake();
+});
+
+/**
+ * laravel/ai 1.2.1 wraps each provider call in retry(2): a 429, or a status the gateway counts as overloaded, whose
+ * retry-after is a whole number of seconds up to 10, is called once more after sleeping that long. 1.2.0 and earlier
+ * call once. Tolk's calls run inside ProviderCall, which hides the header from the SDK (D24).
+ */
+function sdkRepeatsShortWaits(): bool
+{
+    return version_compare((string) InstalledVersions::getVersion('laravel/ai'), '1.2.1', '>=');
+}
 
 it('throws RateLimitedException on 429, with retry-after and the error body on the previous exception', function (string $provider, string $type) {
     $exception = ProviderFixtures::failure($provider, 429, $type, 'Rate limit reached for requests.', ['retry-after' => '17']);
@@ -137,3 +155,39 @@ it('throws AiException for an error inside a 200 response', function (string $pr
     ['openai', 'OpenAI Error: [api_error] Internal error.'],
     ['gemini', 'Gemini Error: [200] Internal error.'],
 ]);
+
+it('calls again after sleeping a retry-after of at most 10 seconds on a 429 or an overload, from 1.2.1 on', function (string $provider, int $status, string $retryAfter, bool $repeats) {
+    ProviderFixtures::failure($provider, $status, 'rate_limit_error', 'Slow down.', ['retry-after' => $retryAfter]);
+    $repeats = $repeats && sdkRepeatsShortWaits();
+
+    expect(Http::recorded())->toHaveCount($repeats ? 2 : 1);
+    $repeats ? Sleep::assertSequence([Sleep::for((int) $retryAfter)->seconds()]) : Sleep::assertNeverSlept();
+})->with([
+    'openai 429, 10 s' => ['openai', 429, '10', true],
+    'gemini 429, 1 s' => ['gemini', 429, '1', true],
+    'anthropic 529, 3 s' => ['anthropic', 529, '3', true],
+    'gemini 503, 3 s' => ['gemini', 503, '3', true],
+    'openai 429, 11 s' => ['openai', 429, '11', false],
+    'openai 429, 1.5 s' => ['openai', 429, '1.5', false],
+    'openai 429, a date' => ['openai', 429, 'Wed, 21 Oct 2026 07:28:00 GMT', false],
+    'openai 529, 3 s' => ['openai', 529, '3', false],
+    'anthropic 500, 3 s' => ['anthropic', 500, '3', false],
+    'anthropic 408, 3 s' => ['anthropic', 408, '3', false],
+]);
+
+it('does not call again without a retry-after', function (string $provider, int $status) {
+    ProviderFixtures::failure($provider, $status, 'rate_limit_error', 'Slow down.');
+
+    expect(Http::recorded())->toHaveCount(1);
+    Sleep::assertNeverSlept();
+})->with(ProviderFixtures::PROVIDERS)->with([429, 503]);
+
+it('calls once inside ProviderCall, which hands the retry-after on under its own header', function (string $provider, int $status) {
+    $exception = app(ProviderCall::class)->run(fn () => ProviderFixtures::failure($provider, $status, 'rate_limit_error', 'Slow down.', ['retry-after' => '5']));
+    $response = $exception->getPrevious()->response;
+
+    expect(Http::recorded())->toHaveCount(1)
+        ->and($response->header('retry-after'))->toBe('')
+        ->and($response->header(ProviderCall::RETRY_AFTER))->toBe('5');
+    Sleep::assertNeverSlept();
+})->with(ProviderFixtures::PROVIDERS)->with([429, 503]);

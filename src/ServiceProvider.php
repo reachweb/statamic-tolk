@@ -4,6 +4,7 @@ namespace Reach\StatamicTolk;
 
 use Reach\StatamicTolk\Ai\FakeEngine;
 use Reach\StatamicTolk\Ai\ModelCatalog;
+use Reach\StatamicTolk\Ai\ProviderCall;
 use Reach\StatamicTolk\Ai\TranslationEngine;
 use Reach\StatamicTolk\Content\FieldtypeRegistry;
 use Reach\StatamicTolk\Content\Handlers\ArrayHandler;
@@ -67,6 +68,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->app->singleton(StateRepository::class, FileStateRepository::class);
         $this->app->singleton(RunRepository::class, FileRunRepository::class);
         $this->app->singleton(UsageRecorder::class);
+        $this->app->singleton(ProviderCall::class);
         $this->app->bind(Engine::class, fn ($app) => $app->make(FakeEngine::enabled() ? FakeEngine::class : TranslationEngine::class));
     }
 
