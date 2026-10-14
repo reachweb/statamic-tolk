@@ -128,6 +128,45 @@ describe('tolk:baseline', function () {
             ->and($with->fields['intro']->sourceChanged)->toBeFalse();
     });
 
+    it('also turns machine output, up to date or outdated, into fields edited by hand with --protect, in the containers named', function () {
+        $hello = $this->localize($this->hello, 'el', ['title' => 'Γεια', 'intro' => 'Μια εισαγωγή.']);
+        StateFixtures::store($hello, [
+            'title' => StateFixtures::machine('Hello', 'Γεια'),
+            'intro' => StateFixtures::machine('An older intro.', 'Μια εισαγωγή.'),
+        ]);
+        $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+        $page = $this->makeEntry('pages', 'en', ['title' => 'About'], 'about');
+        StateFixtures::store($this->localize($page, 'el', ['title' => 'Σχετικά']), ['title' => StateFixtures::machine('About', 'Σχετικά')]);
+        $before = maintenanceStatus($this->hello);
+        $commits = RunFixtures::commits();
+
+        $this->artisan('tolk:baseline', ['--collection' => ['articles'], '--protect' => true])
+            ->expectsTable(BASELINE_HEADERS, [['Collection', 'articles', 'el', '2']])
+            ->expectsOutputToContain('Recorded the origin of 2 fields.')
+            ->assertExitCode(0);
+
+        $after = maintenanceStatus($this->hello);
+
+        expect(array_map(fn ($field) => $field->status, $before->fields))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Outdated])
+            ->and(array_map(fn ($field) => [$field->status, $field->sourceChanged], $after->fields))->toBe([
+                'title' => [FieldStatus::Manual, false],
+                'intro' => [FieldStatus::Manual, false],
+            ])
+            ->and(maintenanceStatus($page)->fields['title']->status)->toBe(FieldStatus::Current)
+            ->and($commits->getArrayCopy())->toBe([StateWriter::COMMIT_MESSAGE]);
+    });
+
+    it('refuses --protect without a container option, so it never protects every translation at once', function () {
+        $hello = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
+        StateFixtures::store($hello, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+
+        [$exitCode, $output] = maintenanceCommand('tolk:baseline', ['--protect' => true, '--site' => ['el']]);
+
+        expect($exitCode)->toBe(1)
+            ->and($output)->toContain('--protect needs --collection, --taxonomy, --globals or --nav')
+            ->and(maintenanceStatus($this->hello)->fields['title']->status)->toBe(FieldStatus::Current);
+    });
+
     it('counts the fields and writes nothing with --dry-run', function () {
         $this->localize($this->hello, 'el', ['title' => 'Γεια σου']);
         $commits = RunFixtures::commits();

@@ -47,7 +47,7 @@ A field counts as machine-translated as long as its text is exactly what Tolk pr
 - swapping an image, toggling an option or changing a link target in a translated field does not make it "edited by hand";
 - neither do the ids, `enabled` flags and other values Statamic's forms add when they save content.
 
-The other side: **Update rebuilds a field from the origin's structure.** When it translates an outdated field again, it takes the origin's current value and puts the translations into it, so a non-text change made only in the localization (a different image in a Bard field) is replaced by the origin's. If a localization is meant to differ in more than its text, protect it ([below](#protecting-translations)) or mark the field as edited by hand by changing a word.
+The other side: **Update rebuilds a field from the origin's structure.** When it translates an outdated field again, it takes the origin's current value and puts the translations into it, so a non-text change made only in the localization (a different image in a Bard field) is replaced by the origin's. The same goes for a navigation's pages: a page added, removed or moved by hand in a translated tree, without a change to any title, leaves the tree up to date, and once it reads outdated, Update puts the origin's pages back in the origin's order ([Navigation](content-types.md#navigation)). If a localization is meant to differ in more than its text, protect it ([below](#protecting-translations)) or mark the field as edited by hand by changing a word.
 
 Defaults Statamic fills in do not count either. When a field with a text default (a "Read more" label) is added to a Replicator or Bard set later, Statamic's next save puts that default, in the source language, into every existing set. Tolk ignores nested values that equal their field's default when it reads a localization, so they do not turn the field "edited by hand".
 
@@ -92,6 +92,8 @@ A **baseline** records which origin text a field edited by hand belongs to, with
 ## Protecting translations
 
 **Protect this entry from updates**, in the editor's options, turns the entry's machine-translated fields into fields edited by hand, with a baseline. Translate and Update then leave them alone, and a change to the origin shows as needing attention instead of being translated over. It also marks the fields already edited by hand as up to date. The action is shown while the entry has a machine-translated field.
+
+Global sets and navigations have no editor, so they have no such action. Protect them from the command line instead: `tolk:baseline --protect` does the same for every item of the containers it names, for example `php please tolk:baseline --nav=main --site=el --protect` ([The command line](cli.md#tolkbaseline)). It works for collections and taxonomies too.
 
 To protect one field everywhere instead, switch off its **Translate automatically** option in the blueprint ([Configuration](configuration.md#per-field-options)).
 

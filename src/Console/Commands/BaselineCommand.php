@@ -14,7 +14,8 @@ use Statamic\Console\RunsInPlease;
 /**
  * Records the origin of the fields translated by hand in existing localizations (StateWriter::baseline()), so a later
  * change to the origin shows as needing attention: the adoption path for a site translated before Tolk was installed.
- * It walks the targets tolk:status counts.
+ * It walks the targets tolk:status counts. --protect is the editor's Protect for every target of the containers it names,
+ * and the only Protect global sets and navigations have.
  */
 class BaselineCommand extends Command
 {
@@ -28,12 +29,21 @@ class BaselineCommand extends Command
         {--globals=* : Record in this global set}
         {--nav=* : Record in this navigation}
         {--include-copies : Also record the fields whose text is a copy of their origin\'s, so translating does not replace them (they read untranslated otherwise)}
+        {--protect : Also turn machine-translated fields into fields edited by hand, so Translate and Update leave them alone (needs a container option)}
         {--dry-run : Count the fields without recording anything}';
 
     protected $description = 'Record the origin of fields translated by hand, so later changes to the origin are noticed';
 
     public function handle(StatusScanner $scanner, StateWriter $writer): int
     {
+        $protect = (bool) $this->option('protect');
+
+        if ($protect && ! collect(self::CONTAINER_OPTIONS)->keys()->contains(fn (string $option) => $this->option($option) !== [])) {
+            $this->components->error('--protect needs --collection, --taxonomy, --globals or --nav, so it never protects every translation at once.');
+
+            return self::FAILURE;
+        }
+
         try {
             $cells = $this->cells($scanner);
         } catch (InvalidArgumentException $exception) {
@@ -51,7 +61,7 @@ class BaselineCommand extends Command
             $count = 0;
 
             foreach ($scanner->targets($cell['type'], $cell['container'], $cell['site']) as $target) {
-                $count += $writer->baseline($target(), includeCopies: $includeCopies, dryRun: $dryRun);
+                $count += $writer->baseline($target(), includeMachine: $protect, includeCopies: $includeCopies, dryRun: $dryRun);
             }
 
             $total += $count;

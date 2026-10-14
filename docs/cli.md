@@ -213,11 +213,13 @@ Records the origin of fields translated by hand, so that a later change to the o
 | `--globals=` | Record in this global set. Repeatable. |
 | `--nav=` | Record in this navigation. Repeatable. |
 | `--include-copies` | Also record the fields whose text is a copy of their origin's, so translating does not replace them. |
+| `--protect` | Also turn machine-translated fields into fields edited by hand, so Translate and Update leave them alone. Needs `--collection`, `--taxonomy`, `--globals` or `--nav`. |
 | `--dry-run` | Count the fields without recording anything. |
 
 ```bash
 php please tolk:baseline --dry-run
 php please tolk:baseline --collection=articles --site=el
+php please tolk:baseline --nav=main --site=el --protect
 ```
 
 This is the way in for a site that was translated by hand before Tolk was installed. Such fields read "edited by hand" and *untracked*: Tolk leaves them alone, but cannot tell when their origin changes. The baseline records, for each field edited by hand, the origin text it now belongs to. The fields stay edited by hand, and when the origin changes later they show as "needs attention" (see [Statuses](statuses.md#baselines)).
@@ -225,6 +227,8 @@ This is the way in for a site that was translated by hand before Tolk was instal
 It records every field edited by hand in the selection, tracked or not, so it also clears "needs attention" on fields whose origin changed. Check those first (`tolk:status` counts them), or limit the command with `--site` and the container options.
 
 A field whose text equals its origin's (a copy nobody translated) reads untranslated, so the next run translates it. `--include-copies` records those too, for fields that are meant to stay the same in both languages, so translating leaves them alone.
+
+`--protect` is the editor's **Protect this entry from updates** for every item of the containers you name: their machine translations, up to date or outdated, become fields edited by hand with a record of the current origin, so Translate and Update leave them alone and a later change to the origin shows as needing attention ([Statuses](statuses.md#protecting-translations)). It is the only way to protect a global set or a navigation, which have no editor; a navigation whose pages were added, removed or moved by hand needs it, because only text changes keep a tree from being rebuilt ([Navigation](content-types.md#navigation)). It refuses to run without a container option, so it never protects every translation of a site at once.
 
 The command prints a table of the fields recorded per container and site, and makes one commit with Statamic's git integration.
 

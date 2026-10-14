@@ -388,6 +388,49 @@ describe('applying', function () {
             ->and(navStatus())->toBe(FieldStatus::Current);
     });
 
+    it('reads a tree whose pages were removed or moved by hand without a text change as current, so Update rebuilds it from the source', function () {
+        $this->localize($this->dining, 'el', ['title' => 'Εστιατόριο']);
+        $this->localize($this->rooms, 'el', ['title' => 'Δωμάτια']);
+        translateNav();
+        [$about, $dining, $rooms, $book] = navTree();
+        Nav::findByHandle('main')->in('el')->tree([$rooms, $dining, $book])->save();
+
+        expect(navStatus())->toBe(FieldStatus::Current);
+
+        $source = Nav::findByHandle('main')->in('en');
+        $source->tree([...array_slice($source->tree(), 0, 3), [...$source->tree()[3], 'title' => 'Book now']])->save();
+        translateNav(plan: ['mode' => Mode::Update]);
+
+        expect(array_column(navTree(), 'id'))->toBe(['about', 'dining', 'rooms', 'book'])
+            ->and(navTree()[3]['title'])->toBe('[T] Book now');
+    });
+
+    it('keeps the pages an editor removed or moved once tolk:baseline --protect made the tree manual, and reads a source change as needing attention', function () {
+        $this->localize($this->dining, 'el', ['title' => 'Εστιατόριο']);
+        $this->localize($this->rooms, 'el', ['title' => 'Δωμάτια']);
+        translateNav();
+        [$about, $dining, $rooms, $book] = navTree();
+        $edited = [$rooms, $dining, $book];
+        Nav::findByHandle('main')->in('el')->tree($edited)->save();
+
+        $this->artisan('tolk:baseline', ['--nav' => ['main'], '--site' => ['el'], '--protect' => true])
+            ->expectsTable(['Type', 'Handle', 'Site', 'Fields recorded'], [['Navigation', 'main', 'el', '1']])
+            ->assertExitCode(0);
+
+        $protected = app(StatusResolver::class)->resolve(navTarget());
+        $source = Nav::findByHandle('main')->in('en');
+        $source->tree([...array_slice($source->tree(), 0, 3), [...$source->tree()[3], 'title' => 'Book now']])->save();
+        $changed = app(StatusResolver::class)->resolve(navTarget());
+        $this->sent = [];
+
+        expect($protected->fields[NavTarget::TREE]->status)->toBe(FieldStatus::Manual)
+            ->and($protected->fields[NavTarget::TREE]->sourceChanged)->toBeFalse()
+            ->and($changed->itemStatus)->toBe(ItemStatus::Attention)
+            ->and(navAssembled(options: ['mode' => Mode::Update]))->toBe([])
+            ->and($this->sent)->toBe([])
+            ->and(navTree())->toBe($edited);
+    });
+
     it('skips a tree edited between plan and apply', function () {
         $fields = navAssembled();
         Nav::findByHandle('main')->makeTree('el', [['id' => 'book', 'title' => 'Κράτηση']])->save();
