@@ -6,7 +6,7 @@ import { restore, SETTLE_MS } from './fill.js';
 import { createRegistry } from './registry.js';
 import { describeSummary } from './statuses.js';
 import { useEditorStore } from './store.js';
-import { createTranslations, keptMessage, remainingHandles, reviewable, reviewHandles, skipHandles, slugToKeep, undoable } from './translate.js';
+import { createTranslations, keptMessage, remainingHandles, retryable, reviewable, reviewHandles, skipHandles, slugToKeep, undoable } from './translate.js';
 
 let store;
 let registry;
@@ -320,6 +320,29 @@ describe('undoable', () => {
         expect(undoable({ snapshot: snap, delivered: { seo_title: { plan: 'p0', pending: false } } })).toBe(false);
         expect(undoable({ snapshot: null, delivered: { intro: { plan: 'p1' } } })).toBe(false);
         expect(undoable(null)).toBe(false);
+    });
+});
+
+describe('retryable', () => {
+    const finished = (extra = {}) => ({
+        phase: 'done',
+        summary: { planned: ['intro', 'seo_title'], delivered: ['seo_title'], skipped: {}, failed: {}, cancelled: false, ...extra },
+    });
+
+    it('is true after an error, and after a translation that left a field it could not translate', () => {
+        expect(retryable({ phase: 'error', summary: null })).toBe(true);
+        expect(retryable(finished({ failed: { intro: 'provider_unavailable' } }))).toBe(true);
+        expect(retryable(finished({ delivered: [], failed: { intro: 'failed', seo_title: 'failed' }, cancelled: true }))).toBe(true);
+    });
+
+    // Cancel was the editor's choice, and a field that was filled after all or never planned is not left to do.
+    it('is false after a translation without failed fields, after Cancel alone, while one runs, and without a result', () => {
+        expect(retryable(finished())).toBe(false);
+        expect(retryable(finished({ delivered: [], cancelled: true }))).toBe(false);
+        expect(retryable(finished({ failed: { body: 'not_filled' } }))).toBe(false);
+        expect(retryable({ ...finished({ failed: { intro: 'failed' } }), phase: 'working' })).toBe(false);
+        expect(retryable({ phase: 'idle', summary: null })).toBe(false);
+        expect(retryable(null)).toBe(false);
     });
 });
 
@@ -1118,6 +1141,40 @@ describe('with the real runner and fill', () => {
         expect(base().phase).toBe('done');
         expect(undoable(base())).toBe(true);
         expect(dirty.has('base')).toBe(true);
+    });
+
+    // A provider that stays down: every unit waits out its 503s and fails, so the translation ends without an error.
+    it('ends a translation whose units all failed with Retry, which plans the fields it could not translate again', async () => {
+        vi.useFakeTimers({ now: 100_000 });
+        vi.stubGlobal('__n', (key, count, { fields }) => key.split('|')[count === 1 ? 0 : 1].replace(':fields', fields));
+        mount();
+        const api = {
+            post: vi.fn(async (path) => {
+                if (path === 'editor/plan') {
+                    return planResponse();
+                }
+
+                throw new ApiError({ status: 503, code: 'provider_unavailable', message: 'The provider is unavailable.', data: { retry_after: 1 } });
+            }),
+        };
+        const t = createTranslations({ store: () => store, registry, api });
+
+        const promise = t.translate('base', { mode: 'update' });
+        await vi.advanceTimersByTimeAsync(10_000);
+        await promise;
+
+        expect(base()).toMatchObject({ phase: 'done', error: null, summary: { delivered: [], failed: { intro: 'provider_unavailable', seo_title: 'provider_unavailable' } } });
+        expect(retryable(base())).toBe(true);
+        expect(describeSummary(base().summary, base().status, { retry: true }).failed).toBe('Intro, SEO title could not be translated. Retry translates them again.');
+
+        const retrying = t.retry('base');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await retrying;
+
+        const plans = api.post.mock.calls.filter(([path]) => path === 'editor/plan');
+
+        expect(plans).toHaveLength(2);
+        expect(plans[1][1]).toMatchObject({ mode: 'update', fields: ['intro', 'seo_title'] });
     });
 
     it('still reviews and fills the translation on its way when Cancel comes with review on', async () => {

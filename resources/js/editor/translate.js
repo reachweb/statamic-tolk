@@ -60,6 +60,19 @@ export function remainingHandles(summary) {
     return (summary?.planned ?? []).filter((handle) => !finished.has(handle));
 }
 
+// Retry has work after an error, and after a translation or review that finished with a planned field it could not
+// make, such as one whose units a provider that stayed down failed; Retry repeats it for the fields not filled yet.
+// Cancel alone leaves nothing to retry: stopping was the editor's choice.
+export function retryable(container) {
+    if (container?.phase === 'error') {
+        return true;
+    }
+
+    const failed = container?.summary?.failed ?? {};
+
+    return container?.phase === 'done' && remainingHandles(container.summary).some((handle) => Object.hasOwn(failed, handle));
+}
+
 // The origin's slug while the open localization was created in this form and its slug has not been kept yet (T5.9).
 // A collection with translated slugs keeps none: core's form makes the slug from the translated title (D16).
 export function slugToKeep(container) {

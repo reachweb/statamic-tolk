@@ -12,7 +12,7 @@ import { registry } from '../editor/registry.js';
 import { notSavedMessage } from '../editor/saveHooks.js';
 import { describe, describeSummary, fieldLabels, statusColor } from '../editor/statuses.js';
 import { useEditorStore } from '../editor/store.js';
-import { keptMessage, RESTART, reviewable, translations, undoable } from '../editor/translate.js';
+import { keptMessage, RESTART, retryable, reviewable, translations, undoable } from '../editor/translate.js';
 import { BANNER_MODALS, createFocusKeeper } from '../focus.js';
 import { createModal } from '../modal.js';
 
@@ -31,9 +31,13 @@ const state = computed(() => store.containers[name] ?? null);
 const phase = computed(() => state.value?.phase ?? 'idle');
 const auditLink = localizableUrl(Statamic.$config.get('tolk.auditUrl'));
 const banner = computed(() => describe(state.value?.status ?? null));
-const summary = computed(() => describeSummary(state.value?.summary ?? null, state.value?.status ?? null));
 const canUndo = computed(() => undoable(state.value));
+const canRetry = computed(() => retryable(state.value));
 const restart = computed(() => RESTART.includes(state.value?.error?.code));
+// The line about failed fields names Retry while it is offered; after a stop that needs Start again, the error says so.
+const summary = computed(() =>
+    describeSummary(state.value?.summary ?? null, state.value?.status ?? null, { retry: canRetry.value && !restart.value }),
+);
 const notSaved = computed(() => (state.value?.notSaved?.length ? notSavedMessage(state.value.notSaved, state.value.status) : null));
 const actions = computed(() => showsActions(phase.value, banner.value));
 const canReview = computed(() => reviewable(state.value));
@@ -216,8 +220,8 @@ async function undo() {
                 <Description v-if="summary.unsaved" data-tolk-summary-unsaved>{{ summary.unsaved }}</Description>
             </div>
 
-            <div v-if="phase === 'error' || (phase === 'done' && canUndo)" class="flex flex-wrap gap-2">
-                <Button v-if="phase === 'error'" size="sm" variant="primary" data-tolk-action="retry" @click="translations.retry(name)">
+            <div v-if="canRetry || (phase === 'done' && canUndo)" class="flex flex-wrap gap-2">
+                <Button v-if="canRetry" size="sm" variant="primary" data-tolk-action="retry" @click="translations.retry(name)">
                     {{ restart ? __('Start again') : __('Retry') }}
                 </Button>
                 <Button v-if="canUndo" size="sm" data-tolk-action="undo" @click="undo">

@@ -652,6 +652,22 @@ describe('describeSummary', () => {
         expect(describeSummary(summary({ cancelled: true }), status).cancelled).toBe('The translation was cancelled before it finished.');
     });
 
+    it('says that Retry translates or reviews the failed fields again while the banner offers it', () => {
+        const failed = { intro: 'provider_unavailable', seo_title: 'provider_unavailable' };
+
+        expect(describeSummary(summary({ failed: { intro: 'failed' } }), status, { retry: true }).failed).toBe(
+            'Introduction could not be translated. Retry translates it again.',
+        );
+        expect(describeSummary(summary({ failed }), status, { retry: true }).failed).toBe(
+            'Introduction, SEO title could not be translated. Retry translates them again.',
+        );
+        expect(describeSummary(summary({ kind: 'review', planned: ['intro', 'seo_title'], failed }), status, { retry: true }).failed).toBe(
+            'Introduction, SEO title could not be reviewed. Retry reviews them again.',
+        );
+        expect(describeSummary(summary({ failed }), status).failed).toBe('Introduction, SEO title could not be translated.');
+        expect(describeSummary(summary({ failed }), status, { retry: false }).failed).toBe('Introduction, SEO title could not be translated.');
+    });
+
     it('falls back to handles when the status has no fields', () => {
         expect(describeSummary(summary({ failed: { intro: 'refused' } }), { localization: { fields: [] } }).failed).toBe('intro could not be translated.');
     });

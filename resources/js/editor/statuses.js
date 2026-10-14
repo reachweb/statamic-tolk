@@ -244,8 +244,8 @@ export function fieldLabels(handles, status) {
 }
 
 // What the banner says once a translation or a review has finished, was cancelled or stopped. Fields are named by
-// their labels from the status.
-export function describeSummary(summary, status = null) {
+// their labels from the status. With `retry` (the banner offers Retry) the line about failed fields says what it does.
+export function describeSummary(summary, status = null, { retry = false } = {}) {
     if (!summary) {
         return null;
     }
@@ -279,11 +279,7 @@ export function describeSummary(summary, status = null) {
             : null,
         hidden: hidden.length ? hiddenLine(hidden, reviewing, status) : null,
         manual: manual.length ? manualLine(manual, reviewing, status) : null,
-        failed: failed.length
-            ? reviewing
-                ? __n(':fields could not be reviewed.|:fields could not be reviewed.', failed.length, { fields: fieldLabels(failed, status) })
-                : __n(':fields could not be translated.|:fields could not be translated.', failed.length, { fields: fieldLabels(failed, status) })
-            : null,
+        failed: failed.length ? failedLine(failed, reviewing, retry, status) : null,
         cancelled: summary.cancelled
             ? reviewing
                 ? __('The review was cancelled before it finished.')
@@ -325,6 +321,24 @@ function reviewedLine(summary, corrections) {
     return corrections > 0
         ? __n('Reviewed with :model: :count correction.|Reviewed with :model: :count corrections.', corrections, { model })
         : __('Reviewed with :model: nothing to correct.', { model });
+}
+
+function failedLine(handles, reviewing, retry, status) {
+    const fields = fieldLabels(handles, status);
+
+    if (!retry) {
+        return reviewing
+            ? __n(':fields could not be reviewed.|:fields could not be reviewed.', handles.length, { fields })
+            : __n(':fields could not be translated.|:fields could not be translated.', handles.length, { fields });
+    }
+
+    return reviewing
+        ? __n(':fields could not be reviewed. Retry reviews it again.|:fields could not be reviewed. Retry reviews them again.', handles.length, { fields })
+        : __n(
+              ':fields could not be translated. Retry translates it again.|:fields could not be translated. Retry translates them again.',
+              handles.length,
+              { fields },
+          );
 }
 
 // A field a condition hides is not filled: Statamic would save it empty.
