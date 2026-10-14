@@ -13,12 +13,14 @@ use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\Finish;
+use Reach\StatamicTolk\Enums\ItemStatus;
 use Reach\StatamicTolk\Enums\TargetResultStatus;
 use Reach\StatamicTolk\Events\TargetTranslated;
 use Reach\StatamicTolk\Exceptions\ProviderPaused;
 use Reach\StatamicTolk\Exceptions\ProviderRejected;
 use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\State\FieldState;
+use Reach\StatamicTolk\State\StatusResolver;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Support\Settings;
 use Reach\StatamicTolk\Targets\ApplyOptions;
@@ -227,6 +229,31 @@ describe('translating a target', function () {
             ->and($localization->get('title'))->toBe('Γεια σας')
             ->and($localization->get('intro'))->toBe('[T] A longer intro.')
             ->and(StateFixtures::statuses($this->origin)['title'])->toBe(FieldStatus::Manual);
+    });
+
+    it('leaves a copy of the origin\'s text saved over a translation alone as edited by hand (D5), until overwriteManual', function () {
+        $this->fakeTranslations();
+        translateTarget($this->origin);
+        // A form opened before the translation, still holding the origin's text, saved over it.
+        $this->origin->fresh()->in('el')->set('intro', 'A short intro.')->save();
+
+        $status = app(StatusResolver::class)->resolve(app(TargetFactory::class)->forEntry($this->origin, 'el'));
+        $update = translateTarget($this->origin, options: translatorOptions(['mode' => 'update']));
+        $kept = $this->origin->fresh()->in('el')->get('intro');
+        $forced = translateTarget(
+            $this->origin,
+            options: translatorOptions(['mode' => 'update', 'overwriteManual' => true]),
+            apply: new ApplyOptions(overwriteManual: true),
+        );
+
+        expect($status->fields['intro']->status)->toBe(FieldStatus::Manual)
+            ->and($status->fields['intro']->sourceChanged)->toBeFalse()
+            ->and($status->itemStatus)->toBe(ItemStatus::Current)
+            ->and($update->fields)->toBe(['title' => 'current', 'intro' => 'manual', 'body' => 'current'])
+            ->and($kept)->toBe('A short intro.')
+            ->and($forced->fields['intro'])->toBe('applied')
+            ->and($this->origin->fresh()->in('el')->get('intro'))->toBe('[T] A short intro.')
+            ->and(StateFixtures::statuses($this->origin)['intro'])->toBe(FieldStatus::Current);
     });
 
     it('replaces a manually edited field with overwriteManual', function () {

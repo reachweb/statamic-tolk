@@ -59,6 +59,15 @@ A field whose text is exactly its origin's, with no record of a translation, rea
 
 A field that is meant to read the same in both languages (a product name) and was written by hand reads untranslated for the same reason. **Protect this entry from updates** (offered while the entry also has a machine-translated field) or `tolk:baseline --include-copies` keeps such a field: once recorded, it is edited by hand. (**Mark manual fields as up to date** does not: it records only fields that already read as edited by hand.)
 
+### A copy saved over a translation
+
+Once Tolk has translated a field, a copy of the origin's text saved over that translation reads **edited by hand**, not untranslated. Tolk cannot tell it from text someone put back on purpose, and it never replaces text a person may have chosen. Two ways it happens without anyone choosing it:
+
+- a form that still held a copy of the origin's text is saved after Tolk translated the field in the meantime (a run, or an automatic update);
+- a Bard field set back to inherit the origin can rewrite itself while the form loads ([above](#a-copy-of-the-origin-is-untranslated)), and the next Save stores the origin's text again.
+
+The field then stays in the origin's language: it does not make its item untranslated or outdated, so the item can read up to date, and Translate and Update leave it alone. Once its origin changes, it needs attention. Translate it with the field action **Translate from origin** ([The editor](editor.md#translating-one-field)) and save, or with **Overwrite manual edits** (`--force`), which also replaces every other field edited by hand in what it translates.
+
 ### Empty fields
 
 A field a localization holds empty of its own, while its origin has no text either, could be a field someone emptied on purpose or a copy nobody looked at. Tolk keeps it edited by hand, except in two cases where Statamic stores one by itself:
