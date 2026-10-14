@@ -56,6 +56,18 @@ it('stores a plan as an array and reads it back', function () {
         ->and(app(PlanStore::class)->get('01JMISSING'))->toBeNull();
 });
 
+it('says whether a plan is still stored', function () {
+    $store = app(PlanStore::class);
+    $store->put(storePlan());
+
+    expect($store->has('01JPLAN'))->toBeTrue()
+        ->and($store->has('01JMISSING'))->toBeFalse();
+
+    Cache::flush();
+
+    expect($store->has('01JPLAN'))->toBeFalse();
+});
+
 it('stores an outcome as an array under the unit\'s own key and reads it back', function () {
     $outcome = storeOutcome('b1', [new Unit('b1~s2', UnitKind::Translate, ['s2'], repair: 1, notes: ['s2' => 'A note.'])], ['s1' => 'Γεια']);
 

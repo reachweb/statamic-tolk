@@ -24,6 +24,14 @@ final class PlanStore
         return is_array($data) ? Plan::fromArray($data) : null;
     }
 
+    /**
+     * Whether the plan is still stored: a cleared cache, an eviction or `plan_ttl` takes it away.
+     */
+    public function has(string $id): bool
+    {
+        return $this->cache()->has($this->planKey($id));
+    }
+
     public function putOutcome(string $planId, UnitOutcome $outcome): void
     {
         $this->cache()->put($this->outcomeKey($planId, $outcome->unit), $outcome->toArray(), $this->ttl());

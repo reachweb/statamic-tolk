@@ -2,6 +2,7 @@
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -495,6 +496,26 @@ describe('a lost plan', function () {
             ->and($item->fields)->toBe(['title' => 'applied', 'body' => 'applied'])
             ->and($lost)->not->toBeNull()
             ->and(failingSent($this->prompts))->toBe(['Hello', 'Hello', 'Breakfast is served until ten.', 'The pool opens at eight.'])
+            ->and(failingTexts(failingGreek($this->origin)->get('body')))->toBe(['[T] Breakfast is served until ten.', '[T] The pool opens at eight.'])
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
+    });
+
+    it('plans an item again at once when its plan is lost while the command runs its units, so its units are paid for once more and not twice', function () {
+        config(['tolk.batch.max_chars.background' => 10]);
+        // A deploy's `cache:clear` while the second of three units is being translated.
+        failingModel($this->prompts, function (string $text, array $segment, int $prompt) {
+            if ($prompt === 2) {
+                Cache::flush();
+            }
+
+            return '[T] '.$text;
+        });
+
+        $exitCode = Artisan::call('tolk:translate', ['--collection' => ['articles'], '--site' => ['el'], '--yes' => true, '--concurrency' => 1]);
+
+        expect($exitCode)->toBe(0)
+            ->and(failingSent($this->prompts))->toBe(['Hello', 'Breakfast is served until ten.', 'Hello', 'Breakfast is served until ten.', 'The pool opens at eight.'])
+            ->and(failingGreek($this->origin)->get('title'))->toBe('[T] Hello')
             ->and(failingTexts(failingGreek($this->origin)->get('body')))->toBe(['[T] Breakfast is served until ten.', '[T] The pool opens at eight.'])
             ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'body' => FieldStatus::Current]);
     });

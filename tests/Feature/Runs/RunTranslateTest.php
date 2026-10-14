@@ -1,6 +1,7 @@
 <?php
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Reach\StatamicTolk\Ai\EngineCall;
@@ -283,6 +284,33 @@ describe('translate', function () {
         expect(RunFixtures::items($run)[0]->status)->toBe(RunItemStatus::Translated)
             ->and(RunFixtures::items($run)[0]->planId)->not->toBe($expired)
             ->and($engine->segmentIds())->toBe([['s1'], ['s1'], ['s2']]);
+    });
+
+    it('plans an item again at once when its plan is lost from the cache between two units, so its units are paid for once more and not twice', function () {
+        config(['tolk.batch.max_chars.web' => 10]);
+        // A deploy's `cache:clear` while the first unit's call runs.
+        $engine = ScriptedEngine::bind(function (EngineCall $call, int $number) {
+            if ($number === 1) {
+                Cache::flush();
+            }
+
+            return ScriptedEngine::translated($call);
+        });
+        $run = RunFixtures::started(['entryIds' => [$this->hello->id()]]);
+
+        $report = RunFixtures::translate($run);
+        $item = RunFixtures::items($run)[0];
+
+        expect($report->toArray())->toBe(['units' => 3, 'items' => 1, 'remains' => false, 'wait' => null])
+            ->and($item->status)->toBe(RunItemStatus::Translated)
+            ->and(app(PlanStore::class)->get($item->planId))->not->toBeNull()
+            ->and($engine->segmentIds())->toBe([['s1'], ['s1'], ['s2']]);
+
+        RunFixtures::finish($run);
+
+        expect(RunFixtures::statuses($run))->toBe(['done'])
+            ->and(Entry::find($this->hello->id())->in('el')->data()->only(['title', 'intro'])->all())->toBe(['title' => '[T] Hello', 'intro' => '[T] A short intro.'])
+            ->and($engine->calls)->toHaveCount(3);
     });
 
     it('skips an item with nothing to do and completes a run whose last item finished', function () {

@@ -533,6 +533,15 @@ final readonly class RunProcessor
                 return 0;
             }
 
+            // A cleared cache (a deploy's `cache:clear`) took the plan and the outcomes so far, or the plan expired. Going on
+            // would pay for the lost units again, and the apply would send the item back without its plan to be paid for once
+            // more: the next claim plans it again now instead.
+            if (! $this->store->has($plan->id)) {
+                $this->runs->release($run, $item);
+
+                return null;
+            }
+
             // The units are run in the profile of the run's driver now, not the plan's: a command-line run resumed in the
             // browser or on a queue splits a unit planned larger than this driver's batches first, and that makes no call.
             $unitId = array_key_first($runnable);
