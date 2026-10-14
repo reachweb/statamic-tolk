@@ -519,13 +519,17 @@ final class EntryTarget implements Target
             return [];
         }
 
-        if (! $item->published()) {
+        $hadWorkingCopy = $item->hasWorkingCopy();
+
+        // Only a draft without a working copy is saved directly. The CP's update looks at the view's published() alone,
+        // but a published entry's restored revision saved while unpublished leaves a working copy that says unpublished:
+        // saving that view would unpublish the live entry and keep the stale working copy, which the values are read from.
+        if (! $hadWorkingCopy && ! $item->published()) {
             $this->save($item, $options);
 
             return [];
         }
 
-        $hadWorkingCopy = $item->hasWorkingCopy();
         $this->saveRevision($item->makeWorkingCopy(), $item, $options, $this->revisionMessage());
 
         if (! $options->publishChanges) {

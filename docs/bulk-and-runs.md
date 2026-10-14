@@ -123,9 +123,9 @@ So every server-side save of Tolk goes through one global lock (`write.lock_seco
 On a collection with revisions enabled, runs (and the editor's Translate into…, and the command line) save as Statamic's own forms do:
 
 - A new localization is created as a draft with a revision. With **Same as origin** and a published origin (and the conditions above), it is then published through a publish revision, never saved as published directly.
-- Translations of a **published** localization go into its working copy and stay unpublished: an editor reviews and publishes them as usual. The live entry is not touched.
+- Translations of a **published** localization go into its working copy and stay unpublished: an editor reviews and publishes them as usual. The live entry is not touched, even after an editor restored a revision saved while the localization was unpublished (its working copy then says unpublished).
 - From the command line, `--publish-changes` publishes those changes, but only when the localization had no unpublished changes before the run (publishing would also publish someone else's work in progress). Otherwise the item gets a warning and the changes stay in the working copy.
-- An unpublished localization is saved directly.
+- An unpublished localization is saved directly, unless it has unpublished changes: then the translations go into its working copy, which is what its edit page shows.
 
 The working copy and the publish revision carry the message "Translated from {site} with Tolk", for example "Translated from English with Tolk"; the revision that creates a localization has none, as with Statamic's own Localize.
 

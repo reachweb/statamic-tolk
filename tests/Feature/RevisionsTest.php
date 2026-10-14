@@ -194,6 +194,46 @@ describe('a published localization', function () {
             ->and($saves->getArrayCopy())->toBe(['revision: working']);
     });
 
+    it('stays live when an editor restored a revision saved while it was unpublished, and is updated in that working copy', function () {
+        Queue::fake();
+        $this->signInAdmin();
+        $greek = publishedGreek($this->origin);
+        $greek->unpublish();
+        $unpublished = (string) greekOf($this->origin)->revisions()->keys()->last();
+        $this->travel(1)->seconds();
+        greekOf($this->origin)->publish();
+        $this->travel(1)->seconds();
+        $this->postJson(cp_route('collections.entries.restore-revision', ['articles', $greek->id()]), ['revision' => $unpublished])->assertOk();
+        $restored = greekOf($this->origin);
+        $this->origin->set('title', 'Hello there')->save();
+        $saves = recordSaves();
+
+        $run = RunFixtures::started(['entryIds' => [$this->origin->id()], 'options' => ['mode' => 'update']]);
+        RunFixtures::finish($run);
+        $live = greekOf($this->origin);
+        $working = $live->fromWorkingCopy();
+
+        expect($restored->published())->toBeTrue()
+            ->and($restored->fromWorkingCopy()->published())->toBeFalse()
+            ->and(RunFixtures::statuses($run))->toBe(['done'])
+            ->and($live->published())->toBeTrue()
+            ->and($live->data()->all())->toBe($restored->data()->all())
+            ->and(revisionActions($live))->toBe(['unpublish', 'publish'])
+            ->and($working->published())->toBeFalse()
+            ->and($working->get('title'))->toBe('[T] Hello there')
+            ->and($working->get('intro'))->toBe('[T] A short intro.')
+            ->and($saves->getArrayCopy())->toBe(['revision: working'])
+            ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+
+        $calls = $this->modelCalls();
+        $second = RunFixtures::started(['entryIds' => [$this->origin->id()], 'options' => ['mode' => 'update']]);
+        RunFixtures::finish($second);
+
+        expect(RunFixtures::statuses($second))->toBe(['skipped'])
+            ->and($this->modelCalls())->toBe($calls)
+            ->and(greekOf($this->origin)->published())->toBeTrue();
+    });
+
     it('is published with publish_changes when it had no working copy', function () {
         publishedGreek($this->origin);
         $saves = recordSaves();
@@ -279,6 +319,30 @@ it('saves an unpublished localization directly', function () {
         ->and($greek->hasWorkingCopy())->toBeFalse()
         ->and(revisionActions($greek))->toBe([])
         ->and($saves->getArrayCopy())->toBe(['entry: draft']);
+});
+
+it('updates the working copy of an unpublished localization that has one, which the CP shows, so a second run does nothing', function () {
+    // Left by a save that unpublished the live entry and kept the working copy of a restored draft revision.
+    $greek = publishedGreek($this->origin);
+    $greek->fromWorkingCopy()->published(false)->makeWorkingCopy()->save();
+    greekOf($this->origin)->published(false)->save();
+    $greek = greekOf($this->origin);
+    $saves = recordSaves();
+
+    $result = revisedTranslate($this->origin, options: ['mode' => 'update']);
+    $live = greekOf($this->origin);
+
+    expect($result->status)->toBe(TargetResultStatus::Done)
+        ->and($live->published())->toBeFalse()
+        ->and($live->data()->all())->toBe($greek->data()->all())
+        ->and($live->fromWorkingCopy()->get('intro'))->toBe('[T] A short intro.')
+        ->and($saves->getArrayCopy())->toBe(['revision: working'])
+        ->and(StateFixtures::statuses($this->origin))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
+
+    $calls = $this->modelCalls();
+
+    expect(revisedTranslate($this->origin, options: ['mode' => 'update'])->status)->toBe(TargetResultStatus::Skipped)
+        ->and($this->modelCalls())->toBe($calls);
 });
 
 it('promotes the pending entries of the editor flow once the CP saved the form into the working copy', function () {
