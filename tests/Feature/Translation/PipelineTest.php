@@ -667,7 +667,9 @@ describe('finish reasons and request failures', function () {
 
         expect(pipelineRun($plan))->toBe(['b1', 'b1.a', 'b1.b'])
             ->and(tolkPipeline()->failure($plan, 's1'))->toBe(UnitOutcome::REQUEST_REJECTED)
-            ->and(tolkPipeline()->failure($plan, 's2'))->toBe(UnitOutcome::REQUEST_REJECTED);
+            ->and(tolkPipeline()->failure($plan, 's2'))->toBe(UnitOutcome::REQUEST_REJECTED)
+            ->and(tolkPipeline()->assemble($plan, pipelineTarget($this->origin), 'intro')->warnings)
+            ->toBe(['Introduction: "A short intro." was left untranslated (the provider rejected the request).']);
     });
 });
 

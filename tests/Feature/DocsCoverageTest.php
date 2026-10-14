@@ -10,6 +10,7 @@ use Reach\StatamicTolk\Content\TranslatableFields;
 use Reach\StatamicTolk\Exceptions\ProviderNotConfigured;
 use Reach\StatamicTolk\Tests\Support\Fieldtypes\NoteFieldtype;
 use Reach\StatamicTolk\Tolk;
+use Reach\StatamicTolk\Translation\UnitOutcome;
 use Statamic\Facades\YAML;
 use Statamic\Fields\Field;
 use Symfony\Component\Console\Command\Command;
@@ -382,6 +383,14 @@ it('quotes the setup notice and the error a translator whose provider has no key
         ->and($setup)->toContain('**Translation is not set up yet**')
         ->and($setup)->toContain(ProviderNotConfigured::for('gemini')->getMessage())
         ->and($setup)->toContain('`tolk:doctor`');
+});
+
+// PipelineTest holds the warning to these words.
+it('quotes the warning that runs and the command line give a field whose request the provider rejected', function () {
+    $fineTunes = Str::of(docsFile('configuration.md'))->after('Tolk adds `prompt_cache_options` on its own')->before("\n")->toString();
+
+    expect($fineTunes)->toContain('"was left untranslated ('.UnitOutcome::reasonLabel(UnitOutcome::REQUEST_REJECTED).')"')
+        ->and(docsText())->not->toContain('(request_rejected)');
 });
 
 // RevisionsTest holds the code to it: the published origin is translated, and a working copy's translation reads current.
