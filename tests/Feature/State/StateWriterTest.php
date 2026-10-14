@@ -65,17 +65,19 @@ function switchGitOn(): void
 }
 
 describe('recordPending', function () {
-    it('prepends a pending entry, keeps three and records the source site', function () {
+    it('prepends a pending entry, keeps three and records the source site, and the entry\'s collection and site', function () {
         $localization = $this->localize($this->origin, 'el');
         $entries = array_map(fn (string $text) => StateFixtures::pending('Hello', $text), ['Ένα', 'Δύο', 'Τρία', 'Τέσσερα']);
 
         foreach ($entries as $entry) {
-            writer()->recordPending(StateFixtures::ref($localization), 'en', 'title', $entry);
+            writer()->recordPending(StateFixtures::ref($localization), writerTarget($this->origin), 'title', $entry);
         }
 
         $state = storedState($localization);
 
         expect($state->sourceSite)->toBe('en')
+            ->and($state->collection)->toBe('articles')
+            ->and($state->site)->toBe('el')
             ->and($state->version)->toBe(ItemState::VERSION)
             ->and($state->field('title')->pending)->toEqual([$entries[3], $entries[2], $entries[1]])
             ->and($state->field('title')->isMachine())->toBeFalse();
@@ -86,7 +88,7 @@ describe('recordPending', function () {
         StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια'), 'intro' => StateFixtures::machine('A short intro.', 'Εισαγωγή.')]);
         $pending = StateFixtures::pending('Hello', 'Χαίρετε', ['targetBefore' => Fingerprint::ofLeaves(['Γεια'])]);
 
-        writer()->recordPending(StateFixtures::ref($localization), 'en', 'title', $pending);
+        writer()->recordPending(StateFixtures::ref($localization), writerTarget($this->origin), 'title', $pending);
         $state = storedState($localization);
 
         expect($state->field('title')->targetHash)->toBe(Fingerprint::ofLeaves(['Γεια']))
@@ -619,7 +621,7 @@ describe('git', function () {
         Queue::assertPushed(CommitJob::class, fn (CommitJob $job) => $job->message === StateWriter::COMMIT_MESSAGE);
     })->with([
         'recordPending' => function ($test, bool $commit) {
-            writer()->recordPending(StateFixtures::ref($test->localization), 'en', 'body', StateFixtures::pending('', 'Σώμα.', ['plan' => 'plan-'.(int) $commit]), commit: $commit);
+            writer()->recordPending(StateFixtures::ref($test->localization), writerTarget($test->origin), 'body', StateFixtures::pending('', 'Σώμα.', ['plan' => 'plan-'.(int) $commit]), commit: $commit);
 
             return true;
         },
@@ -637,7 +639,7 @@ describe('git', function () {
     it('dispatches no commit when nothing changed', function () {
         writer()->confirm(writerTarget($this->origin));
         writer()->confirm(writerTarget($this->origin), commit: true);
-        writer()->recordPending(StateFixtures::ref($this->localization), 'en', 'body', StateFixtures::pending('', 'Σώμα.'));
+        writer()->recordPending(StateFixtures::ref($this->localization), writerTarget($this->origin), 'body', StateFixtures::pending('', 'Σώμα.'));
         $unresolved = writer()->confirm(writerTarget($this->origin), commit: true);
         writer()->baseline(writerTarget($this->origin), ['intro'], commit: true);
         writer()->baseline(writerTarget($this->origin), ['title']);

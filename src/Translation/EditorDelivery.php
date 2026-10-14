@@ -75,7 +75,7 @@ final readonly class EditorDelivery
 
         foreach ($fields as $handle => $field) {
             $targetHash = $this->resolver->targetHash($target->fields()->get($handle), $stored[$handle]);
-            $this->stateWriter->recordPending($ref, $target->sourceSite(), $handle, $field->pending($targetHash));
+            $this->stateWriter->recordPending($ref, $target, $handle, $field->pending($targetHash));
 
             $delivered[$handle] = [
                 'value' => $values[$handle],

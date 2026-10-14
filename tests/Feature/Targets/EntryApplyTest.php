@@ -763,8 +763,8 @@ describe('existing localizations', function () {
         translateInto($this->origin);
         $localization = $this->origin->fresh()->in('el');
         $before = Fingerprint::ofLeaves(['[T] A short intro.']);
-        app(StateWriter::class)->recordPendingFields(StateFixtures::ref($localization), 'en', ['intro' => StateFixtures::pending('A short intro.', '[F] A short intro.', ['targetBefore' => $before])]);
-        app(StateWriter::class)->recordPendingFields(StateFixtures::ref($localization), 'en', ['intro' => StateFixtures::pending('A short intro.', 'Reviewed by hand.', ['targetBefore' => $before, 'baseline' => true])]);
+        app(StateWriter::class)->recordPendingFields(StateFixtures::ref($localization), applyTarget($this->origin), ['intro' => StateFixtures::pending('A short intro.', '[F] A short intro.', ['targetBefore' => $before])]);
+        app(StateWriter::class)->recordPendingFields(StateFixtures::ref($localization), applyTarget($this->origin), ['intro' => StateFixtures::pending('A short intro.', 'Reviewed by hand.', ['targetBefore' => $before, 'baseline' => true])]);
         $this->origin->fresh()->remove('intro')->save();
 
         applyInWriter($this->origin, applyAssembled($this->origin, 'el', ['mode' => Mode::Update]));

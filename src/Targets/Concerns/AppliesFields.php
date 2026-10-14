@@ -115,7 +115,7 @@ trait AppliesFields
             $pending[$handle] = $this->pending($writes[$handle], $value);
         }
 
-        $this->stateWriter->recordPendingFields($ref, $this->sourceSite(), $pending);
+        $this->stateWriter->recordPendingFields($ref, $this, $pending);
 
         return $values;
     }

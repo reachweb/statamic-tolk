@@ -16,12 +16,15 @@ final readonly class ItemState
 
     /**
      * @param  array<string, FieldState>  $fields
+     * @param  ?string  $collection  an entry's collection, and $site its site, which its reference does not name (§A5)
      */
     public function __construct(
         public TargetRef $reference,
         public ?string $sourceSite = null,
         public int $version = self::VERSION,
         array $fields = [],
+        public ?string $collection = null,
+        public ?string $site = null,
     ) {
         $this->fields = array_filter($fields, fn (FieldState $field) => ! $field->isEmpty());
     }
@@ -49,6 +52,8 @@ final readonly class ItemState
             sourceSite: self::storedString($data, 'source_site'),
             version: is_int($data['v'] ?? null) ? $data['v'] : 0,
             fields: $fields,
+            collection: self::storedString($data, 'collection'),
+            site: self::storedString($data, 'site'),
         );
     }
 
@@ -63,7 +68,7 @@ final readonly class ItemState
         $fields = $this->fields;
         $fields[$handle] = $field;
 
-        return new self($this->reference, $this->sourceSite, $this->version, $fields);
+        return new self($this->reference, $this->sourceSite, $this->version, $fields, $this->collection, $this->site);
     }
 
     public function withoutField(string $handle): self
@@ -71,12 +76,17 @@ final readonly class ItemState
         $fields = $this->fields;
         unset($fields[$handle]);
 
-        return new self($this->reference, $this->sourceSite, $this->version, $fields);
+        return new self($this->reference, $this->sourceSite, $this->version, $fields, $this->collection, $this->site);
     }
 
     public function withSourceSite(string $sourceSite): self
     {
-        return new self($this->reference, $sourceSite, $this->version, $this->fields);
+        return new self($this->reference, $sourceSite, $this->version, $this->fields, $this->collection, $this->site);
+    }
+
+    public function withCollection(string $collection, string $site): self
+    {
+        return new self($this->reference, $this->sourceSite, $this->version, $this->fields, $collection, $site);
     }
 
     public function isEmpty(): bool
@@ -100,6 +110,8 @@ final readonly class ItemState
         return array_filter([
             'reference' => (string) $this->reference,
             'source_site' => $this->sourceSite,
+            'collection' => $this->collection,
+            'site' => $this->site,
             'v' => $this->version,
             'fields' => array_map(fn (FieldState $field) => $field->toArray(), $this->fields),
         ], fn (mixed $value) => $value !== null);

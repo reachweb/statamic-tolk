@@ -69,18 +69,23 @@ it('round-trips an item record', function () {
     $item = new ItemState(TargetRef::parse('entry::0b5f'), 'en', ItemState::VERSION, [
         'title' => machineState('9f2c1a7e5b3d4c10', '1b7d02c4a9e6f358'),
         'body' => new FieldState(sourceHash: '77aa000000000000'),
-    ]);
+    ], 'articles', 'el');
 
     expect($item->toArray())->toBe([
         'reference' => 'entry::0b5f',
         'source_site' => 'en',
+        'collection' => 'articles',
+        'site' => 'el',
         'v' => 1,
         'fields' => [
             'title' => ['source_hash' => '9f2c1a7e5b3d4c10', 'target_hash' => '1b7d02c4a9e6f358'],
             'body' => ['source_hash' => '77aa000000000000'],
         ],
     ])
-        ->and(ItemState::fromArray($item->toArray()))->toEqual($item);
+        ->and(ItemState::fromArray($item->toArray()))->toEqual($item)
+        ->and($item->withField('intro', new FieldState(sourceHash: '88bb000000000000'))->withoutField('body')->withSourceSite('de'))
+        ->collection->toBe('articles')
+        ->site->toBe('el');
 });
 
 it('writes only the keys a field record holds', function () {

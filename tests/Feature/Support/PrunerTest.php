@@ -2,21 +2,31 @@
 
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Queue;
+use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Contracts\RunRepository;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Enums\ContentType;
+use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Enums\RunStatus;
 use Reach\StatamicTolk\State\FieldState;
 use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\Support\Pruner;
 use Reach\StatamicTolk\Support\PruneReport;
+use Reach\StatamicTolk\Support\Settings;
+use Reach\StatamicTolk\Targets\ApplyOptions;
+use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
+use Reach\StatamicTolk\Translation\PlanOptions;
+use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
 use Statamic\Facades\Site;
+use Statamic\Facades\Stache;
 use Statamic\Facades\Taxonomy;
 
 beforeEach(function () {
@@ -45,21 +55,52 @@ function pruned(bool $dryRun = false): PruneReport
     return app(Pruner::class)->prune($dryRun);
 }
 
-it('keeps the state of content in a site its collection or taxonomy no longer has', function () {
-    $localization = $this->localize($this->hello, 'el', ['title' => 'Γεια']);
-    StateFixtures::store($localization, ['title' => StateFixtures::machine('Hello', 'Γεια')]);
+function prunerTranslate(EntryContract $origin, string $site): EntryContract
+{
+    app(TargetTranslator::class)->translate(app(TargetFactory::class)->forEntry($origin, $site), PlanOptions::fromSettings(app(Settings::class), app(ModelCatalog::class)), new ApplyOptions);
+
+    return Entry::find($origin->id())->in($site);
+}
+
+it('keeps the state of content in a site its collection or taxonomy no longer has, also once the Stache is rebuilt, so it reads as before when the site returns', function () {
+    $this->fakeTranslations();
+    $localization = prunerTranslate($this->hello, 'el');
     $this->makeTaxonomy('topics', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
     $this->makeTerm('topics', 'food', ['en' => ['title' => 'Food'], 'el' => ['title' => 'Φαγητό']]);
     prunerState(new TargetRef(ContentType::Term, 'topics::food', 'el'));
+    $stored = StateFixtures::stored($localization)->toArray();
 
     Collection::find('articles')->sites(['en', 'de'])->save();
     Taxonomy::find('topics')->sites(['en'])->save();
+    // As stache:clear, stache:warm or a deploy does: core indexes no entry of a site its collection does not list.
+    Stache::clear();
     // A new request reads the taxonomy again; Term::taxonomy() keeps it in Blink, which Taxonomy::save() does not clear.
     Blink::forget('taxonomy-topics');
 
-    expect(pruned()->isEmpty())->toBeTrue()
-        ->and(app(StateRepository::class)->get(StateFixtures::ref($localization))->isEmpty())->toBeFalse()
+    expect(Entry::find($localization->id()))->toBeNull()
+        ->and(pruned()->isEmpty())->toBeTrue()
+        ->and(StateFixtures::stored($localization)->toArray())->toBe($stored)
         ->and(app(StateRepository::class)->get(new TargetRef(ContentType::Term, 'topics::food', 'el'))->isEmpty())->toBeFalse();
+
+    Collection::find('articles')->sites(['en', 'el', 'de'])->save();
+    Stache::clear();
+
+    expect(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current]);
+});
+
+it('deletes the state of an entry deleted from a site its collection has, and of one whose collection is gone', function () {
+    $this->fakeTranslations();
+    $deleted = prunerTranslate($this->hello, 'el');
+    $this->makeCollection('pages', ['en', 'el'], ['title' => ['type' => 'text', 'localizable' => true]]);
+    $about = prunerTranslate($this->makeEntry('pages', 'en', ['title' => 'About'], 'about'), 'el');
+
+    // Without events, as a deployment or a pull removes the files.
+    $deleted->deleteQuietly();
+    Collection::find('pages')->deleteQuietly();
+    Stache::clear();
+
+    expect(pruned()->orphaned(PruneReport::DELETED))->toEqualCanonicalizing(['entry::'.$deleted->id(), 'entry::'.$about->id()])
+        ->and(iterator_to_array(app(StateRepository::class)->references(), false))->toBe([]);
 });
 
 it('keeps the state of a term, a global set and a navigation in a site the configuration leaves out now', function () {

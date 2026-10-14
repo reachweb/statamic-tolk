@@ -14,9 +14,11 @@ use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunProcessor;
+use Reach\StatamicTolk\State\ItemState;
 use Reach\StatamicTolk\State\StateWriter;
 use Reach\StatamicTolk\Targets\TargetFactory;
 use Reach\StatamicTolk\Targets\TargetRef;
+use Statamic\Facades\Collection;
 use Statamic\Facades\Term;
 
 /**
@@ -103,12 +105,24 @@ final readonly class Pruner
     }
 
     /**
-     * A term whose taxonomy no longer has the site keeps its data there, as an entry does in a site its collection no
-     * longer has, so it is not gone.
+     * A term whose taxonomy no longer has the site keeps its data there, and so does an entry in a site its collection no
+     * longer has, so neither is gone. Core indexes no such entry once the Stache is rebuilt, so the collection and site
+     * its state records tell (§A5); a state that records none is deleted.
      */
     private function inSiteLeftOut(TargetRef $ref): bool
     {
-        return $ref->type === ContentType::Term && Term::find($ref->id) !== null;
+        return match ($ref->type) {
+            ContentType::Term => Term::find($ref->id) !== null,
+            ContentType::Entry => $this->entryInSiteLeftOut($this->state->get($ref)),
+            default => false,
+        };
+    }
+
+    private function entryInSiteLeftOut(ItemState $state): bool
+    {
+        $collection = $state->collection === null ? null : Collection::findByHandle($state->collection);
+
+        return $collection !== null && $state->site !== null && ! $collection->sites()->contains($state->site);
     }
 
     /**

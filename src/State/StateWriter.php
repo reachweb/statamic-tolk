@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Closure;
 use Reach\StatamicTolk\Contracts\StateRepository;
 use Reach\StatamicTolk\Contracts\Target;
+use Reach\StatamicTolk\Enums\ContentType;
 use Reach\StatamicTolk\Enums\FieldStatus;
 use Reach\StatamicTolk\Support\GitListeners;
 use Reach\StatamicTolk\Targets\TargetRef;
@@ -26,9 +27,12 @@ final readonly class StateWriter
         private OverviewCache $overview,
     ) {}
 
-    public function recordPending(TargetRef $ref, string $sourceSite, string $handle, PendingState $pending, bool $commit = false): void
+    /**
+     * $ref is the reference of $target, which Target::ref() does not give until the target exists.
+     */
+    public function recordPending(TargetRef $ref, Target $target, string $handle, PendingState $pending, bool $commit = false): void
     {
-        $this->recordPendingFields($ref, $sourceSite, [$handle => $pending]);
+        $this->recordPendingFields($ref, $target, [$handle => $pending]);
         $this->commit($commit);
     }
 
@@ -37,14 +41,14 @@ final readonly class StateWriter
      *
      * @param  array<string, PendingState>  $pending  by handle
      */
-    public function recordPendingFields(TargetRef $ref, string $sourceSite, array $pending): void
+    public function recordPendingFields(TargetRef $ref, Target $target, array $pending): void
     {
         if ($pending === []) {
             return;
         }
 
-        $this->repository->update($ref, function (ItemState $state) use ($sourceSite, $pending) {
-            $state = $state->withSourceSite($sourceSite);
+        $this->repository->update($ref, function (ItemState $state) use ($target, $pending) {
+            $state = $this->located($state, $target);
 
             foreach ($pending as $handle => $entry) {
                 $state = $state->withField((string) $handle, $state->field((string) $handle)->withPending($entry));
@@ -122,11 +126,10 @@ final readonly class StateWriter
             return count($fields);
         }
 
-        $sourceSite = $target->sourceSite();
         $now = CarbonImmutable::now();
         $count = 0;
 
-        $this->repository->update($ref, function (ItemState $state) use ($fields, $sourceSite, $now, &$count) {
+        $this->repository->update($ref, function (ItemState $state) use ($fields, $target, $now, &$count) {
             $count = 0;
 
             foreach ($fields as $handle => $field) {
@@ -142,7 +145,7 @@ final readonly class StateWriter
                 $count++;
             }
 
-            return $count > 0 ? $state->withSourceSite($sourceSite) : $state;
+            return $count > 0 ? $this->located($state, $target) : $state;
         });
 
         if ($count > 0) {
@@ -204,7 +207,7 @@ final readonly class StateWriter
                 }
             }
 
-            return $adopted === [] ? $state : $state->withSourceSite($target->sourceSite());
+            return $adopted === [] ? $state : $this->located($state, $target);
         });
 
         if ($adopted !== []) {
@@ -309,6 +312,17 @@ final readonly class StateWriter
             FieldStatus::Untranslated => $includeMachine || $includeCopies,
             default => false,
         };
+    }
+
+    /**
+     * $state with the source site of $target and, for an entry, its collection and site, which tolk:prune reads once core
+     * no longer finds the entry: it indexes no entry of a site its collection does not list (§A5).
+     */
+    private function located(ItemState $state, Target $target): ItemState
+    {
+        $state = $state->withSourceSite($target->sourceSite());
+
+        return $target->type() === ContentType::Entry ? $state->withCollection($target->container(), $target->targetSite()) : $state;
     }
 
     private function commit(bool $commit): void

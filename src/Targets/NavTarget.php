@@ -243,7 +243,7 @@ final class NavTarget implements Target
             }
 
             if (! $field->remove) {
-                $this->stateWriter->recordPending($ref, $this->sourceSite, self::TREE, $this->pending($field, $branches));
+                $this->stateWriter->recordPending($ref, $this, self::TREE, $this->pending($field, $branches));
             }
 
             $created = ! $this->exists();
