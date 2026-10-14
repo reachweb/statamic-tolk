@@ -153,7 +153,7 @@ The site must exist: Tolk does not create sites. Add it under **Sites** in the C
 1. **The site.** It must exist, and it must not be the site the others are translated from: the `--from` site, or the default site without `--from`.
 2. **Collections and taxonomies** that do not include the site are listed, with the offer to add it (default yes). A collection that should stay out belongs in the **Excluded collections** setting, which this step skips.
 3. **Global sets** where the site is not enabled, or has no origin, are listed with the offer to enable it, with `--from` or the default site as its origin, or another site of the set when it has neither (default yes).
-4. **Routes**: collections whose route is a per-site map without an entry for the site are named, so you can add one.
+4. **Routes**: collections whose route is a per-site map without an entry for the site are named, so you can add one, including those step 2 adds the site to.
 5. **Text fields that are not localizable**, per blueprint, with the offer to make them localizable (default no). On Statamic's default blueprints `title` is not localizable, so without this step everything would be translated except the titles.
 6. **Nested fields that look like data** (`anchor`, `url`, …) are listed, with the question "Continue, and translate them as text?" (default yes). Changing them is left to you; declining translates nothing.
 

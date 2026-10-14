@@ -2,6 +2,7 @@
 
 namespace Reach\StatamicTolk\Support;
 
+use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Targets\GlobalsTarget;
 use Statamic\Contracts\Globals\GlobalSet as GlobalSetContract;
 use Statamic\Contracts\Taxonomies\TermRepository;
@@ -119,14 +120,21 @@ final class SiteSetup
     }
 
     /**
-     * The collections enabled for $site, and not excluded in the settings, that have a route for each site but none
-     * for $site, so their entries in $site have no URL.
+     * The collections enabled for $site, or that $assumedSites names (what a dry run would enable), and not excluded
+     * in the settings, that have a route for each site but none for $site, so their entries in $site have no URL. A
+     * named collection is judged on a copy with $site added, since its routes cover only the sites it has.
      *
+     * @param  array<string, ?string>  $assumedSites  containers to treat as having the site (RunRequest::$assumedSites)
      * @return list<array{handle: string, name: string}>
      */
-    public function collectionsWithoutRoute(string $site): array
+    public function collectionsWithoutRoute(string $site, array $assumedSites = []): array
     {
+        $assumed = RunRequest::assumed($assumedSites, 'collection');
+
         return Collection::all()
+            ->map(fn ($collection) => $collection->sites()->contains($site) || ! in_array($collection->handle(), $assumed, true)
+                ? $collection
+                : (clone $collection)->sites([...$collection->sites()->all(), $site]))
             ->filter(fn ($collection) => $collection->sites()->contains($site)
                 && ! in_array($collection->handle(), $this->settings->excludedCollections(), true)
                 && $collection->route($site) === null

@@ -297,6 +297,22 @@ it('warns about a collection whose route is set per site but not for the site', 
         ->and($output)->not->toContain('Collection News has a route');
 });
 
+it('warns in a dry run, as the run itself does, about a collection step 2 would enable whose route is set per site but not for the site', function () {
+    $this->fakeTranslations();
+    Collection::find('news')->routes(['en' => '/news/{slug}', 'el' => '/nea/{slug}'])->save();
+    $warning = 'Collection News has a route for each site but none for German (de), so its entries there have no URL.';
+
+    [, $dry] = siteCommand(['--dry-run' => true]);
+
+    expect($dry)->toContain($warning)
+        ->and(Collection::find('news')->sites()->all())->toBe(['en', 'el']);
+
+    [, $run] = siteCommand();
+
+    expect($run)->toContain($warning)
+        ->and(Collection::find('news')->sites()->all())->toBe(['en', 'el', 'de']);
+});
+
 it('names the fields of an imported fieldset, which it does not change', function () {
     $this->fakeTranslations();
     Fieldset::make('seo')->setContents(['fields' => [['handle' => 'description', 'field' => ['type' => 'textarea']]]])->save();

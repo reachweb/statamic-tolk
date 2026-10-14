@@ -224,11 +224,11 @@ class SiteCommand extends Command
     }
 
     /**
-     * Step 4: collections with a route per site but none for the site.
+     * Step 4: collections with a route per site but none for the site, among them those a dry run would enable.
      */
     private function warnAboutRoutes(SiteSetup $setup, string $site): void
     {
-        foreach ($setup->collectionsWithoutRoute($site) as $collection) {
+        foreach ($setup->collectionsWithoutRoute($site, $this->wouldEnable) as $collection) {
             $this->newLine();
             $this->components->warn(sprintf(
                 '%s has a route for each site but none for %s, so its entries there have no URL. Add a route for the site in the collection\'s settings.',

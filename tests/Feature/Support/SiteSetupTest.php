@@ -112,3 +112,16 @@ it('lists the collections enabled for the site whose route is set per site but n
 
     expect($this->setup->collectionsWithoutRoute('de'))->toBe([['handle' => 'articles', 'name' => 'Collection Articles']]);
 });
+
+it('lists the collections a dry run would enable for the site as if they had it, without changing them', function () {
+    Collection::make('news')->sites(['en', 'el'])->routes(['en' => '/news/{slug}', 'el' => '/nea/{slug}'])->save();
+    Collection::make('pages')->sites(['en', 'el'])->routes('/{slug}')->save();
+    Collection::make('snippets')->sites(['en', 'el'])->save();
+    Collection::make('notes')->sites(['en'])->routes(['en' => '/notes/{slug}'])->save();
+    $assumed = ['collection:news' => null, 'collection:pages' => null, 'collection:snippets' => null, 'taxonomy:notes' => null];
+
+    expect($this->setup->collectionsWithoutRoute('de', $assumed))->toBe([['handle' => 'news', 'name' => 'Collection News']])
+        ->and($this->setup->collectionsWithoutRoute('de'))->toBe([])
+        ->and(Collection::find('news')->sites()->all())->toBe(['en', 'el'])
+        ->and(Collection::find('news')->routes()->all())->toBe(['en' => '/news/{slug}', 'el' => '/nea/{slug}']);
+});
