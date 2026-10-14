@@ -202,6 +202,14 @@ abstract class TestCase extends AddonTestCase
         $this->app->forgetInstance('cache.store');
     }
 
+    /**
+     * Makes this process a queue worker's, as `Statamic::isWorker()` tells one: its command starts with `queue:`.
+     */
+    protected function asQueueWorker(): void
+    {
+        request()->server->set('argv', ['artisan', 'queue:work']);
+    }
+
     protected function signInAdmin(): UserContract
     {
         return $this->signIn(User::make()->email('admin@example.com')->makeSuper());

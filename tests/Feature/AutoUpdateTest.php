@@ -31,10 +31,14 @@ use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\StateFixtures;
 use Reach\StatamicTolk\Translation\PlanOptions;
 use Reach\StatamicTolk\Translation\TargetTranslator;
+use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\Role;
 use Statamic\Facades\Site;
+use Statamic\Facades\User;
+use Statamic\Facades\YAML;
 
 beforeEach(function () {
     $this->useFileCache();
@@ -865,6 +869,41 @@ describe('in a queue worker of the site', function () {
         Bus::assertDispatchedAfterResponseTimes(UpdateTranslations::class, 1);
         expect(importJobs())->toBe([]);
     });
+
+    it('reads again for each job what the user who saved may access, so a worker no longer updates a site they lost since its last job', function (Closure $revoke) {
+        $this->asQueueWorker();
+        $permissions = ['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries'];
+        Role::make('translator')->title('Translator')->addPermission([...$permissions, 'access de site'])->save();
+        Role::make('greek')->title('Greek')->addPermission($permissions)->save();
+        $editor = User::make()->email('translator@example.com')->assignRole('translator');
+        $editor->save();
+        $update = function (string $intro) use ($editor) {
+            $this->hello->set('intro', $intro)->saveQuietly();
+            dispatch((new UpdateTranslations($this->hello->id(), (string) $editor->id()))->onConnection('imports')->onQueue('imports'));
+            workImport();
+        };
+
+        $update('A longer intro.');
+
+        expect(autoEntry($this->hello, 'de')->get('intro'))->toBe('[T] A longer intro.');
+
+        $revoke($editor, $permissions);
+        $update('The longest intro.');
+
+        expect(autoRuns())->toHaveCount(2)
+            ->and(autoRuns()[0]->scope['sites'])->toBe(['el'])
+            ->and(autoEntry($this->hello, 'el')->get('intro'))->toBe('[T] The longest intro.')
+            ->and(autoEntry($this->hello, 'de')->get('intro'))->toBe('[T] A longer intro.');
+    })->with([
+        // Another process saved the role: roles.yaml changed, and this process's roles and permissions did not.
+        'its role loses the site' => [function (UserContract $editor, array $permissions) {
+            file_put_contents(config('statamic.users.repositories.file.paths.roles'), YAML::dump([
+                'translator' => ['title' => 'Translator', 'permissions' => $permissions],
+                'greek' => ['title' => 'Greek', 'permissions' => $permissions],
+            ]));
+        }],
+        'it is given a role without the site' => [fn (UserContract $editor) => User::find($editor->id())->explicitRoles(['greek'])->save()],
+    ]);
 });
 
 describe('the banner', function () {
