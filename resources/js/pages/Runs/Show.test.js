@@ -3,7 +3,7 @@ import { createSSRApp } from 'vue';
 import { parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { describeItem, describeResult } from '../../runs/describe.js';
+import { describeEstimate, describeItem, describeResult } from '../../runs/describe.js';
 
 // Core's translator, without translation files: replacements by name, then the plural form, `one|other`.
 const translate = (key, replacements = {}) => Object.entries(replacements).reduce((text, [name, value]) => text.split(`:${name}`).join(String(value)), key);
@@ -143,6 +143,22 @@ describe('the result of a run', () => {
         const html = await render('data-tolk-run-result', { result, actions: {}, busy: null });
 
         expect(lines(html)).toEqual(['The run was stopped: 0 done.', 'The AI provider rejected the request: the API key is not valid.']);
+    });
+});
+
+describe('the estimate of a run', () => {
+    const card = (status, estimated) => render('data-tolk-estimate', { status, estimated, formatNumber: (value) => String(value), formatCost: (value) => `$${value}` });
+    const partial = { segments: 6, chars: 900, input_tokens: 500, output_tokens: 400, cost: 0.002, next: 3 };
+
+    it('fills in while the run waits to start', async () => {
+        expect(text(await card('pending', describeEstimate(partial, 10, true)))).toContain('Estimate Estimating… 3 of 10 items Segments 6');
+    });
+
+    it('stops estimating once the run started early, and says how many items the numbers cover', async () => {
+        const shown = text(await card('completed', describeEstimate(partial, 10, false)));
+
+        expect(shown).not.toContain('Estimating');
+        expect(shown).toContain('Estimate Only 3 of 10 items were estimated before the run started. Segments 6');
     });
 });
 

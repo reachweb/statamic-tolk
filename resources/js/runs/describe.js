@@ -287,17 +287,20 @@ export function describeOptions(options, models = {}) {
     return rows;
 }
 
-// The estimate as rows, `null` before the first answer. `total` is the number of items, for the progress line.
-export function describeEstimate(estimate, total = 0) {
+// The estimate as rows, `null` before the first answer. `total` is the number of items, for the progress line. Start
+// ends the estimate, so once the run is no longer `pending` an unfinished one says how many items it covers instead.
+export function describeEstimate(estimate, total = 0, pending = true) {
     if (!estimate) {
         return null;
     }
 
     const next = Number.isInteger(estimate.next) ? estimate.next : null;
+    const counts = { done: Math.min(next ?? 0, total), total };
 
     return {
         finished: next === null,
-        progress: next === null ? null : __(':done of :total items', { done: Math.min(next, total), total }),
+        progress: next !== null && pending ? __(':done of :total items', counts) : null,
+        partial: next !== null && !pending ? __('Only :done of :total items were estimated before the run started.', counts) : null,
         segments: Number(estimate.segments) || 0,
         chars: Number(estimate.chars) || 0,
         inputTokens: Number(estimate.input_tokens) || 0,

@@ -102,7 +102,7 @@ const leftOut = computed(() => describeLeftOut(run.value.scope));
 const auditLink = localizableUrl(Statamic.$config.get('tolk.auditUrl'));
 const hint = computed(() => notLocalizableHint(run.value.scope));
 const options = computed(() => describeOptions(run.value.options, props.models));
-const estimated = computed(() => describeEstimate(estimate.value, progress.value.total));
+const estimated = computed(() => describeEstimate(estimate.value, progress.value.total, status.value === 'pending'));
 const usage = computed(() => describeUsage(run.value, props.models));
 const items = computed(() => (current.value.items ?? []).map((item) => describeItem(item, siteName)));
 const pagination = computed(() => current.value.pagination ?? { page: 1, last_page: 1, total: 0 });
@@ -328,7 +328,8 @@ function filterBy(value) {
             <div class="flex flex-wrap items-baseline justify-between gap-2">
                 <Heading size="lg" :text="__('Estimate')" />
                 <Description v-if="!estimated">{{ __('Estimating…') }}</Description>
-                <Description v-else-if="!estimated.finished">{{ __('Estimating… :progress', { progress: estimated.progress }) }}</Description>
+                <Description v-else-if="estimated.progress">{{ __('Estimating… :progress', { progress: estimated.progress }) }}</Description>
+                <Description v-else-if="estimated.partial" data-tolk-estimate-partial>{{ estimated.partial }}</Description>
             </div>
             <dl v-if="estimated" class="flex flex-wrap gap-x-10 gap-y-2 text-sm">
                 <div>
