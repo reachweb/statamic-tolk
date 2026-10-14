@@ -210,6 +210,7 @@ async function undo() {
                 <Description v-if="summary.cancelled">{{ summary.cancelled }}</Description>
                 <Description v-if="summary.incomplete" data-tolk-summary-incomplete>{{ summary.incomplete }}</Description>
                 <Description v-if="summary.edited" data-tolk-summary-edited>{{ summary.edited }}</Description>
+                <Description v-if="summary.hidden" data-tolk-summary-hidden>{{ summary.hidden }}</Description>
                 <Description v-if="summary.manual" data-tolk-summary-manual>{{ summary.manual }}</Description>
                 <Description v-if="summary.failed" data-tolk-summary-failed>{{ summary.failed }}</Description>
                 <Description v-if="summary.unsaved" data-tolk-summary-unsaved>{{ summary.unsaved }}</Description>

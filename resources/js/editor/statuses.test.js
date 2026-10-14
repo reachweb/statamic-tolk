@@ -493,6 +493,7 @@ describe('describeSummary', () => {
             reviewSkipped: null,
             incomplete: null,
             edited: null,
+            hidden: null,
             manual: null,
             failed: null,
             cancelled: null,
@@ -621,6 +622,19 @@ describe('describeSummary', () => {
         expect(text.incomplete).toBe('Introduction, SEO title are partly untranslated. Update translates the rest after you save.');
         expect(text.edited).toBe('Title, SEO description were skipped because you edited them.');
         expect(text.failed).toBe('body could not be translated.');
+    });
+
+    it('lists the fields a condition hid, which a translation or a review left alone', () => {
+        expect(describeSummary(summary({ delivered: ['intro'], skipped: { title: 'hidden', seo_title: 'edited' } }), status).hidden).toBe(
+            'Title was skipped because it is hidden. Show it and translate again.',
+        );
+        expect(describeSummary(summary({ skipped: { title: 'hidden', seo_description: 'hidden' } }), status).hidden).toBe(
+            'Title, SEO description were skipped because they are hidden. Show them and translate again.',
+        );
+        expect(describeSummary(summary({ kind: 'review', planned: ['title'], skipped: { title: 'hidden' } }), status).hidden).toBe(
+            'Title was not reviewed because it is hidden. Show it and review again.',
+        );
+        expect(describeSummary(summary({ skipped: { title: 'edited' } }), status).hidden).toBeNull();
     });
 
     it('lists fields the plan skipped because they hold hand-written text, and no other plan reason', () => {

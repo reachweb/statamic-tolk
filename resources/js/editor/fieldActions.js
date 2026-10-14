@@ -114,7 +114,7 @@ export function createFieldActions({
         if (result && !result.cancelled && !result.delivered.includes(handle)) {
             const summary = describeSummary(result, container.status);
 
-            toast().error(summary.failed ?? summary.edited ?? summary.translated);
+            toast().error(summary.failed ?? summary.edited ?? summary.hidden ?? summary.translated);
         }
     }
 

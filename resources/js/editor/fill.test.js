@@ -43,7 +43,9 @@ const stored = () => ({
 // A publish container as a pushed component injects it. Core's `desyncField` does nothing while dirty tracking is off
 // (the 500 ms after a switch or a save); `reemit` imitates a fieldtype such as Bard, which re-emits its own version of
 // a value 150 ms after it was set and desyncs the field through its update handler.
-function container({ reference = 'entry::de', values = stored(), meta = {}, localized = [], reemit = {} } = {}) {
+// `hidden` is core's `hiddenFields`. Save leaves out the value of a field whose entry has `omitValue` (one a condition
+// hides), but still posts its handle in `_localized` while the field is localized.
+function container({ reference = 'entry::de', values = stored(), meta = {}, localized = [], reemit = {}, hidden = {} } = {}) {
     const calls = [];
     const ctx = {
         tracking: true,
@@ -54,6 +56,7 @@ function container({ reference = 'entry::de', values = stored(), meta = {}, loca
         values: ref(values),
         meta: ref({ title: null, intro: null, seo_title: null, body: { existing: {} }, ...meta }),
         localizedFields: ref(localized),
+        hiddenFields: ref(hidden),
         setFieldMeta: vi.fn((handle, value) => {
             calls.push(['meta', handle]);
             ctx.meta.value[handle] = value;
@@ -302,6 +305,32 @@ describe('applyFields', () => {
         expect(Object.keys(delivered)).toEqual(['title']);
     });
 
+    it('skips a field a condition hides, whose value Save would not post, so it keeps inheriting', async () => {
+        const ctx = container({ hidden: { intro: { hidden: true, omitValue: true } } });
+        const delivered = {};
+
+        const result = await settled(fill(ctx, { title: translated('Title'), intro: translated('Intro') }, { delivered }));
+
+        expect(result).toEqual({ stale: false, applied: ['title'], skipped: { intro: 'hidden' }, repeated: [] });
+        expect(ctx.values.value.intro).toBe('Intro');
+        expect(ctx.localizedFields.value).toEqual(['title']);
+        expect(Object.keys(delivered)).toEqual(['title']);
+    });
+
+    it('fills a hidden field whose value Save still posts, and puts a hidden field back to inheriting', async () => {
+        const ctx = container({
+            localized: ['seo_title'],
+            hidden: { title: { hidden: 'force', omitValue: false }, intro: { hidden: true, omitValue: false }, seo_title: { hidden: true, omitValue: true } },
+        });
+
+        const result = await settled(
+            fill(ctx, { title: translated('Title'), intro: translated('Intro'), seo_title: { value: 'Origin SEO title', meta: null, sync: true } }),
+        );
+
+        expect(result.applied).toEqual(['title', 'intro', 'seo_title']);
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
+    });
+
     it('skips a field whose text the editor moved to another field of a set or another paragraph', async () => {
         const block = (heading, body) => [{ id: 's1', type: 'block', enabled: true, heading, body }];
         const ctx = container({ values: { ...stored(), blocks: block('', 'Hello world'), body: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello world' }] }] } });
@@ -506,7 +535,7 @@ describe('applyFields', () => {
 
         await settled(promise);
 
-        expect(delivered.body).toEqual({ plan: 'plan-1', value: normalise(body), pending: false, incomplete: true, sync: false });
+        expect(delivered.body).toEqual({ plan: 'plan-1', value: normalise(body), pending: false, incomplete: true, sync: false, localizedBefore: false });
         expect(delivered.body.value).not.toBe(ctx.values.value.body);
     });
 
@@ -538,6 +567,18 @@ describe('applyFields', () => {
         expect(delivered.content.value).toBe('[de] Line one\n[de] Line two');
         expect(await settled(restore(ctx, snap, delivered, { registry }))).toEqual({ restored: ['content'], kept: [] });
         expect(ctx.values.value.content).toBe('Line one\nLine two');
+    });
+
+    it('records whether the field held a value of its own before the first fill since the last save', async () => {
+        const ctx = container({ localized: ['title'] });
+        const delivered = {};
+
+        await settled(fill(ctx, { title: translated('Title'), intro: translated('Intro') }, { delivered }));
+        await settled(fill(ctx, { intro: translated('Intro again') }, { plan: 'plan-2', delivered, planValues: clone(ctx.values.value) }));
+
+        expect(delivered.title).toMatchObject({ plan: 'plan-1', localizedBefore: true });
+        expect(delivered.intro).toMatchObject({ plan: 'plan-2', value: '[de] Intro again', localizedBefore: false });
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
     });
 
     it('records nothing when the editor switches before the read-back', async () => {

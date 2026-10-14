@@ -254,6 +254,7 @@ export function describeSummary(summary, status = null) {
     const count = summary.delivered.length;
     const corrections = summary.corrections?.length ?? 0;
     const edited = Object.keys(summary.skipped).filter((handle) => summary.skipped[handle] === 'edited');
+    const hidden = Object.keys(summary.skipped).filter((handle) => summary.skipped[handle] === 'hidden');
     const manual = Object.keys(summary.planSkipped ?? {}).filter((handle) => summary.planSkipped[handle] === 'manual');
     const failed = Object.keys(summary.failed);
 
@@ -276,6 +277,7 @@ export function describeSummary(summary, status = null) {
                   { fields: fieldLabels(edited, status) },
               )
             : null,
+        hidden: hidden.length ? hiddenLine(hidden, reviewing, status) : null,
         manual: manual.length ? manualLine(manual, reviewing, status) : null,
         failed: failed.length
             ? reviewing
@@ -323,6 +325,23 @@ function reviewedLine(summary, corrections) {
     return corrections > 0
         ? __n('Reviewed with :model: :count correction.|Reviewed with :model: :count corrections.', corrections, { model })
         : __('Reviewed with :model: nothing to correct.', { model });
+}
+
+// A field a condition hides is not filled: Statamic would save it empty.
+function hiddenLine(handles, reviewing, status) {
+    const fields = fieldLabels(handles, status);
+
+    return reviewing
+        ? __n(
+              ':fields was not reviewed because it is hidden. Show it and review again.|:fields were not reviewed because they are hidden. Show them and review again.',
+              handles.length,
+              { fields },
+          )
+        : __n(
+              ':fields was skipped because it is hidden. Show it and translate again.|:fields were skipped because they are hidden. Show them and translate again.',
+              handles.length,
+              { fields },
+          );
 }
 
 function manualLine(handles, reviewing, status) {

@@ -501,16 +501,19 @@ describe('run', () => {
         mount();
         const failed = fakeTranslations({ delivered: [], incomplete: [], skipped: {}, failed: { title: 'invalid_output' }, cancelled: false, models: [] });
         const edited = fakeTranslations({ delivered: [], incomplete: [], skipped: { title: 'edited' }, failed: {}, cancelled: false, models: [] });
+        const hidden = fakeTranslations({ delivered: [], incomplete: [], skipped: { title: 'hidden' }, failed: {}, cancelled: false, models: [] });
         const nothing = fakeTranslations({ delivered: [], incomplete: [], skipped: {}, failed: {}, cancelled: false, models: [] });
 
         actions({ translations: failed }).run(payload());
         actions({ translations: edited }).run(payload());
+        actions({ translations: hidden }).run(payload());
         actions({ translations: nothing }).run(payload());
         await flush();
 
         expect(toast.error.mock.calls).toEqual([
             ['Title could not be translated.'],
             ['Title was skipped because you edited it.'],
+            ['Title was skipped because it is hidden. Show it and translate again.'],
             ['No fields were translated.'],
         ]);
     });

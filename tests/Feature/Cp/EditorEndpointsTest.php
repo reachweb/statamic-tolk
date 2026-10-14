@@ -71,6 +71,19 @@ function greekEditor(): void
     test()->signInWithPermissions(['access cp', 'translate content', 'access en site', 'access el site', 'edit articles entries']);
 }
 
+/**
+ * Saves the Greek article through core's update endpoint, as its publish form does: the values it shows, without those
+ * of the fields a condition hides, and the handles of the fields the localization holds as `_localized`.
+ */
+function saveGreekInCp(array $values, array $localized): void
+{
+    test()->patchJson(cp_route('collections.entries.update', ['articles', test()->greek->id()]), [
+        'slug' => 'hello',
+        ...$values,
+        '_localized' => $localized,
+    ])->assertOk();
+}
+
 function greekState(string $handle)
 {
     return StateFixtures::stored(test()->greek)->field($handle);
@@ -661,6 +674,40 @@ describe('confirm', function () {
             ->assertJsonPath('localization.fields.title.status', 'manual');
 
         expect(greekState('title')->pending)->toHaveCount(1);
+    });
+
+    it('lists a delivered field that a condition hid, which the form left out of the post and of `_localized`', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek);
+
+        saveGreekInCp(['title' => $fields['title']['value'], 'intro' => $fields['intro']['value']], ['title', 'intro']);
+
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])
+            ->assertOk()
+            ->assertJsonPath('not_saved', ['subtitle'])
+            ->assertJsonPath('localization.fields.subtitle.status', 'untranslated')
+            ->assertJsonPath('localization.fields.intro.status', 'current');
+
+        expect(Entry::find($this->greek->id())->data()->has('subtitle'))->toBeFalse()
+            ->and(Entry::find($this->greek->id())->value('subtitle'))->toBe('All about it')
+            ->and(greekState('subtitle')->pending)->toHaveCount(1);
+    });
+
+    it('stores a field that core posts in `_localized` without its value as an empty value of its own, so the editor takes a hidden field out', function () {
+        $this->fakeTranslations();
+        greekEditor();
+        $fields = editorTranslate($this->greek);
+
+        saveGreekInCp(['title' => $fields['title']['value'], 'intro' => $fields['intro']['value']], ['title', 'intro', 'subtitle']);
+
+        $this->postJson(cp_route('tolk.editor.confirm'), ['reference' => $this->greek->reference(), 'delivered' => array_keys($fields)])
+            ->assertOk()
+            ->assertJsonPath('not_saved', [])
+            ->assertJsonPath('localization.fields.subtitle.status', 'manual');
+
+        expect(Entry::find($this->greek->id())->data()->has('subtitle'))->toBeTrue()
+            ->and(Entry::find($this->greek->id())->get('subtitle'))->toBeNull();
     });
 
     it('commits the state it wrote, and only then', function () {

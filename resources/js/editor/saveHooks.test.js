@@ -49,7 +49,13 @@ const freshStatus = () => ({
 });
 
 function mount(reference = 'entry::de') {
-    const ctx = { name: ref('base'), reference: ref(reference), values: ref({ title: 'Startseite', intro: 'Intro' }), localizedFields: ref(['title']) };
+    const ctx = {
+        name: ref('base'),
+        reference: ref(reference),
+        values: ref({ title: 'Startseite', intro: 'Intro' }),
+        localizedFields: ref(['title']),
+        hiddenFields: ref({}),
+    };
 
     registry.attachContext('base', ctx);
     store.switched('base', reference, 1_000);
@@ -122,6 +128,62 @@ describe('entry.saving', () => {
     it('lets a save through on a form without a banner', async () => {
         expect((await run(hooks().saving, {})).resolved).toBe(true);
     });
+
+    // Core posts a field a condition hides without its value but with its handle in `_localized`, which the server
+    // stores as an empty value of the localization's own.
+    const filled = (extra = {}) => ({ plan: 'p1', value: '[de] Text', pending: false, incomplete: false, sync: false, localizedBefore: false, ...extra });
+    const hide = (ctx, ...handles) => handles.forEach((handle) => (ctx.hiddenFields.value[handle] = { hidden: true, omitValue: true }));
+
+    it('leaves a filled field that a condition now hides out of `_localized`, so it keeps inheriting instead of being stored empty', async () => {
+        const ctx = mount();
+        ctx.localizedFields.value.push('intro', 'seo_title');
+        store.container('base').delivered = { intro: filled(), seo_title: filled() };
+        hide(ctx, 'intro');
+
+        expect((await run(hooks().saving, { collection: 'pages', values: ctx.values.value })).resolved).toBe(true);
+        expect(ctx.localizedFields.value).toEqual(['title', 'seo_title']);
+    });
+
+    it('leaves a hidden field alone that held a value of its own before the fill, was put back to inheriting or is still filling', async () => {
+        const ctx = mount();
+        ctx.localizedFields.value.push('intro', 'seo_title');
+        store.container('base').delivered = {
+            title: filled({ localizedBefore: true }),
+            intro: filled({ pending: true }),
+            seo_title: filled({ value: 'Origin', sync: true }),
+            excerpt: filled(),
+        };
+        hide(ctx, 'title', 'intro', 'seo_title', 'excerpt');
+
+        await run(hooks().saving, {});
+
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro', 'seo_title']);
+    });
+
+    it('posts such a field again once it is shown, when the save that left it out failed', async () => {
+        const ctx = mount();
+        ctx.localizedFields.value.push('intro');
+        store.container('base').delivered = { intro: filled(), excerpt: filled() };
+        hide(ctx, 'intro');
+
+        await run(hooks().saving, {});
+        delete ctx.hiddenFields.value.intro;
+        await run(hooks().saving, {});
+
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
+    });
+
+    it('leaves the form alone while it refuses the save', async () => {
+        const ctx = mount();
+        ctx.localizedFields.value.push('intro');
+        store.container('base').delivered = { intro: filled() };
+        hide(ctx, 'intro');
+        store.setPhase('base', 'working');
+
+        await run(hooks().saving, {});
+
+        expect(ctx.localizedFields.value).toEqual(['title', 'intro']);
+    });
 });
 
 describe('entry.saved', () => {
@@ -179,11 +241,11 @@ describe('entry.saved', () => {
 
         await run(hooks({ api }).saved, savedPayload());
 
-        const message = 'Intro, SEO title were not saved because they were hidden when you saved. Show them and save again.';
+        const message = 'Intro, SEO title were not saved because they were hidden when you saved. Show them and translate them again.';
 
         expect(store.container('base').notSaved).toEqual(['intro', 'seo_title']);
         expect(toasts).toEqual([['error', message, { duration: 10_000 }]]);
-        expect(notSavedMessage(['intro'], freshStatus())).toBe('Intro was not saved because it was hidden when you saved. Show it and save again.');
+        expect(notSavedMessage(['intro'], freshStatus())).toBe('Intro was not saved because it was hidden when you saved. Show it and translate it again.');
     });
 
     it('ends a finished translation: the summary and Undo no longer apply', async () => {

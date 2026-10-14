@@ -54,6 +54,35 @@ function formValue(ctx, handle, value) {
     return value === null && typeof ctx.values.value[handle] === 'string' ? '' : clone(value);
 }
 
+// Whether Save leaves a field's value out: core's `hiddenFields` gives `omitValue` to a field a condition hides. Its
+// handle is still posted in `_localized` while the field is localized, and the server stores that as an empty value of
+// the localization's own, so the field would stop inheriting and lose its translation.
+function omitted(ctx, handle) {
+    return ctx.hiddenFields?.value?.[handle]?.omitValue === true;
+}
+
+// Before a save, a field filled since the last save that a condition now hides and that held no value of its own before
+// the fill is taken out of `localizedFields`: it keeps inheriting, and `editor/confirm` lists it as not saved. One a
+// save that failed took out is posted again once it is shown. A stacked editor's save does this too, as the page's own
+// save would.
+export function leaveOutHidden(ctx, delivered) {
+    for (const [handle, record] of Object.entries(delivered)) {
+        if (record.pending || record.sync || record.localizedBefore) {
+            continue;
+        }
+
+        if (omitted(ctx, handle)) {
+            if (ctx.localizedFields.value.includes(handle)) {
+                setLocalized(ctx, handle, false);
+                record.leftOut = true;
+            }
+        } else if (record.leftOut) {
+            setLocalized(ctx, handle, true);
+            record.leftOut = false;
+        }
+    }
+}
+
 // Whether `restore()` puts a handle back: it holds a fill delivered since the snapshot was taken.
 export function filledSince(before, record) {
     return Boolean(record) && !record.pending && record.plan !== before.delivered?.plan;
@@ -129,8 +158,22 @@ export async function applyFields(
             continue;
         }
 
-        // Recorded at once, so a repeated delivery during the read-back below is recognised.
-        delivered[handle] = { plan, value: undefined, pending: true, incomplete: Boolean(payload.incomplete), sync: Boolean(payload.sync) };
+        // Save would store a hidden field empty. Putting one back to inheriting leaves it out of the save, which is right.
+        if (!payload.sync && omitted(ctx, handle)) {
+            result.skipped[handle] = 'hidden';
+            continue;
+        }
+
+        // Recorded at once, so a repeated delivery during the read-back below is recognised. `localizedBefore` is whether
+        // the field held a value of its own before the first fill since the last save.
+        delivered[handle] = {
+            plan,
+            value: undefined,
+            pending: true,
+            incomplete: Boolean(payload.incomplete),
+            sync: Boolean(payload.sync),
+            localizedBefore: delivered[handle]?.localizedBefore ?? ctx.localizedFields.value.includes(handle),
+        };
 
         if (payload.meta !== undefined) {
             ctx.setFieldMeta(handle, clone(payload.meta));

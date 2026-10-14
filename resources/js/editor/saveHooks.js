@@ -1,4 +1,5 @@
 import * as defaultApi from '../api.js';
+import { leaveOutHidden } from './fill.js';
 import { pushes } from './push.js';
 import { BASE, registry as sharedRegistry } from './registry.js';
 import { fieldLabels } from './statuses.js';
@@ -7,7 +8,7 @@ import { BUSY } from './translate.js';
 
 export function notSavedMessage(handles, status) {
     return __n(
-        ':fields was not saved because it was hidden when you saved. Show it and save again.|:fields were not saved because they were hidden when you saved. Show them and save again.',
+        ':fields was not saved because it was hidden when you saved. Show it and translate it again.|:fields were not saved because they were hidden when you saved. Show them and translate them again.',
         handles.length,
         { fields: fieldLabels(handles, status) },
     );
@@ -16,8 +17,10 @@ export function notSavedMessage(handles, status) {
 // The save hooks of the entry and term forms. `entry.saving` and `term.saving` refuse a save while a translation fills
 // the form: the entry form's save response replaces the form's values, and a field filled in between would stay
 // localized and be stored in the origin's language on the next save (T2.2 check 12); in either form it would be left
-// out of the save. `entry.saved` and `term.saved` tell the server which fields were saved (`editor/confirm`).
-// `PipelineStopped` comes from `@statamic/cms/save-pipeline`; core stays silent for a save stopped with it.
+// out of the save. Otherwise they leave a filled field that a condition hides out of `_localized` (`leaveOutHidden()`):
+// core's request step reads that array afterwards. `entry.saved` and `term.saved` tell the server which fields were
+// saved (`editor/confirm`). `PipelineStopped` comes from `@statamic/cms/save-pipeline`; core stays silent for a save
+// stopped with it.
 export function createSaveHooks({
     PipelineStopped,
     store = useEditorStore,
@@ -44,11 +47,20 @@ export function createSaveHooks({
     // Hook callbacks get `(resolve, reject, payload)`. A stacked editor saves through the same hook; it is refused too
     // while the page's translation runs.
     function saving(resolve, reject) {
-        if (BUSY.includes(store().phaseOf(BASE))) {
+        const editor = store();
+
+        if (BUSY.includes(editor.phaseOf(BASE))) {
             Statamic.$toast.error(__('A translation is in progress. Wait for it to finish, or cancel it.'));
             reject(new PipelineStopped());
 
             return;
+        }
+
+        const ctx = registry.context(BASE);
+        const container = editor.containers[BASE];
+
+        if (ctx && container?.reference && container.reference === ctx.reference.value) {
+            leaveOutHidden(ctx, container.delivered);
         }
 
         resolve();

@@ -136,7 +136,9 @@ class EditorController extends Controller
         if ($target = $this->localizationOrNull($reference)) {
             $report = $stateWriter->confirm($this->authorized($target, $user), commit: true);
 
-            // A field that a condition hid is not posted, so the save stored no override for it.
+            // Core posts a field that a condition hid without its value, and with its handle in `_localized` while it is
+            // localized, which stores an empty override. The editor's save hook takes a field it filled out of
+            // `_localized` then, so the save stored no override for it.
             $notSaved = array_values(array_filter(
                 array_intersect($request->validated('delivered', []), $report->unresolved),
                 fn (string $handle) => ! $target->hasOverride($handle),
