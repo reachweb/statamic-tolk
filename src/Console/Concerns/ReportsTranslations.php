@@ -283,7 +283,7 @@ trait ReportsTranslations
 
         $details = array_filter([
             'left incomplete' => $this->fieldsWith($result, TargetResult::INCOMPLETE),
-            'not reviewed' => $this->fieldsWith($result, TargetResult::REVIEW_SKIPPED),
+            'not reviewed' => $this->fieldsWith($result, TargetResult::REVIEW_SKIPPED, TargetResult::PARTLY_REVIEWED),
             'manual edits kept' => $this->fieldsWith($result, FieldStatus::Manual->value),
             'edited meanwhile, kept' => $this->fieldsWith($result, TargetResult::TARGET_CHANGED),
         ]);
@@ -314,9 +314,9 @@ trait ReportsTranslations
     /**
      * @return list<string>
      */
-    private function fieldsWith(TargetResult $result, string $outcome): array
+    private function fieldsWith(TargetResult $result, string ...$outcomes): array
     {
-        return array_keys($result->fields, $outcome, true);
+        return array_keys(array_filter($result->fields, fn (string $outcome) => in_array($outcome, $outcomes, true)));
     }
 
     /**

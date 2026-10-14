@@ -364,11 +364,13 @@ const ITEM_REASONS = {
 export function describeItem(item, siteName = (handle) => handle) {
     const fields = Object.entries(asMap(item?.fields));
     const handles = (result) => fields.filter(([, value]) => value === result).map(([handle]) => handle);
-    const applied = fields.filter(([, value]) => value === 'applied' || value === 'incomplete').length;
+    // A field saved with the reviewer's corrections while a part of it could not be reviewed is `partly_reviewed`.
+    const saved = ['applied', 'incomplete', 'partly_reviewed'];
+    const applied = fields.filter(([, value]) => saved.includes(value)).length;
     const failedField = ([, value]) => Object.hasOwn(FAILED_REASONS, value);
     const failed = fields.filter(failedField).map(([handle, value]) => ({ handle, reason: FAILED_REASONS[value]() }));
     const kept = fields
-        .filter((field) => !['applied', 'incomplete'].includes(field[1]) && !failedField(field))
+        .filter((field) => !saved.includes(field[1]) && !failedField(field))
         .map(([handle, value]) => ({ handle, reason: FIELD_REASONS[value]?.() ?? String(value).replaceAll('_', ' ') }));
     const reason = item?.reason ? (ITEM_REASONS[item.reason]?.() ?? null) : null;
     // The reviewer's corrections, labelled by their field's handle: the run page has no blueprints.
@@ -387,6 +389,7 @@ export function describeItem(item, siteName = (handle) => handle) {
         applied: applied > 0 ? __n(':count field saved|:count fields saved', applied) : null,
         incomplete: handles('incomplete'),
         failed,
+        notReviewed: handles('partly_reviewed'),
         kept,
         reason,
         error: item?.error ?? null,

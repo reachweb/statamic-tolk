@@ -28,6 +28,11 @@ final readonly class TargetResult
      */
     public const string REVIEW_SKIPPED = 'review_skipped';
 
+    /**
+     * A reviewed field saved with its corrections while a part of it could not be reviewed.
+     */
+    public const string PARTLY_REVIEWED = 'partly_reviewed';
+
     public const string TARGET_CHANGED = 'target_changed';
 
     public const string ROOT_MISSING = 'root_missing';
@@ -48,8 +53,8 @@ final readonly class TargetResult
 
     /**
      * @param  ?TargetRef  $ref  null while the target does not exist
-     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `no_corrections`,
-     *                                         `review_skipped`, or why it was skipped or failed
+     * @param  array<string, string>  $fields  in-scope handle → `applied`, `incomplete`, `partly_reviewed`,
+     *                                         `no_corrections`, `review_skipped`, or why it was skipped or failed
      * @param  array<string, list<array{id: string, before: string, after: string, reason: string}>>  $corrections  by handle
      * @param  list<string>  $warnings
      * @param  ?string  $reason  why the target was skipped or failed
@@ -78,10 +83,10 @@ final readonly class TargetResult
     }
 
     /**
-     * @return list<string> the fields that were saved, complete or not
+     * @return list<string> the fields that were saved, complete or not, reviewed in full or not
      */
     public function appliedFields(): array
     {
-        return array_keys(array_filter($this->fields, fn (string $result) => in_array($result, [self::APPLIED, self::INCOMPLETE], true)));
+        return array_keys(array_filter($this->fields, fn (string $result) => in_array($result, [self::APPLIED, self::INCOMPLETE, self::PARTLY_REVIEWED], true)));
     }
 }

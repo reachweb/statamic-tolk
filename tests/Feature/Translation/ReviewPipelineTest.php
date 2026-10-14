@@ -531,6 +531,31 @@ describe('reviewing and saving', function () {
             ->and(reviewExistingLocalization($this->origin)->get('body')[1])->toBe(reviewExistingParagraph('Το πρωινό σερβίρεται έως τις δέκα.'));
     });
 
+    it('names a corrected field with a part it could not review, and still counts it as saved', function () {
+        reviewExistingTranslate($this->origin);
+        config(['tolk.batch.max_segments' => 1]);
+        ScriptedEngine::bind(
+            fn (EngineCall $call) => ScriptedEngine::translated($call),
+            fn (EngineCall $call) => match (array_column($call->segments, 'id')) {
+                ['s3'] => ScriptedEngine::result($call, Finish::Refused),
+                ['s4'] => ScriptedEngine::result($call, Finish::Stop, ['s4' => ['text' => 'Το πρωινό σερβίρεται έως τις δέκα.', 'reason' => 'Left in English.']]),
+                default => ScriptedEngine::result($call, Finish::Stop),
+            },
+        );
+        Event::fake([TargetTranslated::class]);
+
+        $result = reviewExistingReview($this->origin);
+
+        expect($result->status)->toBe(TargetResultStatus::Done)
+            ->and($result->reason)->toBeNull()
+            ->and($result->fields)->toBe(['title' => TargetResult::NO_CORRECTIONS, 'intro' => TargetResult::NO_CORRECTIONS, 'body' => TargetResult::PARTLY_REVIEWED])
+            ->and($result->appliedFields())->toBe(['body'])
+            ->and(array_column($result->corrections['body'], 'id'))->toBe(['s4'])
+            ->and($result->warnings)->toBe(['Body: review skipped (refused).'])
+            ->and(reviewExistingLocalization($this->origin)->get('body')[1])->toBe(reviewExistingParagraph('Το πρωινό σερβίρεται έως τις δέκα.'));
+        Event::assertDispatched(TargetTranslated::class, fn (TargetTranslated $event) => $event->handles === ['body']);
+    });
+
     it('refuses to assemble a reviewed field whose source changed meanwhile, or whose walk no longer gives the planned leaves', function () {
         reviewExistingTranslate($this->origin, options: ['fields' => ['title']]);
         $this->fakeReview(['s1' => 'Γεια']);

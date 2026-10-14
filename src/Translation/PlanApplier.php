@@ -29,7 +29,8 @@ final readonly class PlanApplier
      * the lock. Only a save takes the lock: a review without corrections and a strict plan whose every field failed
      * return without it. A review saves only the fields it corrected; a field that failed in strict mode is listed as
      * failed and the others are still saved. A reviewed field with a part the reviewer could not review is listed as
-     * `review_skipped`, and when nothing was corrected the target fails with that reason, so it does not read as reviewed.
+     * `review_skipped`, or `partly_reviewed` when its corrections were saved, and when nothing was corrected the target
+     * fails with `review_skipped`, so it does not read as reviewed.
      *
      * @throws SourceChanged
      * @throws WriterBusy when there is something to save and the write lock was not free in time
@@ -86,7 +87,11 @@ final readonly class PlanApplier
 
         foreach ($applied->applied as $handle) {
             $field = $assembled[$handle];
-            $fields[$handle] = $field->incomplete ? TargetResult::INCOMPLETE : TargetResult::APPLIED;
+            $fields[$handle] = match (true) {
+                $field->incomplete => TargetResult::INCOMPLETE,
+                $field->reviewSkipped => TargetResult::PARTLY_REVIEWED,
+                default => TargetResult::APPLIED,
+            };
             array_push($warnings, ...$field->warnings);
 
             if ($field->corrections !== []) {

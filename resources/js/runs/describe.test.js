@@ -308,6 +308,7 @@ describe('describeItem', () => {
             applied: '2 fields saved',
             incomplete: ['content'],
             failed: [],
+            notReviewed: [],
             kept: [
                 { handle: 'intro', reason: 'edited by hand, kept' },
                 { handle: 'seo', reason: 'up to date' },
@@ -417,5 +418,24 @@ describe('describeItem', () => {
             reason: null,
             error: message,
         });
+    });
+
+    it('counts a corrected field with a part that could not be reviewed as saved, and names it', () => {
+        const item = {
+            status: 'done',
+            fields: { title: 'review_skipped', intro: 'applied', body: 'partly_reviewed' },
+            corrections: {
+                intro: [{ id: 's2', before: 'Ένα', after: 'Μία', reason: 'Gender.' }],
+                body: [{ id: 's4', before: 'καλό', after: 'ωραίο', reason: 'Word choice.' }],
+            },
+        };
+
+        expect(describeItem(item)).toMatchObject({
+            applied: '2 fields saved',
+            notReviewed: ['body'],
+            kept: [{ handle: 'title', reason: 'could not be reviewed' }],
+            corrected: '2 corrections',
+        });
+        expect(describeItem({ status: 'done', fields: { title: 'applied' } }).notReviewed).toEqual([]);
     });
 });

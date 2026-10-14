@@ -419,6 +419,7 @@ function filterBy(value) {
                                 <Description v-if="item.failed.length" data-tolk-item-failed>
                                     {{ __('Could not be translated: :fields', { fields: item.failed.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
                                 </Description>
+                                <Description v-if="item.notReviewed.length">{{ __('Not reviewed in full: :fields', { fields: item.notReviewed.join(', ') }) }}</Description>
                                 <Description v-if="item.kept.length">
                                     {{ __('Not changed: :fields', { fields: item.kept.map((field) => `${field.handle} (${field.reason})`).join(', ') }) }}
                                 </Description>

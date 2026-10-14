@@ -735,6 +735,32 @@ describe('review', function () {
             ->and($commits->getArrayCopy())->toBe([]);
     });
 
+    it('names a field in mode review whose correction was saved while a part of it could not be reviewed', function () {
+        $this->makeCollection('notes', ['en', 'el'], [
+            'title' => ['type' => 'text', 'localizable' => true],
+            'points' => ['type' => 'list', 'localizable' => true],
+        ]);
+        $note = $this->makeEntry('notes', 'en', ['title' => 'Beach', 'points' => ['sea', 'sun']], 'beach');
+        $this->fakeTranslations();
+        translateCommand(['--entry' => [$note->id()], '--site' => ['el']]);
+        config(['tolk.batch.max_segments' => 1]);
+        ScriptedEngine::bind(
+            fn (EngineCall $call) => ScriptedEngine::translated($call),
+            fn (EngineCall $call) => match (array_column($call->segments, 'translation')) {
+                ['[T] sea'] => ScriptedEngine::result($call, Finish::Refused),
+                ['[T] sun'] => ScriptedEngine::result($call, Finish::Stop, [$call->segments[0]['id'] => ['text' => 'ήλιος', 'reason' => 'Left in English.']]),
+                default => ScriptedEngine::result($call, Finish::Stop),
+            },
+        );
+
+        [$exitCode, $output] = translateCommand(['--entry' => [$note->id()], '--site' => ['el'], '--mode' => 'review']);
+
+        expect($exitCode)->toBe(0)
+            ->and($output)->toContain('Beach → Greek: done, 1 field, 1 correction; not reviewed: points')
+            ->and($output)->toContain('Points: review skipped (refused).')
+            ->and($note->fresh()->in('el')->get('points'))->toBe(['[T] sea', 'ήλιος']);
+    });
+
     it('reviews manual fields in mode review only with --force, and they stay manual', function () {
         $this->fakeTranslations();
         translateCommand(['--entry' => [$this->hello->id()], '--site' => ['el']]);
