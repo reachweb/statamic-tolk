@@ -4,6 +4,8 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+## 1.0.0 - 2026-10-15
+
 ### Added
 
 - **Settings** in the **Tools › Translations** menu, below **Audit**, for users who may edit Tolk's settings.
