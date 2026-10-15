@@ -15,7 +15,7 @@ Stack: PHP `^8.3`, Statamic `^6.35` (Pro, multi-site), Laravel `^12.62 || ^13.15
 - Work through the tasks in order; a task is finished only when its **Self-check** passes.
 - When a task is finished: flip its checkbox, append one line to the Done log, edit any later task that your findings change, and commit.
 - Do not re-litigate a row of the Decisions table without the owner. Stop and ask when a finding contradicts one, when a dependency has a new major version, or when a self-check cannot pass as written.
-- The research behind the plan is in `docs/research/` (R1–R6). Do not edit those reports; record new findings in `docs/research/07-spike-findings.md`.
+- The research behind the plan is in `docs/research/` (R1–R6). It describes the owner's private code, so it is git-ignored and kept only in the owner's working copy; it was removed from the repository's history before 1.0.0. Do not edit those reports; record new findings in `docs/research/07-spike-findings.md`.
 
 ## Commands
 
