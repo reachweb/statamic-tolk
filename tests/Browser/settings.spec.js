@@ -118,8 +118,9 @@ test('A duplicate glossary term is refused on its row and nothing is saved', asy
     await expect(field(page, 'glossary_0_term')).not.toContainText('already in the glossary');
     expect(settingsFile()).toBeNull();
 
-    // A refused save logs the 422 and core's `PipelineStopped`.
-    expect(browserErrors().filter((error) => !error.includes('status of 422') && error !== 'PipelineStopped')).toEqual([]);
+    // A refused save logs the 422 and core's `PipelineStopped`, by the name its build gives the class (`pq` in 6.36).
+    const stopped = await page.evaluate(() => __STATAMIC__.savePipeline.PipelineStopped.name);
+    expect(browserErrors().filter((error) => !error.includes('status of 422') && error !== stopped)).toEqual([]);
 });
 
 test('Generate fills the site profile and Test connection shows a result, both with the fake engine', async ({ page, browserErrors }) => {

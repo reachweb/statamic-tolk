@@ -434,6 +434,7 @@ describe('translate', function () {
         app(RunProcessor::class)->applyReady($run, 'apply-1', CarbonImmutable::now()->addSeconds(30));
         // A worker still holds what it read before the applier created the Greek localization.
         Blink::put('entry-descendants-'.$this->hello->id(), collect());
+        Blink::put('entry-all-descendants-'.$this->hello->id(), collect());
 
         RunFixtures::translate($run);
         $nav = RunFixtures::items($run)[1];

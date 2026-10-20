@@ -101,6 +101,7 @@ defineExpose(expose);
                             :label="row.term"
                             :description="row.inGlossary ? __('Already in the glossary') : null"
                             :disabled="row.inGlossary"
+                            class="dark:[&_p]:text-gray-400!"
                             @update:model-value="choose(row.term, $event)"
                         />
                     </div>

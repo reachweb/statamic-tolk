@@ -108,7 +108,7 @@ interface Target
     /**
      * The same target, with everything resolved again from new queries. Core answers some of them from this process's
      * Blink, which it does not drop: a localization's origin (`origin-Entry-{id}`), an entry's localizations
-     * (`entry-descendants-{id}`), a global set's variables (`global-set-localizations-{id}`) and form blueprints (the
+     * (`entry-descendants-{id}`, and since Statamic 6.36 `entry-all-descendants-{id}`), a global set's variables (`global-set-localizations-{id}`) and form blueprints (the
      * store `blueprints.found`). So what another process saved since is seen only after ContentWriter::refreshStache(),
      * which ContentWriter::write() runs first, and apply() checks the sources again there.
      */

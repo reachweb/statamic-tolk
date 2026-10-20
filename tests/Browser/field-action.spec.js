@@ -121,15 +121,26 @@ test('running it replaces only that field, typed text included, asks first only 
     await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
     await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('Welcome to Kyma Bay');
 
-    // The Bard field next, untranslated, so it shows the origin's text: no confirmation, and the focus the disabled button
-    // lost goes to the banner. The title keeps its translation.
+    // The Bard field next, untranslated, so it shows the origin's text: no confirmation. The title keeps its translation.
+    // Since Statamic 6.36 a disabled button keeps the focus (`aria-disabled`); before, the browser dropped it and the action
+    // moved it into the banner. Either way it is not lost.
     const direct = page.waitForRequest((request) => request.url().includes('/tolk/editor/plan'));
     await runAction(page, '[for="field_content"]');
 
     expect((await direct).postDataJSON()).toMatchObject({ fields: ['content'] });
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('[de] Welcome to Kyma Bay');
-    await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('[data-tolk-banner]')))).toBe(true);
+    await expect
+        .poll(() =>
+            page.evaluate(
+                (title) =>
+                    Boolean(document.activeElement?.closest('[data-tolk-banner]')) ||
+                    (document.activeElement?.getAttribute('aria-label') === title &&
+                        Boolean(document.activeElement.closest('[data-ui-field-header]')?.querySelector('label[for="field_content"]'))),
+                TITLE,
+            ),
+        )
+        .toBe(true);
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
 

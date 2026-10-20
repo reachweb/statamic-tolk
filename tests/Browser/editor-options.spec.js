@@ -190,7 +190,8 @@ test.describe('the German home page, whose title was written by hand', () => {
 
         await modelSelect(page).click();
         await modelSelect(page).pressSequentially('openai:gpt-custom');
-        await expect(page.getByRole('option')).toHaveText(['openai:gpt-custom']);
+        // Statamic 6.36 offers typed text as `Add "…"`.
+        await expect(page.getByRole('option')).toHaveText([/^(Add ")?openai:gpt-custom"?$/]);
         await modelSelect(page).press('Enter');
         await expect(modelSelect(page)).toHaveAttribute('placeholder', 'openai:gpt-custom');
 

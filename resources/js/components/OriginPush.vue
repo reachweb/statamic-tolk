@@ -202,12 +202,14 @@ function reload() {
         >
             <div class="space-y-6">
                 <Text as="p">{{ lead }}</Text>
+                <!-- Since Statamic 6.36 a checkbox's description has no colour of its own in dark mode, too faint to read there. -->
                 <div class="space-y-3">
                     <div v-for="choice in choices" :key="choice.site" :data-tolk-push-site="choice.site">
                         <Checkbox
                             :model-value="selected.includes(choice.site)"
                             :label="choice.name"
                             :description="choice.summary"
+                            class="dark:[&_p]:text-gray-400!"
                             @update:model-value="toggle(choice.site, $event)"
                         />
                     </div>
@@ -222,6 +224,7 @@ function reload() {
                     v-model="review"
                     :label="__('Review after translating')"
                     :description="__('A second model checks each translation and corrects it before it is saved.')"
+                    class="dark:[&_p]:text-gray-400!"
                 />
             </div>
 

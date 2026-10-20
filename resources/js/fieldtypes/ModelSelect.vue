@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { Fieldtype } from '@statamic/cms';
 import { Combobox } from '@statamic/cms/ui';
+import { shouldOpenDropdown } from '../combobox.js';
 import { AUTOMATIC, chosen, selectOptions, stored } from './modelSelect.js';
 
 const emit = defineEmits(Fieldtype.emits);
@@ -31,6 +32,7 @@ defineExpose(expose);
         :read-only="isReadOnly"
         :placeholder="__('Choose a model')"
         taggable
+        :should-open-dropdown
         data-tolk-model-select
         @update:model-value="select"
     >

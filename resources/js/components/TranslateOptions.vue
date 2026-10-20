@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { Button, Checkbox, Combobox, Description, Field, Heading, Label, Modal, Switch, Text } from '@statamic/cms/ui';
+import { shouldOpenDropdown } from '../combobox.js';
 import { isTermReference } from '../editor/banner.js';
 import { offersEnabled } from '../editor/offer.js';
 import { initialModel, modelOptions, options, pickedModel, rememberedModel, REVIEWER_PREFERENCE, stateActions } from '../editor/options.js';
@@ -139,6 +140,7 @@ async function toggleOffers(enabled) {
                             :model-value="model"
                             :options="choices"
                             :taggable="mayType"
+                            :should-open-dropdown
                             :disabled="loading"
                             :placeholder="loading ? __('Loading…') : __('Choose a model')"
                             data-tolk-options-model
@@ -151,6 +153,7 @@ async function toggleOffers(enabled) {
                             :model-value="reviewer"
                             :options="reviewerChoices"
                             :taggable="mayType"
+                            :should-open-dropdown
                             :disabled="loading || !reviewerUsed"
                             :placeholder="loading ? __('Loading…') : __('Choose a model')"
                             data-tolk-options-reviewer
@@ -164,17 +167,25 @@ async function toggleOffers(enabled) {
                 </Text>
             </div>
 
+            <!-- Since Statamic 6.36 a checkbox's description has no colour of its own in dark mode, too faint to read there. -->
             <div class="space-y-3">
                 <Checkbox
                     v-model="retranslate"
                     :label="__('Retranslate everything')"
                     :description="__('Also translates the fields that are up to date again.')"
+                    class="dark:[&_p]:text-gray-400!"
                 />
-                <Checkbox v-model="overwriteManual" :label="__('Overwrite manual edits')" :description="__('Also replaces the text of fields edited by hand.')" />
+                <Checkbox
+                    v-model="overwriteManual"
+                    :label="__('Overwrite manual edits')"
+                    :description="__('Also replaces the text of fields edited by hand.')"
+                    class="dark:[&_p]:text-gray-400!"
+                />
                 <Checkbox
                     v-model="reviewAfter"
                     :label="__('Review after translating')"
                     :description="__('The reviewer checks the new translation and corrects it.')"
+                    class="dark:[&_p]:text-gray-400!"
                 />
             </div>
 
