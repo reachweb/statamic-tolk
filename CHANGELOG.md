@@ -11,6 +11,8 @@ All notable changes to Tolk are documented in this file.
 ### Fixed
 
 - On Statamic 6.36, which keeps each entry's whole family of localizations in memory for the rest of a request, planning and estimating a run over a large collection kept every entry it had read in memory instead of one batch at a time. Tolk now forgets that cache between batches too.
+- On Statamic 6.36, a model select that takes a typed model (in the translation options and the settings, for users who may edit Tolk's settings) no longer opens its list as soon as it gets the keyboard focus. The open list kept taking the focus back, so Tab could not leave the field, and in the translation options Esc closed the whole dialog; the list also covered the options below it. It opens on a click, an arrow key or typing, as before 6.36.
+- On Statamic 6.36, the descriptions under the checkboxes of the translation options, **Translate into…** and the site profile's terms are readable in dark mode again.
 
 ## 1.0.0 - 2026-10-15
 

@@ -166,8 +166,8 @@ export function createFieldActions({
         }
     }
 
-    // The button is disabled while the translation runs, which drops its focus, and the confirmation leaves the focus
-    // on the page's body: either way it goes to the banner.
+    // The confirmation leaves the focus on the page's body, and before Statamic 6.36 a disabled button dropped its focus
+    // (since then it stays focusable, `aria-disabled`): a focus lost either way goes to the banner.
     function start(payload) {
         translateField(payload).catch(() => toast().error(__('Something went wrong.')));
         moveFocus(() => progress() ?? trigger(payload.handle));
