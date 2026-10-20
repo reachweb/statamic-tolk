@@ -3,7 +3,7 @@
 Tolk translates multi-site Statamic content from an origin site into its localizations with large language models from Anthropic, OpenAI or Google Gemini. It works in the entry editor, where translations are filled into the open form for the editor to review and save, on single fields, in bulk from listings and from the command line. It tracks which translations are outdated or edited by hand, so it updates only what has changed.
 
 - **In the editor**: create a localization and Tolk offers to translate it; Translate and Update fill the form, unsaved, field by field. Bard, Replicator, Grid, Markdown and tables keep their structure, formatting and links.
-- **One field at a time**: "Translate from origin" in a field's actions.
+- **One field at a time**: the "Translate from origin" button in a field's header.
 - **In bulk**: a listing action, an Overview of every collection, taxonomy, global set and navigation by language, and runs with an estimate before they start, progress, cancel and resume. No queue or database needed.
 - **From the command line**: translate collections, or the whole website into a new language in one command, plus the app's `lang/` files and the texts of forms.
 - **Updates, not retranslations**: when the origin changes, only the changed paragraphs are sent again. Text a human edited is never overwritten unless you ask. Optionally, saving an entry updates its translations by itself.

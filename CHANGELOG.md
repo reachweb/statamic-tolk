@@ -4,6 +4,10 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **Translate from origin** is a button in the field's header (the book icon) instead of an item in the field's actions menu, so one field takes one click. It asks first only when the field holds text of its own: an empty field, or one that still shows the origin's text, is translated at once. While a translation runs, the buttons are disabled instead of hidden.
+
 ## 1.0.0 - 2026-10-15
 
 ### Added

@@ -62,14 +62,17 @@ const status = (fields = {}, extra = {}) => ({
 
 const values = () => ({ title: 'Startseite', intro: 'A family-run hotel.', content: '[{"type":"paragraph"}]', empty: null, css_class: 'hero' });
 
+// The English origin's: the German title is a translation, the other fields are not translated yet.
+const originValues = () => ({ ...values(), title: 'Home' });
+
 // The German home page's base container, created and attached as the banner attaches it, with its status loaded.
-function mount({ reference = 'entry::de', loaded = status(), readOnly = false, originValues = values() } = {}) {
+function mount({ reference = 'entry::de', loaded = status(), readOnly = false, origin = originValues() } = {}) {
     const ctx = {
         name: ref('base'),
         reference: ref(reference),
         site: ref('de'),
         values: ref(values()),
-        originValues: ref(originValues),
+        originValues: ref(origin),
         meta: ref({}),
         localizedFields: ref(['title']),
         readOnly: ref(readOnly),
@@ -138,7 +141,8 @@ function fakeComponents(answer = 'confirm') {
     };
 }
 
-// The page as far as the focus goes: the title field, whose header holds its actions menu, and the banner.
+// The page as far as the focus goes: the title field, whose header holds the action's button next to another of core's,
+// and the banner.
 function page() {
     const doc = { body: { name: 'body' }, activeElement: null };
     const element = (name, find = {}) => ({
@@ -150,9 +154,17 @@ function page() {
         querySelector(selector) {
             return this.find[selector] ?? null;
         },
+        querySelectorAll(selector) {
+            return this.find[`all ${selector}`] ?? [];
+        },
+        getAttribute(name) {
+            return this.find[`@${name}`] ?? null;
+        },
     });
-    const menu = element('actions menu');
-    const field = element('title field', { '[data-ui-field-header] [data-ui-dropdown-trigger]': menu });
+    const button = element('action button', { '@aria-label': 'Translate from origin' });
+    const fullscreen = element('fullscreen button', { '@aria-label': 'Toggle Fullscreen Mode' });
+    const header = element('title header', { 'all button[aria-label]': [fullscreen, button] });
+    const field = element('title field', { '[data-ui-field-header]': header });
     const label = (target, group = null) => ({ getAttribute: () => target, closest: (selector) => (selector === '[data-ui-input-group]' ? group : null) });
     const planning = element('planning');
     const cancel = element('cancel');
@@ -162,7 +174,7 @@ function page() {
     doc.querySelector = (selector) => (selector === '[data-tolk-banner]' ? banner : null);
     doc.activeElement = doc.body;
 
-    return { doc, menu, banner, planning, cancel };
+    return { doc, button, banner, planning, cancel };
 }
 
 function actions(overrides = {}) {
@@ -199,13 +211,14 @@ describe('register', () => {
     });
 
     // Core's confirmation leaves the focus on the page's body when it closes; the action asks itself.
-    it('is titled, and asks for confirmation itself', () => {
+    it('is a titled button with the addon\'s icon, and asks for confirmation itself', () => {
         const { action } = actions();
 
         expect(action.title).toBe('Translate from origin');
+        expect(action.quick).toBe(true);
+        expect(action.icon).toBe('dictionary-language-book');
         expect(action.confirm).toBeUndefined();
         expect(action.visibleWhenReadOnly).toBeUndefined();
-        expect(action.quick).toBeUndefined();
     });
 });
 
@@ -291,7 +304,7 @@ describe('visible', () => {
     });
 
     it('needs the field in scope, in the origin and with text there', () => {
-        mount({ originValues: { ...values(), intro: undefined } });
+        mount({ origin: { ...originValues(), intro: undefined } });
         delete registry.base().originValues.value.intro;
         const { visible } = actions();
 
@@ -301,17 +314,23 @@ describe('visible', () => {
         expect(visible(payload('title'))).toBe(true);
     });
 
-    it('does not show while a translation is under way', () => {
+    // Unlike a dropdown item, a quick action's button honours `disabled`, so the field's header keeps its buttons.
+    it('stays, disabled, while a translation is under way', () => {
         mount();
-        const { visible } = actions();
+        const { visible, disabled } = actions();
 
-        for (const [phase, shown] of [['planning', false], ['working', false], ['offer', true], ['done', true], ['error', true], ['idle', true]]) {
+        for (const [phase, busy] of [['planning', true], ['working', true], ['offer', false], ['done', false], ['error', false], ['idle', false]]) {
             store.setPhase('base', phase);
-            expect(visible(payload())).toBe(shown);
+            expect(visible(payload())).toBe(true);
+            expect(disabled(payload())).toBe(busy);
         }
     });
 
-    it('is re-evaluated by a computed when a stack opens, the status arrives or the phase changes', async () => {
+    it('is enabled without a base form', () => {
+        expect(actions().disabled(payload())).toBe(false);
+    });
+
+    it('is re-evaluated by a computed when a stack opens or the status arrives, and disabled when the phase changes', async () => {
         mount({ loaded: null });
         const { visible } = actions();
         const shown = computed(() => visible(payload()));
@@ -328,8 +347,17 @@ describe('visible', () => {
         events['publish-container-destroyed']({ name: 'relate-fieldtype-inline-7' });
         expect(shown.value).toBe(true);
 
+        const { disabled } = actions();
+        const off = computed(() => disabled(payload()));
+
+        expect(off.value).toBe(false);
+
         store.setPhase('base', 'working');
-        expect(shown.value).toBe(false);
+        expect(shown.value).toBe(true);
+        expect(off.value).toBe(true);
+
+        store.setPhase('base', 'done');
+        expect(off.value).toBe(false);
     });
 });
 
@@ -366,10 +394,79 @@ describe('run', () => {
         expect(translations.translate).toHaveBeenCalledOnce();
     });
 
-    it('translates nothing on Cancel or Esc, and gives the focus back to the field\'s actions menu', async () => {
+    it('translates at once, without asking, a field without text or with the origin\'s', async () => {
+        const ctx = mount();
+        const translations = fakeTranslations();
+        const { run } = actions({ translations });
+
+        // Bard's value of an empty field: a paragraph without text.
+        ctx.values.value.title = '';
+        ctx.values.value.content = [{ type: 'paragraph', attrs: { textAlign: null } }];
+        run(payload('title', { value: '' }));
+        run(payload('content', { value: [{ type: 'paragraph', attrs: { textAlign: null } }] }));
+        await flush();
+        ctx.values.value.title = null;
+        run(payload('title', { value: null }));
+        await flush();
+        // An untranslated field shows the origin's text.
+        run(payload('intro'));
+        await flush();
+
+        expect(confirmations.append).not.toHaveBeenCalled();
+        expect(translations.translate.mock.calls.map(([, { fields }]) => fields)).toEqual([['title'], ['content'], ['title'], ['intro']]);
+    });
+
+    it('asks first before it replaces text of the localization\'s own, typed text included', async () => {
+        const ctx = mount();
+        const translations = fakeTranslations();
+        confirmations = fakeComponents(null);
+        const { run } = actions({ translations });
+
+        run(payload('title'));
+        ctx.values.value.intro = 'Ein Familienhotel.';
+        run(payload('intro', { value: 'Ein Familienhotel.' }));
+        await flush();
+
+        expect(confirmations.appended.map(({ name }) => name)).toEqual([CONFIRM, CONFIRM]);
+        expect(translations.translate).not.toHaveBeenCalled();
+    });
+
+    it('asks first when the base form has gone, and then reports it', async () => {
+        const translations = fakeTranslations();
+        const { run } = actions({ translations });
+
+        run(payload('intro'));
+        await flush();
+
+        expect(confirmations.append).toHaveBeenCalledOnce();
+        expect(translations.translate).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('This field is not part of the entry being translated.');
+    });
+
+    it('moves a focus the disabled button lost into the banner after a translation that did not ask', async () => {
+        mount();
+        const { doc, button, planning } = page();
+        const wait = vi.fn();
+
+        doc.activeElement = button;
+        actions({ doc: () => doc, wait }).run(payload('intro'));
+        await flush();
+
+        expect(wait.mock.calls.map(([, delay]) => delay)).toEqual([0, 400]);
+
+        // A browser that keeps the focus on the disabled button.
+        wait.mock.calls[0][0]();
+        expect(doc.activeElement).toBe(button);
+
+        doc.activeElement = doc.body;
+        wait.mock.calls[1][0]();
+        expect(doc.activeElement).toBe(planning);
+    });
+
+    it('translates nothing on Cancel or Esc, and gives the focus back to the action\'s button', async () => {
         mount();
         const translations = fakeTranslations();
-        const { doc, menu } = page();
+        const { doc, button } = page();
         const wait = vi.fn();
         confirmations = fakeComponents('cancel');
 
@@ -381,7 +478,7 @@ describe('run', () => {
 
         wait.mock.calls[0][0]();
 
-        expect(doc.activeElement).toBe(menu);
+        expect(doc.activeElement).toBe(button);
         expect(translations.translate).not.toHaveBeenCalled();
     });
 
@@ -406,7 +503,7 @@ describe('run', () => {
 
     it('leaves a focus that is somewhere once the confirmation has closed', async () => {
         mount();
-        const { doc, menu } = page();
+        const { doc, button } = page();
         const wait = vi.fn();
         confirmations = fakeComponents('cancel');
 
@@ -417,7 +514,7 @@ describe('run', () => {
         wait.mock.calls.forEach(([callback]) => callback());
 
         expect(doc.activeElement).toBe(field);
-        expect(doc.activeElement).not.toBe(menu);
+        expect(doc.activeElement).not.toBe(button);
     });
 
     it('does nothing but report it when the value is not the base form\'s', async () => {
