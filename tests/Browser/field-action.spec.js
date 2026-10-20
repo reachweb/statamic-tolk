@@ -20,49 +20,29 @@ test.afterAll(() => {
     reset();
 });
 
-// The header of a field: its label and its actions. `scope` is the page's own form (`main`) or a stack.
+// The header of a field: its label and its buttons. `scope` is the page's own form (`main`) or a stack.
 const header = (scope, selector) => scope.locator(`[data-ui-field-header]:has(label${selector})`);
-const dropdown = (scope, selector) => header(scope, selector).getByRole('button', { name: 'Open dropdown menu' });
+const button = (scope, selector) => header(scope, selector).getByRole('button', { name: TITLE, exact: true });
 
-// The titles in a field's action dropdown; none when the field has no dropdown.
-async function actionTitles(page, scope, selector) {
+async function expectAction(scope, selector) {
+    await expect(button(scope, selector)).toBeVisible();
+}
+
+async function expectNoAction(scope, selector) {
     await expect(header(scope, selector)).toBeVisible();
+    await expect(button(scope, selector)).toHaveCount(0);
+}
 
-    if ((await dropdown(scope, selector).count()) === 0) {
-        return [];
+// Presses the field's button and, with `confirm`, answers the confirmation it asks first with.
+async function runAction(page, selector, { confirm = false } = {}) {
+    await button(page.locator('main'), selector).click();
+
+    if (confirm) {
+        const modal = page.getByRole('dialog');
+
+        await expect(modal).toContainText('The current content of this field will be replaced.');
+        await modal.getByRole('button', { name: 'Translate' }).click();
     }
-
-    await dropdown(scope, selector).click();
-
-    const menu = page.getByRole('menu');
-
-    await expect(menu).toBeVisible();
-
-    const titles = await menu.getByRole('menuitem').allTextContents();
-
-    await page.keyboard.press('Escape');
-    await expect(menu).toHaveCount(0);
-
-    return titles;
-}
-
-async function expectAction(page, scope, selector) {
-    await expect(dropdown(scope, selector)).toBeVisible();
-    expect(await actionTitles(page, scope, selector)).toContain(TITLE);
-}
-
-async function expectNoAction(page, scope, selector) {
-    expect(await actionTitles(page, scope, selector)).not.toContain(TITLE);
-}
-
-async function runAction(page, selector) {
-    await dropdown(page.locator('main'), selector).click();
-    await page.getByRole('menu').getByRole('menuitem', { name: TITLE }).click();
-
-    const modal = page.getByRole('dialog');
-
-    await expect(modal).toContainText('The current content of this field will be replaced.');
-    await modal.getByRole('button', { name: 'Translate' }).click();
 }
 
 test('shows on the localizable text, Bard and Replicator fields of a localization only', async ({ page, browserErrors }) => {
@@ -72,12 +52,12 @@ test('shows on the localizable text, Bard and Replicator fields of a localizatio
     await openEntry(page, 'pages', 'home', 'de');
     await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toBeVisible();
 
-    await expectAction(page, main, '[for="field_title"]');
-    await expectAction(page, main, '[for="field_intro"]');
-    await expectAction(page, main, '[for="field_content"]');
-    await expectNoAction(page, main, '[for^="field_content_"][for$="_attrs_values_text"]');
-    await expectNoAction(page, main, '[for^="field_content_"][for$="_attrs_values_author"]');
-    await expectNoAction(page, main, '[for="field_css_class"]');
+    await expectAction(main, '[for="field_title"]');
+    await expectAction(main, '[for="field_intro"]');
+    await expectAction(main, '[for="field_content"]');
+    await expectNoAction(main, '[for^="field_content_"][for$="_attrs_values_text"]');
+    await expectNoAction(main, '[for^="field_content_"][for$="_attrs_values_author"]');
+    await expectNoAction(main, '[for="field_css_class"]');
 
     // A Greek article: the Replicator body, the heading of its text set, the set's Bard field, whose handle `body` is also
     // the Replicator's, and a text field that is not localizable.
@@ -85,23 +65,24 @@ test('shows on the localizable text, Bard and Replicator fields of a localizatio
     await openEntry(page, 'articles', ARTICLE, 'el');
     await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toBeVisible();
 
-    await expectAction(page, main, '[for="field_title"]');
-    await expectAction(page, main, '[for="field_body"]');
-    await expectNoAction(page, main, '[for="field_body_0_heading"]');
-    await expectNoAction(page, main, '[for="field_body_0_body"]');
-    await expectNoAction(page, main, '[for="field_internal_note"]');
+    await expectAction(main, '[for="field_title"]');
+    await expectAction(main, '[for="field_body"]');
+    await expectNoAction(main, '[for="field_body_0_heading"]');
+    await expectNoAction(main, '[for="field_body_0_body"]');
+    await expectNoAction(main, '[for="field_internal_note"]');
 
     // The English origin of the home page.
     await openEntry(page, 'pages', 'home', 'en');
     await expect(banner(page).locator('[data-tolk-origin]')).toBeVisible();
 
-    await expectNoAction(page, main, '[for="field_title"]');
-    await expectNoAction(page, main, '[for="field_intro"]');
-    await expectNoAction(page, main, '[for="field_content"]');
+    await expectNoAction(main, '[for="field_title"]');
+    await expectNoAction(main, '[for="field_intro"]');
+    await expectNoAction(main, '[for="field_content"]');
     expect(browserErrors()).toEqual([]);
 });
 
-test('running it replaces only that field, typed text included, and leaves the form unsaved', async ({ page, browserErrors }) => {
+test('running it replaces only that field, typed text included, asks first only then, and leaves the form unsaved', async ({ page, browserErrors }) => {
+    const main = page.locator('main');
     const origin = entryFile('pages', 'en', 'home');
     const before = entryFile('pages', 'de', 'home');
 
@@ -122,23 +103,33 @@ test('running it replaces only that field, typed text included, and leaves the f
     });
 
     const planned = page.waitForRequest((request) => request.url().includes('/tolk/editor/plan'));
-    await runAction(page, '[for="field_title"]');
+    await runAction(page, '[for="field_title"]', { confirm: true });
     const plan = (await planned).postDataJSON();
 
     expect(plan).toMatchObject({ mode: 'all', fields: ['title'], overwrite_manual: true });
     expect(plan.skip).not.toContain('title');
     await expect(banner(page).locator('[data-tolk-working-field]')).toHaveText('Translating Title into German…');
+
+    // The buttons stay in their headers while the translation runs, disabled.
+    await expect(button(main, '[for="field_title"]')).toBeDisabled();
+    await expect(button(main, '[for="field_content"]')).toBeDisabled();
     release();
 
     await expect(banner(page).locator('[data-tolk-summary-translated]')).toHaveText(/^1 field translated with .+\.$/);
+    await expect(button(main, '[for="field_content"]')).toBeEnabled();
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
     await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('Welcome to Kyma Bay');
 
-    // The Bard field next: the title keeps its translation.
+    // The Bard field next, untranslated, so it shows the origin's text: no confirmation, and the focus the disabled button
+    // lost goes to the banner. The title keeps its translation.
+    const direct = page.waitForRequest((request) => request.url().includes('/tolk/editor/plan'));
     await runAction(page, '[for="field_content"]');
 
+    expect((await direct).postDataJSON()).toMatchObject({ fields: ['content'] });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('#field_content .ProseMirror h2')).toHaveText('[de] Welcome to Kyma Bay');
+    await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('[data-tolk-banner]')))).toBe(true);
     await expect(page.locator('#field_title')).toHaveValue(`[de] ${origin.title}`);
     await expect(page.locator('#field_intro')).toHaveValue(origin.intro);
 
@@ -166,18 +157,18 @@ test('with a related entry open in a stack, the stacked form\'s fields have no a
 
     await openEntry(page, 'pages', 'home', 'de');
     await expect(banner(page).locator('[data-tolk-part="untranslated"]')).toBeVisible();
-    await expectAction(page, main, '[for="field_title"]');
+    await expectAction(main, '[for="field_title"]');
 
     await main.locator('.entries-fieldtype').getByRole('link', { name: about.title }).click();
     await expect(stack.locator('#field_title')).toHaveValue(about.title);
 
-    await expectNoAction(page, stack, '[for="field_title"]');
-    await expectNoAction(page, stack, '[for="field_intro"]');
-    await expectNoAction(page, stack, '[for="field_content"]');
+    await expectNoAction(stack, '[for="field_title"]');
+    await expectNoAction(stack, '[for="field_intro"]');
+    await expectNoAction(stack, '[for="field_content"]');
 
     // Closing the stack brings the action back to the page's own form.
     await page.keyboard.press('Escape');
     await expect(stack).toHaveCount(0);
-    await expectAction(page, main, '[for="field_title"]');
+    await expectAction(main, '[for="field_title"]');
     expect(browserErrors()).toEqual([]);
 });

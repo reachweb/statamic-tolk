@@ -89,12 +89,11 @@ The **Offer to translate new localizations** switch turns the offer on or off fo
 
 ## Translating one field
 
-Every top-level field Tolk can translate has **Translate from origin** in its field actions (the menu next to its label), in a localization:
+In a localization, every top-level field Tolk can translate has a **Translate from origin** button in its header, at the right: the book icon, whose tooltip names it. Press it, and the field is translated again from the origin, whatever its status, edited by hand included, and filled into the form unsaved. The rest of the form is left alone. It sends the same context as the banner's buttons (the site profile, the instructions, the language's instructions, the glossary, and the entry's title and summary) and follows the review setting.
 
-1. Open the field's actions and choose **Translate from origin**.
-2. Confirm: "The current content of this field will be replaced."
+When the field holds text of its own, Tolk asks first: "The current content of this field will be replaced." A field that is empty, or that still shows the origin's text, such as a field not translated yet, is translated at once, since nothing is lost. Either way, **Undo** in the banner puts the field back until you save.
 
-The field is translated again from the origin, whatever its status, edited by hand included, and filled into the form unsaved. The rest of the form is left alone.
+While a translation runs, the buttons are disabled.
 
 The action is not offered on nested fields (inside a Replicator, Grid or Bard set), on fields that are not localizable, in the origin, or while another entry is open in a stack.
 
