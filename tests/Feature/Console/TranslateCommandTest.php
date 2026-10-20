@@ -1039,7 +1039,7 @@ describe('the run engine', function () {
         [$exitCode] = translateCommand(['--collection' => ['articles'], '--site' => ['el', 'de'], '--mode' => 'update', '--dry-run' => true]);
 
         // An entry's localizations, a localization's origin and an entry's blueprint.
-        $memoized = array_filter(array_keys(Blink::store()->all()), fn (string $key) => preg_match('/^(entry-descendants-|origin-Entry-|entry-.+-blueprint$)/', $key) === 1);
+        $memoized = array_filter(array_keys(Blink::store()->all()), fn (string $key) => preg_match('/^(entry-(all-)?descendants-|origin-Entry-|entry-.+-blueprint$)/', $key) === 1);
 
         expect($exitCode)->toBe(0)
             ->and($memoized)->toBe([]);

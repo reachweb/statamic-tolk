@@ -6,13 +6,14 @@ use Statamic\Facades\Blink;
 
 /**
  * What core memoizes in Blink for the entries a process reads, which nothing forgets for the rest of the process: in the
- * default store each entry's localizations, origin and blueprint, and in `structure-entries` the entries of tree pages
+ * default store each entry's localizations (its direct ones and, since Statamic 6.36, its whole family), origin and
+ * blueprint, and in `structure-entries` the entries of tree pages
  * (Page::entry(), which a page's parent is read through). Work over a whole collection marks the memo before each slice
  * of entries and forgets what the slice added after it, so it holds one slice of entries in memory, not the collection.
  */
 final readonly class EntryMemo
 {
-    private const string KEYS = '/^(entry-descendants-|origin-Entry-|entry-.+-blueprint$)/';
+    private const string KEYS = '/^(entry-(all-)?descendants-|origin-Entry-|entry-.+-blueprint$)/';
 
     /**
      * @param  array<string, true>  $default  the keys of the default store when marked

@@ -123,7 +123,7 @@ describe('roots', function () {
             $localization?->origin();
 
             if ($position < EntryFamilies::CHUNK) {
-                $keys = ["entry-{$root->id()}-blueprint", "entry-descendants-{$root->id()}", 'origin-Entry-'.$localization?->id()];
+                $keys = ["entry-{$root->id()}-blueprint", "entry-descendants-{$root->id()}", "entry-all-descendants-{$root->id()}", 'origin-Entry-'.$localization?->id()];
                 $memoized = [...$memoized, ...array_filter($keys, fn (string $key) => Blink::has($key))];
             }
         }

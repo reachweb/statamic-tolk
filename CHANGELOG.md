@@ -8,6 +8,10 @@ All notable changes to Tolk are documented in this file.
 
 - **Translate from origin** is a button in the field's header (the book icon) instead of an item in the field's actions menu, so one field takes one click. It asks first only when the field holds text of its own: an empty field, or one that still shows the origin's text, is translated at once. While a translation runs, the buttons are disabled instead of hidden.
 
+### Fixed
+
+- On Statamic 6.36, which keeps each entry's whole family of localizations in memory for the rest of a request, planning and estimating a run over a large collection kept every entry it had read in memory instead of one batch at a time. Tolk now forgets that cache between batches too.
+
 ## 1.0.0 - 2026-10-15
 
 ### Added

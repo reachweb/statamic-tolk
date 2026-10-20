@@ -568,7 +568,8 @@ describe('Bard copies saved', function () {
         Entry::find($greek->id())->set('content', $this->rule)->save();
 
         expect(storedState($greek)->field('content')->isEmpty())->toBeFalse()
-            ->and(Blink::store()->has('entry-descendants-'.$origin->id()))->toBeFalse();
+            ->and(Blink::store()->has('entry-descendants-'.$origin->id()))->toBeFalse()
+            ->and(Blink::store()->has('entry-all-descendants-'.$origin->id()))->toBeFalse();
     });
 });
 

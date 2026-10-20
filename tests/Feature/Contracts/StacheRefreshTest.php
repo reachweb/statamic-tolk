@@ -52,12 +52,17 @@ it('reloads everything with the full refresh', function () {
 
 it('drops Blink caches such as the descendants behind existsIn()', function () {
     $localization = $this->localize($this->origin, 'el');
-    Blink::put('entry-descendants-'.$this->origin->id(), collect());
+    // Since Statamic 6.36, `in()` reads the whole family from a key of its own (`Entry::descendants()`).
+    $keys = ['entry-descendants-'.$this->origin->id(), 'entry-all-descendants-'.$this->origin->id()];
+
+    foreach ($keys as $key) {
+        Blink::put($key, collect());
+    }
 
     expect($this->origin->fresh()->existsIn('el'))->toBeFalse();
 
     ContentWriter::refreshStache();
 
-    expect(Blink::has('entry-descendants-'.$this->origin->id()))->toBeFalse()
+    expect(array_filter($keys, fn (string $key) => Blink::has($key)))->toBe([])
         ->and($this->origin->fresh()->in('el')->id())->toBe($localization->id());
 });
