@@ -4,6 +4,8 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+## 1.2.0 - 2026-11-18
+
 ### Added
 
 - Google's Gemini 4 models in the catalog: Gemini 4 Hydrogen, Gemini 4 Argon and Gemini 4 Carbon, offered in the model selects of the settings and the translation options, and by the commands' `--reviewer`. Gemini 3.8 Flash stays the Gemini default. They think at Google's lowest level, `low`; the thinking tokens are billed as output. Argon and Carbon are not offered on Google's free tier, and they are priced at their rate from December 1, 2026 ($4 / $20 per million tokens), so until then their estimates are about twice the cost.
