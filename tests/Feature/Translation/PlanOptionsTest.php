@@ -93,13 +93,13 @@ it('reads a null override as the default', function () {
 
 it('resolves a reviewer only when review is on', function () {
     expect(optionsFromSettings(['reviewer' => 'gemini:gemini-3.8-flash'])->reviewer)->toBeNull()
-        ->and((string) optionsFromSettings(['review' => true])->reviewer)->toBe('openai:gpt-6.1-sol')
+        ->and((string) optionsFromSettings(['review' => true])->reviewer)->toBe('openai:gpt-6.2-sol')
         ->and((string) optionsFromSettings(['review' => true, 'reviewer' => 'gemini:gemini-3.8-flash'])->reviewer)->toBe('gemini:gemini-3.8-flash');
 });
 
 it('always has a reviewer in mode review, which runs only the reviewer', function () {
     expect(optionsFromSettings(['mode' => 'review'])->review)->toBeTrue()
-        ->and((string) optionsFromSettings(['mode' => Mode::Review])->reviewer)->toBe('openai:gpt-6.1-sol')
+        ->and((string) optionsFromSettings(['mode' => Mode::Review])->reviewer)->toBe('openai:gpt-6.2-sol')
         ->and((string) optionsFromSettings(['mode' => 'review', 'review' => false, 'reviewer' => 'gemini:gemini-3.8-flash'])->reviewer)->toBe('gemini:gemini-3.8-flash');
 });
 
@@ -107,7 +107,7 @@ it('reviews when the settings say so, unless overridden', function () {
     $settings = $this->withSettings(['review_enabled' => true]);
 
     expect(optionsFromSettings(settings: $settings)->review)->toBeTrue()
-        ->and((string) optionsFromSettings(settings: $settings)->reviewer)->toBe('openai:gpt-6.1-sol')
+        ->and((string) optionsFromSettings(settings: $settings)->reviewer)->toBe('openai:gpt-6.2-sol')
         ->and(optionsFromSettings(['review' => false], $settings)->review)->toBeFalse()
         ->and(optionsFromSettings(['review' => false], $settings)->reviewer)->toBeNull()
         ->and(optionsFromSettings(['review' => null], $settings)->review)->toBeTrue();
@@ -155,7 +155,7 @@ it('survives toArray() and fromArray()', function () {
             'skip' => ['body' => 'edited_in_form'],
             'translator' => 'anthropic:claude-sonnet-5-5',
             'review' => true,
-            'reviewer' => 'openai:gpt-6.1-sol',
+            'reviewer' => 'openai:gpt-6.2-sol',
             'fallback' => 'gemini:gemini-3.8-flash',
             'profile' => 'background',
             'strict' => true,

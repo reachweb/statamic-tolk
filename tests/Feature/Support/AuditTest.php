@@ -100,7 +100,7 @@ describe('providers and models', function () {
         expect(auditItems('providers'))->toBe([
             'ok: API keys: anthropic (ai.providers.anthropic.key), openai (ai.providers.openai.key), gemini (ai.providers.gemini.key).',
             'ok: Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5), the default, because no translator model is chosen.',
-            'ok: Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol). Review is off by default.',
+            'ok: Reviewer: GPT-6.2 Sol (openai:gpt-6.2-sol). Review is off by default.',
         ]);
     });
 
@@ -184,7 +184,7 @@ describe('providers and models', function () {
     });
 
     it('fails when the catalog has no quality model for a provider with a key', function () {
-        config(['tolk.models.openai' => [['id' => 'gpt-6.1-sol', 'tier' => 'fast']]]);
+        config(['tolk.models.openai' => [['id' => 'gpt-6.2-sol', 'tier' => 'fast'], ['id' => 'gpt-6.1-sol', 'tier' => 'fast']]]);
 
         expect(auditItems('providers'))->toContain('error: The model catalog (tolk.models) has no quality model for [openai]. Tolk uses it whenever no model is chosen in the settings. Add one to tolk.models in config/tolk.php.');
     });

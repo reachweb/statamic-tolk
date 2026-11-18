@@ -46,6 +46,16 @@ return [
     ],
     'openai' => [
         [
+            'id' => 'gpt-6.2-sol',
+            'label' => 'GPT-6.2 Sol',
+            'tier' => 'quality',
+            'options' => ['reasoning' => ['effort' => 'low']],
+            'max_output_tokens' => 128000,
+            'reasoning_headroom' => 4000,
+            // OpenAI bills Sol's cache reads at 5% of its input price, where most models read at 10%.
+            'price' => ['input' => 2.0, 'output' => 10.0, 'cache_read' => 0.1],
+        ],
+        [
             'id' => 'gpt-6.1-sol',
             'label' => 'GPT-6.1 Sol',
             'tier' => 'quality',

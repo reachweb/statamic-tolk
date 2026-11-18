@@ -147,7 +147,7 @@ describe('openai', function () {
 
         expect($request->url())->toBe(ProviderFixtures::ENDPOINTS['openai'])
             ->and($request->hasHeader('Authorization', 'Bearer test-key'))->toBeTrue()
-            ->and($body['model'])->toBe('gpt-6.1-sol')
+            ->and($body['model'])->toBe('gpt-6.2-sol')
             ->and($body['text']['format']['type'])->toBe('json_schema')
             ->and($body['text']['format']['strict'])->toBeTrue()
             ->and($body['store'])->toBeFalse()

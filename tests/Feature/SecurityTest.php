@@ -1013,7 +1013,7 @@ describe('model choice', function () {
         expect(collect($runs)->pluck('id'))->toContain($pushed)
             ->and($runs)->toHaveCount(2)
             ->and(collect($runs)->map(fn (Run $run) => [$run->options['translator'], $run->options['reviewer']])->unique()->values()->all())
-            ->toBe([['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol']]);
+            ->toBe([['anthropic:claude-sonnet-5-5', 'openai:gpt-6.2-sol']]);
     });
 
     it('lets a user who may edit the settings choose a model outside the catalog', function () {

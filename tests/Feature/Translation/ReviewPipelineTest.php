@@ -39,7 +39,7 @@ const REVIEW_EXISTING_LINK = ['type' => 'link', 'attrs' => ['href' => 'statamic:
 
 const REVIEW_EXISTING_TRANSLATOR = 'anthropic:claude-sonnet-5-5';
 
-const REVIEW_EXISTING_REVIEWER = 'openai:gpt-6.1-sol';
+const REVIEW_EXISTING_REVIEWER = 'openai:gpt-6.2-sol';
 
 beforeEach(function () {
     $this->useFileCache();

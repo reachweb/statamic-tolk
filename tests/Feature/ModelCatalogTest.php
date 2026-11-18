@@ -35,7 +35,7 @@ it('merges the entries of the config into Tolk\'s catalog by id', function () {
         ['id' => 'gpt-6-astra', 'max_output_tokens' => 64000],
     ]]);
 
-    expect(array_column(modelCatalog()->forProvider('openai'), 'id'))->toBe(['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra'])
+    expect(array_column(modelCatalog()->forProvider('openai'), 'id'))->toBe(['gpt-6.2-sol', 'gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra'])
         ->and(modelCatalog()->find(modelRef('openai:gpt-6.1-sol')))->toBe([
             'id' => 'gpt-6.1-sol',
             'label' => 'GPT-6.1 Sol',
@@ -122,6 +122,7 @@ it('groups the catalog by provider for model selects', function () {
             ['value' => 'anthropic:claude-haiku-5-5', 'label' => 'Claude Haiku 5.5', 'tier' => 'fast', 'configured' => false],
         ],
         'openai' => [
+            ['value' => 'openai:gpt-6.2-sol', 'label' => 'GPT-6.2 Sol', 'tier' => 'quality', 'configured' => true],
             ['value' => 'openai:gpt-6.1-sol', 'label' => 'GPT-6.1 Sol', 'tier' => 'quality', 'configured' => true],
             ['value' => 'openai:gpt-6-luna', 'label' => 'GPT-6 Luna', 'tier' => 'fast', 'configured' => true],
         ],
@@ -142,6 +143,7 @@ it('labels every catalog model by reference, configured or not', function () {
     expect(modelCatalog()->catalogLabels())->toBe([
         'anthropic:claude-sonnet-5-5' => 'Claude Sonnet 5.5',
         'anthropic:claude-haiku-5-5' => 'Claude Haiku 5.5',
+        'openai:gpt-6.2-sol' => 'GPT-6.2 Sol',
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
         'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
@@ -158,7 +160,7 @@ it('returns the first model of a tier as the default', function (string $provide
 })->with([
     ['anthropic', Tier::Quality, 'anthropic:claude-sonnet-5-5'],
     ['anthropic', Tier::Fast, 'anthropic:claude-haiku-5-5'],
-    ['openai', Tier::Quality, 'openai:gpt-6.1-sol'],
+    ['openai', Tier::Quality, 'openai:gpt-6.2-sol'],
     ['openai', Tier::Fast, 'openai:gpt-6-luna'],
     ['gemini', Tier::Quality, 'gemini:gemini-3.8-flash'],
     ['gemini', Tier::Fast, 'gemini:gemini-3.5-flash-lite'],
@@ -194,14 +196,14 @@ it('resolves the translator from the override, then the setting, then the first 
 
     $this->withProviderKeys(['tolk.providers.openai.key' => 'tolk-key']);
 
-    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('openai:gpt-6.1-sol'));
+    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('openai:gpt-6.2-sol'));
 });
 
 it('names the automatic translator and reviewer whatever the settings name', function () {
     $this->withSettings(['translator_model' => 'gemini:gemini-3.5-flash-lite', 'reviewer_model' => 'gemini:gemini-3.8-flash']);
 
     expect(modelCatalog()->automaticTranslator())->toEqual(modelRef('anthropic:claude-sonnet-5-5'))
-        ->and(modelCatalog()->automaticReviewer(modelRef('anthropic:claude-sonnet-5-5')))->toEqual(modelRef('openai:gpt-6.1-sol'));
+        ->and(modelCatalog()->automaticReviewer(modelRef('anthropic:claude-sonnet-5-5')))->toEqual(modelRef('openai:gpt-6.2-sol'));
 });
 
 it('throws when no provider is configured and nothing names a translator', function () {
@@ -243,7 +245,7 @@ it('resolves the reviewer from the override, then the setting', function () {
 it('picks the quality model of another configured provider as the reviewer', function (string $translator, string $expected) {
     expect(modelCatalog()->resolveReviewer($this->withSettings(), modelRef($translator)))->toEqual(modelRef($expected));
 })->with([
-    ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.1-sol'],
+    ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.2-sol'],
     ['openai:gpt-6-luna', 'anthropic:claude-sonnet-5-5'],
     ['gemini:gemini-3.8-flash', 'anthropic:claude-sonnet-5-5'],
 ]);
@@ -261,7 +263,7 @@ it('falls back to the translator as the reviewer when only one provider is confi
     $settings = $this->withSettings();
     $translator = modelCatalog()->resolveTranslator($settings);
 
-    expect($translator)->toEqual(modelRef('openai:gpt-6.1-sol'))
+    expect($translator)->toEqual(modelRef('openai:gpt-6.2-sol'))
         ->and(modelCatalog()->resolveReviewer($settings, $translator))->toBe($translator);
 });
 

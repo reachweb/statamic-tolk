@@ -15,6 +15,7 @@ function tolkCatalogLabels(): array
     return [
         'anthropic:claude-sonnet-5-5' => 'Claude Sonnet 5.5',
         'anthropic:claude-haiku-5-5' => 'Claude Haiku 5.5',
+        'openai:gpt-6.2-sol' => 'GPT-6.2 Sol',
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
         'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
@@ -58,6 +59,7 @@ it('names the catalog\'s models as the model selects do', function () {
     expect(tolkScriptData()['models'])->toBe([
         'anthropic:claude-sonnet-5-5' => 'Claude Sonnet 5.5',
         'anthropic:claude-haiku-5-5' => 'Claude Haiku 5.5',
+        'openai:gpt-6.2-sol' => 'GPT-6.2 Sol',
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
         'openai:gpt-custom' => 'GPT Custom',

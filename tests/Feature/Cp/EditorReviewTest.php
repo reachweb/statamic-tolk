@@ -12,7 +12,7 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Entries\Entry as EntryContract;
 use Statamic\Facades\Entry;
 
-const EDITOR_REVIEWER = 'openai:gpt-6.1-sol';
+const EDITOR_REVIEWER = 'openai:gpt-6.2-sol';
 
 beforeEach(function () {
     $this->useFileCache();

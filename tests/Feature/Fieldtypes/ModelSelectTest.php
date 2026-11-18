@@ -62,7 +62,7 @@ it('labels the automatic choice by what an empty field resolves to, not by the s
 });
 
 it('labels the automatic reviewer with another provider\'s quality model, else the translator', function () {
-    expect(modelField(['role' => 'reviewer'])->meta()['automatic'])->toBe('Automatic (GPT-6.1 Sol)');
+    expect(modelField(['role' => 'reviewer'])->meta()['automatic'])->toBe('Automatic (GPT-6.2 Sol)');
 
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'sdk-key']);
 

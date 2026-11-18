@@ -37,7 +37,7 @@ use Statamic\Contracts\Entries\Entry as EntryContract;
 
 const REVIEWING_TRANSLATOR = 'anthropic:claude-sonnet-5-5';
 
-const REVIEWING_REVIEWER = 'openai:gpt-6.1-sol';
+const REVIEWING_REVIEWER = 'openai:gpt-6.2-sol';
 
 beforeEach(function () {
     $this->useFileCache();
@@ -199,7 +199,7 @@ describe('the review unit', function () {
         ReviewAgent::assertPrompted(function (AgentPrompt $prompt) use ($plan) {
             $user = json_decode($prompt->prompt, true);
 
-            return $prompt->model === 'gpt-6.1-sol'
+            return $prompt->model === 'gpt-6.2-sol'
                 && $user['document'] === $plan->document
                 && $user['segments'] === [
                     ['id' => 's1', 'field' => 'Body', 'kind' => 'inline', 'source' => '<1>Book</1> a room.', 'translation' => '[T] <1>Book</1> a room.'],

@@ -74,8 +74,8 @@ php please tolk:translate --collection=pages --site=el
 # Articles and topics into Greek and German, updating outdated translations too
 php please tolk:translate --collection=articles --taxonomy=topics --site=el --site=de --mode=update
 
-# Everything into German with the fast Anthropic model, reviewed by GPT-6.1 Sol
-php please tolk:translate --all --site=de --translator=anthropic:claude-haiku-5-5 --reviewer=openai:gpt-6.1-sol
+# Everything into German with the fast Anthropic model, reviewed by GPT-6.2 Sol
+php please tolk:translate --all --site=de --translator=anthropic:claude-haiku-5-5 --reviewer=openai:gpt-6.2-sol
 
 # The global set and the main navigation
 php please tolk:translate --globals=site_settings --nav=main --site=el

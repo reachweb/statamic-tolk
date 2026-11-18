@@ -606,13 +606,13 @@ describe('review', function () {
 
         $state = StateFixtures::stored($this->hello->fresh()->in('el'));
         expect($exitCode)->toBe(0)
-            ->and($output)->toContain('Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5). Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol). Mode: missing.')
+            ->and($output)->toContain('Translator: Claude Sonnet 5.5 (anthropic:claude-sonnet-5-5). Reviewer: GPT-6.2 Sol (openai:gpt-6.2-sol). Mode: missing.')
             ->and($output)->toContain('Hello → Greek: done, created, 2 fields, 1 correction')
             ->and($output)->toMatch('/\| Done \| Skipped \| Failed \| Fields left incomplete \| Corrections \|\n.*\n\| 1 +\| 0 +\| 0 +\| 0 +\| 1 +\|/')
             ->and($output)->toContain('Run the command with -v to see each correction and its reason.')
             ->and($this->hello->fresh()->in('el')->data()->all())->toBe(['title' => '[T] Hello', 'intro' => 'Μια σύντομη εισαγωγή.'])
-            ->and($state->field('title')->reviewer)->toBe('openai:gpt-6.1-sol')
-            ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.1-sol')
+            ->and($state->field('title')->reviewer)->toBe('openai:gpt-6.2-sol')
+            ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.2-sol')
             ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current])
             ->and($this->modelCalls())->toBe(2);
     });
@@ -637,10 +637,10 @@ describe('review', function () {
             ->and($notReviewed)->not->toContain('Corrections')
             ->and(StateFixtures::stored($this->hello->fresh()->in('el'))->field('title')->reviewer)->toBeNull()
             ->and($reviewed)->toBe(['World', 'Another intro.'])
-            ->and($output)->toContain('Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol).')
+            ->and($output)->toContain('Reviewer: GPT-6.2 Sol (openai:gpt-6.2-sol).')
             ->and($output)->toContain('World → Greek: done, created, 2 fields, no corrections')
             ->and($output)->not->toContain('Run the command with -v')
-            ->and(StateFixtures::stored($this->world->fresh()->in('el'))->field('title')->reviewer)->toBe('openai:gpt-6.1-sol');
+            ->and(StateFixtures::stored($this->world->fresh()->in('el'))->field('title')->reviewer)->toBe('openai:gpt-6.2-sol');
     });
 
     it('reviews with the model of --reviewer, which asks for a review', function () {
@@ -719,14 +719,14 @@ describe('review', function () {
         expect($exitCode)->toBe(0)
             ->and($translated)->toBe([])
             ->and($reviewed)->toBe(['[T] Hello', '[T] A short intro.', '[T] World', '[T] Another intro.'])
-            ->and($output)->toContain('Targets: 2 (Greek). Reviewer: GPT-6.1 Sol (openai:gpt-6.1-sol). Mode: review.')
+            ->and($output)->toContain('Targets: 2 (Greek). Reviewer: GPT-6.2 Sol (openai:gpt-6.2-sol). Mode: review.')
             ->and($output)->toContain('Hello → Greek: done, 1 field, 1 correction')
             ->and($output)->toContain('World → Greek: reviewed, nothing to correct')
             ->and($output)->toMatch('/\| 2 +\| 0 +\| 0 +\| 0 +\| 1 +\|/')
             ->and($hello->data()->all())->toBe(['title' => '[T] Hello', 'intro' => 'Μια σύντομη εισαγωγή.'])
             ->and($this->world->fresh()->in('el')->data()->all())->toBe(['title' => '[T] World', 'intro' => '[T] Another intro.'])
             ->and($saved)->toBe([$hello->id()])
-            ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.1-sol')
+            ->and($state->field('intro')->reviewer)->toBe('openai:gpt-6.2-sol')
             ->and($state->field('title')->reviewer)->toBeNull()
             ->and(StateFixtures::statuses($this->hello))->toBe(['title' => FieldStatus::Current, 'intro' => FieldStatus::Current]);
     });

@@ -137,10 +137,10 @@ Tolk comes with a catalog of models per provider, and each release of Tolk keeps
 | Provider | Quality (the default) | Fast |
 | --- | --- | --- |
 | Anthropic | `claude-sonnet-5-5` (Claude Sonnet 5.5) | `claude-haiku-5-5` (Claude Haiku 5.5) |
-| OpenAI | `gpt-6.1-sol` (GPT-6.1 Sol) | `gpt-6-luna` (GPT-6 Luna) |
+| OpenAI | `gpt-6.2-sol` (GPT-6.2 Sol) | `gpt-6-luna` (GPT-6 Luna) |
 | Gemini | `gemini-3.8-flash` (Gemini 3.8 Flash) | `gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) |
 
-The catalog also offers Gemini 4 Hydrogen (`gemini-4-hydrogen`), Gemini 4 Argon (`gemini-4-argon`) and Gemini 4 Carbon (`gemini-4-carbon`), in the quality tier. Choose one in the settings or per translation. They think at Google's lowest level, `low`, and the thinking tokens are billed as output. Argon and Carbon need a key of a project with billing enabled: Google does not offer them on its free tier.
+The catalog also offers Gemini 4 Hydrogen (`gemini-4-hydrogen`), Gemini 4 Argon (`gemini-4-argon`) and Gemini 4 Carbon (`gemini-4-carbon`), in the quality tier. Choose one in the settings or per translation. They think at Google's lowest level, `low`, and the thinking tokens are billed as output. Argon and Carbon need a key of a project with billing enabled: Google does not offer them on its free tier. GPT-6.1 Sol, OpenAI's default before GPT-6.2 Sol, stays in the catalog for sites that chose it.
 
 `models.anthropic`, `models.openai` and `models.gemini` are empty in the config. List models there only to add one to Tolk's catalog or to change one of Tolk's:
 
@@ -158,7 +158,7 @@ Each entry has these keys:
 | `max_output_tokens` | The model's output limit. |
 | `reasoning_headroom` | Output tokens reserved for the model's thinking with these options; `0` when it does not think. |
 | `price.input`, `price.output` | USD per million tokens, for the estimates and the usage figures. Without a price the cost reads "unknown". |
-| `price.cache_read`, `price.cache_write` | Optional: USD per million tokens read from or written to the provider's prompt cache. Without them, reads cost 10% of the input price and writes 125%, the usual rates; GPT-6.1 Sol and the Gemini 4 models set `cache_read`, because OpenAI and Google bill their reads at 5%. |
+| `price.cache_read`, `price.cache_write` | Optional: USD per million tokens read from or written to the provider's prompt cache. Without them, reads cost 10% of the input price and writes 125%, the usual rates; GPT-6.2 Sol, GPT-6.1 Sol and the Gemini 4 models set `cache_read`, because OpenAI and Google bill their reads at 5%. |
 
 A key you name replaces Tolk's whole value: your `options` replace Tolk's options, and your `price` needs both `input` and `output`.
 

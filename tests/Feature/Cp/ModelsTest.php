@@ -28,7 +28,7 @@ it('returns the resolved defaults', function () {
         ->assertOk()
         ->assertJsonPath('defaults', [
             'translator' => 'anthropic:claude-sonnet-5-5',
-            'reviewer' => 'openai:gpt-6.1-sol',
+            'reviewer' => 'openai:gpt-6.2-sol',
             'fallback' => null,
         ]);
 });
