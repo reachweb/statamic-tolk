@@ -4,6 +4,8 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+## 1.2.1 - 2026-11-18
+
 ### Changed
 
 - OpenAI's quality model, and so its default translator and reviewer, is now GPT-6.2 Sol (released on November 17), at the same price as GPT-6.1 Sol and with the same reasoning effort, `low`. A site that leaves the models on Automatic moves to it with this update. GPT-6.1 Sol stays in the catalog, so a site that chose it in the settings or with `--reviewer` keeps it.
