@@ -18,6 +18,9 @@ function tolkCatalogLabels(): array
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
         'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
+        'gemini:gemini-4-hydrogen' => 'Gemini 4 Hydrogen',
+        'gemini:gemini-4-argon' => 'Gemini 4 Argon',
+        'gemini:gemini-4-carbon' => 'Gemini 4 Carbon',
         'gemini:gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
     ];
 }
@@ -60,6 +63,9 @@ it('names the catalog\'s models as the model selects do', function () {
         'openai:gpt-custom' => 'GPT Custom',
         'openai:gpt-unlabelled' => 'gpt-unlabelled',
         'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
+        'gemini:gemini-4-hydrogen' => 'Gemini 4 Hydrogen',
+        'gemini:gemini-4-argon' => 'Gemini 4 Argon',
+        'gemini:gemini-4-carbon' => 'Gemini 4 Carbon',
         'gemini:gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
     ]);
 });

@@ -141,7 +141,8 @@ it('refuses a provider without a key with 422', function () {
 });
 
 it('refuses a provider the catalog has no model of either tier for with 422', function () {
-    config(['tolk.models.gemini' => [['id' => 'gemini-3.8-flash', 'tier' => null], ['id' => 'gemini-3.5-flash-lite', 'tier' => null]]]);
+    $models = (require dirname(__DIR__, 3).'/resources/models.php')['gemini'];
+    config(['tolk.models.gemini' => array_map(fn (array $model) => ['id' => $model['id'], 'tier' => null], $models)]);
     Http::fake();
 
     testProvider('gemini')->assertStatus(422)->assertJsonPath('code', 'no_model');

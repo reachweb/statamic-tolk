@@ -127,6 +127,9 @@ it('groups the catalog by provider for model selects', function () {
         ],
         'gemini' => [
             ['value' => 'gemini:gemini-3.8-flash', 'label' => 'Gemini 3.8 Flash', 'tier' => 'quality', 'configured' => false],
+            ['value' => 'gemini:gemini-4-hydrogen', 'label' => 'Gemini 4 Hydrogen', 'tier' => 'quality', 'configured' => false],
+            ['value' => 'gemini:gemini-4-argon', 'label' => 'Gemini 4 Argon', 'tier' => 'quality', 'configured' => false],
+            ['value' => 'gemini:gemini-4-carbon', 'label' => 'Gemini 4 Carbon', 'tier' => 'quality', 'configured' => false],
             ['value' => 'gemini:gemini-3.5-flash-lite', 'label' => 'Gemini 3.5 Flash-Lite', 'tier' => 'fast', 'configured' => false],
             ['value' => 'gemini:gemini-custom', 'label' => 'gemini-custom', 'tier' => null, 'configured' => false],
         ],
@@ -142,6 +145,9 @@ it('labels every catalog model by reference, configured or not', function () {
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
         'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
+        'gemini:gemini-4-hydrogen' => 'Gemini 4 Hydrogen',
+        'gemini:gemini-4-argon' => 'Gemini 4 Argon',
+        'gemini:gemini-4-carbon' => 'Gemini 4 Carbon',
         'gemini:gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
         'gemini:gemini-custom' => 'gemini-custom',
     ]);
