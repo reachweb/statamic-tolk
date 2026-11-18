@@ -74,8 +74,8 @@ it('reads a retry-after given as an HTTP date', function () {
     expect(classifyError(RateLimitedException::forProvider('tolk_openai', 0, failedRequest(429, headers: ['retry-after' => $header])))->retryAfter)->toBe(30);
 });
 
-it('rejects a 429 that carries a spend-cap or quota code of its provider', function (string $provider, array $error, string $code) {
-    $result = classifyError(RateLimitedException::forProvider("tolk_{$provider}", 0, failedRequest(429, ['error' => $error])), $provider);
+it('rejects a 429 that carries a spend-cap or quota code of its provider, with that code', function (string $provider, array $error, string $code, string $exception) {
+    $result = classifyError($exception::forProvider("tolk_{$provider}", 0, failedRequest(429, ['error' => $error])), $provider);
 
     expect($result->kind)->toBe(ProviderErrorKind::Rejected)
         ->and($result->code)->toBe($code)
@@ -88,6 +88,9 @@ it('rejects a 429 that carries a spend-cap or quota code of its provider', funct
     'openai usage limit' => ['openai', ['code' => 'organization_usage_limit_exceeded', 'message' => 'Usage.'], 'organization_usage_limit_exceeded'],
     'openai quota' => ['openai', ['type' => 'insufficient_quota', 'code' => 'insufficient_quota', 'message' => 'Quota.'], 'insufficient_quota'],
     'gemini, as the Interactions API documents it' => ['gemini', ProviderFixtures::geminiInteractionsError(ErrorClassifier::GEMINI_QUOTA_CODE, 'You have exceeded your daily quota.')['error'], 'quota_exceeded'],
+])->with([
+    'as a rate limit' => [RateLimitedException::class],
+    'as insufficient credits, as laravel/ai 1.4.0 reports OpenAI\'s codes' => [InsufficientCreditsException::class],
 ]);
 
 it('treats a code of another provider as a rate limit', function () {

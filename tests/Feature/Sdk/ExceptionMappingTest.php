@@ -45,15 +45,21 @@ it('throws RateLimitedException on 429, with retry-after and the error body on t
     ['gemini', 'RESOURCE_EXHAUSTED'],
 ]);
 
-it('throws the same RateLimitedException for a 429 that reports a spend cap or quota, with the body reachable', function (string $provider, string $type, array $extra, string $path, string $code) {
+/**
+ * laravel/ai 1.4.0 (laravel/ai#1174) throws InsufficientCreditsException for a 429 whose error.code or error.type is one
+ * of OpenAI's credit, quota or spend codes, on any provider; 1.3.0 and earlier throw RateLimitedException.
+ */
+it('throws RateLimitedException for a 429 that reports a spend cap, or from 1.4.0 InsufficientCreditsException for OpenAI\'s codes, with the body reachable', function (string $provider, string $type, array $extra, string $path, string $code, bool $creditCode) {
     $exception = ProviderFixtures::failure($provider, 429, $type, 'You have reached your spend limit.', extra: $extra);
+    $credits = $creditCode && version_compare((string) InstalledVersions::getVersion('laravel/ai'), '1.4.0', '>=');
 
-    expect($exception)->toBeInstanceOf(RateLimitedException::class)
+    expect($exception)->toBeInstanceOf($credits ? InsufficientCreditsException::class : RateLimitedException::class)
+        ->and($exception)->toBeInstanceOf(FailoverableException::class)
         ->and($exception->getPrevious()->response->json($path))->toBe($code)
         ->and($exception->getPrevious()->response->header('retry-after'))->toBe('');
 })->with([
-    'anthropic' => ['anthropic', 'rate_limit_error', ['details' => ['error_code' => 'enforced_spend_limit_reached']], 'error.details.error_code', 'enforced_spend_limit_reached'],
-    'openai' => ['openai', 'organization_spend_limit_exceeded', [], 'error.code', 'organization_spend_limit_exceeded'],
+    'anthropic' => ['anthropic', 'rate_limit_error', ['details' => ['error_code' => 'enforced_spend_limit_reached']], 'error.details.error_code', 'enforced_spend_limit_reached', false],
+    'openai' => ['openai', 'organization_spend_limit_exceeded', [], 'error.code', 'organization_spend_limit_exceeded', true],
 ]);
 
 it('throws the same RateLimitedException for Gemini\'s quota 429, its list-shaped body left as sent', function () {

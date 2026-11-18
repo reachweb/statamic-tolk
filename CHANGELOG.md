@@ -10,6 +10,10 @@ All notable changes to Tolk are documented in this file.
 - Items can be removed from a run on its page, one at a time or by ticking several (or a whole page) and pressing **Remove**. Removed items are not translated and leave the run's counts; translations they already saved stay.
 - **Delete** on a run's page and on each row of the runs list deletes the run with its results, after a confirmation. It is offered for runs that have not started or have ended, to every user who may see the run.
 
+### Fixed
+
+- With laravel/ai 1.4, which a fresh install gets, an OpenAI quota or spend limit is reported with OpenAI's own code again (for example `insufficient_quota`), not as `insufficient_credits`. The run still stops for it as before.
+
 ## 1.2.1 - 2026-11-18
 
 ### Changed
