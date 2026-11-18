@@ -18,8 +18,8 @@ use Throwable;
  * The single place that knows how a failed provider call maps to the handling of §A10. Facts from T2.1
  * (07-spike-findings.md "SDK"): only Anthropic turns 529 into an overload, Anthropic reports credit and billing messages
  * of any status as InsufficientCreditsException, a timeout is the same ProviderConnectionException as a refused
- * connection, and a missing retry-after header reads as ''. From laravel/ai 1.4.0 a 429 with one of OpenAI's credit,
- * quota or spend codes is an InsufficientCreditsException too, on any provider.
+ * connection, and a missing retry-after header reads as ''. A 429 with one of OpenAI's credit, quota or spend codes is an
+ * InsufficientCreditsException too, on any provider (laravel/ai 1.4.0).
  */
 class ErrorClassifier
 {

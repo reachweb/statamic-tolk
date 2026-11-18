@@ -90,7 +90,7 @@ it('rejects a 429 that carries a spend-cap or quota code of its provider, with t
     'gemini, as the Interactions API documents it' => ['gemini', ProviderFixtures::geminiInteractionsError(ErrorClassifier::GEMINI_QUOTA_CODE, 'You have exceeded your daily quota.')['error'], 'quota_exceeded'],
 ])->with([
     'as a rate limit' => [RateLimitedException::class],
-    'as insufficient credits, as laravel/ai 1.4.0 reports OpenAI\'s codes' => [InsufficientCreditsException::class],
+    'as insufficient credits, as laravel/ai reports OpenAI\'s codes' => [InsufficientCreditsException::class],
 ]);
 
 it('treats a code of another provider as a rate limit', function () {

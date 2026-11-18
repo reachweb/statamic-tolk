@@ -1,6 +1,5 @@
 <?php
 
-use Composer\InstalledVersions;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -15,19 +14,9 @@ use Reach\StatamicTolk\Ai\ProviderCall;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
 
 beforeEach(function () {
-    // From 1.2.1 the SDK sleeps before it repeats a call answered with a short retry-after.
+    // The SDK sleeps before it repeats a call answered with a short retry-after.
     Sleep::fake();
 });
-
-/**
- * laravel/ai 1.2.1 wraps each provider call in retry(2): a 429, or a status the gateway counts as overloaded, whose
- * retry-after is a whole number of seconds up to 10, is called once more after sleeping that long. 1.2.0 and earlier
- * call once. Tolk's calls run inside ProviderCall, which hides the header from the SDK (D24).
- */
-function sdkRepeatsShortWaits(): bool
-{
-    return version_compare((string) InstalledVersions::getVersion('laravel/ai'), '1.2.1', '>=');
-}
 
 it('throws RateLimitedException on 429, with retry-after and the error body on the previous exception', function (string $provider, string $type) {
     $exception = ProviderFixtures::failure($provider, 429, $type, 'Rate limit reached for requests.', ['retry-after' => '17']);
@@ -47,11 +36,10 @@ it('throws RateLimitedException on 429, with retry-after and the error body on t
 
 /**
  * laravel/ai 1.4.0 (laravel/ai#1174) throws InsufficientCreditsException for a 429 whose error.code or error.type is one
- * of OpenAI's credit, quota or spend codes, on any provider; 1.3.0 and earlier throw RateLimitedException.
+ * of OpenAI's credit, quota or spend codes, on any provider, and RateLimitedException for any other spend cap.
  */
-it('throws RateLimitedException for a 429 that reports a spend cap, or from 1.4.0 InsufficientCreditsException for OpenAI\'s codes, with the body reachable', function (string $provider, string $type, array $extra, string $path, string $code, bool $creditCode) {
+it('throws RateLimitedException for a 429 that reports a spend cap, or InsufficientCreditsException for OpenAI\'s codes, with the body reachable', function (string $provider, string $type, array $extra, string $path, string $code, bool $credits) {
     $exception = ProviderFixtures::failure($provider, 429, $type, 'You have reached your spend limit.', extra: $extra);
-    $credits = $creditCode && version_compare((string) InstalledVersions::getVersion('laravel/ai'), '1.4.0', '>=');
 
     expect($exception)->toBeInstanceOf($credits ? InsufficientCreditsException::class : RateLimitedException::class)
         ->and($exception)->toBeInstanceOf(FailoverableException::class)
@@ -162,9 +150,13 @@ it('throws AiException for an error inside a 200 response', function (string $pr
     ['gemini', 'Gemini Error: [200] Internal error.'],
 ]);
 
-it('calls again after sleeping a retry-after of at most 10 seconds on a 429 or an overload, from 1.2.1 on', function (string $provider, int $status, string $retryAfter, bool $repeats) {
+/**
+ * The SDK wraps each provider call in retry(2): a 429, or a status the gateway counts as overloaded, whose retry-after is
+ * a whole number of seconds up to 10, is called once more after sleeping that long. Tolk's calls run inside ProviderCall,
+ * which hides the header from the SDK (D24).
+ */
+it('calls again after sleeping a retry-after of at most 10 seconds on a 429 or an overload', function (string $provider, int $status, string $retryAfter, bool $repeats) {
     ProviderFixtures::failure($provider, $status, 'rate_limit_error', 'Slow down.', ['retry-after' => $retryAfter]);
-    $repeats = $repeats && sdkRepeatsShortWaits();
 
     expect(Http::recorded())->toHaveCount($repeats ? 2 : 1);
     $repeats ? Sleep::assertSequence([Sleep::for((int) $retryAfter)->seconds()]) : Sleep::assertNeverSlept();

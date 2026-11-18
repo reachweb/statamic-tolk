@@ -5,7 +5,7 @@
 - PHP 8.3 or later.
 - Statamic 6.35 or later, Pro edition, with multi-site on and at least two sites. Each site is one language; Tolk translates the content of one site into the others.
 - Laravel 12.62 or later, or Laravel 13.15 or later.
-- The Laravel AI SDK (`laravel/ai` 1.0.1 or later). Composer installs it with Tolk.
+- The Laravel AI SDK (`laravel/ai` 1.4.1 or later). Composer installs it with Tolk.
 - An API key for at least one of Anthropic, OpenAI or Google Gemini.
 - For automatic updates without a queue worker, a web server that sends a response before PHP has finished: PHP-FPM (behind Nginx or Apache), LiteSpeed or FrankenPHP. Under Apache's mod_php, php-cgi or `php artisan serve`, a save waits for its update; run a queue worker there ([Automatic updates](bulk-and-runs.md#automatic-updates)).
 - A cache store that supports locks: `file`, `redis`, `database`, `memcached` or `dynamodb`. A flat-file site on Statamic's defaults (the `file` cache and the `sync` queue, no database) needs nothing more. A site on more than one server needs a cache store and folders they share ([Several servers](#several-servers)).

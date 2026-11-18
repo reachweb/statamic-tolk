@@ -15,7 +15,7 @@
     },
     "require": {
         "php": "^8.3",
-        "laravel/ai": "^1.0.1",
+        "laravel/ai": "^1.4.1",
         "laravel/framework": "^12.62 || ^13.15",
         "statamic/cms": "^6.35"
     },
