@@ -1,12 +1,17 @@
 <script setup>
 import { computed } from 'vue';
 import { Link } from '@statamic/cms/inertia';
-import { Badge, Description, Table, TableCell, TableColumn, TableColumns, TableRow, TableRows } from '@statamic/cms/ui';
+import { Badge, Button, Description, Table, TableCell, TableColumn, TableColumns, TableRow, TableRows } from '@statamic/cms/ui';
 import { describeProgress, describeScope, describeUsage, formatCost, formatDate, formatNumber, runStatusColor, runStatusLabel, siteNames } from '../runs/describe.js';
 
 const props = defineProps({
     runs: { type: Array, default: () => [] },
+    // Offers to delete each run that is not running; the page asks first and deletes it.
+    deletable: { type: Boolean, default: false },
+    busy: { type: String, default: null },
 });
+
+const emit = defineEmits(['delete']);
 
 const siteName = siteNames(Statamic.$config.get('sites'));
 
@@ -19,6 +24,7 @@ const rows = computed(() =>
         return {
             id: run.id,
             url: run.url,
+            deleteUrl: run.delete_url ?? null,
             status: run.status,
             what: scope.what,
             automatic: scope.automatic,
@@ -44,6 +50,7 @@ const rows = computed(() =>
                 <TableColumn>{{ __('Items finished') }}</TableColumn>
                 <TableColumn>{{ __('Usage') }}</TableColumn>
                 <TableColumn>{{ __('Created') }}</TableColumn>
+                <TableColumn v-if="deletable" class="w-8"><span class="sr-only">{{ __('Actions') }}</span></TableColumn>
             </TableColumns>
             <TableRows>
                 <TableRow v-for="row in rows" :key="row.id" data-tolk-run-row :data-tolk-run-id="row.id">
@@ -66,6 +73,19 @@ const rows = computed(() =>
                     <TableCell>
                         {{ row.date }}
                         <Description>{{ row.by }}</Description>
+                    </TableCell>
+                    <TableCell v-if="deletable">
+                        <Button
+                            v-if="row.deleteUrl && row.status !== 'running'"
+                            size="sm"
+                            variant="ghost"
+                            icon="delete"
+                            :aria-label="__('Delete the run of :what from :date', { what: row.what, date: row.date })"
+                            :loading="busy === row.id"
+                            :disabled="busy !== null"
+                            data-tolk-run-delete
+                            @click="emit('delete', row)"
+                        />
                     </TableCell>
                 </TableRow>
             </TableRows>

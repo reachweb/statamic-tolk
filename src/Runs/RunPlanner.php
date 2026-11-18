@@ -118,7 +118,9 @@ final readonly class RunPlanner
         }
 
         $estimate = $fromIndex > 0 ? $stored->estimate : new Estimate;
-        $size = array_sum($this->runs->counts($run));
+        // Removed items leave gaps in the indexes, so the walk ends after the last item's index, not after the count.
+        $last = $this->runs->items($run, page: max(1, array_sum($this->runs->counts($run))), perPage: 1)[0] ?? null;
+        $size = $last === null ? 0 : $last->index + 1;
         $options = $this->planOptions($run);
         $contexts = [];
         $deadline = hrtime(true) + max(0, $budgetMs) * 1_000_000;
@@ -187,7 +189,7 @@ final readonly class RunPlanner
      *
      * @param  bool  $creates  whether missing localizations are created (every mode but review)
      * @param  array  $notes  see sitesFor()
-     * @return list<array<string, array{root: string, site: string, source: string, source_site: string, chained: bool, title: string, root_missing: ?array{family: ?string, error: string, page: ?array}, parent: ?array{family: string, title: mixed}}>>
+     * @return list<array<string, array{root: string, site: string, source: string, source_site: string, chained: bool, title: string, edit_url: ?string, root_missing: ?array{family: ?string, error: string, page: ?array}, parent: ?array{family: string, title: mixed}}>>
      */
     private function entryTargets(RunRequest $request, bool $creates, array &$notes): array
     {
@@ -261,7 +263,7 @@ final readonly class RunPlanner
                 $target = $this->factory->forTerm($term, $site, $request->assumedSites);
 
                 if ($this->admits($request, $target, $taxonomy->handle().'.'.$term->blueprint()->handle(), $notes)) {
-                    $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title());
+                    $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title(), editUrl: $target->editUrl());
                 }
             }
         }
@@ -299,6 +301,7 @@ final readonly class RunPlanner
 
             foreach (self::chainOrder($targets, fn (GlobalsTarget $target) => $target->sourceSite()) as $target) {
                 $item = new RunItem($offset + count($items), ContentType::GlobalSet, $handle, $target->targetSite(), $target->title());
+                $item->editUrl = $target->editUrl() ?? $set->in($target->sourceSite())?->editUrl();
                 $item->dependsOn = isset($indexes[$target->sourceSite()]) ? [$indexes[$target->sourceSite()]] : [];
                 $indexes[$target->targetSite()] = $item->index;
                 $items[] = $item;
@@ -349,6 +352,7 @@ final readonly class RunPlanner
 
             foreach (self::chainOrder($targets, fn (NavTarget $target) => $target->sourceSite()) as $target) {
                 $item = new RunItem($offset + count($items), ContentType::Nav, $target->describe()['source_id'], $target->targetSite(), $target->title(), stage: 1);
+                $item->editUrl = $target->editUrl() ?? $nav->in($target->sourceSite())?->showUrl();
                 $item->dependsOn = isset($indexes[$target->sourceSite()]) ? [$indexes[$target->sourceSite()]] : [];
                 $indexes[$target->targetSite()] = $item->index;
                 $items[] = $item;
@@ -482,6 +486,8 @@ final readonly class RunPlanner
             'source_site' => $source->locale(),
             'chained' => $source->hasOrigin(),
             'title' => $target->title(),
+            // Until the localization exists, its item opens the entry it is translated from.
+            'edit_url' => $target->editUrl() ?? $source->editUrl(),
             'root_missing' => null,
             'parent' => null,
         ];
@@ -567,7 +573,7 @@ final readonly class RunPlanner
     private function entryItem(int $index, array $target, array $indexes): RunItem
     {
         ['root' => $root, 'site' => $site, 'root_missing' => $missing, 'parent' => $parent] = $target;
-        $item = new RunItem($index, ContentType::Entry, $target['source'], $site, $target['title']);
+        $item = new RunItem($index, ContentType::Entry, $target['source'], $site, $target['title'], editUrl: $target['edit_url']);
         $dependsOn = [];
 
         if ($target['chained']) {

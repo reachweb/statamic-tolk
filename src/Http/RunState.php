@@ -61,11 +61,16 @@ final readonly class RunState
     }
 
     /**
-     * A run in the list of runs: the run, its counts and the URL of its page.
+     * A run in the list of runs: the run, its counts, and the URLs of its page and of deleting it.
      */
     public function summary(Run $run): array
     {
-        return [...$this->run($run), 'counts' => $this->runs->counts($run), 'url' => cp_route('tolk.runs.show', $run->id)];
+        return [
+            ...$this->run($run),
+            'counts' => $this->runs->counts($run),
+            'url' => cp_route('tolk.runs.show', $run->id),
+            'delete_url' => cp_route('tolk.runs.delete', $run->id),
+        ];
     }
 
     /**
@@ -103,7 +108,7 @@ final readonly class RunState
     {
         $urls = ['index' => cp_route('tolk.runs.index'), 'show' => cp_route('tolk.runs.show', $run->id)];
 
-        foreach (['state', 'estimate', 'start', 'tick', 'apply', 'cancel', 'resume', 'retry', 'take-over'] as $action) {
+        foreach (['state', 'estimate', 'start', 'tick', 'apply', 'cancel', 'resume', 'retry', 'take-over', 'remove', 'delete'] as $action) {
             $urls[str_replace('-', '_', $action)] = cp_route('tolk.runs.'.$action, $run->id);
         }
 

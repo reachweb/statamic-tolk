@@ -122,6 +122,8 @@ export function runActions(state) {
         resume: stalled || (['cancelled', 'aborted'].includes(run.status) && unfinished > 0),
         retry: final && counts.failed > 0,
         takeOver: stalled && run.driver === 'queue',
+        // A running run is cancelled first.
+        delete: Boolean(run.status) && run.status !== 'running',
     };
 }
 
@@ -387,6 +389,8 @@ export function describeItem(item, siteName = (handle) => handle) {
         statusLabel: itemStatusLabel(item?.status),
         statusColor: itemStatusColor(item?.status),
         editUrl: item?.edit_url ?? null,
+        // An item a worker holds stays in the run.
+        removable: !['translating', 'applying'].includes(item?.status),
         applied: applied > 0 ? __n(':count field saved|:count fields saved', applied) : null,
         incomplete: handles('incomplete'),
         failed,

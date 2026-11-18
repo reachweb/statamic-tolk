@@ -319,6 +319,7 @@ describe('a browser run', function () {
         $done = runState($run, ['status' => 'done', 'per_page' => 1])->json();
 
         expect($before['counts'])->toMatchArray(['pending' => 3, 'done' => 0])
+            ->and($before['items'][0]['edit_url'])->toBe($this->hello->editUrl())
             ->and($before['run']['usage'])->toBe([])
             ->and($before['run']['cost'])->toEqual(0)
             ->and($after['run']['cost'])->not->toBeNull()
@@ -808,6 +809,90 @@ describe('reset', function () {
         $this->postJson(cp_route('tolk.runs.reset'))->assertForbidden();
 
         expect($this->runs->find($run->id))->not->toBeNull();
+    });
+});
+
+describe('remove items', function () {
+    it('removes items from a pending run and estimates it again without them', function () {
+        $this->signInAdmin();
+        $run = createdRun();
+        expect(runAction($run, 'estimate', ['from' => 0])->json('segments'))->toBe(6);
+
+        $response = runAction($run, 'remove', ['items' => [1]])->assertOk();
+
+        expect($response->json('removed'))->toBe(1)
+            ->and($response->json('run.estimate'))->toBeNull()
+            ->and(array_column($response->json('items'), 'title'))->toBe(['Hello', 'Again'])
+            ->and($response->json('pagination.total'))->toBe(2)
+            ->and(runAction($run, 'estimate', ['from' => 0])->json())->toMatchArray(['segments' => 4, 'next' => null]);
+    });
+
+    it('keeps an item a worker holds, forgets the plans of the removed ones and finishes the run without them', function () {
+        $this->signInAdmin();
+        $this->fakeTranslations();
+        $run = createdRun();
+        runAction($run, 'start')->assertOk();
+        RunFixtures::translate($run);
+        $plan = RunFixtures::items($run)[0]->planId;
+        $held = $this->runs->claimTranslated($run, 'apply-elsewhere', 300);
+
+        $response = runAction($run, 'remove', ['items' => [0, 1, 2]])->assertOk();
+
+        expect($held->index)->toBe(0)
+            ->and($response->json('removed'))->toBe(2)
+            ->and(array_column($response->json('items'), 'index'))->toBe([0])
+            ->and(app(PlanStore::class)->get($plan))->not->toBeNull()
+            ->and(app(PlanStore::class)->get($held->planId))->not->toBeNull()
+            ->and($response->json('run.status'))->toBe('running');
+
+        $this->runs->release($run, $held);
+        $removed = runAction($run, 'remove', ['items' => [0]])->assertOk();
+
+        expect($removed->json('removed'))->toBe(1)
+            ->and(app(PlanStore::class)->get($plan))->toBeNull()
+            ->and($removed->json('run.status'))->toBe('completed')
+            ->and(Entry::query()->where('site', 'el')->count())->toBe(0);
+    });
+
+    it('rejects a request without items', function () {
+        $this->signInAdmin();
+        $run = createdRun();
+
+        runAction($run, 'remove', ['items' => []])->assertUnprocessable();
+        runAction($run, 'remove', ['items' => ['first']])->assertUnprocessable();
+
+        expect(RunFixtures::statuses($run))->toBe(['pending', 'pending', 'pending']);
+    });
+});
+
+describe('delete', function () {
+    it('deletes a pending or finished run and refuses a running one', function () {
+        $this->signInAdmin();
+        $this->fakeTranslations();
+        $pending = createdRun();
+        $running = RunFixtures::started();
+        $cancelled = RunFixtures::started();
+        app(RunProcessor::class)->cancel($cancelled);
+
+        runAction($pending, 'delete')->assertOk()->assertExactJson(['deleted' => true, 'url' => cp_route('tolk.runs.index')]);
+        runAction($running, 'delete')->assertConflict()->assertJsonPath('code', 'not_deletable');
+        runAction($cancelled, 'delete')->assertOk();
+        runAction($cancelled, 'delete')->assertNotFound();
+
+        expect($this->runs->find($pending->id))->toBeNull()
+            ->and($this->runs->find($cancelled->id))->toBeNull()
+            ->and(RunFixtures::stored($running)->status)->toBe(RunStatus::Running);
+    });
+
+    it('gives each run of the index the URL that deletes it', function () {
+        $this->signInAdmin();
+        $run = createdRun();
+
+        $this->get(cp_route('tolk.runs.index'))->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('runs.0.delete_url', cp_route('tolk.runs.delete', $run->id)));
+        $this->get(cp_route('tolk.runs.show', $run->id))->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('urls.delete', cp_route('tolk.runs.delete', $run->id))
+            ->where('urls.remove', cp_route('tolk.runs.remove', $run->id)));
     });
 });
 

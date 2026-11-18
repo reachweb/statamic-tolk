@@ -79,8 +79,9 @@ describe('runActions', () => {
             resume: false,
             retry: false,
             takeOver: false,
+            delete: true,
         });
-        expect(runActions(state({}, { pending: 3 }))).toEqual({ start: false, cancel: true, resume: false, retry: false, takeOver: false });
+        expect(runActions(state({}, { pending: 3 }))).toEqual({ start: false, cancel: true, resume: false, retry: false, takeOver: false, delete: false });
     });
 
     it('offers Resume and the take-over on a stalled queue run, and only Resume on another stalled run', () => {
@@ -92,7 +93,9 @@ describe('runActions', () => {
         expect(runActions(state({ status: 'cancelled' }, { pending: 2, done: 1 }))).toMatchObject({ resume: true, retry: false, cancel: false });
         expect(runActions(state({ status: 'aborted' }, { done: 1, failed: 2 }))).toMatchObject({ resume: false, retry: true });
         expect(runActions(state({ status: 'completed_with_errors' }, { done: 1, failed: 1 }))).toMatchObject({ resume: false, retry: true });
-        expect(runActions(state({ status: 'completed' }, { done: 3 }))).toEqual({ start: false, cancel: false, resume: false, retry: false, takeOver: false });
+        expect(runActions(state({ status: 'completed' }, { done: 3 }))).toEqual({ start: false, cancel: false, resume: false, retry: false, takeOver: false, delete: true });
+        expect(runActions(state({ status: 'cancelled' }, { pending: 2 }))).toMatchObject({ delete: true });
+        expect(runActions({})).toMatchObject({ delete: false });
     });
 });
 
@@ -305,6 +308,7 @@ describe('describeItem', () => {
             statusLabel: 'Done',
             statusColor: 'green',
             editUrl: 'https://cp.test/cp/collections/articles/entries/abc',
+            removable: true,
             applied: '2 fields saved',
             incomplete: ['content'],
             failed: [],
@@ -321,6 +325,7 @@ describe('describeItem', () => {
             corrected: null,
             corrections: [],
         });
+        expect(['pending', 'translating', 'translated', 'applying', 'failed'].map((status) => describeItem({ ...item, status }).removable)).toEqual([true, false, true, false, true]);
     });
 
     it('lists the fields strict mode left unsaved apart, each with why a part of it could not be translated', () => {

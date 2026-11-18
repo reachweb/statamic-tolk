@@ -191,15 +191,18 @@ final readonly class RunProcessor
     }
 
     /**
-     * Deletes a run that ended and fired RunFinished, under the status lock, so that it is not resumed or retried
-     * meanwhile. A run that is pending, running, still finishing or gone is left alone.
+     * Deletes a run that ended and fired RunFinished, and with $pending a run that was never started, under the status
+     * lock, so that it is not started, resumed or retried meanwhile. A running run, one still finishing, or one that is
+     * gone is left alone.
      */
-    public function delete(Run $run): bool
+    public function delete(Run $run, bool $pending = false): bool
     {
-        return $this->locked($run, function () use ($run) {
+        return $this->locked($run, function () use ($run, $pending) {
             $stored = $this->runs->find($run->id);
+            $deletable = $stored !== null && (($pending && $stored->status === RunStatus::Pending)
+                || ($stored->status->isFinal() && $stored->finalizedAt !== null));
 
-            if ($stored === null || ! $stored->status->isFinal() || $stored->finalizedAt === null) {
+            if (! $deletable) {
                 return false;
             }
 
@@ -207,6 +210,39 @@ final readonly class RunProcessor
 
             return true;
         });
+    }
+
+    /**
+     * Removes the items at $indexes that no worker holds, with their plans. A pending run's estimate starts over, as it
+     * counted them; a running run with nothing unfinished left ends.
+     *
+     * @param  list<int>  $indexes
+     * @return int the items removed
+     */
+    public function removeItems(Run $run, array $indexes): int
+    {
+        $removed = $this->locked($run, function () use ($run, $indexes) {
+            $removed = $this->runs->removeItems($run, $indexes);
+
+            if ($removed !== [] && $run->status === RunStatus::Pending && $run->estimate !== null) {
+                $run->estimate = null;
+                $this->runs->save($run);
+            }
+
+            return $removed;
+        });
+
+        foreach ($removed as $item) {
+            if ($item->planId !== null && $plan = $this->store->get($item->planId)) {
+                $this->store->forget($plan);
+            }
+        }
+
+        if ($removed !== [] && $run->status === RunStatus::Running) {
+            $this->finalize($run);
+        }
+
+        return count($removed);
     }
 
     /**

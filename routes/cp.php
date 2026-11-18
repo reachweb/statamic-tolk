@@ -39,6 +39,8 @@ Route::name('tolk.')->prefix('tolk')->group(function () {
             Route::post('{run}/start', [RunsController::class, 'start'])->name('start');
             Route::post('{run}/resume', [RunsController::class, 'resume'])->name('resume');
             Route::post('{run}/retry', [RunsController::class, 'retry'])->name('retry');
+            Route::post('{run}/remove', [RunsController::class, 'remove'])->name('remove');
+            Route::post('{run}/delete', [RunsController::class, 'delete'])->name('delete');
         });
 
         // The addon's settings ability (`editSettings`, §A14); RunResetRequest checks.

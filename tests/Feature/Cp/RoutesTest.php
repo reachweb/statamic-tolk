@@ -39,6 +39,8 @@ function tolkCpRoutes(): array
         'runs resume' => ['tolk.runs.resume', 'POST', 'tolk/runs/01MISSINGRUN/resume', 'runs', $run],
         'runs retry' => ['tolk.runs.retry', 'POST', 'tolk/runs/01MISSINGRUN/retry', 'runs', $run],
         'runs take over' => ['tolk.runs.take-over', 'POST', 'tolk/runs/01MISSINGRUN/take-over', 'runs', $run],
+        'runs remove' => ['tolk.runs.remove', 'POST', 'tolk/runs/01MISSINGRUN/remove', 'runs', $run],
+        'runs delete' => ['tolk.runs.delete', 'POST', 'tolk/runs/01MISSINGRUN/delete', 'runs', $run],
         'runs reset' => ['tolk.runs.reset', 'POST', 'tolk/runs/reset', 'settings'],
         'models' => ['tolk.models.index', 'GET', 'tolk/models', 'models'],
         'providers test' => ['tolk.providers.test', 'POST', 'tolk/providers/test', 'settings'],

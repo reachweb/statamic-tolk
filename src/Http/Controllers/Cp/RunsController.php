@@ -19,6 +19,7 @@ use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\RaisesTimeLimit;
 use Reach\StatamicTolk\Http\Requests\RunEstimateRequest;
 use Reach\StatamicTolk\Http\Requests\RunFollowRequest;
+use Reach\StatamicTolk\Http\Requests\RunRemoveRequest;
 use Reach\StatamicTolk\Http\Requests\RunResetRequest;
 use Reach\StatamicTolk\Http\Requests\RunStateRequest;
 use Reach\StatamicTolk\Http\Requests\RunStoreRequest;
@@ -216,6 +217,29 @@ class RunsController extends Controller
         }
 
         return response()->json([...$this->stateOf($stored, $request), 'retried' => $retried]);
+    }
+
+    /**
+     * Removes the chosen items that no worker holds; the others stay, and `removed` says how many went.
+     */
+    public function remove(RunRemoveRequest $request, RunProcessor $processor): JsonResponse
+    {
+        $stored = $this->found($request);
+        $removed = $processor->removeItems($stored, $request->indexes());
+
+        return response()->json([...$this->stateOf($stored, $request), 'removed' => $removed]);
+    }
+
+    /**
+     * Deletes a run that was never started or has ended, with its results; a running run has to be cancelled first.
+     */
+    public function delete(RunStateRequest $request, RunProcessor $processor): JsonResponse
+    {
+        if (! $processor->delete($this->found($request), pending: true)) {
+            $this->fail(409, 'not_deletable', __('A running run cannot be deleted. Cancel it first.'));
+        }
+
+        return response()->json(['deleted' => true, 'url' => cp_route('tolk.runs.index')]);
     }
 
     /**

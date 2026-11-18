@@ -276,6 +276,46 @@ final class FileRunRepository implements RunRepository
         });
     }
 
+    public function removeItems(Run $run, array $indexes): array
+    {
+        return $this->locked($run->id, function () use ($run, $indexes) {
+            $stored = $this->readRun($run->id) ?? throw RunNotFound::for($run->id);
+            $index = $this->readIndex($run->id);
+            $gone = $removed = [];
+
+            foreach (array_unique($indexes) as $i) {
+                if (! isset($index[$i]) || in_array(RunItemStatus::from($index[$i]['status']), self::HOLDING, true)) {
+                    continue;
+                }
+
+                if ($item = $this->readItem($run->id, $i)) {
+                    $removed[] = $item;
+                }
+
+                $gone[] = $i;
+                unset($index[$i]);
+            }
+
+            if ($gone === []) {
+                $run->refresh($stored);
+
+                return [];
+            }
+
+            // The index first: an item file it no longer lists is never read.
+            $this->writeIndex($run->id, $index);
+
+            foreach ($gone as $i) {
+                $this->files->delete($this->itemPath($run->id, $i));
+            }
+
+            $stored->progressedAt = CarbonImmutable::now();
+            $this->writeRun($stored, $run);
+
+            return $removed;
+        });
+    }
+
     public function releaseTranslating(Run $run): int
     {
         return $this->locked($run->id, function () use ($run) {

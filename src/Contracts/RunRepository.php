@@ -127,6 +127,17 @@ interface RunRepository
     public function retryFailed(Run $run): int;
 
     /**
+     * Deletes the items at $indexes that no worker holds (neither `translating` nor `applying`), atomically, and
+     * returns them. The others keep their indexes, and an item that depended on a removed one no longer waits for it.
+     *
+     * @param  list<int>  $indexes
+     * @return list<RunItem>
+     *
+     * @throws RunNotFound
+     */
+    public function removeItems(Run $run, array $indexes): array;
+
+    /**
      * Puts every `translating` item back to `pending`, atomically, with its plan and without its claim, so a run that
      * stopped holds no item; a worker still inside a unit loses its claim at its next write. Returns how many.
      *

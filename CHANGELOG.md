@@ -4,6 +4,12 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- On a run's page, each item's title links to it in the Control Panel from the moment the run is created: the entry it is translated from until its localization exists, then the localization. Before, the links appeared only once an item was saved.
+- Items can be removed from a run on its page, one at a time or by ticking several (or a whole page) and pressing **Remove**. Removed items are not translated and leave the run's counts; translations they already saved stay.
+- **Delete** on a run's page and on each row of the runs list deletes the run with its results, after a confirmation. It is offered for runs that have not started or have ended, to every user who may see the run.
+
 ## 1.2.1 - 2026-11-18
 
 ### Changed

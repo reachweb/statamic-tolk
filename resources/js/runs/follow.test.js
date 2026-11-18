@@ -6,7 +6,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const base = 'https://cp.test/cp/tolk/runs/01RUN';
 const urls = Object.fromEntries(
-    ['state', 'estimate', 'start', 'tick', 'apply', 'cancel', 'resume', 'retry', 'take_over'].map((action) => [action, `${base}/${action}`]),
+    ['state', 'estimate', 'start', 'tick', 'apply', 'cancel', 'resume', 'retry', 'take_over', 'remove'].map((action) => [action, `${base}/${action}`]),
 );
 
 const time = (second) => `2026-10-05T10:00:${String(second).padStart(2, '0')}Z`;
@@ -233,6 +233,31 @@ describe('follow', () => {
         expect(api.requests.map(({ url }) => url)).toEqual([urls.retry, urls.take_over]);
         expect(ticker.names()).toEqual(['lanes', 'apply', 'poll', 'lanes', 'apply']);
         expect(states.at(-1).run.driver).toBe('browser');
+    });
+
+    it("removes items with the page's query: a running run keeps its lanes, a pending run is estimated again from the start", async () => {
+        const running = { ...state({ second: 3 }), removed: 2 };
+        const pending = { ...state({ status: 'pending', second: 4 }), removed: 1 };
+        const answers = [running, pending];
+        const { follow, api, ticker, states } = follower({ api: fakeApi({ remove: () => answers.shift() }) });
+
+        follow.follow(state({ second: 2 }));
+        const lanes = ticker.last('lanes').signal;
+
+        expect((await follow.remove([1, 4])).removed).toBe(2);
+        expect(api.requests.at(-1)).toEqual({ method: 'post', url: urls.remove, data: { page: 2, per_page: 25, items: [1, 4] } });
+        expect(lanes.aborted).toBe(false);
+        expect(states.at(-1)).toBe(running);
+        expect(ticker.names()).toEqual(['lanes', 'apply']);
+
+        follow.follow(state({ status: 'pending', estimate: { next: null } }));
+        const estimating = ticker.last('estimate').signal;
+        await follow.remove([0]);
+
+        expect(states.at(-1)).toBe(pending);
+        expect(estimating.aborted).toBe(true);
+        expect(ticker.names()).toEqual(['lanes', 'apply', 'estimate', 'estimate']);
+        expect(ticker.last('estimate').estimate).toBeNull();
     });
 
     it('reads another page of items, and passes nothing on once it was stopped', async () => {

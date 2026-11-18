@@ -14,6 +14,9 @@ const props = defineProps({
 
 const confirming = ref(false);
 const resetting = ref(false);
+// The row whose run is to be deleted, while the page asks; then the id of the run being deleted.
+const deleting = ref(null);
+const busy = ref(null);
 const finished = computed(() => props.runs.some((run) => FINAL_STATUSES.includes(run.status)));
 
 async function reset() {
@@ -28,6 +31,22 @@ async function reset() {
         Statamic.$toast.error(error.message);
     } finally {
         resetting.value = false;
+    }
+}
+
+async function deleteRun() {
+    const row = deleting.value;
+    deleting.value = null;
+    busy.value = row.id;
+
+    try {
+        await post(row.deleteUrl);
+        Statamic.$toast.success(__('The run was deleted.'));
+        router.reload({ only: ['runs'] });
+    } catch (error) {
+        Statamic.$toast.error(error.message);
+    } finally {
+        busy.value = null;
     }
 }
 </script>
@@ -50,7 +69,7 @@ async function reset() {
         </Card>
 
         <Card v-else>
-            <RunsTable :runs="runs" />
+            <RunsTable :runs="runs" deletable :busy="busy" @delete="deleting = $event" />
         </Card>
 
         <!-- Mounted afresh each time: a modal reopened while its last close is pending (300 ms) closes again. -->
@@ -64,6 +83,17 @@ async function reset() {
             data-tolk-runs-reset-confirm
             @update:open="confirming = $event"
             @confirm="reset"
+        />
+        <ConfirmationModal
+            v-if="deleting"
+            open
+            danger
+            :title="__('Delete this run?')"
+            :body-text="__('The run is deleted with its results, and can no longer be started, resumed or retried. The translations it saved stay.')"
+            :button-text="__('Delete')"
+            data-tolk-run-delete-confirm
+            @update:open="!$event && (deleting = null)"
+            @confirm="deleteRun"
         />
     </div>
 </template>

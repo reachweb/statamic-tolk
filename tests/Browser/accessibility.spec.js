@@ -400,6 +400,22 @@ for (const colorScheme of ['light', 'dark']) {
             await expect(page.locator('[data-tolk-estimate]')).toHaveAttribute('data-tolk-estimate-finished', 'true');
             expect(await axe(page, '[data-tolk-run]')).toEqual([]);
 
+            // With an item ticked, and the dialogs that remove items and delete the run, each closed with Cancel.
+            await page.locator('[data-tolk-item] [role="checkbox"]').first().click();
+            await expect(page.locator('[data-tolk-remove-selected]')).toBeVisible();
+            expect(await axe(page, '[data-tolk-items]')).toEqual([]);
+            await page.locator('[data-tolk-remove-selected]').click();
+            await expect(page.getByRole('dialog')).toContainText('Remove 1 item from the run?');
+            expect(await axe(page, '[role="dialog"]')).toEqual([]);
+            await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            await page.locator('[data-tolk-item] [role="checkbox"]').first().click();
+            await page.locator('[data-tolk-action="delete"]').click();
+            await expect(page.getByRole('dialog')).toContainText('Delete this run?');
+            expect(await axe(page, '[role="dialog"]')).toEqual([]);
+            await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+
             await page.locator('[data-tolk-action="start"]').click();
             await expect(runPage(page)).toHaveAttribute('data-tolk-run-status', 'completed', { timeout: 45_000 });
             expect(await axe(page, '[data-tolk-run]')).toEqual([]);
