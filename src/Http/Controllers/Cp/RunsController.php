@@ -13,6 +13,7 @@ use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Exceptions\RunNotFound;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
@@ -129,11 +130,15 @@ class RunsController extends Controller
 
     /**
      * Estimates the next items within about ESTIMATE_BUDGET_MS. `from` 0 starts over; any other index than where the
-     * last call stopped returns the stored progress.
+     * last call stopped returns the stored progress. A pending run may be deleted while it is estimated.
      */
     public function estimate(RunEstimateRequest $request, RunPlanner $planner): JsonResponse
     {
-        $progress = $planner->estimate($this->found($request), (int) $request->validated('from'), self::ESTIMATE_BUDGET_MS);
+        try {
+            $progress = $planner->estimate($this->found($request), (int) $request->validated('from'), self::ESTIMATE_BUDGET_MS);
+        } catch (RunNotFound) {
+            $this->gone();
+        }
 
         return response()->json($progress->toArray());
     }
@@ -141,7 +146,12 @@ class RunsController extends Controller
     public function start(RunStateRequest $request, RunDispatcher $dispatcher): JsonResponse
     {
         $stored = $this->found($request);
-        $dispatcher->start($stored);
+
+        try {
+            $dispatcher->start($stored);
+        } catch (RunNotFound) {
+            $this->gone();
+        }
 
         return response()->json($this->stateOf($stored, $request));
     }
@@ -256,7 +266,12 @@ class RunsController extends Controller
 
     private function found(RunStateRequest $request): Run
     {
-        return $request->run() ?? $this->fail(404, 'run_not_found', __('This run no longer exists.'));
+        return $request->run() ?? $this->gone();
+    }
+
+    private function gone(): never
+    {
+        $this->fail(404, 'run_not_found', __('This run no longer exists.'));
     }
 
     private function stateOf(Run $run, RunStateRequest $request): array

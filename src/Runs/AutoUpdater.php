@@ -214,17 +214,22 @@ final readonly class AutoUpdater
         $run = $this->runs->create($planned->run, $planned->items);
         $next = 0;
 
-        do {
-            $next = $this->planner->estimate($run, $next, self::ESTIMATE_MS)->next;
-        } while ($next !== null);
+        try {
+            do {
+                $next = $this->planner->estimate($run, $next, self::ESTIMATE_MS)->next;
+            } while ($next !== null);
 
-        if ($this->runs->counts($run)[RunItemStatus::Pending->value] === 0) {
-            $this->runs->delete($run);
+            if ($this->runs->counts($run)[RunItemStatus::Pending->value] === 0) {
+                $this->runs->delete($run);
 
+                return null;
+            }
+
+            $drive ? $this->processor->start($run) : $this->dispatcher->start($run);
+        } catch (RunNotFound) {
+            // Deleted from the runs list before it started.
             return null;
         }
-
-        $drive ? $this->processor->start($run) : $this->dispatcher->start($run);
 
         return $run;
     }

@@ -214,7 +214,8 @@ final readonly class RunProcessor
 
     /**
      * Removes the items at $indexes that no worker holds, with their plans. A pending run's estimate starts over, as it
-     * counted them; a running run with nothing unfinished left ends.
+     * counted them; a running run with nothing unfinished left ends; a completed run is completed with errors only while
+     * an item is still failed. Items skipped because a removed item failed stay skipped, and Retry puts them back.
      *
      * @param  list<int>  $indexes
      * @return int the items removed
@@ -224,10 +225,19 @@ final readonly class RunProcessor
         $removed = $this->locked($run, function () use ($run, $indexes) {
             $removed = $this->runs->removeItems($run, $indexes);
 
-            if ($removed !== [] && $run->status === RunStatus::Pending && $run->estimate !== null) {
-                $run->estimate = null;
-                $this->runs->save($run);
+            if ($removed === []) {
+                return [];
             }
+
+            if ($run->status === RunStatus::Pending) {
+                $run->estimate = null;
+            }
+
+            if (in_array($run->status, [RunStatus::Completed, RunStatus::CompletedWithErrors], true)) {
+                $run->status = $this->runs->counts($run)[RunItemStatus::Failed->value] > 0 ? RunStatus::CompletedWithErrors : RunStatus::Completed;
+            }
+
+            $this->runs->save($run);
 
             return $removed;
         });

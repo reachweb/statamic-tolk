@@ -58,6 +58,11 @@ interface RunRepository
     public function item(Run $run, int $index): ?RunItem;
 
     /**
+     * The highest item index, null for a run without items. Removed items leave gaps, so it may exceed the count.
+     */
+    public function lastIndex(Run $run): ?int;
+
+    /**
      * @return list<RunItem> one page (from 1) of the items, in index order
      */
     public function items(Run $run, ?RunItemStatus $status = null, int $page = 1, int $perPage = 50): array;
@@ -125,6 +130,20 @@ interface RunRepository
      * @throws RunNotFound
      */
     public function retryFailed(Run $run): int;
+
+    /**
+     * How many items retryFailed() would put back now.
+     */
+    public function retryable(Run $run): int;
+
+    /**
+     * Stores $estimate as the run's estimate only while the stored one is still $expected, the estimate the caller
+     * read before it estimated, and refreshes the run either way. A removal resets the estimate meanwhile, so a request
+     * that estimated items since removed does not store its result.
+     *
+     * @throws RunNotFound
+     */
+    public function saveEstimate(Run $run, ?array $expected, array $estimate): bool;
 
     /**
      * Deletes the items at $indexes that no worker holds (neither `translating` nor `applying`), atomically, and

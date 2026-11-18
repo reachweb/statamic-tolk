@@ -410,7 +410,7 @@ for (const colorScheme of ['light', 'dark']) {
             await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
             await expect(page.getByRole('dialog')).toHaveCount(0);
             await page.locator('[data-tolk-item] [role="checkbox"]').first().click();
-            await page.locator('[data-tolk-action="delete"]').click();
+            await page.locator('[data-tolk-run-delete]').click();
             await expect(page.getByRole('dialog')).toContainText('Delete this run?');
             expect(await axe(page, '[role="dialog"]')).toEqual([]);
             await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();

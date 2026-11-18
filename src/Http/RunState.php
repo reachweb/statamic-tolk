@@ -57,6 +57,9 @@ final readonly class RunState
                 'last_page' => $lastPage,
             ],
             'stalled' => $this->stalled($run),
+            // What Retry would put back: failed items, and items skipped because one failed, which may outlive the
+            // failed item when it was removed.
+            'retryable' => $run->status->isFinal() ? $this->runs->retryable($run) : 0,
         ];
     }
 

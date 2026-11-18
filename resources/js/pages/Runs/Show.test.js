@@ -179,7 +179,7 @@ describe('removing items', () => {
             viewChanges: () => {},
         });
 
-        expect(html.match(/data-tolk-item-select\b/g)).toHaveLength(1);
+        expect(html.match(/aria-label="Select Page \d+ in Greek"/g)).toHaveLength(1);
         expect(html.match(/data-tolk-item-remove\b/g)).toHaveLength(1);
         expect(html).toContain('aria-label="Select Page 0 in Greek"');
         expect(html).not.toContain('Page 1 in Greek');

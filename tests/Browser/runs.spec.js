@@ -189,7 +189,7 @@ test('items link to their entries, are removed one at a time or in a batch, and 
     expect((await linkedIds(page)).sort()).toEqual(ids('pages', 'el').sort());
 
     // Delete on its page goes back to the runs, and the translations stay.
-    await page.locator('[data-tolk-action="delete"]').click();
+    await page.locator('[data-tolk-run-delete]').click();
     await page.getByRole('dialog').filter({ hasText: 'Delete this run?' }).getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(page.locator('[data-tolk-runs-empty]')).toBeVisible();
     expect(new URL(page.url()).pathname).toBe(cpUrl('tolk/runs'));

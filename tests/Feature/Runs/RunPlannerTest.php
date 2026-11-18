@@ -793,7 +793,7 @@ describe('estimate', function () {
             ->and($once->estimate->segments)->toBe(6)
             ->and($once->estimate->chars)->toBe(mb_strlen('HelloA short intro.') + 2 * mb_strlen('WorldAnother intro.'))
             ->and($once->estimate->cost)->toBeGreaterThan(0.0)
-            ->and(app(RunRepository::class)->find($stepped->id)->estimate)->toBe([...$progress->estimate->toArray(), 'next' => null]);
+            ->and(app(RunRepository::class)->find($stepped->id)->estimate)->toBe([...$progress->estimate->toArray(), 'next' => null, 'items' => 4]);
 
         foreach ([$stepped, $single] as $run) {
             expect(app(RunRepository::class)->item($run, 0))->toMatchObject(['status' => RunItemStatus::Skipped, 'reason' => 'nothing_to_do'])
@@ -852,7 +852,7 @@ describe('estimate', function () {
 
         $progress = app(RunPlanner::class)->estimate($stale, 0, 60_000);
 
-        expect($progress->toArray())->toBe([...(new Estimate)->toArray(), 'next' => null])
+        expect($progress->toArray())->toBe([...(new Estimate)->toArray(), 'next' => null, 'items' => 1])
             ->and(app(RunRepository::class)->find($run->id)->status)->toBe(RunStatus::Running)
             ->and(app(RunRepository::class)->item($run, 0)->status)->toBe(RunItemStatus::Skipped);
     });

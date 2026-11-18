@@ -78,7 +78,8 @@ const follower = createFollower({
     dirty: pushed ? null : 'tolk-run',
     onState: (state) => {
         current.value = state;
-        estimate.value = state.run?.estimate ?? estimate.value;
+        // A pending run's estimate starts over when items are removed, and the page shows none until the new one comes.
+        estimate.value = state.run?.status === 'pending' ? (state.run.estimate ?? null) : (state.run?.estimate ?? estimate.value);
         page.value = itemsPage(page.value, state.pagination);
     },
     onEstimate: (value) => (estimate.value = value),
@@ -132,7 +133,8 @@ const countParts = computed(() =>
 );
 const filters = computed(() => [{ label: __('All items'), value: 'all' }, ...ITEM_STATUSES.map((key) => ({ label: itemStatusLabel(key), value: key }))]);
 const root = ref(null);
-const focus = createFocusKeeper(() => root.value);
+// The confirmations are core's dialogs, teleported out of the page: Remove takes away the control that opened them.
+const focus = createFocusKeeper(() => root.value, { modals: '[role="dialog"]' });
 const changes = createModal();
 const shown = ref([]);
 
@@ -168,16 +170,33 @@ async function remove() {
     await act('remove', async () => {
         const { removed } = await follower.remove(indexes);
         selected.value = selected.value.filter((index) => !indexes.includes(index));
-        Statamic.$toast.success(__n(':count item was removed from the run.|:count items were removed from the run.', removed));
+        // Its row, or Remove :count items, is gone once the answer is rendered.
+        focus.changing();
+
+        if (removed > 0) {
+            Statamic.$toast.success(__n(':count item was removed from the run.|:count items were removed from the run.', removed));
+        } else {
+            Statamic.$toast.info(__('Nothing was removed: the run was working on those items. Try again once they are finished.'));
+        }
     });
 }
 
 async function deleteRun() {
     confirmingDelete.value = false;
 
+    // A request for the estimate or a lane would find the run gone.
+    follower.stop();
+
     await act('delete', async () => {
-        const answer = await post(props.urls.delete);
-        follower.stop();
+        let answer;
+
+        try {
+            answer = await post(props.urls.delete);
+        } catch (error) {
+            follower.follow(current.value);
+            throw error;
+        }
+
         Statamic.$toast.success(__('The run was deleted.'));
         router.visit(answer.url ?? props.urls.index);
     });
@@ -247,7 +266,7 @@ function filterBy(value) {
                 :text="__('Delete')"
                 :loading="busy === 'delete'"
                 :disabled="busy !== null"
-                data-tolk-action="delete"
+                data-tolk-run-delete
                 @click="confirmingDelete = true"
             />
             <Button
@@ -457,7 +476,6 @@ function filterBy(value) {
                                 :label="__('Select every item on this page')"
                                 :model-value="allSelected"
                                 :disabled="removable.length === 0"
-                                data-tolk-items-select-all
                                 @update:model-value="selectAll"
                             />
                         </TableColumn>
@@ -475,7 +493,6 @@ function filterBy(value) {
                                     solo
                                     :label="__('Select :title in :site', { title: item.title, site: item.site })"
                                     :model-value="selected.includes(item.index)"
-                                    data-tolk-item-select
                                     @update:model-value="selectItem(item.index, $event)"
                                 />
                             </TableCell>

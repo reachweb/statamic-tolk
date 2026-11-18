@@ -96,6 +96,8 @@ describe('runActions', () => {
         expect(runActions(state({ status: 'completed' }, { done: 3 }))).toEqual({ start: false, cancel: false, resume: false, retry: false, takeOver: false, delete: true });
         expect(runActions(state({ status: 'cancelled' }, { pending: 2 }))).toMatchObject({ delete: true });
         expect(runActions({})).toMatchObject({ delete: false });
+        // Its failed item was removed, and the item that waited for it is still skipped.
+        expect(runActions({ ...state({ status: 'completed' }, { done: 2, skipped: 1 }), retryable: 1 })).toMatchObject({ retry: true });
     });
 });
 
@@ -225,6 +227,8 @@ describe('numbers', () => {
             cost: 0.0123,
         });
         expect(describeEstimate({ segments: 1, cost: null, next: null }, 13)).toMatchObject({ finished: true, progress: null, partial: null, cost: null });
+        // After items 0 to 49 of 100 were removed, index 80 is the 30th of the 50 items left.
+        expect(describeEstimate({ segments: 1, next: 80, items: 30 }, 50).progress).toBe('30 of 50 items');
     });
 
     it('says how far an unfinished estimate got both ways, for a run that waits and for one that started without it', () => {

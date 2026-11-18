@@ -230,7 +230,11 @@ class TranslateCommand extends Command
 
         $lines = [];
         $targets = 0;
-        $estimate = $this->option('no-estimate') ? null : $this->scan($planner, $run, $lines, $targets);
+        try {
+            $estimate = $this->option('no-estimate') ? null : $this->scan($planner, $run, $lines, $targets);
+        } catch (RunNotFound) {
+            return $this->deletedBeforeStart();
+        }
 
         if ($this->interrupts > 0) {
             $runs->delete($run);
@@ -264,7 +268,12 @@ class TranslateCommand extends Command
         }
 
         if ($this->option('queue')) {
-            $dispatcher->start($run);
+            try {
+                $dispatcher->start($run);
+            } catch (RunNotFound) {
+                return $this->deletedBeforeStart();
+            }
+
             $this->newLine();
             $this->components->info("The run {$run->id} is on the queue [".RunDispatcher::connection().'].');
             $this->line('Follow it in the Control Panel: '.cp_route('tolk.runs.show', $run->id));
@@ -272,7 +281,11 @@ class TranslateCommand extends Command
             return self::SUCCESS;
         }
 
-        $processor->start($run);
+        try {
+            $processor->start($run);
+        } catch (RunNotFound) {
+            return $this->deletedBeforeStart();
+        }
 
         try {
             $run = $this->drive($run, $concurrency);
@@ -508,6 +521,15 @@ class TranslateCommand extends Command
         }
     }
 
+    // The run is listed in the Control Panel from its creation, where it can be deleted before it starts.
+    private function deletedBeforeStart(): int
+    {
+        $this->newLine();
+        $this->components->error('The run was deleted before it started.');
+
+        return self::FAILURE;
+    }
+
     /**
      * Estimates the run item by item behind a progress bar and collects, per item, the line a dry run prints.
      *
@@ -533,7 +555,7 @@ class TranslateCommand extends Command
 
         do {
             $progress = $planner->estimate($run, $progress?->next ?? 0, self::ESTIMATE_BUDGET_MS, $collect);
-            $bar->setProgress($progress->next ?? $total);
+            $bar->setProgress($progress->isFinished() ? $total : $progress->items);
         } while (! $progress->isFinished() && $this->interrupts === 0);
 
         $this->endBar($bar, $progress->isFinished());

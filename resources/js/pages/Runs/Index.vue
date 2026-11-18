@@ -14,8 +14,9 @@ const props = defineProps({
 
 const confirming = ref(false);
 const resetting = ref(false);
-// The row whose run is to be deleted, while the page asks; then the id of the run being deleted.
+// The row whose run is to be deleted, while the page asks.
 const deleting = ref(null);
+// The id of the run being deleted.
 const busy = ref(null);
 const finished = computed(() => props.runs.some((run) => FINAL_STATUSES.includes(run.status)));
 

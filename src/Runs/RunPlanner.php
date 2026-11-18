@@ -103,7 +103,8 @@ final readonly class RunPlanner
      * one item), adds them to the run's estimate, and marks an item whose plan is empty `skipped` unless it waits for
      * other items: the run may give it something to do before its turn, by translating its source or creating the
      * localizations its navigation links (§A12), and it is planned again then. Index 0 starts the estimate over; a call
-     * from any index other than where the last one stopped (a retried request) adds nothing. What core memoized for an
+     * from any index other than where the last one stopped (a retried request) adds nothing, and so does a call whose
+     * run had its estimate changed meanwhile (items removed, which starts the estimate over). What core memoized for an
      * item's entries is forgotten once the item is planned (EntryMemo), so a scan over a whole collection, which the
      * CLI makes in one process, holds the entries of one item, not of every item it planned.
      *
@@ -111,36 +112,45 @@ final readonly class RunPlanner
      */
     public function estimate(Run $run, int $fromIndex, int $budgetMs, ?Closure $planned = null): EstimateProgress
     {
-        $stored = $run->estimate === null ? new EstimateProgress(new Estimate, 0) : EstimateProgress::fromArray($run->estimate);
+        $read = $run->estimate;
+        $stored = self::progressOf($read);
 
         if ($fromIndex > 0 && $fromIndex !== $stored->next) {
             return $stored;
         }
 
         $estimate = $fromIndex > 0 ? $stored->estimate : new Estimate;
+        $items = $fromIndex > 0 ? $stored->items : 0;
         // Removed items leave gaps in the indexes, so the walk ends after the last item's index, not after the count.
-        $last = $this->runs->items($run, page: max(1, array_sum($this->runs->counts($run))), perPage: 1)[0] ?? null;
-        $size = $last === null ? 0 : $last->index + 1;
+        $size = ($this->runs->lastIndex($run) ?? -1) + 1;
         $options = $this->planOptions($run);
         $contexts = [];
         $deadline = hrtime(true) + max(0, $budgetMs) * 1_000_000;
         $index = max(0, $fromIndex);
 
         while ($index < $size) {
-            $memo = EntryMemo::mark();
-            $estimate = $estimate->add($this->estimateItem($run, $index++, $options, $contexts, $planned));
-            $memo->forget();
+            $item = $this->runs->item($run, $index++);
+
+            if ($item !== null) {
+                $memo = EntryMemo::mark();
+                $estimate = $estimate->add($this->estimateItem($run, $item, $options, $contexts, $planned));
+                $memo->forget();
+                $items++;
+            }
 
             if (hrtime(true) >= $deadline) {
                 break;
             }
         }
 
-        $progress = new EstimateProgress($estimate, $index < $size ? $index : null);
-        $run->estimate = $progress->toArray();
-        $this->runs->save($run);
+        $progress = new EstimateProgress($estimate, $index < $size ? $index : null, $items);
 
-        return $progress;
+        return $this->runs->saveEstimate($run, $read, $progress->toArray()) ? $progress : self::progressOf($run->estimate);
+    }
+
+    private static function progressOf(?array $estimate): EstimateProgress
+    {
+        return $estimate === null ? new EstimateProgress(new Estimate, 0) : EstimateProgress::fromArray($estimate);
     }
 
     /**
@@ -669,11 +679,9 @@ final readonly class RunPlanner
      * @param  array<string, PromptContext>  $contexts  by site, built once per site because each builds a glossary
      * @param  ?Closure(RunItem, Plan): void  $planned
      */
-    private function estimateItem(Run $run, int $index, PlanOptions $options, array &$contexts, ?Closure $planned): Estimate
+    private function estimateItem(Run $run, RunItem $item, PlanOptions $options, array &$contexts, ?Closure $planned): Estimate
     {
-        $item = $this->runs->item($run, $index);
-
-        if ($item?->status !== RunItemStatus::Pending) {
+        if ($item->status !== RunItemStatus::Pending) {
             return new Estimate;
         }
 
@@ -696,8 +704,8 @@ final readonly class RunPlanner
         }
 
         if ($plan->isEmpty()) {
-            if ($this->runs->isReady($run, $index)) {
-                $this->skipUnclaimed($run, $index, $plan);
+            if ($this->runs->isReady($run, $item->index)) {
+                $this->skipUnclaimed($run, $item->index, $plan);
             }
 
             return new Estimate;

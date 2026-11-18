@@ -14,7 +14,9 @@ use Reach\StatamicTolk\Exceptions\ProviderUnavailable;
 use Reach\StatamicTolk\Jobs\WorkRun;
 use Reach\StatamicTolk\Runs\Run;
 use Reach\StatamicTolk\Runs\RunItem;
+use Reach\StatamicTolk\Runs\RunPlanner;
 use Reach\StatamicTolk\Runs\RunProcessor;
+use Reach\StatamicTolk\Runs\RunRequest;
 use Reach\StatamicTolk\Support\ContentWriter;
 use Reach\StatamicTolk\Tests\Support\RunFixtures;
 use Reach\StatamicTolk\Tests\Support\ScriptedEngine;
@@ -22,6 +24,7 @@ use Reach\StatamicTolk\Translation\PlanStore;
 use Statamic\Contracts\Auth\User as UserContract;
 use Statamic\Facades\Entry;
 use Statamic\Facades\GlobalSet;
+use Statamic\Facades\User;
 
 const RUN_NONCE = 'pageNonce123';
 
@@ -854,6 +857,42 @@ describe('remove items', function () {
             ->and(Entry::query()->where('site', 'el')->count())->toBe(0);
     });
 
+    it('lets an estimate that was running when items were removed not undo the reset, and counts the items it walked', function () {
+        $this->signInAdmin();
+        $run = createdRun();
+        runAction($run, 'estimate', ['from' => 0])->assertOk();
+        $inFlight = $this->runs->find($run->id);
+
+        runAction($run, 'remove', ['items' => [0]])->assertOk();
+        $late = app(RunPlanner::class)->estimate($inFlight, 0, 60_000);
+
+        expect(RunFixtures::stored($run)->estimate)->toBeNull()
+            ->and($late->next)->toBe(0)
+            ->and(runAction($run, 'estimate', ['from' => 0])->json())->toMatchArray(['segments' => 4, 'next' => null, 'items' => 2]);
+    });
+
+    it('recounts a completed run without its failed item, and offers Retry for the item that waited for it', function () {
+        $this->signInAdmin();
+        $this->fakeTranslations();
+        $planned = app(RunPlanner::class)->build(new RunRequest(sites: ['el'], driver: RunDriver::Browser, collections: ['articles'], user: User::current()));
+        $items = $planned->items;
+        $items[1]->dependsOn = [0];
+        $run = $this->runs->create($planned->run, $items);
+        runAction($run, 'start')->assertOk();
+        failItem($run, 0);
+        RunFixtures::finish($run);
+
+        expect(runState($run)->json())->toMatchArray(['retryable' => 2])
+            ->and(RunFixtures::statuses($run))->toBe(['failed', 'skipped', 'done'])
+            ->and(RunFixtures::stored($run)->status)->toBe(RunStatus::CompletedWithErrors);
+
+        $removed = runAction($run, 'remove', ['items' => [0]])->assertOk();
+
+        expect($removed->json('run.status'))->toBe('completed')
+            ->and($removed->json('retryable'))->toBe(1)
+            ->and(runAction($run, 'retry')->json('retried'))->toBe(1);
+    });
+
     it('rejects a request without items', function () {
         $this->signInAdmin();
         $run = createdRun();
@@ -878,6 +917,7 @@ describe('delete', function () {
         runAction($running, 'delete')->assertConflict()->assertJsonPath('code', 'not_deletable');
         runAction($cancelled, 'delete')->assertOk();
         runAction($cancelled, 'delete')->assertNotFound();
+        runAction($pending, 'estimate', ['from' => 0])->assertNotFound()->assertJsonPath('code', 'run_not_found');
 
         expect($this->runs->find($pending->id))->toBeNull()
             ->and($this->runs->find($cancelled->id))->toBeNull()
