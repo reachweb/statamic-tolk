@@ -103,7 +103,8 @@ final readonly class RunPlanner
      * one item), adds them to the run's estimate, and marks an item whose plan is empty `skipped` unless it waits for
      * other items: the run may give it something to do before its turn, by translating its source or creating the
      * localizations its navigation links (§A12), and it is planned again then. Index 0 starts the estimate over; a call
-     * from any index other than where the last one stopped (a retried request) adds nothing. What core memoized for an
+     * from any index other than where the last one stopped (a retried request) adds nothing, and so does a call whose
+     * run had its estimate changed meanwhile (items removed, which starts the estimate over). What core memoized for an
      * item's entries is forgotten once the item is planned (EntryMemo), so a scan over a whole collection, which the
      * CLI makes in one process, holds the entries of one item, not of every item it planned.
      *
@@ -111,34 +112,45 @@ final readonly class RunPlanner
      */
     public function estimate(Run $run, int $fromIndex, int $budgetMs, ?Closure $planned = null): EstimateProgress
     {
-        $stored = $run->estimate === null ? new EstimateProgress(new Estimate, 0) : EstimateProgress::fromArray($run->estimate);
+        $read = $run->estimate;
+        $stored = self::progressOf($read);
 
         if ($fromIndex > 0 && $fromIndex !== $stored->next) {
             return $stored;
         }
 
         $estimate = $fromIndex > 0 ? $stored->estimate : new Estimate;
-        $size = array_sum($this->runs->counts($run));
+        $items = $fromIndex > 0 ? $stored->items : 0;
+        // Removed items leave gaps in the indexes, so the walk ends after the last item's index, not after the count.
+        $size = ($this->runs->lastIndex($run) ?? -1) + 1;
         $options = $this->planOptions($run);
         $contexts = [];
         $deadline = hrtime(true) + max(0, $budgetMs) * 1_000_000;
         $index = max(0, $fromIndex);
 
         while ($index < $size) {
-            $memo = EntryMemo::mark();
-            $estimate = $estimate->add($this->estimateItem($run, $index++, $options, $contexts, $planned));
-            $memo->forget();
+            $item = $this->runs->item($run, $index++);
+
+            if ($item !== null) {
+                $memo = EntryMemo::mark();
+                $estimate = $estimate->add($this->estimateItem($run, $item, $options, $contexts, $planned));
+                $memo->forget();
+                $items++;
+            }
 
             if (hrtime(true) >= $deadline) {
                 break;
             }
         }
 
-        $progress = new EstimateProgress($estimate, $index < $size ? $index : null);
-        $run->estimate = $progress->toArray();
-        $this->runs->save($run);
+        $progress = new EstimateProgress($estimate, $index < $size ? $index : null, $items);
 
-        return $progress;
+        return $this->runs->saveEstimate($run, $read, $progress->toArray()) ? $progress : self::progressOf($run->estimate);
+    }
+
+    private static function progressOf(?array $estimate): EstimateProgress
+    {
+        return $estimate === null ? new EstimateProgress(new Estimate, 0) : EstimateProgress::fromArray($estimate);
     }
 
     /**
@@ -187,7 +199,7 @@ final readonly class RunPlanner
      *
      * @param  bool  $creates  whether missing localizations are created (every mode but review)
      * @param  array  $notes  see sitesFor()
-     * @return list<array<string, array{root: string, site: string, source: string, source_site: string, chained: bool, title: string, root_missing: ?array{family: ?string, error: string, page: ?array}, parent: ?array{family: string, title: mixed}}>>
+     * @return list<array<string, array{root: string, site: string, source: string, source_site: string, chained: bool, title: string, edit_url: ?string, root_missing: ?array{family: ?string, error: string, page: ?array}, parent: ?array{family: string, title: mixed}}>>
      */
     private function entryTargets(RunRequest $request, bool $creates, array &$notes): array
     {
@@ -261,7 +273,7 @@ final readonly class RunPlanner
                 $target = $this->factory->forTerm($term, $site, $request->assumedSites);
 
                 if ($this->admits($request, $target, $taxonomy->handle().'.'.$term->blueprint()->handle(), $notes)) {
-                    $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title());
+                    $items[] = new RunItem($offset + count($items), ContentType::Term, (string) $term->id(), $site, $target->title(), editUrl: $target->editUrl());
                 }
             }
         }
@@ -299,6 +311,7 @@ final readonly class RunPlanner
 
             foreach (self::chainOrder($targets, fn (GlobalsTarget $target) => $target->sourceSite()) as $target) {
                 $item = new RunItem($offset + count($items), ContentType::GlobalSet, $handle, $target->targetSite(), $target->title());
+                $item->editUrl = $target->editUrl() ?? $set->in($target->sourceSite())?->editUrl();
                 $item->dependsOn = isset($indexes[$target->sourceSite()]) ? [$indexes[$target->sourceSite()]] : [];
                 $indexes[$target->targetSite()] = $item->index;
                 $items[] = $item;
@@ -349,6 +362,7 @@ final readonly class RunPlanner
 
             foreach (self::chainOrder($targets, fn (NavTarget $target) => $target->sourceSite()) as $target) {
                 $item = new RunItem($offset + count($items), ContentType::Nav, $target->describe()['source_id'], $target->targetSite(), $target->title(), stage: 1);
+                $item->editUrl = $target->editUrl() ?? $nav->in($target->sourceSite())?->showUrl();
                 $item->dependsOn = isset($indexes[$target->sourceSite()]) ? [$indexes[$target->sourceSite()]] : [];
                 $indexes[$target->targetSite()] = $item->index;
                 $items[] = $item;
@@ -482,6 +496,8 @@ final readonly class RunPlanner
             'source_site' => $source->locale(),
             'chained' => $source->hasOrigin(),
             'title' => $target->title(),
+            // Until the localization exists, its item opens the entry it is translated from.
+            'edit_url' => $target->editUrl() ?? $source->editUrl(),
             'root_missing' => null,
             'parent' => null,
         ];
@@ -567,7 +583,7 @@ final readonly class RunPlanner
     private function entryItem(int $index, array $target, array $indexes): RunItem
     {
         ['root' => $root, 'site' => $site, 'root_missing' => $missing, 'parent' => $parent] = $target;
-        $item = new RunItem($index, ContentType::Entry, $target['source'], $site, $target['title']);
+        $item = new RunItem($index, ContentType::Entry, $target['source'], $site, $target['title'], editUrl: $target['edit_url']);
         $dependsOn = [];
 
         if ($target['chained']) {
@@ -663,11 +679,9 @@ final readonly class RunPlanner
      * @param  array<string, PromptContext>  $contexts  by site, built once per site because each builds a glossary
      * @param  ?Closure(RunItem, Plan): void  $planned
      */
-    private function estimateItem(Run $run, int $index, PlanOptions $options, array &$contexts, ?Closure $planned): Estimate
+    private function estimateItem(Run $run, RunItem $item, PlanOptions $options, array &$contexts, ?Closure $planned): Estimate
     {
-        $item = $this->runs->item($run, $index);
-
-        if ($item?->status !== RunItemStatus::Pending) {
+        if ($item->status !== RunItemStatus::Pending) {
             return new Estimate;
         }
 
@@ -690,8 +704,8 @@ final readonly class RunPlanner
         }
 
         if ($plan->isEmpty()) {
-            if ($this->runs->isReady($run, $index)) {
-                $this->skipUnclaimed($run, $index, $plan);
+            if ($this->runs->isReady($run, $item->index)) {
+                $this->skipUnclaimed($run, $item->index, $plan);
             }
 
             return new Estimate;

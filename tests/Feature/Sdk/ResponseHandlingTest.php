@@ -1,6 +1,5 @@
 <?php
 
-use Composer\InstalledVersions;
 use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\StructuredAgentResponse;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
@@ -99,11 +98,10 @@ it('reports an openai refusal as a normal stop with an empty result, visible onl
         ->and($response->raw->json('output.1.content.0.type'))->toBe('refusal');
 });
 
-it('reports an openai answer stopped by the content filter as Length before 1.2.1 and as ContentFilter from 1.2.1, with the reason in the raw response', function () {
+it('reports an openai answer stopped by the content filter as ContentFilter, with the reason in the raw response', function () {
     $response = ProviderFixtures::respond('openai', ProviderFixtures::openaiContentFilter());
-    $reason = version_compare((string) InstalledVersions::getVersion('laravel/ai'), '1.2.1', '>=') ? FinishReason::ContentFilter : FinishReason::Length;
 
-    expect($response->steps->last()->finishReason)->toBe($reason)
+    expect($response->steps->last()->finishReason)->toBe(FinishReason::ContentFilter)
         ->and($response->structured)->toBe([])
         ->and($response->raw->json('incomplete_details.reason'))->toBe('content_filter');
 });

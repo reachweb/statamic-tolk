@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * Keeps one provider call one call that never sleeps (D24). From laravel/ai 1.2.1 the SDK repeats a call answered 429
+ * Keeps one provider call one call that never sleeps (D24). The SDK repeats a call answered 429
  * or overloaded whose Retry-After is at most 10 seconds, after sleeping that long, and has no switch to turn this off
  * (07-spike-findings.md "SDK"). While Tolk's call runs, a response's Retry-After moves to RETRY_AFTER, which the SDK
  * does not read and ErrorClassifier does, so the call fails at once and Throttle pauses the provider for every process.

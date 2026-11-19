@@ -1,21 +1,11 @@
 <?php
 
-use Composer\InstalledVersions;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Reach\StatamicTolk\Ai\ModelCatalog;
 use Reach\StatamicTolk\Tests\Support\Agents\ProbeAgent;
 use Reach\StatamicTolk\Tests\Support\ProviderFixtures;
-
-/**
- * laravel/ai 1.2.0 keeps the structured output format when provider options set `output_config` or `text`
- * (laravel/ai#1105); 1.0.x and 1.1 replace it, which is why the catalog never sends those keys.
- */
-function sdkKeepsStructuredFormat(): bool
-{
-    return version_compare((string) InstalledVersions::getVersion('laravel/ai'), '1.2.0', '>=');
-}
 
 it('sends the translations schema as native structured output', function (string $provider, string $path) {
     $schema = data_get(ProviderFixtures::prompt($provider)->data(), $path);
@@ -116,14 +106,12 @@ describe('anthropic', function () {
             ->and($body['output_config'])->toBe(['format' => ProviderFixtures::anthropicFormat()]);
     });
 
-    it('loses the structured output format to an output_config.effort option before 1.2, and merges the two from 1.2', function () {
+    it('merges an output_config.effort option with the structured output format', function () {
         $body = ProviderFixtures::prompt('anthropic', 'quality', [
             'options' => ['thinking' => ['type' => 'between_tools'], 'output_config' => ['effort' => 'low']],
         ])->data();
 
-        expect($body['output_config'])->toEqual(sdkKeepsStructuredFormat()
-            ? ['format' => ProviderFixtures::anthropicFormat(), 'effort' => 'low']
-            : ['effort' => 'low']);
+        expect($body['output_config'])->toEqual(['format' => ProviderFixtures::anthropicFormat(), 'effort' => 'low']);
     });
 
     it('sends both output_config.effort and output_config.format when the options carry both keys', function () {
@@ -187,13 +175,13 @@ describe('openai', function () {
             ->and($body)->not->toHaveKey('max_output_tokens');
     });
 
-    it('loses the structured output format to another text option before 1.2, and merges the two from 1.2', function () {
+    it('merges another text option with the structured output format', function () {
         $body = ProviderFixtures::prompt('openai', 'quality', [
             'options' => ['reasoning' => ['effort' => 'low'], 'text' => ['verbosity' => 'low']],
         ])->data();
 
-        expect(sdkKeepsStructuredFormat() ? Arr::except($body['text'], 'format') : $body['text'])->toBe(['verbosity' => 'low'])
-            ->and($body['text']['format']['type'] ?? null)->toBe(sdkKeepsStructuredFormat() ? 'json_schema' : null);
+        expect(Arr::except($body['text'], 'format'))->toBe(['verbosity' => 'low'])
+            ->and($body['text']['format']['type'])->toBe('json_schema');
     });
 });
 

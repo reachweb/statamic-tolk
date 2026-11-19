@@ -144,6 +144,11 @@ final class FileRunRepository implements RunRepository
         return $this->readItem($run->id, $index);
     }
 
+    public function lastIndex(Run $run): ?int
+    {
+        return array_key_last($this->readIndex($run->id));
+    }
+
     public function items(Run $run, ?RunItemStatus $status = null, int $page = 1, int $perPage = 50): array
     {
         $perPage = max(1, $perPage);
@@ -256,10 +261,7 @@ final class FileRunRepository implements RunRepository
 
             // All at once, so commit() does not skip an item again for a dependency that is not reset yet.
             foreach ($index as $i => $entry) {
-                $retried = $entry['status'] === RunItemStatus::Failed->value
-                    || ($entry['status'] === RunItemStatus::Skipped->value && $entry['reason'] === RunItem::DEPENDENCY_FAILED);
-
-                if (! $retried || ! $item = $this->readItem($run->id, $i)) {
+                if (! self::isRetryable($entry) || ! $item = $this->readItem($run->id, $i)) {
                     continue;
                 }
 
@@ -273,6 +275,69 @@ final class FileRunRepository implements RunRepository
             $this->commit($run, $stored, $index, $changed);
 
             return count($changed);
+        });
+    }
+
+    public function retryable(Run $run): int
+    {
+        return count(array_filter($this->readIndex($run->id), self::isRetryable(...)));
+    }
+
+    public function saveEstimate(Run $run, ?array $expected, array $estimate): bool
+    {
+        return $this->locked($run->id, function () use ($run, $expected, $estimate) {
+            $stored = $this->readRun($run->id) ?? throw RunNotFound::for($run->id);
+
+            if ($stored->estimate != $expected) {
+                $run->refresh($stored);
+
+                return false;
+            }
+
+            $stored->estimate = $estimate;
+            $this->writeRun($stored, $run);
+
+            return true;
+        });
+    }
+
+    public function removeItems(Run $run, array $indexes): array
+    {
+        return $this->locked($run->id, function () use ($run, $indexes) {
+            $stored = $this->readRun($run->id) ?? throw RunNotFound::for($run->id);
+            $index = $this->readIndex($run->id);
+            $gone = $removed = [];
+
+            foreach (array_unique($indexes) as $i) {
+                if (! isset($index[$i]) || in_array(RunItemStatus::from($index[$i]['status']), self::HOLDING, true)) {
+                    continue;
+                }
+
+                if ($item = $this->readItem($run->id, $i)) {
+                    $removed[] = $item;
+                }
+
+                $gone[] = $i;
+                unset($index[$i]);
+            }
+
+            if ($gone === []) {
+                $run->refresh($stored);
+
+                return [];
+            }
+
+            // The index first: an item file it no longer lists is never read.
+            $this->writeIndex($run->id, $index);
+
+            foreach ($gone as $i) {
+                $this->files->delete($this->itemPath($run->id, $i));
+            }
+
+            $stored->progressedAt = CarbonImmutable::now();
+            $this->writeRun($stored, $run);
+
+            return $removed;
         });
     }
 
@@ -513,6 +578,12 @@ final class FileRunRepository implements RunRepository
                 $skipped = true;
             }
         } while ($skipped);
+    }
+
+    private static function isRetryable(array $entry): bool
+    {
+        return $entry['status'] === RunItemStatus::Failed->value
+            || ($entry['status'] === RunItemStatus::Skipped->value && $entry['reason'] === RunItem::DEPENDENCY_FAILED);
     }
 
     private function dependencyFailed(array $index, array $entry): bool

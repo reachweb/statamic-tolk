@@ -131,6 +131,87 @@ test('Cancel stops a run, which keeps what it saved and can be resumed', async (
     expect(browserErrors()).toEqual([]);
 });
 
+// The id at the end of each item title's link.
+async function linkedIds(page) {
+    const hrefs = await page.locator('[data-tolk-item] td a').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+
+    return hrefs.map((href) => href.split('/').pop());
+}
+
+const ids = (collection, site) => files(collection, site).map((file) => entryFile(collection, site, file.replace(/^(?:[^.]+\.)?([^.]+)\.md$/, '$1')).id);
+
+test('items link to their entries, are removed one at a time or in a batch, and the run is deleted from its page or the runs', async ({ page, browserErrors }) => {
+    test.setTimeout(90_000);
+
+    const { url } = await createRun(page, { sites: ['el'], collections: ['pages'] });
+    const items = page.locator('[data-tolk-item]');
+    const estimated = page.locator('[data-tolk-estimate]');
+
+    await page.goto(url);
+    await expect(estimated).toHaveAttribute('data-tolk-estimate-finished', 'true');
+    const segments = Number((await page.locator('[data-tolk-estimate-segments]').innerText()).replace(/\D/g, ''));
+
+    // Before a localization exists, its item opens the English page.
+    expect((await linkedIds(page)).sort()).toEqual(ids('pages', 'en').sort());
+
+    // One at a time, from its row.
+    const first = (await items.first().locator('td a').innerText()).trim();
+    await items.first().locator('[data-tolk-item-remove]').click();
+    const one = page.getByRole('dialog').filter({ hasText: 'Remove 1 item from the run?' });
+    await expect(one).toBeVisible();
+    await one.getByRole('button', { name: 'Remove', exact: true }).click();
+
+    await expect(items).toHaveCount(PAGES.length - 1);
+    await expect(items.filter({ hasText: first })).toHaveCount(0);
+    await expect(page.locator('[data-tolk-breakdown-row="entry|el"] [data-tolk-breakdown-total]')).toHaveText(String(PAGES.length - 1));
+    // The estimate starts over without the removed item.
+    await expect(estimated).toHaveAttribute('data-tolk-estimate-finished', 'true');
+    expect(Number((await page.locator('[data-tolk-estimate-segments]').innerText()).replace(/\D/g, ''))).toBeLessThan(segments);
+
+    // A batch, ticked one by one.
+    const titles = (await items.locator('td a').allInnerTexts()).map((title) => title.trim());
+    await page.getByRole('checkbox', { name: `Select ${titles[0]} in Greek` }).click();
+    await page.getByRole('checkbox', { name: `Select ${titles[1]} in Greek` }).click();
+    await expect(page.locator('[data-tolk-remove-selected]')).toHaveText('Remove 2 items');
+    await page.locator('[data-tolk-remove-selected]').click();
+    const two = page.getByRole('dialog').filter({ hasText: 'Remove 2 items from the run?' });
+    await two.getByRole('button', { name: 'Remove', exact: true }).click();
+
+    await expect(items).toHaveCount(PAGES.length - 3);
+    await expect(page.locator('[data-tolk-remove-selected]')).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: 'Select every item on this page' })).not.toBeChecked();
+
+    // The rest is translated, and each item opens its Greek localization.
+    await page.locator('[data-tolk-action="start"]').click();
+    await expect(runPage(page)).toHaveAttribute('data-tolk-run-status', 'completed', { timeout: 45_000 });
+    await expect(page.locator('[data-tolk-run-result]')).toHaveText(new RegExp(`The run is complete: ${PAGES.length - 3} done\\.`));
+    expect(files('pages', 'el')).toHaveLength(PAGES.length - 3);
+    expect((await linkedIds(page)).sort()).toEqual(ids('pages', 'el').sort());
+
+    // Delete on its page goes back to the runs, and the translations stay.
+    await page.locator('[data-tolk-run-delete]').click();
+    await page.getByRole('dialog').filter({ hasText: 'Delete this run?' }).getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.locator('[data-tolk-runs-empty]')).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(cpUrl('tolk/runs'));
+    expect(files('pages', 'el')).toHaveLength(PAGES.length - 3);
+
+    // On the runs, a pending run can be deleted and a running one cannot.
+    await createRun(page, { sites: ['de'], collections: ['pages'] });
+    const running = await createRun(page, { sites: ['de'], collections: ['articles'] });
+    await page.evaluate((url) => Statamic.$app.config.globalProperties.$axios.post(`${url}/start`), running.url);
+    await page.reload();
+
+    const rows = page.locator('[data-tolk-run-row]');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.filter({ hasText: 'Running' }).locator('[data-tolk-run-delete]')).toHaveCount(0);
+    await rows.filter({ hasText: 'Not started' }).locator('[data-tolk-run-delete]').click();
+    await page.getByRole('dialog').filter({ hasText: 'Delete this run?' }).getByRole('button', { name: 'Delete', exact: true }).click();
+
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toContainText('Running');
+    expect(browserErrors()).toEqual([]);
+});
+
 test('the Translations nav item leads the admin to the overview, and its Runs item to the runs', async ({ page }) => {
     await page.goto(cpUrl('dashboard'));
 

@@ -19,6 +19,7 @@ const STUBS = {
     Badge: { props: ['text', 'color'], template: '<span>{{ text }}</span>' },
     Button: { props: ['text'], template: '<button>{{ text }}<slot /></button>' },
     Card: { template: '<div><slot /></div>' },
+    Checkbox: { props: ['label', 'modelValue'], template: '<input type="checkbox" :aria-label="label" :checked="modelValue" />' },
     Description: { template: '<div><slot /></div>' },
     Heading: { props: ['text'], template: '<h2>{{ text }}</h2>' },
     Select: { template: '<select />' },
@@ -51,6 +52,9 @@ async function render(attribute, data) {
 
     return renderToString(app);
 }
+
+// What the items table reads besides its items: nothing selected, nothing running.
+const controls = { selected: [], removable: [], allSelected: false, busy: null, selectItem: () => {}, selectAll: () => {}, removing: null };
 
 const text = (html) => html.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -88,6 +92,7 @@ describe('the items of a review run', () => {
     };
 
     const page = (open, shown = []) => ({
+        ...controls,
         items: [describeItem(reviewed, (handle) => ({ el: 'Greek' })[handle] ?? handle)],
         filter: 'all',
         filters: [],
@@ -137,6 +142,7 @@ describe('the items of a run with strict fields', () => {
             error: null,
         };
         const html = await render('data-tolk-items', {
+            ...controls,
             items: [describeItem(item)],
             filter: 'all',
             filters: [],
@@ -151,6 +157,33 @@ describe('the items of a run with strict fields', () => {
         expect(lines(html)).toContain('Could not be translated: body (the model kept breaking its formatting), teaser (the model refused it)');
         expect(lines(html)).toContain('Not changed: intro (edited by hand, kept)');
         expect(html).toContain('data-tolk-item-failed');
+    });
+});
+
+describe('removing items', () => {
+    it('offers to select and remove an item no worker holds, and neither for one a worker holds', async () => {
+        const item = (index, status) => describeItem({ index, title: `Page ${index}`, target_site: 'el', status, fields: {}, warnings: [] }, () => 'Greek');
+        const html = await render('data-tolk-items', {
+            ...controls,
+            items: [item(0, 'failed'), item(1, 'translating')],
+            removable: [0],
+            selected: [0],
+            allSelected: true,
+            filter: 'all',
+            filters: [],
+            pagination: { page: 1, last_page: 1 },
+            changes: { open: false },
+            shown: [],
+            filterBy: () => {},
+            showPage: () => {},
+            viewChanges: () => {},
+        });
+
+        expect(html.match(/aria-label="Select Page \d+ in Greek"/g)).toHaveLength(1);
+        expect(html.match(/data-tolk-item-remove\b/g)).toHaveLength(1);
+        expect(html).toContain('aria-label="Select Page 0 in Greek"');
+        expect(html).not.toContain('Page 1 in Greek');
+        expect(text(html)).toContain('Remove 1 item');
     });
 });
 

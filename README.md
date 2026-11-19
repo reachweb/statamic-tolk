@@ -15,7 +15,7 @@ Tolk translates multi-site Statamic content from an origin site into its localiz
 - PHP 8.3 or later
 - Statamic 6.35 or later, Pro edition (multi-site needs it), with at least two sites
 - Laravel 12.62 or later, or Laravel 13.15 or later
-- Laravel AI SDK (`laravel/ai`) 1.0.1 or later, installed with the addon
+- Laravel AI SDK (`laravel/ai`) 1.4.1 or later, installed with the addon
 - An API key for at least one of Anthropic, OpenAI or Google Gemini
 
 ## Installation

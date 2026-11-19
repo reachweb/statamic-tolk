@@ -740,6 +740,42 @@ it('finds and prunes the runs without activity for that many days and nothing el
         ->and($this->runs->prune(30))->toBe(0);
 });
 
+it('removes the items no worker holds, and an item that waited for a removed one is ready', function () {
+    $run = runRepoRun([
+        runRepoItem(0),
+        runRepoItem(1, ['dependsOn' => [0]]),
+        runRepoItem(2),
+        runRepoItem(3, ['status' => RunItemStatus::Done]),
+        runRepoItem(4),
+    ]);
+    $claimed = $this->runs->claimNext($run, 'lane-1', 60);
+    $before = $run->progressedAt;
+    $this->travel(5)->seconds();
+
+    expect($claimed->index)->toBe(0)
+        ->and($this->runs->isReady($run, 1))->toBeFalse()
+        ->and(array_map(fn (RunItem $item) => $item->index, $this->runs->removeItems($run, [0, 3, 3, 4, 9])))->toBe([3, 4])
+        ->and(array_map(fn (RunItem $item) => $item->index, $this->runs->items($run)))->toBe([0, 1, 2])
+        ->and("{$this->root}/{$run->id}/items/3.json")->not->toBeFile()
+        ->and("{$this->root}/{$run->id}/items/4.json")->not->toBeFile()
+        ->and($this->runs->counts($run))->toBe(RunFixtures::counts(['translating' => 1, 'pending' => 2]))
+        ->and($run->progressedAt->greaterThan($before))->toBeTrue();
+
+    $claimed->status = RunItemStatus::Failed;
+    $this->runs->saveItem($run, $claimed);
+
+    expect(RunFixtures::statuses($run))->toBe(['failed', 'skipped', 'pending'])
+        ->and(array_map(fn (RunItem $item) => $item->index, $this->runs->removeItems($run, [0])))->toBe([0])
+        ->and($this->runs->removeItems($run, [0]))->toBe([]);
+
+    $pending = runRepoRun([runRepoItem(0), runRepoItem(1, ['dependsOn' => [0]])]);
+    $this->runs->removeItems($pending, [0]);
+
+    expect($this->runs->isReady($pending, 1))->toBeTrue()
+        ->and($this->runs->claimNext($pending, 'lane-1', 60)->index)->toBe(1)
+        ->and(fn () => $this->runs->removeItems(Run::make(RunDriver::Cli), [0]))->toThrow(RunNotFound::class);
+});
+
 it('deletes a run with its files', function () {
     $run = runRepoRun();
 

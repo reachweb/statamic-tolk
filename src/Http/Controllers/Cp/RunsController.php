@@ -13,12 +13,14 @@ use Reach\StatamicTolk\Enums\RunDriver;
 use Reach\StatamicTolk\Exceptions\InvalidModelRef;
 use Reach\StatamicTolk\Exceptions\MissingDefaultModel;
 use Reach\StatamicTolk\Exceptions\NoProviderConfigured;
+use Reach\StatamicTolk\Exceptions\RunNotFound;
 use Reach\StatamicTolk\Exceptions\TargetNotFound;
 use Reach\StatamicTolk\Exceptions\UnknownSite;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\FailsWithJson;
 use Reach\StatamicTolk\Http\Controllers\Cp\Concerns\RaisesTimeLimit;
 use Reach\StatamicTolk\Http\Requests\RunEstimateRequest;
 use Reach\StatamicTolk\Http\Requests\RunFollowRequest;
+use Reach\StatamicTolk\Http\Requests\RunRemoveRequest;
 use Reach\StatamicTolk\Http\Requests\RunResetRequest;
 use Reach\StatamicTolk\Http\Requests\RunStateRequest;
 use Reach\StatamicTolk\Http\Requests\RunStoreRequest;
@@ -128,11 +130,15 @@ class RunsController extends Controller
 
     /**
      * Estimates the next items within about ESTIMATE_BUDGET_MS. `from` 0 starts over; any other index than where the
-     * last call stopped returns the stored progress.
+     * last call stopped returns the stored progress. A pending run may be deleted while it is estimated.
      */
     public function estimate(RunEstimateRequest $request, RunPlanner $planner): JsonResponse
     {
-        $progress = $planner->estimate($this->found($request), (int) $request->validated('from'), self::ESTIMATE_BUDGET_MS);
+        try {
+            $progress = $planner->estimate($this->found($request), (int) $request->validated('from'), self::ESTIMATE_BUDGET_MS);
+        } catch (RunNotFound) {
+            $this->gone();
+        }
 
         return response()->json($progress->toArray());
     }
@@ -140,7 +146,12 @@ class RunsController extends Controller
     public function start(RunStateRequest $request, RunDispatcher $dispatcher): JsonResponse
     {
         $stored = $this->found($request);
-        $dispatcher->start($stored);
+
+        try {
+            $dispatcher->start($stored);
+        } catch (RunNotFound) {
+            $this->gone();
+        }
 
         return response()->json($this->stateOf($stored, $request));
     }
@@ -219,6 +230,29 @@ class RunsController extends Controller
     }
 
     /**
+     * Removes the chosen items that no worker holds; the others stay, and `removed` says how many went.
+     */
+    public function remove(RunRemoveRequest $request, RunProcessor $processor): JsonResponse
+    {
+        $stored = $this->found($request);
+        $removed = $processor->removeItems($stored, $request->indexes());
+
+        return response()->json([...$this->stateOf($stored, $request), 'removed' => $removed]);
+    }
+
+    /**
+     * Deletes a run that was never started or has ended, with its results; a running run has to be cancelled first.
+     */
+    public function delete(RunStateRequest $request, RunProcessor $processor): JsonResponse
+    {
+        if (! $processor->delete($this->found($request), pending: true)) {
+            $this->fail(409, 'not_deletable', __('A running run cannot be deleted. Cancel it first.'));
+        }
+
+        return response()->json(['deleted' => true, 'url' => cp_route('tolk.runs.index')]);
+    }
+
+    /**
      * Moves a queue run to this browser, for a site whose queue has no worker; the page then starts its lanes. The
      * creator of a push may do it from the editor's banner (§A14).
      */
@@ -232,7 +266,12 @@ class RunsController extends Controller
 
     private function found(RunStateRequest $request): Run
     {
-        return $request->run() ?? $this->fail(404, 'run_not_found', __('This run no longer exists.'));
+        return $request->run() ?? $this->gone();
+    }
+
+    private function gone(): never
+    {
+        $this->fail(404, 'run_not_found', __('This run no longer exists.'));
     }
 
     private function stateOf(Run $run, RunStateRequest $request): array

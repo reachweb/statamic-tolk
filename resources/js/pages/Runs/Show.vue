@@ -1,11 +1,13 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Head, Link } from '@statamic/cms/inertia';
+import { Head, Link, router } from '@statamic/cms/inertia';
 import {
     Alert,
     Badge,
     Button,
     Card,
+    Checkbox,
+    ConfirmationModal,
     Description,
     Header,
     Heading,
@@ -18,6 +20,7 @@ import {
     TableRows,
     Text,
 } from '@statamic/cms/ui';
+import { post } from '../../api.js';
 import { localizableUrl } from '../../audit/checks.js';
 import ChangesModal from '../../components/ChangesModal.vue';
 import ProgressBar from '../../components/ProgressBar.vue';
@@ -75,7 +78,8 @@ const follower = createFollower({
     dirty: pushed ? null : 'tolk-run',
     onState: (state) => {
         current.value = state;
-        estimate.value = state.run?.estimate ?? estimate.value;
+        // A pending run's estimate starts over when items are removed, and the page shows none until the new one comes.
+        estimate.value = state.run?.status === 'pending' ? (state.run.estimate ?? null) : (state.run?.estimate ?? estimate.value);
         page.value = itemsPage(page.value, state.pagination);
     },
     onEstimate: (value) => (estimate.value = value),
@@ -129,7 +133,8 @@ const countParts = computed(() =>
 );
 const filters = computed(() => [{ label: __('All items'), value: 'all' }, ...ITEM_STATUSES.map((key) => ({ label: itemStatusLabel(key), value: key }))]);
 const root = ref(null);
-const focus = createFocusKeeper(() => root.value);
+// The confirmations are core's dialogs, teleported out of the page: Remove takes away the control that opened them.
+const focus = createFocusKeeper(() => root.value, { modals: '[role="dialog"]' });
 const changes = createModal();
 const shown = ref([]);
 
@@ -140,6 +145,62 @@ function viewChanges(item) {
 
 // Cancel leaves with the running run.
 watch(status, () => focus.changing());
+
+// The indexes of the shown items picked for removal; an item that left the page or that a worker took drops out.
+const selected = ref([]);
+const removable = computed(() => items.value.filter((item) => item.removable).map((item) => item.index));
+const allSelected = computed(() => removable.value.length > 0 && removable.value.every((index) => selected.value.includes(index)));
+const removing = ref(null);
+const confirmingDelete = ref(false);
+
+watch(removable, (indexes) => (selected.value = selected.value.filter((index) => indexes.includes(index))));
+
+function selectItem(index, value) {
+    selected.value = value ? [...new Set([...selected.value, index])] : selected.value.filter((other) => other !== index);
+}
+
+function selectAll(value) {
+    selected.value = value ? [...removable.value] : [];
+}
+
+async function remove() {
+    const indexes = removing.value;
+    removing.value = null;
+
+    await act('remove', async () => {
+        const { removed } = await follower.remove(indexes);
+        selected.value = selected.value.filter((index) => !indexes.includes(index));
+        // Its row, or Remove :count items, is gone once the answer is rendered.
+        focus.changing();
+
+        if (removed > 0) {
+            Statamic.$toast.success(__n(':count item was removed from the run.|:count items were removed from the run.', removed));
+        } else {
+            Statamic.$toast.info(__('Nothing was removed: the run was working on those items. Try again once they are finished.'));
+        }
+    });
+}
+
+async function deleteRun() {
+    confirmingDelete.value = false;
+
+    // A request for the estimate or a lane would find the run gone.
+    follower.stop();
+
+    await act('delete', async () => {
+        let answer;
+
+        try {
+            answer = await post(props.urls.delete);
+        } catch (error) {
+            follower.follow(current.value);
+            throw error;
+        }
+
+        Statamic.$toast.success(__('The run was deleted.'));
+        router.visit(answer.url ?? props.urls.index);
+    });
+}
 
 const created = computed(() => {
     const by = run.value.created_by?.name;
@@ -199,6 +260,15 @@ function filterBy(value) {
             <Link :href="urls.index" class="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200" data-tolk-runs-link>
                 {{ __('All runs') }}
             </Link>
+            <Button
+                v-if="actions.delete"
+                variant="danger"
+                :text="__('Delete')"
+                :loading="busy === 'delete'"
+                :disabled="busy !== null"
+                data-tolk-run-delete
+                @click="confirmingDelete = true"
+            />
             <Button
                 v-if="actions.cancel"
                 :text="__('Cancel')"
@@ -382,20 +452,50 @@ function filterBy(value) {
         <Card class="space-y-3" data-tolk-items>
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <Heading size="lg" :text="__('Items')" />
-                <div class="w-56">
-                    <Select :model-value="filter" :options="filters" size="sm" data-tolk-items-filter @update:model-value="filterBy" />
+                <div class="flex flex-wrap items-center gap-2">
+                    <Button
+                        v-if="selected.length"
+                        size="sm"
+                        variant="danger"
+                        :text="__n('Remove :count item|Remove :count items', selected.length)"
+                        :disabled="busy !== null"
+                        data-tolk-remove-selected
+                        @click="removing = [...selected]"
+                    />
+                    <div class="w-56">
+                        <Select :model-value="filter" :options="filters" size="sm" data-tolk-items-filter @update:model-value="filterBy" />
+                    </div>
                 </div>
             </div>
             <div class="overflow-x-auto">
                 <Table>
                     <TableColumns>
+                        <TableColumn class="w-8">
+                            <Checkbox
+                                solo
+                                :label="__('Select every item on this page')"
+                                :model-value="allSelected"
+                                :disabled="removable.length === 0"
+                                @update:model-value="selectAll"
+                            />
+                        </TableColumn>
                         <TableColumn>{{ __('Title') }}</TableColumn>
                         <TableColumn>{{ __('Site') }}</TableColumn>
                         <TableColumn>{{ __('Status') }}</TableColumn>
                         <TableColumn>{{ __('Result') }}</TableColumn>
+                        <TableColumn class="w-8"><span class="sr-only">{{ __('Actions') }}</span></TableColumn>
                     </TableColumns>
                     <TableRows>
                         <TableRow v-for="item in items" :key="item.index" data-tolk-item :data-tolk-item-status="item.status">
+                            <TableCell>
+                                <Checkbox
+                                    v-if="item.removable"
+                                    solo
+                                    :label="__('Select :title in :site', { title: item.title, site: item.site })"
+                                    :model-value="selected.includes(item.index)"
+                                    @update:model-value="selectItem(item.index, $event)"
+                                />
+                            </TableCell>
                             <TableCell>
                                 <a v-if="item.editUrl" :href="item.editUrl" class="text-blue-600 hover:underline dark:text-blue-400">{{ item.title }}</a>
                                 <span v-else>{{ item.title }}</span>
@@ -432,6 +532,18 @@ function filterBy(value) {
                                 </Text>
                                 <Description v-for="(warning, index) in item.warnings" :key="index">{{ warning }}</Description>
                             </TableCell>
+                            <TableCell>
+                                <Button
+                                    v-if="item.removable"
+                                    size="sm"
+                                    variant="ghost"
+                                    icon="delete"
+                                    :aria-label="__('Remove :title in :site from the run', { title: item.title, site: item.site })"
+                                    :disabled="busy !== null"
+                                    data-tolk-item-remove
+                                    @click="removing = [item.index]"
+                                />
+                            </TableCell>
                         </TableRow>
                     </TableRows>
                 </Table>
@@ -450,5 +562,29 @@ function filterBy(value) {
             </div>
             <ChangesModal v-if="changes.open" :modal="changes" :corrections="shown" />
         </Card>
+
+        <!-- Mounted afresh each time: a modal reopened while its last close is pending (300 ms) closes again. -->
+        <ConfirmationModal
+            v-if="removing"
+            open
+            danger
+            :title="__n('Remove :count item from the run?|Remove :count items from the run?', removing.length)"
+            :body-text="__('The run will not translate them, and their results on this page are deleted. Translations they already saved stay.')"
+            :button-text="__('Remove')"
+            data-tolk-remove-confirm
+            @update:open="!$event && (removing = null)"
+            @confirm="remove"
+        />
+        <ConfirmationModal
+            v-if="confirmingDelete"
+            open
+            danger
+            :title="__('Delete this run?')"
+            :body-text="__('The run is deleted with its results, and can no longer be started, resumed or retried. The translations it saved stay.')"
+            :button-text="__('Delete')"
+            data-tolk-delete-confirm
+            @update:open="confirmingDelete = $event"
+            @confirm="deleteRun"
+        />
     </div>
 </template>

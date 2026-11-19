@@ -185,6 +185,18 @@ export function createFollower({
         resume: () => act(urls.resume),
         retry: () => act(urls.retry),
         takeOver: () => act(urls.take_over),
+        // A pending run's estimate starts over without the removed items; other runs go on as they were.
+        remove: async (items) => {
+            const answer = await api.post(urls.remove, { ...query(), items });
+
+            if (answer?.run?.status === 'pending') {
+                follow(answer);
+            } else {
+                deliver(answer);
+            }
+
+            return answer;
+        },
         // Whether this page drives the run: a lane runs or the apply loop has not finished.
         get active() {
             return active();

@@ -120,8 +120,11 @@ export function runActions(state) {
         start: run.status === 'pending',
         cancel: run.status === 'running',
         resume: stalled || (['cancelled', 'aborted'].includes(run.status) && unfinished > 0),
-        retry: final && counts.failed > 0,
+        // Items skipped because one failed outlive it when it is removed from the run.
+        retry: final && (counts.failed > 0 || state?.retryable > 0),
         takeOver: stalled && run.driver === 'queue',
+        // A running run has to be cancelled first.
+        delete: Boolean(run.status) && run.status !== 'running',
     };
 }
 
@@ -295,7 +298,9 @@ export function describeEstimate(estimate, total = 0) {
     }
 
     const next = Number.isInteger(estimate.next) ? estimate.next : null;
-    const counts = { done: Math.min(next ?? 0, total), total };
+    // `next` is an index, which removed items leave gaps behind; `items` counts the items estimated so far. An estimate
+    // stored before `items` has only the index.
+    const counts = { done: Math.min(Number.isInteger(estimate.items) ? estimate.items : (next ?? 0), total), total };
 
     return {
         finished: next === null,
@@ -387,6 +392,8 @@ export function describeItem(item, siteName = (handle) => handle) {
         statusLabel: itemStatusLabel(item?.status),
         statusColor: itemStatusColor(item?.status),
         editUrl: item?.edit_url ?? null,
+        // An item a worker holds stays in the run.
+        removable: !['translating', 'applying'].includes(item?.status),
         applied: applied > 0 ? __n(':count field saved|:count fields saved', applied) : null,
         incomplete: handles('incomplete'),
         failed,
