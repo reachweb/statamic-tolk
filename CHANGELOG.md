@@ -4,6 +4,8 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+## 1.3.0 - 2026-11-19
+
 ### Added
 
 - On a run's page, each item's title links to it in the Control Panel from the moment the run is created: the entry it is translated from until its localization exists, then the localization. Before, the links appeared only once an item was saved.
