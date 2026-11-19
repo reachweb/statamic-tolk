@@ -76,33 +76,24 @@ return [
         ],
     ],
     'gemini' => [
-        [
-            'id' => 'gemini-3.8-flash',
-            'label' => 'Gemini 3.8 Flash',
-            'tier' => 'quality',
-            'options' => ['thinking_level' => 'low'],
-            'max_output_tokens' => 65536,
-            'reasoning_headroom' => 0,
-            // Google charges 0.75 / 3.75 until 2026-12-31; this is the price from 2027-01-01.
-            'price' => ['input' => 1.5, 'output' => 7.5],
-        ],
         // Gemini 4 thinks at every level; Google asks for at least 32,768 output tokens so thinking does not cut the answer short.
         [
-            'id' => 'gemini-4-hydrogen',
-            'label' => 'Gemini 4 Hydrogen',
+            'id' => 'gemini-4-neon',
+            'label' => 'Gemini 4 Neon',
             'tier' => 'quality',
             'options' => ['thinking_level' => 'low'],
             'max_output_tokens' => 65536,
             'reasoning_headroom' => 32768,
-            'price' => ['input' => 1.5, 'output' => 7.5, 'cache_read' => 0.075],
+            'price' => ['input' => 3.0, 'output' => 15.0, 'cache_read' => 0.15],
         ],
         [
             'id' => 'gemini-4-argon',
             'label' => 'Gemini 4 Argon',
             'tier' => 'quality',
             'options' => ['thinking_level' => 'low'],
-            'max_output_tokens' => 65536,
-            'reasoning_headroom' => 32768,
+            // Argon and Carbon write at most 32,768 tokens without streaming; the headroom gives every call all of them.
+            'max_output_tokens' => 32768,
+            'reasoning_headroom' => 30720,
             // Google charges 2 / 10 (cache reads 0.1) until 2026-11-30; this is the price from 2026-12-01.
             'price' => ['input' => 4.0, 'output' => 20.0, 'cache_read' => 0.2],
         ],
@@ -111,8 +102,8 @@ return [
             'label' => 'Gemini 4 Carbon',
             'tier' => 'quality',
             'options' => ['thinking_level' => 'low'],
-            'max_output_tokens' => 65536,
-            'reasoning_headroom' => 32768,
+            'max_output_tokens' => 32768,
+            'reasoning_headroom' => 30720,
             // Google charges 2 / 10 (cache reads 0.1) until 2026-11-30; this is the price from 2026-12-01.
             'price' => ['input' => 4.0, 'output' => 20.0, 'cache_read' => 0.2],
         ],
@@ -124,6 +115,25 @@ return [
             'max_output_tokens' => 65536,
             'reasoning_headroom' => 0,
             'price' => ['input' => 0.3, 'output' => 2.5],
+        ],
+        [
+            'id' => 'gemini-4-hydrogen',
+            'label' => 'Gemini 4 Hydrogen',
+            'tier' => 'fast',
+            'options' => ['thinking_level' => 'low'],
+            'max_output_tokens' => 65536,
+            'reasoning_headroom' => 32768,
+            'price' => ['input' => 1.5, 'output' => 7.5, 'cache_read' => 0.075],
+        ],
+        [
+            'id' => 'gemini-3.8-flash',
+            'label' => 'Gemini 3.8 Flash',
+            'tier' => 'fast',
+            'options' => ['thinking_level' => 'low'],
+            'max_output_tokens' => 65536,
+            'reasoning_headroom' => 0,
+            // Google charges 0.75 / 3.75 until 2026-12-31; this is the price from 2027-01-01.
+            'price' => ['input' => 1.5, 'output' => 7.5],
         ],
     ],
 ];

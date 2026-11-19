@@ -192,7 +192,7 @@ describe('gemini', function () {
 
         expect($request->url())->toBe(ProviderFixtures::ENDPOINTS['gemini'])
             ->and($request->hasHeader('x-goog-api-key', 'test-key'))->toBeTrue()
-            ->and($body['model'])->toBe('gemini-3.8-flash')
+            ->and($body['model'])->toBe('gemini-4-neon')
             ->and($body['system_instruction'])->toBe('Translate into Greek.')
             ->and($body['store'])->toBeFalse()
             ->and($body['response_format']['type'])->toBe('text')

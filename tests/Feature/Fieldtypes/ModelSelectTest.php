@@ -51,7 +51,7 @@ it('labels the automatic translator with the first configured provider\'s qualit
 
     $this->withProviderKeys(['ai.providers.gemini.key' => 'sdk-key']);
 
-    expect(modelField()->meta()['automatic'])->toBe('Automatic (Gemini 3.8 Flash)');
+    expect(modelField()->meta()['automatic'])->toBe('Automatic (Gemini 4 Neon)');
 });
 
 it('labels the automatic choice by what an empty field resolves to, not by the saved model', function () {

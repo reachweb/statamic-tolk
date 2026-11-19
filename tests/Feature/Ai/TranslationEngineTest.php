@@ -414,7 +414,7 @@ it('throws ProviderRejected on an invalid key, missing permission, missing credi
     'gemini 402' => ['gemini', 402, 'The AI provider [gemini] rejected the request (HTTP 402, insufficient_credits): The provider says no.'],
     'anthropic 404' => ['anthropic', 404, 'The AI provider [anthropic] does not offer the model [claude-sonnet-5-5] (HTTP 404): The provider says no.'],
     'openai 404' => ['openai', 404, 'The AI provider [openai] does not offer the model [gpt-6.2-sol] (HTTP 404): The provider says no.'],
-    'gemini 404' => ['gemini', 404, 'The AI provider [gemini] does not offer the model [gemini-3.8-flash] (HTTP 404): The provider says no.'],
+    'gemini 404' => ['gemini', 404, 'The AI provider [gemini] does not offer the model [gemini-4-neon] (HTTP 404): The provider says no.'],
 ]);
 
 it('throws ProviderRejected when Google refuses the Gemini key or project with a 400, without logging the request', function (array $body, string $message) {

@@ -138,9 +138,9 @@ Tolk comes with a catalog of models per provider, and each release of Tolk keeps
 | --- | --- | --- |
 | Anthropic | `claude-sonnet-5-5` (Claude Sonnet 5.5) | `claude-haiku-5-5` (Claude Haiku 5.5) |
 | OpenAI | `gpt-6.2-sol` (GPT-6.2 Sol) | `gpt-6-luna` (GPT-6 Luna) |
-| Gemini | `gemini-3.8-flash` (Gemini 3.8 Flash) | `gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) |
+| Gemini | `gemini-4-neon` (Gemini 4 Neon) | `gemini-3.5-flash-lite` (Gemini 3.5 Flash-Lite) |
 
-The catalog also offers Gemini 4 Hydrogen (`gemini-4-hydrogen`), Gemini 4 Argon (`gemini-4-argon`) and Gemini 4 Carbon (`gemini-4-carbon`), in the quality tier. Choose one in the settings or per translation. They think at Google's lowest level, `low`, and the thinking tokens are billed as output. Argon and Carbon need a key of a project with billing enabled: Google does not offer them on its free tier. GPT-6.1 Sol, OpenAI's default before GPT-6.2 Sol, stays in the catalog for sites that chose it.
+The catalog also offers Gemini 4 Argon (`gemini-4-argon`) and Gemini 4 Carbon (`gemini-4-carbon`) in the quality tier, and Gemini 4 Hydrogen (`gemini-4-hydrogen`) and Gemini 3.8 Flash (`gemini-3.8-flash`) in the fast tier. Choose one in the settings or per translation. The Gemini 4 models think at Google's lowest level, `low`, and the thinking tokens are billed as output. Neon, Argon and Carbon need a key of a project with billing enabled: Google does not offer them on its free tier, so with a free-tier key, choose Hydrogen, 3.8 Flash or Flash-Lite in the settings instead of Automatic. GPT-6.1 Sol, OpenAI's default before GPT-6.2 Sol, stays in the catalog for sites that chose it.
 
 `models.anthropic`, `models.openai` and `models.gemini` are empty in the config. List models there only to add one to Tolk's catalog or to change one of Tolk's:
 

@@ -22,7 +22,7 @@ it('reports the model the provider returned, except for gemini, which reports th
 })->with([
     ['anthropic', 'reported-model'],
     ['openai', 'reported-model'],
-    ['gemini', 'gemini-3.8-flash'],
+    ['gemini', 'gemini-4-neon'],
 ]);
 
 it('maps usage, cache and reasoning tokens', function (string $provider, array $usage) {

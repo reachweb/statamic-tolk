@@ -127,11 +127,12 @@ it('groups the catalog by provider for model selects', function () {
             ['value' => 'openai:gpt-6-luna', 'label' => 'GPT-6 Luna', 'tier' => 'fast', 'configured' => true],
         ],
         'gemini' => [
-            ['value' => 'gemini:gemini-3.8-flash', 'label' => 'Gemini 3.8 Flash', 'tier' => 'quality', 'configured' => false],
-            ['value' => 'gemini:gemini-4-hydrogen', 'label' => 'Gemini 4 Hydrogen', 'tier' => 'quality', 'configured' => false],
+            ['value' => 'gemini:gemini-4-neon', 'label' => 'Gemini 4 Neon', 'tier' => 'quality', 'configured' => false],
             ['value' => 'gemini:gemini-4-argon', 'label' => 'Gemini 4 Argon', 'tier' => 'quality', 'configured' => false],
             ['value' => 'gemini:gemini-4-carbon', 'label' => 'Gemini 4 Carbon', 'tier' => 'quality', 'configured' => false],
             ['value' => 'gemini:gemini-3.5-flash-lite', 'label' => 'Gemini 3.5 Flash-Lite', 'tier' => 'fast', 'configured' => false],
+            ['value' => 'gemini:gemini-4-hydrogen', 'label' => 'Gemini 4 Hydrogen', 'tier' => 'fast', 'configured' => false],
+            ['value' => 'gemini:gemini-3.8-flash', 'label' => 'Gemini 3.8 Flash', 'tier' => 'fast', 'configured' => false],
             ['value' => 'gemini:gemini-custom', 'label' => 'gemini-custom', 'tier' => null, 'configured' => false],
         ],
     ]);
@@ -146,11 +147,12 @@ it('labels every catalog model by reference, configured or not', function () {
         'openai:gpt-6.2-sol' => 'GPT-6.2 Sol',
         'openai:gpt-6.1-sol' => 'GPT-6.1 Sol',
         'openai:gpt-6-luna' => 'GPT-6 Luna',
-        'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
-        'gemini:gemini-4-hydrogen' => 'Gemini 4 Hydrogen',
+        'gemini:gemini-4-neon' => 'Gemini 4 Neon',
         'gemini:gemini-4-argon' => 'Gemini 4 Argon',
         'gemini:gemini-4-carbon' => 'Gemini 4 Carbon',
         'gemini:gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
+        'gemini:gemini-4-hydrogen' => 'Gemini 4 Hydrogen',
+        'gemini:gemini-3.8-flash' => 'Gemini 3.8 Flash',
         'gemini:gemini-custom' => 'gemini-custom',
     ]);
 });
@@ -162,7 +164,7 @@ it('returns the first model of a tier as the default', function (string $provide
     ['anthropic', Tier::Fast, 'anthropic:claude-haiku-5-5'],
     ['openai', Tier::Quality, 'openai:gpt-6.2-sol'],
     ['openai', Tier::Fast, 'openai:gpt-6-luna'],
-    ['gemini', Tier::Quality, 'gemini:gemini-3.8-flash'],
+    ['gemini', Tier::Quality, 'gemini:gemini-4-neon'],
     ['gemini', Tier::Fast, 'gemini:gemini-3.5-flash-lite'],
 ]);
 
@@ -181,7 +183,7 @@ it('keeps Tolk\'s first model of a tier as its default, unless the config moves 
 });
 
 it('throws when the catalog has no model of a tier', function () {
-    config(['tolk.models.gemini' => [['id' => 'gemini-3.5-flash-lite', 'tier' => 'quality']]]);
+    config(['tolk.models.gemini' => [['id' => 'gemini-3.5-flash-lite', 'tier' => 'quality'], ['id' => 'gemini-4-hydrogen', 'tier' => 'quality'], ['id' => 'gemini-3.8-flash', 'tier' => 'quality']]]);
 
     expect(fn () => modelCatalog()->default('gemini', Tier::Fast))
         ->toThrow(MissingDefaultModel::class, 'The model catalog (tolk.models) has no fast model for [gemini].');
@@ -221,7 +223,7 @@ it('resolves the quality model of the first provider under the fake engine when 
 
     $this->withProviderKeys(['ai.providers.gemini.key' => 'test-key']);
 
-    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('gemini:gemini-3.8-flash'));
+    expect(modelCatalog()->resolveTranslator($this->withSettings()))->toEqual(modelRef('gemini:gemini-4-neon'));
 });
 
 it('lets an unparseable model setting propagate', function (string $key, Closure $resolve) {
@@ -254,7 +256,7 @@ it('skips unconfigured providers when it picks the reviewer', function () {
     $this->withProviderKeys(['ai.providers.anthropic.key' => 'sdk-key', 'tolk.providers.gemini.key' => 'tolk-key']);
 
     expect(modelCatalog()->resolveReviewer($this->withSettings(), modelRef('anthropic:claude-sonnet-5-5')))
-        ->toEqual(modelRef('gemini:gemini-3.8-flash'));
+        ->toEqual(modelRef('gemini:gemini-4-neon'));
 });
 
 it('falls back to the translator as the reviewer when only one provider is configured', function () {

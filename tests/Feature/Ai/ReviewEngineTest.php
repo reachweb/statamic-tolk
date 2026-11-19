@@ -148,7 +148,7 @@ it('sends the review prompt, the user json, the reviewer and its options', funct
     ReviewAgent::assertPrompted(fn (AgentPrompt $prompt) => $prompt->prompt === $prompts->user($call->document, $call->segments)
         && $prompt->agent->instructions === $prompts->reviewSystem($call->source, $call->target, $call->context)
         && $prompt->agent->providerOptions === ['thinking_level' => 'low']
-        && $prompt->agent->model == new ModelRef('gemini', 'gemini-3.8-flash')
+        && $prompt->agent->model == new ModelRef('gemini', 'gemini-4-neon')
         && $prompt->agent->maxTokens === app(TranslationEngine::class)->reviewCap($call)
         && $prompt->timeout === 45);
 

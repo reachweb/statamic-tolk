@@ -4,6 +4,18 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Gemini 4 Neon (`gemini-4-neon`, released on November 18) in the catalog, at $3 / $15 per million tokens, thinking at `low` like the other Gemini 4 models.
+
+### Changed
+
+- Gemini's quality model, and so the Gemini model of Automatic and of the automatic reviewer, is now Gemini 4 Neon instead of Gemini 3.8 Flash. Gemini 4 Argon and Carbon stay in the quality tier, and Gemini 3.8 Flash and Gemini 4 Hydrogen move to the fast tier, beside Gemini 3.5 Flash-Lite, which stays the model **Test connection** calls. **Neon is not offered on Google's free tier** and costs twice as much per token as 3.8 Flash: a site that translates with Gemini on Automatic and a free-tier key gets its requests refused after this update, so choose Gemini 4 Hydrogen, Gemini 3.8 Flash or Flash-Lite in the settings. A site that chose 3.8 Flash in the settings keeps it.
+
+### Fixed
+
+- Requests to Gemini 4 Argon and Carbon ask for at most 32,768 output tokens, the most Google writes for them in a response without streaming, instead of up to 65,536.
+
 ## 1.3.0 - 2026-11-19
 
 ### Added
