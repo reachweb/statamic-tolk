@@ -4,6 +4,8 @@ All notable changes to Tolk are documented in this file.
 
 ## Unreleased
 
+## 1.3.1 - 2026-11-20
+
 ### Added
 
 - Gemini 4 Neon (`gemini-4-neon`, released on November 18) in the catalog, at $3 / $15 per million tokens, thinking at `low` like the other Gemini 4 models.
